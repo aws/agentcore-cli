@@ -5,6 +5,7 @@
  */
 import type { SourceSpan } from "./dogwood";
 import { placeOf, type ParsedPolicy } from "./policyParser";
+import { BOX_PROFILE_PATH } from "./profileParser";
 
 /** The rules Box writes into every profile, for the cloud metadata hosts and addresses. */
 export const BOX_METADATA_RULE_IDS: ReadonlySet<string> = new Set([
@@ -81,11 +82,11 @@ export function ruleOrigin(parsed: Pick<ParsedPolicy, "profile">, ruleId: string
     };
   }
   if (BOX_METADATA_RULE_IDS.has(ruleId)) {
-    return { by: "box", purpose: "to every profile", place: parsed.profile.path };
+    return { by: "box", purpose: "to every profile", place: BOX_PROFILE_PATH };
   }
   return { by: "pack", place: packsPlace(parsed) };
 }
 
 function packsPlace(parsed: Pick<ParsedPolicy, "profile">): string {
-  return parsed.profile.places?.packs ?? parsed.profile.path;
+  return parsed.profile.places?.packs ?? BOX_PROFILE_PATH;
 }

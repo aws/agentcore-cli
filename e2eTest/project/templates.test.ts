@@ -15,6 +15,52 @@ type RuntimeTemplateTestCase = {
   payload: Record<string, unknown>;
   invokeFlags?: string[];
   skip?: boolean;
+  /**
+   * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
+   * PATH. `agentcore dev` runs box on the protocol's fixed ingress port (8080, 8000 or 9000), so
+   * concurrent tests cannot run it side by side; the Runtime path is what these tests cover.
+   */
+  box?: boolean;
+};
+
+const MCP_INITIALIZE_PAYLOAD = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "initialize",
+  params: {
+    protocolVersion: "2025-03-26",
+    capabilities: {},
+    clientInfo: { name: "agentcore-e2e", version: "1" },
+  },
+};
+const MCP_INITIALIZE_FLAGS = [
+  "--accept",
+  "application/json, text/event-stream",
+  "--mcp-protocol-version",
+  "2025-03-26",
+  "--mcp-method",
+  "initialize",
+];
+const A2A_MESSAGE_PAYLOAD = {
+  jsonrpc: "2.0",
+  id: "agentcore-e2e",
+  method: "message/send",
+  params: {
+    message: {
+      messageId: "agentcore-e2e",
+      role: "user",
+      parts: [{ kind: "text", text: "Reply with a short greeting." }],
+    },
+  },
+};
+const AGUI_RUN_PAYLOAD = {
+  threadId: "agentcore-e2e",
+  runId: "agentcore-e2e",
+  state: {},
+  messages: [{ id: "agentcore-e2e", role: "user", content: "Reply with a short greeting." }],
+  tools: [],
+  context: [],
+  forwardedProps: {},
 };
 
 const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
@@ -61,57 +107,76 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     name: "mcp_python_fastmcp",
     template: "mcp-python-fastmcp",
     protocol: "MCP" as const,
-    payload: {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: { name: "agentcore-e2e", version: "1" },
-      },
-    },
-    invokeFlags: [
-      "--accept",
-      "application/json, text/event-stream",
-      "--mcp-protocol-version",
-      "2025-03-26",
-      "--mcp-method",
-      "initialize",
-    ],
+    payload: MCP_INITIALIZE_PAYLOAD,
+    invokeFlags: MCP_INITIALIZE_FLAGS,
   },
   {
     name: "a2a_python_strands",
     template: "a2a-python-strands",
     protocol: "A2A" as const,
-    payload: {
-      jsonrpc: "2.0",
-      id: "agentcore-e2e",
-      method: "message/send",
-      params: {
-        message: {
-          messageId: "agentcore-e2e",
-          role: "user",
-          parts: [{ kind: "text", text: "Reply with a short greeting." }],
-        },
-      },
-    },
+    payload: A2A_MESSAGE_PAYLOAD,
   },
   {
     name: "agui_python_strands",
     template: "agui-python-strands",
     protocol: "AGUI" as const,
-    payload: {
-      threadId: "agentcore-e2e",
-      runId: "agentcore-e2e",
-      state: {},
-      messages: [{ id: "agentcore-e2e", role: "user", content: "Reply with a short greeting." }],
-      tools: [],
-      context: [],
-      forwardedProps: {},
-    },
+    payload: AGUI_RUN_PAYLOAD,
   },
 ].filter((r) => !r.skip);
+
+/** The Strands Box templates, which run their agent in a box on AgentCore Runtime. */
+const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
+  {
+    name: "agent_python_minimal_box",
+    template: "agent-python-minimal-box",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+  },
+  {
+    name: "agent_python_strands_box",
+    template: "agent-python-strands-box",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+  },
+  {
+    name: "py_strands_box_container",
+    template: "agent-python-strands-box-container",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+    // The same container limits as the non-box container template above.
+    skip: process.env.CI === "true" && process.platform !== "linux",
+  },
+  {
+    name: "agent_python_langchain_box",
+    template: "agent-python-langchain-box",
+    protocol: "HTTP" as const,
+    payload: { prompt: "Reply with a short greeting." },
+  },
+  {
+    name: "mcp_python_fastmcp_box",
+    template: "mcp-python-fastmcp-box",
+    protocol: "MCP" as const,
+    payload: MCP_INITIALIZE_PAYLOAD,
+    invokeFlags: MCP_INITIALIZE_FLAGS,
+  },
+  {
+    name: "a2a_python_strands_box",
+    template: "a2a-python-strands-box",
+    protocol: "A2A" as const,
+    payload: A2A_MESSAGE_PAYLOAD,
+  },
+  {
+    name: "agui_python_strands_box",
+    template: "agui-python-strands-box",
+    protocol: "AGUI" as const,
+    payload: AGUI_RUN_PAYLOAD,
+  },
+]
+  .map((template) => ({ ...template, box: true }))
+  .filter((r) => !r.skip);
+
+/** Every template the suite creates, so each project gets its own name and local dev port. */
+const ALL_TEMPLATES = [...RUNTIME_TEMPLATES, ...BOX_TEMPLATES];
 
 const ProjectCreatedSchema = z.object({
   project: z.object({ path: z.string() }),
@@ -229,6 +294,104 @@ describe(
   },
 );
 
+// The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
+// deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
+// `agentcore dev`. They need `box` on PATH: create checks for it. Run them with
+// `bun run test:e2e -- --tagsFilter='box'`.
+describe(
+  "create, deploy, invoke for Strands Box templates",
+  { tags: [TAGS.RUNTIME, TAGS.BOX] },
+  () => {
+    const cli = new CliRunner();
+
+    test.concurrent.each(BOX_TEMPLATES)(
+      "$name",
+      {
+        timeout:
+          TIMEOUT_MS.PROJECT_CREATE +
+          2 * TIMEOUT_MS.PROJECT_INVOKE +
+          2 * TIMEOUT_MS.PROJECT_DEPLOY +
+          TIMEOUT_MS.PROJECT_REMOVE,
+      },
+      async (runtime) => {
+        const projectDir = await createTemplateProject(cli, runtime);
+        let scenarioCompleted = false;
+        try {
+          const deployment = parseResult(
+            DeployResponseSchema,
+            await cli.run(["deploy", "--yes", "--json"], projectDir),
+          );
+          expect(deployment.message).toContain("deployed project");
+
+          const response = parseResult(
+            RuntimeInvokeResponseSchema,
+            await cli.run(
+              [
+                "invoke",
+                "--runtime",
+                CREATED_RUNTIME_NAME,
+                "--session-id",
+                getSessionId(runtime.name),
+                "--payload",
+                JSON.stringify(runtime.payload),
+                "--json",
+                ...(runtime.invokeFlags ?? []),
+              ],
+              projectDir,
+            ),
+          );
+          expect(response.complete).toBe(true);
+          if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
+            assertProtocolResponse(runtime, response.body);
+          }
+
+          await assertRunsInBox(cli, projectDir);
+          scenarioCompleted = true;
+        } finally {
+          // Tear the stack down even when a step above failed.
+          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
+          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
+          // A cleanup error must not replace the scenario's primary diagnostic.
+          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
+        }
+      },
+    );
+  },
+);
+
+/**
+ * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent.
+ * The logs arrive a little after the invoke, so it retries.
+ */
+async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void> {
+  const result = await retry(
+    async () => {
+      const found = await cli.run(
+        [
+          "logs",
+          "runtime",
+          "--name",
+          CREATED_RUNTIME_NAME,
+          "--since",
+          "30m",
+          "--query",
+          '"running profile"',
+        ],
+        projectDir,
+      );
+      if (found.exitCode !== 0 || !found.stdout.includes("running profile")) {
+        throw new Error(
+          `the Runtime's logs do not show box running the agent.\nstdout: ${found.stdout}\nstderr: ${found.stderr}`,
+        );
+      }
+      return found;
+    },
+    2 * 60 * 1000,
+    10 * 1000,
+  );
+  expect(result.stdout).not.toMatch(/FALLBACK|FAILED/);
+}
+
 /** Given a template test case, creates a project scaffolded from it and returns its path. */
 async function createTemplateProject(
   cli: CliRunner,
@@ -237,7 +400,7 @@ async function createTemplateProject(
   const parent = await mkdtemp(join(tmpdir(), "agentcore-e2e-"));
   // A per-template suffix keeps concurrent projects (and their stacks) apart;
   // project names are alphanumeric, so it is the template's index.
-  const projectName = `${E2E_PREFIX}${Date.now().toString(36)}t${RUNTIME_TEMPLATES.indexOf(runtime)}`;
+  const projectName = `${E2E_PREFIX}${Date.now().toString(36)}t${ALL_TEMPLATES.indexOf(runtime)}`;
   const created = parseResult(
     ProjectCreatedSchema,
     await cli.run(

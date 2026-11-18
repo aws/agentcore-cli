@@ -9,6 +9,7 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
+import type { BoxNetworkHost } from "../boxNetwork";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -99,7 +100,7 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run box/agent/local/profile.toml` can load it by its path", () => {
+  test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
   });
 
@@ -253,7 +254,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to box/agent/local/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
@@ -533,6 +534,88 @@ describe("renderRuntimeBoxProfile", () => {
   test("has no route outside a Box project, which has no Box gateway", () => {
     const project = { ...spec([bedrock, agentcore]), projectType: undefined } as ProjectSpec;
     expect(egressOf(project)).toEqual({});
+  });
+
+  describe("for an HTTP MCP server", () => {
+    const TOOLS = {
+      name: "egress-tools",
+      targetType: "passthrough",
+      passthrough: { endpoint: "https://tools.example.com", protocolType: "CUSTOM" },
+    } as AgentCoreGatewayTarget;
+    const BACKENDS = [
+      {
+        url: "${{ inputs.gateway.url }}/egress-tools",
+        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+      },
+    ];
+    /** The model's host for the server `tools`, which the target `egress-tools` serves. */
+    const toolsHost = (secret?: Record<string, string>) =>
+      ({
+        host: "tools.example.com",
+        authority: "tools.example.com",
+        sources: [
+          {
+            kind: "mcp",
+            mcpEntry: "tools",
+            destinations: ["tools.example.com"],
+            ...(secret && { secret }),
+          },
+          { kind: "rule", ruleId: "mcp_tools_connect" },
+        ],
+        outboundAuth: { kind: "none" },
+        reachable: true,
+        target: "egress-tools",
+        allowed: 3,
+        samples: 3,
+        forbiddenBy: [],
+        enforcedByBox: [],
+      }) as BoxNetworkHost;
+    const rendered = (secret?: Record<string, string>) => {
+      const project = spec([bedrock, TOOLS]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        hosts: [toolsHost(secret)],
+      });
+      return { text, toml: parse(text) as { egress: object; mcp?: Record<string, unknown> } };
+    };
+
+    test("writes the server's target as the server, with its env:// secret, and no [egress] route", () => {
+      const { text, toml } = rendered({
+        ref: "env://TOOLS_TOKEN",
+        header: "x-api-key",
+        phantom_prefix: "tk-",
+        inject: "always",
+      });
+
+      expect(Object.keys(toml.egress)).toEqual(["bedrock"]);
+      expect(toml.mcp).toEqual({
+        tools: {
+          type: "http",
+          destinations: ["tools.example.com"],
+          // The agent keeps its stand-in; inject has no effect beside a backend, and Box refuses it.
+          secret: { ref: "env://TOOLS_TOKEN", header: "x-api-key", phantom_prefix: "tk-" },
+          backends: BACKENDS,
+        },
+      });
+      expect(text).toContain(
+        "\n# The MCP server 'tools' at tools.example.com, through the runtime's Box gateway's " +
+          "'egress-tools' target.\n" +
+          '[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+          'secret.ref = "env://TOOLS_TOKEN"\nsecret.header = "x-api-key"\n' +
+          'secret.phantom_prefix = "tk-"\n\n' +
+          "[[mcp.tools.backends]]\n" +
+          'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+      );
+    });
+
+    test("keeps no secret of a server that signs, or has none, as Box refuses a signed one beside a backend", () => {
+      for (const secret of [{ ref: "aws://default" }, undefined]) {
+        expect(rendered(secret).toml.mcp).toEqual({
+          tools: { type: "http", destinations: ["tools.example.com"], backends: BACKENDS },
+        });
+      }
+    });
   });
 
   test("renders the CodeZip form for start.py and the image form for a container", () => {

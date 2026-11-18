@@ -1,4 +1,4 @@
-import { join, posix } from "node:path";
+import { join } from "node:path";
 import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
@@ -7,7 +7,7 @@ import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../project
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
-import type { BoxNetwork } from "../boxNetwork";
+import type { BoxNetwork, BoxNetworkSource } from "../boxNetwork";
 import { modelProviderCredentialName } from "./runtime";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
@@ -97,44 +97,16 @@ export function boxWorkloadPort(protocol: Protocol | undefined): number {
   return boxIngressPort(protocol) + 1;
 }
 
-/** The box folder at the project root that holds every agent's profiles. */
-export const BOX_ROOT = "box";
-
-/** An agent's box folder, relative to the project root: `box/<agentName>`. */
-export function boxAgentDir(agentName: string): string {
-  return posix.join(BOX_ROOT, agentName);
-}
-
 /**
- * An agent's local profile folder, relative to the project root:
- * `box/<agentName>/local`. It holds the profile `agentcore dev` runs and the
- * policy files it names. box keeps the agent out of this folder, so the agent
- * cannot change its own profile.
+ * The project's box profile, relative to the project root: `box run
+ * .box/profile.toml` there runs it. box keeps the agent out of the project's
+ * `.box` folder, so the agent cannot change its own profile.
  */
-export function boxLocalDir(agentName: string): string {
-  return posix.join(boxAgentDir(agentName), "local");
-}
+export const BOX_PROFILE_FILE = ".box/profile.toml";
 
-/**
- * An agent's AWS folder, relative to the project root: `box/<agentName>/aws`.
- * Build and deploy generate the AgentCore Runtime profile and its resources
- * here, then copy the folder into the deploy artifact's `.box-dist/` staging.
- */
-export function boxAwsDir(agentName: string): string {
-  return posix.join(boxAgentDir(agentName), "aws");
-}
-
-/**
- * An agent's local box profile, relative to the project root: `box run
- * box/<agentName>/local/profile.toml` there runs it.
- */
-export function boxLocalProfileFile(agentName: string): string {
-  return posix.join(boxLocalDir(agentName), "profile.toml");
-}
-
-/** An agent's local box profile at `projectRoot`. */
-export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
-  return join(projectRoot, boxLocalProfileFile(agentName));
+/** The box profile of the project at `projectRoot`. */
+export function boxProfilePath(projectRoot: string): string {
+  return join(projectRoot, BOX_PROFILE_FILE);
 }
 
 /**
@@ -143,6 +115,20 @@ export function boxLocalProfilePath(projectRoot: string, agentName: string): str
  */
 export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
+}
+
+/**
+ * Whether the project's box profile, `profileText`, was written for `runtime`. Create writes one
+ * profile, for the first runtime, and `add` writes none, so a runtime added later has no profile.
+ * A CodeZip profile names its runtime's folder; the container profile runs /app and names none.
+ */
+export function boxProfileIsFor(
+  profileText: string,
+  runtime: { build: string; codeLocation: string },
+): boolean {
+  const codeZip = profileText.includes("${{ workspace }}/app/");
+  if (runtime.build === "Container") return !codeZip;
+  return profileText.includes(`/${runtime.codeLocation}"`);
 }
 
 /** The Strands box container template, whose image starts `box run` in /app. */
@@ -443,7 +429,7 @@ export function renderBoxProfile(
       ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-        : `# Written by \`agentcore create\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
+        : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
   const regionComment = onRuntime
     ? ""
     : "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
@@ -458,7 +444,7 @@ export function renderBoxProfile(
   const routes = onRuntime ? runtimeRoutes : "";
   const policies =
     onRuntime && runtimePolicies.length > 0
-      ? `# The policy files of ${boxLocalProfileFile(runtime.runtimeName)}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
+      ? `# The policy files of ${BOX_PROFILE_FILE}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
       : "";
   const bedrockRoute = !bedrock
     ? ""
@@ -519,14 +505,55 @@ ${routes}${bedrockRoute}${keyedRoute}`;
  */
 function runtimeGatewayRouteSection(target: string, host: string, region: string): string {
   const key = tomlKey(target);
-  // Both Runtime profiles read the gateway URL from the environment through the agentcore pack's
-  // input, and sign with the execution role through a bare `aws://`.
   return `
 # Calls to ${host}, through the runtime's Box gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
+${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+}
 
-[[egress.${key}.backends]]
+/** An HTTP MCP server of the box profile that a Box gateway target serves. */
+type RuntimeMcpServer = { readonly name: string; readonly secret?: McpSource["secret"] };
+type McpSource = Extract<BoxNetworkSource, { kind: "mcp" }>;
+
+/**
+ * An HTTP MCP server on the Runtime: the box re-routes the server's calls to
+ * `host` to the runtime's Box gateway target, as {@link runtimeGatewayRouteSection}
+ * does, and still decides each `mcp:call`, as the server keeps its name. An
+ * `env://` secret stays, so the agent keeps its stand-in and box removes it; the
+ * gateway sends the key. Box refuses a signed secret beside a backend, and
+ * `inject` has no effect there, so neither stays. Starts with a blank line.
+ */
+function runtimeMcpServerSection(
+  server: RuntimeMcpServer,
+  target: string,
+  host: string,
+  region: string,
+): string {
+  const key = tomlKey(server.name);
+  const secret = server.secret?.ref.startsWith("env://")
+    ? Object.entries(server.secret)
+        .filter(([field, value]) => field !== "inject" && value !== undefined)
+        .map(([field, value]) => `secret.${tomlKey(field)} = ${str(value as string)}\n`)
+        .join("")
+    : "";
+  return `
+# The MCP server '${server.name}' at ${host}, through the runtime's Box gateway's '${target}' target.
+[mcp.${key}]
+type = "http"
+destinations = [${str(host)}]
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+}
+
+/**
+ * The backend of a Runtime route or MCP server: the runtime's Box gateway
+ * target. Both Runtime profiles read the gateway URL from the environment
+ * through the agentcore pack's input, and sign with the execution role through
+ * a bare `aws://`. Starts with a blank line.
+ */
+function runtimeGatewayBackend(table: string, target: string, region: string): string {
+  return `
+[[${table}.backends]]
 url = ${str(`\${{ inputs.gateway.url }}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
@@ -536,27 +563,47 @@ auth.aws.region = ${str(region)}
 
 /**
  * The Runtime routes of a runtime: one for each passthrough target of its Box
- * gateway, `<runtime>-box`, named for the target and sent to it, so a target in
- * agentcore.json is what gives the boxed agent a route. Build adds the targets
- * the template's calls need (see `addBoxGatewayTargets`) before it renders.
- * None outside a Box project, which has no Box gateway.
+ * gateway, `<runtime>-box`, sent to that target, so a target in agentcore.json
+ * is what gives the boxed agent a route. A target that serves an HTTP MCP
+ * server of `servers` is that `[mcp.<server>]`, and every other target is an
+ * `[egress.<target>]`. Build adds the targets the template's calls need (see
+ * `addBoxGatewayTargets`) before it renders. None outside a Box project, which
+ * has no Box gateway.
  */
-function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region: string): string {
+function runtimeGatewayRoutes(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  region: string,
+  servers: ReadonlyMap<string, RuntimeMcpServer>,
+): string {
   if (!isBoxProject(spec)) return "";
   const gateway = spec.agentCoreGateways.find(({ name }) => name === boxGatewayName(runtime.name));
   return (gateway?.targets ?? [])
-    .flatMap((target) =>
-      target.targetType === "passthrough" && target.passthrough
-        ? [
-            runtimeGatewayRouteSection(
-              target.name,
-              new URL(target.passthrough.endpoint).host,
-              region,
-            ),
-          ]
-        : [],
-    )
+    .flatMap((target) => {
+      if (target.targetType !== "passthrough" || !target.passthrough) return [];
+      const host = new URL(target.passthrough.endpoint).host;
+      const server = servers.get(target.name);
+      return [
+        server
+          ? runtimeMcpServerSection(server, target.name, host, region)
+          : runtimeGatewayRouteSection(target.name, host, region),
+      ];
+    })
     .join("");
+}
+
+/** The HTTP MCP server each Box gateway target of `hosts` serves, by the target's name. */
+function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpServer> {
+  const servers = new Map<string, RuntimeMcpServer>();
+  for (const host of hosts) {
+    const source = host.sources.find((s): s is McpSource => s.kind === "mcp");
+    if (source === undefined || host.target === undefined) continue;
+    servers.set(host.target, {
+      name: source.mcpEntry,
+      ...(source.secret && { secret: source.secret }),
+    });
+  }
+  return servers;
 }
 
 /**
@@ -564,7 +611,7 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway; and,
  * from the runtime's Box network model, the box profile's policy files under
- * `policies`. agentcore.json does not record the framework, and the profile
+ * `policies`, and the HTTP MCP server that a target serves. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
  * one of the frameworks that run in a box. The agent starts under
  * opentelemetry-instrument unless `instrumentation.enableOtel` is false, as a
@@ -573,7 +620,7 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region">>,
+  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region" | "hosts">>,
 ): string {
   const input = {
     runtimeName: runtime.name,
@@ -591,7 +638,7 @@ export function renderRuntimeBoxProfile(
     spec.name,
     input,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region),
+    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
     runtime.instrumentation?.enableOtel ?? true,
@@ -628,7 +675,7 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
     const prefix = modelId.split("/")[0];
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
-        `[egress.${prefix}] section with its provider's host to ${boxLocalProfileFile(runtime.runtimeName)}, or the box ` +
+        `[egress.${prefix}] section with its provider's host to ${BOX_PROFILE_FILE}, or the box ` +
         "blocks the agent's model calls",
     ];
   }

@@ -1,11 +1,11 @@
-import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
-import { boxAwsDir, runsBoxStartScript } from "../templates/boxProfile";
+import { runsBoxStartScript } from "../templates/boxProfile";
 import type { BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
@@ -65,7 +65,7 @@ function dockerfileOf(projectRoot: string, runtime: ProjectRuntime): string {
   return join(containerBuildContext(projectRoot, runtime), runtime.dockerfile ?? "Dockerfile");
 }
 
-/** A policy file to copy into an image's `.box-dist/`: the file, and its path from `box/<name>/local/`. */
+/** A policy file to copy into an image's `.box-dist/`: the file, and its path from `.box/`. */
 export interface PolicyFileCopy {
   readonly from: string;
   readonly relative: string;
@@ -80,7 +80,7 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
 
 /**
  * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
- * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
+ * policy file of `policies` at its path from `.box/`, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
  */
 export function stageBoxImage(
@@ -103,11 +103,10 @@ export function stageBoxImage(
 }
 
 /**
- * Stages box for build and deploy into each container runtime whose Dockerfile copies `.box-dist/`.
- * It generates the canonical AWS tree in `box/<name>/aws/`: the box release its `box.version` names,
- * and what the runtime profile writer writes from the runtime's Box network model (the Runtime
- * profile and a byte copy of each policy file it names). It then copies that tree into the build
- * context's `.box-dist/`, so the image copies it. Returns the names of the runtimes it staged.
+ * Stages box for build and deploy into each container runtime whose
+ * Dockerfile copies `.box-dist/`: the box release its `box.version` names, and
+ * what the runtime profile writer writes from the runtime's Box network model,
+ * the Runtime profile and a byte copy of each policy file it names. Returns the names of the runtimes it staged.
  */
 export async function stageBoxContainers(
   project: Project,
@@ -120,7 +119,7 @@ export async function stageBoxContainers(
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
-    dist: boxAwsDir(runtime.name),
+    dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
     container: runtime.build === "Container",
     codezip: false,
   }));
@@ -139,17 +138,12 @@ export async function stageBoxContainers(
     );
   }
   for (const [index, { dist }] of staged.entries()) {
-    const runtime = runtimes[index]!;
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
-    const release = await releaseFor(runtime.box?.version);
+    const release = await releaseFor(runtimes[index]!.box?.version);
     writeFileSync(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
-    // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
-    const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);
-    rmSync(contextDist, { recursive: true, force: true });
-    cpSync(folder, contextDist, { recursive: true });
   }
   return runtimes.map((runtime) => runtime.name);
 }

@@ -174,15 +174,14 @@ async function strandsProject(
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
 
-/** Adds `tables` to the end of the profile, `top` to its start, and writes `box/agent_python_strands/local/policy.dw`. */
+/** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/policy.dw`. */
 async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
-  const profile = await text(root, "box/agent_python_strands/local/profile.toml");
+  const profile = await text(root, ".box/profile.toml");
   await writeFile(
-    path(root, "box/agent_python_strands/local/profile.toml"),
+    path(root, ".box/profile.toml"),
     `${edit.top ?? ""}${profile}${edit.tables ?? ""}`,
   );
-  if (edit.policy !== undefined)
-    await writeFile(path(root, "box/agent_python_strands/local/policy.dw"), edit.policy);
+  if (edit.policy !== undefined) await writeFile(path(root, ".box/policy.dw"), edit.policy);
 }
 
 /** Changes the Box gateway entry of agentcore.json, as a user does by hand. */
@@ -213,13 +212,11 @@ async function runtimeProfile(root: string): Promise<Record<string, unknown>> {
   return parse(await text(root, RUNTIME_PROFILE)) as Record<string, unknown>;
 }
 
-/** The text of every file under `box/agent_python_strands/local/`, by path. */
+/** The text of every file under `.box/`, by path. */
 async function boxFiles(root: string): Promise<Record<string, string>> {
-  const names = (await readdir(path(root, "box/agent_python_strands/local"))).sort();
+  const names = (await readdir(path(root, ".box"))).sort();
   return Object.fromEntries(
-    await Promise.all(
-      names.map(async (name) => [name, await text(root, `box/agent_python_strands/local/${name}`)]),
-    ),
+    await Promise.all(names.map(async (name) => [name, await text(root, `.box/${name}`)])),
   );
 }
 
@@ -282,6 +279,42 @@ describe("build writes the Box network of the box profile", () => {
     expect(await boxFiles(root)).toEqual(before);
   });
 
+  test("gives an HTTP MCP server a target and its API key credential, and keeps it an [mcp] server on the Runtime", async () => {
+    const { manager, root, box } = await strandsProject();
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock", "agentcore"]);
+    const { targets } = await boxGateway(root);
+    // A CUSTOM passthrough target, so Box alone decides each mcp:call.
+    expect(targets[0]).toEqual(
+      userTarget("egress-tools", "https://tools.example.com", {
+        outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+      }),
+    );
+    expect(JSON.parse(await text(root, SPEC)).credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "tools",
+    });
+    expect(steps).toContain("adding API key credential 'tools' for env://TOOLS_TOKEN");
+    const profile = await runtimeProfile(root);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(profile.mcp).toEqual({
+      tools: { ...tools, backends: GATEWAY_BACKEND("egress-tools") },
+    });
+  });
+
   test("leaves the user's other gateways as written, with no defaults added", async () => {
     const { manager, root, box } = await strandsProject();
     await editProfile(root, { tables: GITHUB_ROUTE });
@@ -338,11 +371,8 @@ describe("build writes the Box network of the box profile", () => {
     await editProfile(root, { tables: GITHUB_ROUTE });
     box.answer = shows({ github: GITHUB });
     await build(manager, root);
-    const profile = await text(root, "box/agent_python_strands/local/profile.toml");
-    await writeFile(
-      path(root, "box/agent_python_strands/local/profile.toml"),
-      profile.replace(GITHUB_ROUTE, ""),
-    );
+    const profile = await text(root, ".box/profile.toml");
+    await writeFile(path(root, ".box/profile.toml"), profile.replace(GITHUB_ROUTE, ""));
     box.answer = shows();
 
     const { steps } = await build(manager, root);
@@ -393,7 +423,7 @@ describe("build writes the Box network of the box profile", () => {
         '\n[egress.github]\ndestinations = ["api.github.com"]\n' +
         '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n' +
         '\n[egress.wide]\ndestinations = ["*.wide.example.com"]\nsecret.ref = "env://WIDE_KEY"\n' +
-        '\n[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',
+        '\n[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com/mcp"]\n',
       policy,
     });
     await editGateway(root, (gateway) => {
@@ -410,7 +440,7 @@ describe("build writes the Box network of the box profile", () => {
         wide: { destinations: ["*.wide.example.com"], secret: { ref: "env://WIDE_KEY" } },
         legacy: { destinations: ["legacy.example.com"], secret: { ref: "credsd://prod" } },
       },
-      mcp: { docs: { type: "http", destinations: ["docs.example.com"] } },
+      mcp: { docs: { type: "http", destinations: ["docs.example.com/mcp"] } },
       policy:
         policy +
         `@id("pack_mirrors") permit (principal, ${HR}, resource) when { context.input.host like "*.mirror.example.com" };\n`,
@@ -508,7 +538,7 @@ describe("build writes the Box network of the box profile", () => {
         "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends no " +
         "credential, and [egress.github] sends the API key credential 'github' in the header " +
         "Authorization with the prefix Bearer. Make the two the same, in agentcore.json or in " +
-        "box/agent_python_strands/local/profile.toml.",
+        ".box/profile.toml.",
     );
     expect(await text(root, SPEC)).toBe(spec);
   });
@@ -517,9 +547,9 @@ describe("build writes the Box network of the box profile", () => {
 describe("build reads the box profile as box resolves it", () => {
   test("takes the route a pack adds, which build refused when it compiled the profile itself", async () => {
     const { manager, root, box } = await strandsProject();
-    const profile = await text(root, "box/agent_python_strands/local/profile.toml");
+    const profile = await text(root, ".box/profile.toml");
     await writeFile(
-      path(root, "box/agent_python_strands/local/profile.toml"),
+      path(root, ".box/profile.toml"),
       profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
     );
     // `box profile show --format json` resolves box/anthropic to this route, with its secret.
@@ -532,9 +562,7 @@ describe("build reads the box profile as box resolves it", () => {
 
     await build(manager, root);
 
-    expect(box.calls).toEqual([
-      { projectRoot: root, profilePath: "box/agent_python_strands/local/profile.toml" },
-    ]);
+    expect(box.calls).toEqual([{ projectRoot: root, profilePath: ".box/profile.toml" }]);
     const { targets } = await boxGateway(root);
     expect(targets.find(({ name }) => name === "egress-anthropic")).toEqual(
       userTarget("egress-anthropic", "https://api.anthropic.com", {
@@ -551,7 +579,7 @@ describe("build reads the box profile as box resolves it", () => {
   test("stops with box's error when box refuses the profile, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = new InvalidEnvironmentError(
-      "`box profile show box/agent_python_strands/local/profile.toml --format json` failed in the project (exit code 1)",
+      "`box profile show .box/profile.toml --format json` failed in the project (exit code 1)",
     );
     const spec = await text(root, SPEC);
 
@@ -703,10 +731,10 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
   /** Sets the profile's Bedrock region, as a user does to call Bedrock elsewhere under dev. */
   async function setDevRegion(root: string, region: string) {
-    const profile = await text(root, "box/agent_python_strands/local/profile.toml");
+    const profile = await text(root, ".box/profile.toml");
     const edited = profile.replace(/^bedrock\.region = ".*"$/m, `bedrock.region = "${region}"`);
     expect(edited).not.toBe(profile);
-    await writeFile(path(root, "box/agent_python_strands/local/profile.toml"), edited);
+    await writeFile(path(root, ".box/profile.toml"), edited);
   }
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {
@@ -738,7 +766,7 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     };
 
     await expect(build(manager, root)).rejects.toThrow(
-      "Box refused the profile box/agent_python_strands/local/profile.toml:\n  box: error: box/agent_python_strands/local/profile.toml:4: bad\n",
+      "Box refused the profile .box/profile.toml:\n  box: error: .box/profile.toml:4: bad\n",
     );
   });
 

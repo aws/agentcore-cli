@@ -27,6 +27,25 @@ describe("boxEgressCredentials", () => {
     });
   });
 
+  test("needs one for each env:// secret of an HTTP MCP server too, and reports a server it cannot name", () => {
+    const mcp = {
+      tools: { type: "http", destinations: ["t.example.com"], secret: { ref: "env://TOOLS_KEY" } },
+      ab: { type: "http", destinations: ["a.example.com"], secret: { ref: "env://AB_KEY" } },
+      local: { type: "stdio", command: ["tools"] },
+    };
+
+    const { needed, skipped } = boxEgressCredentials(GITHUB, [], mcp);
+
+    expect(needed).toEqual([
+      { name: "github", variable: "GITHUB_TOKEN" },
+      { name: "tools", variable: "TOOLS_KEY" },
+    ]);
+    expect(skipped).toEqual([
+      '[mcp.ab] gets no API key credential for env://AB_KEY: "ab" is not a valid credential ' +
+        "name, or a credential of another type has it. Rename the entry.",
+    ]);
+  });
+
   test("skips aws:// and other non-env refs", () => {
     expect(boxEgressCredentials({ bedrock: { secret: { ref: "aws://default" } } }, [])).toEqual({
       needed: [],
