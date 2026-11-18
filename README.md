@@ -221,10 +221,12 @@ How each command uses it:
 
 - A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
   `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
-  SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
-- A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
-  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
-  (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
+  SHA-256, and generate box, its packs and the shim into the agent's `.box/<name>/aws/`. They then
+  copy that folder into the runtime's `.box-dist/` so the zip carries it.
+- A container agent's image downloads box while it builds. `build` and `deploy` generate the release
+  that `box.version` names, with its checksum, as `box-release.env` in the agent's `.box/<name>/aws/`,
+  then copy it into the build context's `.box-dist/` beside the Dockerfile (`dev` stages the local
+  profile into `.box-dev/` instead). The Dockerfile downloads that release with `curl`,
   checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
   the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
   builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.

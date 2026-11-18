@@ -1,189 +1,282 @@
 /**
- * Reads the network inputs of a box profile from Box's own resolution of it: the `[egress]` and
- * `[mcp]` tables of the `box.toml` that `box profile show --format json` prints, and its open
- * routes. The profile's own `policies` name the policy files that build stages beside the
- * AgentCore Runtime profile, and its own text places each entry, `packs`, and `policies` for a
- * message.
+ * Reads the network inputs of a box profile as the box CLI compiles them: the `[egress]` and
+ * `[mcp]` tables after the packs merge in, the policy files the profile names, and the rules the
+ * box CLI adds for each route. {@link convertBoxNetworkPolicy} takes the result.
  */
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
-import type { ResolvedBoxProfile } from "../boxProfileResolver";
 
-/** The box profile, from the project root. */
-export const BOX_PROFILE_PATH = ".box/profile.toml";
+/** The pack `agentcore create` names for a Bedrock agent. It declares the `[egress.bedrock]` route. */
+const BOX_BEDROCK_PACK = "box/bedrock";
 
-/** Where the profile's own text sets a key, as `.box/profile.toml:line:column`. */
-export interface ProfilePlaces {
-  /** By `egress.<name>` and `mcp.<name>`, the first line that sets the entry. */
-  readonly entries: ReadonlyMap<string, string>;
-  readonly packs?: string;
-  readonly policies?: string;
-}
+/** The region `box/bedrock` uses when the profile sets no `[options] bedrock.region`. */
+const BOX_BEDROCK_PACK_DEFAULT_REGION = "us-west-2";
+
+/** The secret `box/bedrock` declares, which a profile replaces to sign the calls instead. */
+const BOX_BEDROCK_PACK_SECRET = "env://AWS_BEARER_TOKEN_BEDROCK";
+
+/** The packs the converter reads: `box/base` declares no route, and `box/bedrock` one. */
+const KNOWN_PACKS: ReadonlySet<string> = new Set(["box/base", BOX_BEDROCK_PACK]);
 
 export interface ParsedProfile {
-  /** `[egress]` as Box resolves it, with each open route. */
+  /** `[egress]`, with the route of `box/bedrock` merged under the profile's own. */
   readonly egress: Record<string, unknown>;
   readonly mcp: Record<string, unknown>;
-  /** The profile's own policy files, relative to its folder, in the order it names them. */
+  /** The policy files, relative to the profile's folder, in the order the profile names them. */
   readonly policyFiles: readonly string[];
-  /** Where the profile's own text sets each entry; absent when build has no profile text. */
-  readonly places?: ProfilePlaces;
 }
 
-/** A failure of the profile, or of Box's resolution of it, at its line when one is known. */
+/** A failure of the profile itself, at its line when the converter can find it. */
 export interface ProfileFailure {
-  readonly code: "INVALID_PROFILE" | "UNSUPPORTED_POLICY_KEY";
+  readonly code: "INVALID_PROFILE" | "UNSUPPORTED_PACK" | "UNSUPPORTED_POLICY_KEY";
   readonly reason: string;
   readonly place: string;
 }
 
-/**
- * The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile to, with each
- * open route after the routes of `[egress]`.
- */
-export function parseResolvedProfile(
-  { boxToml, openRoutes }: Pick<ResolvedBoxProfile, "boxToml" | "openRoutes">,
-  policyFiles: readonly string[],
-): { readonly profile: ParsedProfile; readonly failures: readonly ProfileFailure[] } {
-  for (const key of ["egress", "mcp"] as const) {
-    if (boxToml[key] !== undefined && !isTable(boxToml[key])) {
-      const reason =
-        `Box resolves \`${key}\` in this profile to a value that is not a table. Write each ` +
-        `entry as a table, such as [${key}.github].`;
-      return {
-        profile: { egress: {}, mcp: {}, policyFiles },
-        failures: [{ code: "INVALID_PROFILE", reason, place: BOX_PROFILE_PATH }],
-      };
-    }
-  }
-  const egress: Record<string, unknown> = { ...(boxToml.egress as object | undefined) };
-  for (const { route, destinations } of openRoutes) {
-    if (!Object.hasOwn(egress, route)) egress[route] = { destinations };
-  }
-  return {
-    profile: {
-      egress,
-      mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
-      policyFiles,
-    },
-    failures: [],
-  };
-}
+const EMPTY_PROFILE: ParsedProfile = { egress: {}, mcp: {}, policyFiles: [] };
 
 /**
- * The policy files that the box profile `text` names under `policies`, as Box reads them: files
- * inside the profile's folder, each named once. `agentcore dev` reads them with no box, so this
- * refuses the `policy` key, as box does.
+ * The network inputs of the box profile `text`, and every failure of the profile. `profilePath` is
+ * the profile's path from the project root, which the failures name. `bedrockRegion` is the region
+ * the AgentCore Runtime profile gives box/bedrock, when it replaces the profile's.
  */
-export function profilePolicyFiles(
+export function parseProfile(
   text: string,
-): { ok: true; files: string[] } | { ok: false; failure: ProfileFailure } {
-  const fail = (
-    reason: string,
-    place: string,
-    code: ProfileFailure["code"] = "INVALID_PROFILE",
-  ) => ({
-    ok: false as const,
-    failure: { code, reason, place },
+  profilePath: string,
+  bedrockRegion?: string,
+): {
+  readonly profile: ParsedProfile;
+  readonly failures: readonly ProfileFailure[];
+} {
+  const fail = (code: ProfileFailure["code"], reason: string, key?: string) => ({
+    profile: EMPTY_PROFILE,
+    failures: [{ code, reason, place: placeOfKey(text, profilePath, key) }],
   });
   let table: Record<string, unknown>;
   try {
     table = parseToml(text) as Record<string, unknown>;
   } catch (error) {
-    const at = error as { line?: number; column?: number };
+    const at = error as { line?: number; column?: number; message?: string };
     const place =
-      at.line !== undefined ? `${BOX_PROFILE_PATH}:${at.line}:${at.column ?? 1}` : BOX_PROFILE_PATH;
-    return fail(`This is not valid TOML (${tomlProblem(error)}). Correct the syntax.`, place);
+      at.line !== undefined ? `${profilePath}:${at.line}:${at.column ?? 1}` : profilePath;
+    const reason = (at.message ?? String(error)).split("\n")[0]!;
+    return { profile: EMPTY_PROFILE, failures: [{ code: "INVALID_PROFILE", reason, place }] };
+  }
+  const packs = table.packs ?? [];
+  if (!Array.isArray(packs) || !packs.every((pack) => typeof pack === "string")) {
+    return fail("INVALID_PROFILE", "`packs` is not a list of pack names", "packs");
+  }
+  for (const key of ["egress", "mcp"] as const) {
+    if (table[key] !== undefined && !isTable(table[key])) {
+      return fail("INVALID_PROFILE", `\`${key}\` is not a table`, key);
+    }
   }
   if (table.policy !== undefined) {
     return fail(
-      "Box does not take the key `policy`. List your policy files under `policies` instead, " +
-        'such as policies = ["policy.dw"].',
-      placeOfKey(text, "policy"),
       "UNSUPPORTED_POLICY_KEY",
+      "the profile names `policy`, which the box CLI refuses; list the files under `policies`",
+      "policy",
     );
   }
+  const policyFiles = policyFilesOf(table);
+  if (!policyFiles.ok) return fail("INVALID_PROFILE", policyFiles.reason, "policies");
+
+  const failures: ProfileFailure[] = (packs as string[])
+    .filter((pack) => !KNOWN_PACKS.has(pack))
+    .map((pack) => ({
+      code: "UNSUPPORTED_PACK" as const,
+      reason:
+        `it names the pack ${pack}, whose routes and rules build does not read; ` +
+        "write its [egress] entries and rules into the profile, and remove the pack",
+      place: placeOfKey(text, profilePath, "packs"),
+    }));
+  let egress: Record<string, unknown> = {};
+  if ((packs as string[]).includes(BOX_BEDROCK_PACK)) {
+    egress = bedrockPackEgress(table, bedrockRegion);
+  }
+  egress = merged(egress, (table.egress as Record<string, unknown> | undefined) ?? {});
+  return {
+    profile: {
+      egress,
+      mcp: (table.mcp as Record<string, unknown> | undefined) ?? {},
+      policyFiles: policyFiles.files,
+    },
+    failures,
+  };
+}
+
+/** `<profilePath>:<line>` of the first line that sets `key`, or the file when none does. */
+function placeOfKey(text: string, profilePath: string, key: string | undefined): string {
+  if (key === undefined) return profilePath;
+  const index = text.split("\n").findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
+  return index === -1 ? profilePath : `${profilePath}:${index + 1}`;
+}
+
+/**
+ * The `[egress.bedrock]` route of `box/bedrock`: for `bedrockRegion`, the region the AgentCore
+ * Runtime profile sets, else the region the profile's `[options]` set.
+ */
+function bedrockPackEgress(
+  table: Record<string, unknown>,
+  bedrockRegion: string | undefined,
+): Record<string, unknown> {
+  const options = isTable(table.options) ? table.options : {};
+  const bedrock = isTable(options.bedrock) ? options.bedrock : {};
+  const quoted = options["bedrock.region"];
+  const region = bedrockRegion
+    ? bedrockRegion
+    : typeof bedrock.region === "string"
+      ? bedrock.region
+      : typeof quoted === "string"
+        ? quoted
+        : BOX_BEDROCK_PACK_DEFAULT_REGION;
+  return {
+    bedrock: {
+      destinations: [`bedrock-runtime.${region}.amazonaws.com`],
+      secret: { ref: BOX_BEDROCK_PACK_SECRET },
+    },
+  };
+}
+
+/** The profile's `policies`, as the box CLI reads it: files inside the profile's folder. */
+function policyFilesOf(
+  table: Record<string, unknown>,
+): { ok: true; files: string[] } | { ok: false; reason: string } {
   const named = table.policies ?? [];
-  const place = placeOfKey(text, "policies");
   if (!Array.isArray(named) || !named.every((file) => typeof file === "string" && file !== "")) {
-    return fail(
-      '`policies` must be a list of policy file paths, such as ["policy.dw"]. Correct it.',
-      place,
-    );
+    return { ok: false, reason: "`policies` must name policy files, as nonempty paths" };
   }
   const files: string[] = [];
   for (const file of named as string[]) {
     const normal = posix.normalize(file.replace(/\\/g, "/"));
     if (posix.isAbsolute(normal) || normal === ".." || normal.startsWith("../")) {
-      return fail(
-        `\`policies\` names ${JSON.stringify(file)}, which is outside .box/. Move the file into ` +
-          ".box/, and name it from there.",
-        place,
-      );
+      return {
+        ok: false,
+        reason: `\`policies\` names ${JSON.stringify(file)}, which is outside the profile's folder`,
+      };
     }
     if (files.includes(normal)) {
-      return fail(`\`policies\` names ${JSON.stringify(file)} twice. Remove one of them.`, place);
+      return { ok: false, reason: `\`policies\` names ${JSON.stringify(file)} twice` };
     }
     files.push(normal);
   }
   return { ok: true, files };
 }
 
-/**
- * Where the profile `text` sets each `[egress.<name>]` and `[mcp.<name>]` entry, `packs`, and
- * `policies`: the first line of each, by its table header, its dotted key, or its key under
- * `[egress]` or `[mcp]`.
- */
-export function profilePlaces(text: string): ProfilePlaces {
-  const entries = new Map<string, string>();
-  const keys = new Map<string, string>();
-  let table: string[] = [];
-  text.split("\n").forEach((line, index) => {
-    const place = `${BOX_PROFILE_PATH}:${index + 1}:${line.search(/\S/) + 1}`;
-    const header = /^\s*\[\[?([^\]]*)\]\]?\s*(?:#.*)?$/.exec(line);
-    const assignment = header ? undefined : /^\s*([^\s=#[][^=]*?)\s*=/.exec(line);
-    if (!header && !assignment) return;
-    const path = header ? keyPath(header[1]!) : [...table, ...keyPath(assignment![1]!)];
-    if (header) table = path;
-    const [first, second] = path;
-    if ((first === "egress" || first === "mcp") && second !== undefined) {
-      const key = `${first}.${second}`;
-      if (!entries.has(key)) entries.set(key, place);
-    }
-    if (!header && path.length === 1 && !keys.has(first!)) keys.set(first!, place);
-  });
-  return {
-    entries,
-    ...(keys.has("packs") && { packs: keys.get("packs")! }),
-    ...(keys.has("policies") && { policies: keys.get("policies")! }),
-  };
-}
-
-/** The parts of a TOML key: `egress."dot.name".secret` as `["egress", "dot.name", "secret"]`. */
-function keyPath(text: string): string[] {
-  const parts: string[] = [];
-  const part = /\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|([A-Za-z0-9_-]+))\s*(?:\.|$)/y;
-  let match: RegExpExecArray | null;
-  while (part.lastIndex < text.length && (match = part.exec(text)) !== null) {
-    parts.push(match[1] ?? match[2] ?? match[3]!);
+/** `over` merged into `base`: tables merge key by key, and any other value replaces. */
+function merged(base: Record<string, unknown>, over: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const old = out[key];
+    out[key] = isTable(old) && isTable(value) ? merged(old, value) : value;
   }
-  return parts;
-}
-
-/** `.box/profile.toml:<line>:<column>` of the first line that sets `key`, or the file. */
-function placeOfKey(text: string, key: string): string {
-  const lines = text.split("\n");
-  const index = lines.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
-  if (index === -1) return BOX_PROFILE_PATH;
-  return `${BOX_PROFILE_PATH}:${index + 1}:${lines[index]!.search(/\S/) + 1}`;
-}
-
-/** The TOML reader's message, without its "Invalid TOML document:" start and its excerpt. */
-function tomlProblem(error: unknown): string {
-  const message = ((error as { message?: string }).message ?? String(error)).split("\n")[0]!;
-  return message.replace(/^Invalid TOML document:\s*/, "");
+  return out;
 }
 
 function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const NET_CONNECT = 'action == Box::Action::"net:connect"';
+const HTTP_REQUEST = 'action == Box::Action::"http:request"';
+
+/** The box CLI's own network forbids. The converter leaves both to Box. */
+const BOX_NETWORK_BASE_RULES = [
+  `@id("metadata_hosts") forbid (principal, ${NET_CONNECT}, resource) when { context.input.host == "metadata.google.internal" || context.input.host == "metadata.azure.internal" };`,
+  `@id("metadata_addresses") forbid (principal, ${NET_CONNECT}, resource) when { (context.input has ip4 && context.input.ip4 like "169.254.*") || (context.input has ip6 && (context.input.ip6 == "fd00:ec2::254" || context.input.ip6 like "fe8*" || context.input.ip6 like "fe9*" || context.input.ip6 like "fea*" || context.input.ip6 like "feb*")) };`,
+];
+
+/**
+ * The network rules the box CLI compiles into `policy.dw` beside the profile's own: its base
+ * forbids, and a `net:connect` and an `http:request` permit for each `[egress]` route and each
+ * HTTP `[mcp]` server, from their `destinations`. A destination that is a URL gets no rule, as the
+ * box CLI refuses it; the converter then fails its entry.
+ */
+export function boxGeneratedNetworkRules(
+  egress: Record<string, unknown>,
+  mcp: Record<string, unknown>,
+): string {
+  const rules = [...BOX_NETWORK_BASE_RULES];
+  for (const [name, entry] of Object.entries(egress)) {
+    rules.push(...reachRules(`route_${name}`, destinationsOf(entry)));
+  }
+  for (const [name, entry] of Object.entries(mcp)) {
+    if (!isTable(entry) || entry.type !== "http") continue;
+    rules.push(...reachRules(`mcp_${name}`, destinationsOf(entry)));
+  }
+  return rules.join("\n") + "\n";
+}
+
+function destinationsOf(entry: unknown): string[] {
+  if (!isTable(entry) || !Array.isArray(entry.destinations)) return [];
+  return entry.destinations.filter((d): d is string => typeof d === "string");
+}
+
+function reachRules(prefix: string, destinations: readonly string[]): string[] {
+  if (destinations.length === 0 || destinations.some((d) => d.includes("://"))) return [];
+  const connect: string[] = [];
+  const request: string[] = [];
+  for (const destination of destinations) {
+    const authority = destination.split("/")[0] ?? destination;
+    const colon = authority.lastIndexOf(":");
+    const hasPort = colon >= 0 && /^\d+$/.test(authority.slice(colon + 1));
+    const host = hasPort ? authority.slice(0, colon) : authority;
+    const port = hasPort ? Number(authority.slice(colon + 1)) : 443;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return [];
+    const matches = host.startsWith("*.")
+      ? `context.input.host like ${literal(host)}`
+      : `context.input.host == ${literal(host)}`;
+    connect.push(`(${matches} && context.input.port == ${port})`);
+    request.push(matches);
+  }
+  return [
+    `@id(${literal(`${prefix}_connect`)}) permit (principal, ${NET_CONNECT}, resource) when { ${connect.join(" || ")} };`,
+    `@id(${literal(`${prefix}_request`)}) permit (principal, ${HTTP_REQUEST}, resource) when { ${request.join(" || ")} };`,
+  ];
+}
+
+/** A Cedar string literal, as the box CLI writes one. */
+function literal(text: string): string {
+  return JSON.stringify(text);
+}
+
+/** One policy file inside the joined policy text: its name and the lines it holds there. */
+export interface PolicySegment {
+  readonly file: string;
+  /** The joined text's line, from 1, that holds the file's first line. */
+  readonly firstLine: number;
+  readonly lineCount: number;
+}
+
+/**
+ * The policy files, then `generated`, as one policy text, with the place of each file in it, so a
+ * span in the text maps back to a file's line.
+ */
+export function joinPolicyText(
+  files: readonly { readonly file: string; readonly text: string }[],
+  generated: string,
+): { text: string; segments: PolicySegment[] } {
+  let text = "";
+  let line = 1;
+  const segments: PolicySegment[] = [];
+  for (const { file, text: content } of files) {
+    const ended = content.endsWith("\n") || content === "" ? content : `${content}\n`;
+    const lineCount = ended.split("\n").length - 1;
+    segments.push({ file, firstLine: line, lineCount });
+    text += ended;
+    line += lineCount;
+  }
+  return { text: text + generated, segments };
+}
+
+/** Where a span of the joined text is: `file:line:column`, or `undefined` for a generated rule. */
+export function placeOfSpan(
+  segments: readonly PolicySegment[],
+  span: { readonly line: number; readonly column: number },
+): string | undefined {
+  const segment = segments.find(
+    (s) => span.line >= s.firstLine && span.line < s.firstLine + s.lineCount,
+  );
+  if (!segment) return undefined;
+  return `${segment.file}:${span.line - segment.firstLine + 1}:${span.column}`;
 }
