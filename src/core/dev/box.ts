@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
@@ -6,10 +6,9 @@ import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
 import {
-  BOX_PROFILE_FILE,
   boxIngressPort,
-  boxProfileIsFor,
-  boxProfilePath,
+  boxLocalProfileFile,
+  boxLocalProfilePath,
   runsBoxStartScript,
 } from "../project/templates/boxProfile";
 
@@ -22,7 +21,7 @@ type BoxDevRunnerConfig = {
 };
 
 /**
- * Runs a CodeZip agent with `box run .box/profile.toml` in the project folder
+ * Runs a CodeZip agent with `box run .box/<agentName>/local/profile.toml` in the project folder
  * when the project has that box profile, the one `agentcore create` writes,
  * and with the fallback runner otherwise. `box` is the one on PATH, which the
  * user installs from the box release. The box listens on the profile's
@@ -40,23 +39,16 @@ export class BoxDevRunner implements DevRunner {
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
-    const profile = boxProfilePath(input.projectRoot);
-    const hasProfile = existsSync(profile);
-    if (!hasProfile || !boxProfileIsFor(readFileSync(profile, "utf8"), input.runtime)) {
+    const profileFile = boxLocalProfileFile(input.runtime.name);
+    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
+    if (!existsSync(profile)) {
       // start.py starts box on AgentCore Runtime, and runs no agent of its own.
       if (runsBoxStartScript(input.runtime.entrypoint)) {
         throw new ResourceNotFoundError(
           `runtime "${input.runtime.name}" runs its agent in a box (entrypoint ` +
-            `${input.runtime.entrypoint}), but ${profile} ` +
-            (hasProfile ? "is the box profile of another runtime." : "does not exist.") +
-            " Restore the profile that `agentcore create` wrote.",
+            `${input.runtime.entrypoint}), but ${profile} does not exist. ` +
+            "Restore the profile that `agentcore create` wrote.",
         );
-      }
-      if (hasProfile) {
-        yield {
-          type: "status",
-          message: `Running without a box: ${profile} is the box profile of another runtime`,
-        };
       }
       yield* this.fallback.run(input);
       return;
@@ -80,9 +72,9 @@ export class BoxDevRunner implements DevRunner {
     }
     yield {
       type: "status",
-      message: `Starting the agent in a box (box run ${BOX_PROFILE_FILE})`,
+      message: `Starting the agent in a box (box run ${profileFile})`,
     };
-    yield* this.streamProcess(["box", "run", BOX_PROFILE_FILE, "--no-banner"], {
+    yield* this.streamProcess(["box", "run", profileFile, "--no-banner"], {
       cwd: input.projectRoot,
       env: { ...process.env, ...credentialEnvironment(input.env) },
       signal: input.signal,

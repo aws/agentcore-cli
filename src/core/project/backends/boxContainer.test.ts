@@ -113,8 +113,8 @@ describe("stageBoxContainers", () => {
 
   test("copies each policy file of the model beside the profile, for an image that copies .box-dist/ whole", async () => {
     const demo = await project(TEMPLATE_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
     await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
@@ -125,8 +125,8 @@ describe("stageBoxContainers", () => {
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {
     const demo = await project(BOX_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
     await expect(
       stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),

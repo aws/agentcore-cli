@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import { parse as parseToml } from "smol-toml";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import { EnvLocalFile, ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
-import { boxProfilePath } from "../project/templates/boxProfile";
+import { boxLocalProfilePath } from "../project/templates/boxProfile";
 
 const ENV_SCHEME = "env://";
 
 /**
  * Writes into `agentcore/.env.local`, under its own name, each variable that a
- * `[egress.<name>] secret.ref = "env://<VAR>"` route of the project's box profile
+ * `[egress.<name>] secret.ref = "env://<VAR>"` route of the agent's box profile
  * names and `env` holds, so `box run` finds it under `agentcore dev`, on the host
  * and in a container alike. A variable `.env.local` holds already keeps its value,
  * and one that is unset or blank in `env` is left out, so box names it. Returns a
@@ -17,9 +17,10 @@ const ENV_SCHEME = "env://";
  */
 export async function writeBoxDevEnvLocal(
   projectRoot: string,
+  agentName: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string[]> {
-  const profile = boxProfilePath(projectRoot);
+  const profile = boxLocalProfilePath(projectRoot, agentName);
   if (!existsSync(profile)) return [];
   const egress = ownEgress(await readFile(profile, "utf-8"));
 

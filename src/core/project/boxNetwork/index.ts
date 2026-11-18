@@ -13,5 +13,5 @@ export {
 } from "./network";
 export { parsePolicyFiles, type ParsedPolicy, type PolicyFileText } from "./policyParser";
 export { gatewayTargetFor } from "./projectSpec";
-export { BOX_PROFILE_PATH, parseProfile, type ParsedProfile } from "./profileParser";
+export { parseProfile, type ParsedProfile } from "./profileParser";
 export { FAILURE_CODES, type FailureCode } from "./types";
