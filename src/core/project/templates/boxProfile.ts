@@ -560,22 +560,17 @@ ${toolDenyWrite}${routes}${bedrockRoute}${keyedRoute}`;
 /**
  * A route the agent's calls take on the Runtime: the box sends calls to `host`
  * to the runtime's Box gateway target `target`, signing them for the gateway in
- * `region` with the execution role; the gateway calls `host` with the target's
+ * the Runtime's region with the execution role; the gateway calls `host` with the target's
  * own auth. Every `[egress.<name>]` on the Runtime is one of these, so every
  * outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(
-  gatewayName: string,
-  target: string,
-  host: string,
-  region: string,
-): string {
+function runtimeGatewayRouteSection(gatewayName: string, target: string, host: string): string {
   const key = tomlKey(target);
   return `
 # Calls to ${host}, through the '${gatewayName}' gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
-${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+${runtimeGatewayBackend(`egress.${key}`, target)}`;
 }
 
 /** An HTTP MCP server of the box profile that a Box gateway target serves. */
@@ -595,7 +590,6 @@ function runtimeMcpServerSection(
   server: RuntimeMcpServer,
   target: string,
   host: string,
-  region: string,
 ): string {
   const key = tomlKey(server.name);
   const secret = server.secret?.ref.startsWith("env://")
@@ -609,23 +603,23 @@ function runtimeMcpServerSection(
 [mcp.${key}]
 type = "http"
 destinations = [${str(host)}]
-${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target)}`;
 }
 
 /**
  * The backend of a Runtime route or MCP server: the runtime's Box gateway
- * target, signed for the gateway in `region` with the execution role. Both
- * Runtime profiles read the gateway URL from the environment through the
- * box/agentcore pack's input, and sign through a bare `aws://`, so no start
- * script fills the profile in. Starts with a blank line.
+ * target. Both Runtime profiles read the gateway URL and the region from the
+ * environment through the agentcore pack's inputs, and sign with the execution
+ * role through a bare `aws://`, so the profile names no region. Starts with a
+ * blank line.
  */
-function runtimeGatewayBackend(table: string, target: string, region: string): string {
+function runtimeGatewayBackend(table: string, target: string): string {
   return `
 [[${table}.backends]]
 url = ${str(`\${{ inputs.gateway.url }}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
-auth.aws.region = ${str(region)}
+auth.aws.region = "\${{ inputs.aws.region }}"
 `;
 }
 
@@ -640,7 +634,6 @@ auth.aws.region = ${str(region)}
 function runtimeGatewayRoutes(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  region: string,
   servers: ReadonlyMap<string, RuntimeMcpServer>,
 ): string {
   if (!isBoxProject(spec)) return "";
@@ -667,8 +660,8 @@ function runtimeGatewayRoutes(
     .map((target) => {
       const server = servers.get(target.name);
       return server
-        ? runtimeMcpServerSection(gateway.name, server, target.name, hostOf(target), region)
-        : runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target), region);
+        ? runtimeMcpServerSection(gateway.name, server, target.name, hostOf(target))
+        : runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target));
     })
     .join("");
 }
@@ -742,7 +735,7 @@ export function renderRuntimeBoxProfile(
     input,
     region,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
+    runtimeGatewayRoutes(spec, runtime, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
   )!;
   return profile + (network?.telemetry ?? []).map(runtimeTelemetrySection).join("");
@@ -833,7 +826,8 @@ description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
 pattern = ${str(GATEWAY_URL_PATTERN)}
 
-# The Runtime's region. The Runtime sets AWS_REGION; the profile passes it to the agent.
+# The Runtime's region, which box signs each Box gateway backend for and passes to the agent. The
+# Runtime sets AWS_REGION.
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"

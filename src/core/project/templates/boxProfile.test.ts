@@ -515,7 +515,11 @@ describe("renderRuntimeBoxProfile", () => {
     backends: [
       {
         url: `\${{ inputs.gateway.url }}/${target}`,
-        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+        // Signed for the Runtime's own region, which box reads from AWS_REGION there.
+        auth: {
+          ref: "aws://",
+          aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+        },
       },
     ],
   });
@@ -532,7 +536,7 @@ describe("renderRuntimeBoxProfile", () => {
           url: "${{ inputs.gateway.url }}/agentcore",
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -577,7 +581,7 @@ describe("renderRuntimeBoxProfile", () => {
     });
   });
 
-  test("signs each route for the gateway in the region build builds for", () => {
+  test("signs each route for the gateway in the Runtime's own region", () => {
     const project = spec([], {}, [getBoxGatewayBedrockTargetSpec("eu-central-1")]);
     const profile = parse(
       renderRuntimeBoxProfile(project, project.runtimes[0]!, {
@@ -592,9 +596,10 @@ describe("renderRuntimeBoxProfile", () => {
       backends: [
         {
           url: "${{ inputs.gateway.url }}/bedrock",
+          // The gateway is in the Runtime's region, which box reads from AWS_REGION there.
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "eu-central-1" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -706,7 +711,7 @@ describe("renderRuntimeBoxProfile", () => {
           'secret.phantom_prefix = "tk-"\n\n' +
           "[[mcp.tools.backends]]\n" +
           'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
-          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "${{ inputs.aws.region }}"\n',
       );
     });
 
