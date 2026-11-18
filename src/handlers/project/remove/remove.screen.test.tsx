@@ -3,7 +3,11 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProjectSpecSchema, type ProjectSpec } from "../../../projectSchemas/project";
+import {
+  boxGatewayName,
+  ProjectSpecSchema,
+  type ProjectSpec,
+} from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { AddResourceInput, Project } from "../types";
@@ -369,6 +373,21 @@ describe("project remove screen", () => {
     expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
     expect(successFrame).toContain("notes");
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
+    r.unmount();
+  });
+
+  test("the success panel names the Box gateway removed with the runtime", async () => {
+    const core = new TestCoreClient();
+    const { project } = await createProject(core);
+    const r = render("/agentcore/remove/runtime/0", core, project);
+
+    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    await r.write("y");
+    await waitForText(r.lastFrame, "Resource removed");
+
+    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(successFrame).toContain("gateways removed");
+    expect(successFrame).toContain(`removed gateway '${boxGatewayName(RUNTIME)}'`);
     r.unmount();
   });
 

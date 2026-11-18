@@ -796,6 +796,31 @@ describe("project remove in a Box project", () => {
     expect((await projectSpec(projectRoot)).agentCoreGateways).toEqual([]);
   });
 
+  test("remove runtime --json lists the removed Box gateway", async () => {
+    const projectRoot = await boxProject();
+
+    const { io } = await run(["remove", "runtime", "--name", "agent", "--json"]);
+
+    expect(JSON.parse(io.stdout())).toEqual({
+      operation: "remove",
+      project: { name: expect.any(String), path: projectRoot },
+      resource: { type: "runtime", name: "agent" },
+      removedEnvironmentKeys: [],
+      removedGateways: [{ name: "agent-box-egress", targetCount: 1 }],
+    });
+  });
+
+  test("remove runtime leaves out the target clause for a Box gateway with no targets", async () => {
+    const { cleanup } = await initProject({ flags: ["--template", "agent-python-minimal"] });
+    cleanups.push(cleanup);
+
+    const { io } = await run(["remove", "runtime", "--name", "agent"]);
+
+    expect(io.stderr()).toContain(
+      "removed gateway 'agent-box-egress': it is bound to runtime 'agent'",
+    );
+  });
+
   test("remove all removes the gateway entries and keeps projectType", async () => {
     const projectRoot = await boxProject();
 

@@ -11,7 +11,10 @@ export function shouldShowAppCodeNotice(resourceType: ProjectMutationResourceTyp
 /** One line for each gateway removed with runtime `runtimeName`, with its target count. */
 export function removedGatewayLines(runtimeName: string, gateways: RemovedGateway[]): string[] {
   return gateways.map(({ name, targetCount }) => {
-    const targets = targetCount === 1 ? "1 target" : `${targetCount} targets`;
-    return `removed gateway '${name}' and its ${targets}: it is bound to runtime '${runtimeName}'`;
+    const targets =
+      targetCount === 0
+        ? ""
+        : ` and its ${targetCount === 1 ? "1 target" : `${targetCount} targets`}`;
+    return `removed gateway '${name}'${targets}: it is bound to runtime '${runtimeName}'`;
   });
 }
