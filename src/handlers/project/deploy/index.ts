@@ -11,6 +11,7 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { declaresNoResources } from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -277,22 +278,9 @@ async function delegateV0Deploy(
  * decides whether to ask the user before starting.
  */
 export function declaresNothingDeployable(project: Project): boolean {
-  const { spec } = project;
-  const collections = [
-    spec.runtimes,
-    spec.memories,
-    spec.knowledgeBases,
-    spec.credentials,
-    spec.evaluators,
-    spec.onlineEvalConfigs,
-    spec.agentCoreGateways,
-    spec.policyEngines,
-    spec.configBundles,
-    spec.harnesses,
-    spec.toolRuntimes ?? [],
-    spec.payments ?? [],
-  ];
-  return collections.every((collection) => collection.length === 0);
+  // A Box project keeps a Box gateway for each runtime, so its agentCoreGateways are non-empty
+  // until every runtime is also removed; this check needs no Box-specific branch.
+  return declaresNoResources(project.spec);
 }
 
 /**

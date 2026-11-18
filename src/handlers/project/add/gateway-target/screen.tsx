@@ -28,6 +28,7 @@ import {
   type GatewayTargetShortcutInput,
 } from "./index";
 import { RegionKey } from "../../../keys";
+import { isBoundGateway } from "../../../../projectSchemas/project";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-target"];
 const DESCRIPTION = "add a Target to a project Gateway";
@@ -220,7 +221,11 @@ function AddGatewayTargetWizard({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const gateways = project.spec.agentCoreGateways ?? [];
+  // A gateway bound to a runtime (each Box gateway is) takes only passthrough targets, which this
+  // wizard does not build, so it is not offered.
+  const gateways = (project.spec.agentCoreGateways ?? []).filter(
+    (gateway) => !isBoundGateway(gateway),
+  );
   const runtimes = project.spec.runtimes;
   // Only OAuth credentials can back a shortcut Target's outbound auth.
   const credentials: Choice<string>[] = project.spec.credentials

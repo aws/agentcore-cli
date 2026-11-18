@@ -27,6 +27,67 @@ export const ProjectNameSchema = z
     message:
       "This name conflicts with a reserved package dependency. Please choose a different name.",
   });
+/** The kind of project. `box` marks a project made from a Box template. */
+export const ProjectTypeSchema = z.enum(["box"]);
+/** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
+export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
+/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
+export const BOX_GATEWAY_SUFFIX = "-box-egress";
+/** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
+export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
+/**
+ * The variable prefix of each Box gateway. The CLI sets it on every Box gateway, so agent code
+ * reads `AGENTCORE_GATEWAY_BOX_URL` in every runtime, each pointing to that runtime's own gateway.
+ */
+export const BOX_GATEWAY_DISCOVERY_PREFIX = "AGENTCORE_GATEWAY_BOX";
+/**
+ * The name the CLI gives the Box gateway of a runtime. Gateway names do not permit `_`, so
+ * `my_agent` gets `my-agent-box-egress`. Only `boxGatewaySpec` uses it: the CLI finds a runtime's
+ * Box gateway by `boundRuntime`, not by name.
+ */
+export const boxGatewayName = (runtimeName: string): string =>
+  `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
+/**
+ * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
+ * variable prefix, `AWS_IAM` auth and `protocolType: "None"`. The CDK library binds it from
+ * `boundRuntime` and `discoveryPrefix`.
+ */
+export const boxGatewaySpec = (runtimeName: string) => ({
+  name: boxGatewayName(runtimeName),
+  authorizerType: "AWS_IAM" as const,
+  protocolType: "None" as const,
+  boundRuntime: runtimeName,
+  discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
+  targets: [],
+});
+/**
+ * Whether a gateway is bound to one runtime. Each Box gateway is: it belongs to its runtime, so
+ * `remove runtime` removes it, `remove gateway` refuses it, and it takes only passthrough targets.
+ */
+export const isBoundGateway = (gateway: { boundRuntime?: string }) =>
+  gateway.boundRuntime !== undefined;
+/** The variable prefix a gateway sets on each workload it binds to. Matches the CDK library. */
+export const gatewayDiscoveryPrefix = (gateway: { name: string; discoveryPrefix?: string }) =>
+  gateway.discoveryPrefix ??
+  `AGENTCORE_GATEWAY_${gateway.name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+/** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
+export function declaresNoResources(spec: ProjectSpec): boolean {
+  const collections = [
+    spec.runtimes,
+    spec.memories,
+    spec.knowledgeBases,
+    spec.credentials,
+    spec.evaluators,
+    spec.onlineEvalConfigs,
+    spec.agentCoreGateways,
+    spec.policyEngines,
+    spec.configBundles,
+    spec.harnesses,
+    spec.toolRuntimes ?? [],
+    spec.payments ?? [],
+  ];
+  return collections.every((collection) => collection.length === 0);
+}
 const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
 const toEnvironmentName = (name: string) => name.replace(/-/g, "_").toUpperCase();
@@ -49,6 +110,14 @@ export const ProjectSpecSchema = z
     migratedFrom: z.literal("v1").optional(),
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
+    /**
+     * `"box"` for a Box project. `agentcore create` writes it when a Box template asks for it.
+     * The CLI then keeps one gateway entry bound to each runtime (see `boxGatewaySpec`): `AWS_IAM`
+     * auth, `protocolType: "None"`, `boundRuntime` and `discoveryPrefix`, from which the CDK library
+     * binds it. The CDK library does not read this field. No default: the spec is written back to
+     * disk after each parse, so a default would add the field to every existing project.
+     */
+    projectType: ProjectTypeSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
     memories: z.array(MemorySchema).default([]).superRefine(uniqueNames("memory")),
     knowledgeBases: z
@@ -81,6 +150,63 @@ export const ProjectSpecSchema = z
   .superRefine((spec, ctx) => {
     const agentNames = new Set(spec.runtimes.map((a) => a.name));
     const evaluatorNames = new Set(spec.evaluators.map((e) => e.name));
+    // A gateway bound to a runtime that does not exist binds to nothing and fails the synth.
+    for (const gateway of spec.agentCoreGateways) {
+      if (gateway.boundRuntime !== undefined && !agentNames.has(gateway.boundRuntime)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}", but no runtime has that name`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
+    // deployed gateway, so every command stops here and prints the entry to add back.
+    if (isBoxProject(spec)) {
+      const bound = new Set(spec.agentCoreGateways.map((gateway) => gateway.boundRuntime));
+      for (const runtime of spec.runtimes) {
+        if (bound.has(runtime.name)) continue;
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtime "${runtime.name}" has no Box gateway. A Box project needs a gateway with ` +
+            `boundRuntime "${runtime.name}" for each runtime, and a deploy without it would delete ` +
+            `the deployed gateway. Add this entry to "agentCoreGateways" in agentcore.json, or ` +
+            `delete the runtime from "runtimes" by hand:\n` +
+            JSON.stringify(boxGatewaySpec(runtime.name), null, 2),
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // Each gateway sets <prefix>_URL, _ARN, ... on each workload it binds to. Two gateways with the
+    // same prefix on one workload set one variable to two values, which fails the synth. An unbound
+    // gateway binds to every runtime and harness; a bound one binds to its runtime only.
+    const unbound = spec.agentCoreGateways.filter((gateway) => !isBoundGateway(gateway));
+    const workloads: [string, typeof unbound][] = [
+      ["every runtime and harness", unbound],
+      ...spec.runtimes.map((runtime): [string, typeof unbound] => [
+        `runtime "${runtime.name}"`,
+        [...unbound, ...spec.agentCoreGateways.filter((g) => g.boundRuntime === runtime.name)],
+      ]),
+    ];
+    const reported = new Set<string>();
+    for (const [workload, gateways] of workloads) {
+      const byPrefix = new Map<string, string>();
+      for (const gateway of gateways) {
+        const prefix = gatewayDiscoveryPrefix(gateway);
+        const other = byPrefix.get(prefix);
+        byPrefix.set(prefix, gateway.name);
+        if (other === undefined) continue;
+        const key = [other, gateway.name].sort().join("\0");
+        if (reported.has(key)) continue;
+        reported.add(key);
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateways "${other}" and "${gateway.name}" both set ${prefix}_* on ${workload}. Rename one gateway or give it a different discoveryPrefix`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
     for (const config of spec.onlineEvalConfigs) {
       if (config.agent && !agentNames.has(config.agent)) {
         ctx.addIssue({

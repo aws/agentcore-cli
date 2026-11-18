@@ -27,6 +27,7 @@ import type {
   SyncRuntimeBuildsResult,
   RemoveResourceInput,
   RemoveResourceResult,
+  RemovedGateway,
   RemoveResourcesResult,
 } from "../../handlers/project/types";
 import { RESOURCE_LABELS } from "../../handlers/project/types";
@@ -60,7 +61,15 @@ import {
 import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harness";
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
-import { ProjectSpecSchema, type ManagedBy } from "../../projectSchemas/project";
+import {
+  BOX_GATEWAY_TARGET_TYPE,
+  boxGatewaySpec,
+  isBoundGateway,
+  isBoxProject,
+  ProjectSpecSchema,
+  type ManagedBy,
+} from "../../projectSchemas/project";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
@@ -816,6 +825,7 @@ export class FsProjectManager implements ProjectManager {
             }
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          ensureBoxGateway(projectSpec, input.resourceConfig.name);
           break;
         }
 
@@ -836,6 +846,7 @@ export class FsProjectManager implements ProjectManager {
         });
         if (folderExisted) scaffoldedPaths.push(...scaffoldWritten);
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
+        for (const runtime of spec.runtimes ?? []) ensureBoxGateway(projectSpec, runtime.name);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
         if (envEntries.length > 0) {
@@ -953,6 +964,18 @@ export class FsProjectManager implements ProjectManager {
             `no gateway named '${input.gatewayName}' exists in this project`,
           );
         }
+        // A Box gateway takes only passthrough targets, because it has no MCP interface.
+        if (
+          isBoundGateway(projectSpec.agentCoreGateways[gatewayIndex]!) &&
+          input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE
+        ) {
+          throw new InputValidationError(
+            `the gateway '${input.gatewayName}' is bound to a runtime and takes only passthrough ` +
+              `targets, but target '${input.resourceConfig.name}' is ` +
+              `${input.resourceConfig.targetType}. Pass --target-configuration with ` +
+              `"targetType": "passthrough".`,
+          );
+        }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
         break;
       }
@@ -1040,9 +1063,23 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
+    // A gateway bound to a runtime (each Box gateway is) belongs to that runtime: `remove runtime`
+    // removes it. Its targets go with `remove gateway-target`.
+    const boundGateway = existingProjectSpec.agentCoreGateways.find(
+      (gateway) => gateway.name === input.name && isBoundGateway(gateway),
+    );
+    if (input.resourceType === "gateway" && boundGateway) {
+      throw new InputValidationError(
+        `the gateway '${input.name}' is bound to runtime '${boundGateway.boundRuntime}' and cannot ` +
+          `be removed with 'remove gateway'. 'remove runtime' removes it. To remove its targets, ` +
+          `use 'remove gateway-target --gateway ${input.name}'.`,
+      );
+    }
+
     let removed = false;
     let newSpec: unknown;
     let removedResource = input;
+    let removedGateways: RemovedGateway[] = [];
     if (input.resourceType === "policy") {
       const candidates = existingProjectSpec.policyEngines.filter((engine) =>
         engine.policies.some((policy) => policy.name === input.name),
@@ -1087,6 +1124,8 @@ export class FsProjectManager implements ProjectManager {
       const gateway = gateways[gatewayIndex]!;
       const targets = gateway.targets.filter((target) => target.name !== input.name);
       removed = targets.length !== gateway.targets.length;
+      // The Box gateway entry stays, even with no targets: the CLI keeps one entry for each
+      // runtime so the gateway is not removed by accident.
       gateways[gatewayIndex] = { ...gateway, targets };
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
@@ -1128,6 +1167,19 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+      // A gateway bound to the runtime (each Box gateway is) goes with the runtime, and its
+      // targets go too. A gateway bound to a runtime that does not exist fails validation.
+      if (input.resourceType === "runtime" && removed) {
+        const gateways = existingProjectSpec.agentCoreGateways;
+        const bound = gateways.filter((gateway) => gateway.boundRuntime === input.name);
+        removedGateways = bound.map(({ name, targets }) => ({ name, targetCount: targets.length }));
+        if (bound.length > 0) {
+          newSpec = {
+            ...(newSpec as object),
+            agentCoreGateways: gateways.filter((gateway) => gateway.boundRuntime !== input.name),
+          };
+        }
+      }
     }
 
     if (!removed) {
@@ -1158,6 +1210,7 @@ export class FsProjectManager implements ProjectManager {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
       removedResource,
+      removedGateways,
     };
   }
 
@@ -1180,6 +1233,9 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
+    // `projectType` stays: a Box project with no runtimes has no Box gateways, so the next deploy
+    // still reaches the teardown confirmation. A runtime added later gets its Box gateway back
+    // under the same name, so a deploy updates that gateway in place and does not delete it.
     const newSpec = {
       ...existingProjectSpec,
       runtimes: [],
@@ -1420,6 +1476,7 @@ export class FsProjectManager implements ProjectManager {
 
       yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
       projectSpec.runtimes.push(plan.runtime);
+      ensureBoxGateway(projectSpec, plan.runtime.name);
       for (const credential of plan.credentials) {
         if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
           projectSpec.credentials.push(credential);
@@ -2026,6 +2083,27 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/**
+ * Adds the Box gateway of a runtime to a Box project, if it is not already there. A Box project
+ * keeps one Box gateway for each runtime, so every path that adds a runtime to an existing
+ * project calls this: `add runtime` (docs and template runtimes) and `export harness`.
+ * `agentcore create` does not call it: `newProjectSpec` (templates/project.ts) writes the
+ * entries for a Box template.
+ */
+function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
+  if (!isBoxProject(spec)) return;
+  if (spec.agentCoreGateways.some((gateway) => gateway.boundRuntime === runtimeName)) return;
+  const entry = boxGatewaySpec(runtimeName);
+  if (spec.agentCoreGateways.some((gateway) => gateway.name === entry.name)) {
+    throw new InputValidationError(
+      `the runtime '${runtimeName}' needs its Box gateway '${entry.name}', but a gateway with that ` +
+        `name already exists. Remove or rename the gateway '${entry.name}', or give the runtime ` +
+        `another name.`,
+    );
+  }
+  spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, entry));
 }
 
 function parseResource<TSchema extends z.ZodType>(

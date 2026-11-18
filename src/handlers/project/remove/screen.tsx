@@ -6,11 +6,11 @@ import { Layout } from "../../../components/Layout";
 import { ConfirmAction, type SummaryRows } from "../../../components/ConfirmAction";
 import { DataTable, type DataTableColumn } from "../../../components/ui/data-table";
 import { ProjectKey } from "../../../router";
-import type { ProjectSpec } from "../../../projectSchemas/project";
+import { isBoundGateway, type ProjectSpec } from "../../../projectSchemas/project";
 import type { Project, RemoveResourceInput } from "../types";
 import type { ScreenProps } from "../../types";
 import { ProjectGate, projectQueryKey } from "../ProjectGate";
-import { APP_CODE_RETAINED_NOTICE, shouldShowAppCodeNotice } from "./notice";
+import { APP_CODE_RETAINED_NOTICE, removedGatewayLines, shouldShowAppCodeNotice } from "./notice";
 
 type RootResourceType =
   | "runtime"
@@ -62,7 +62,11 @@ const RESOURCE_PICKER_CONFIGS: RemovableResourcePickerConfig[] = [
     listResources: (spec) =>
       spec.onlineEvalConfigs.map(({ name }) => ({ resourceType: "online-eval", name })),
   },
-  rootResourceTypePickerConfig("gateway", (spec) => spec.agentCoreGateways),
+  // A gateway bound to a runtime belongs to it: `remove runtime` removes it, `remove gateway`
+  // refuses it.
+  rootResourceTypePickerConfig("gateway", (spec) =>
+    spec.agentCoreGateways.filter((gateway) => !isBoundGateway(gateway)),
+  ),
   rootResourceTypePickerConfig("policy-engine", (spec) => spec.policyEngines),
   rootResourceTypePickerConfig("payment-manager", (spec) => spec.payments ?? []),
   {
@@ -345,9 +349,11 @@ function RemoveConfirm({
       action={async () => {
         const result = await core.projectManager.removeResource(project, resource);
         removedProject.current = result.project;
+        const gatewayLines = removedGatewayLines(resource.name, result.removedGateways);
         return {
           rows: {
             removed: `${config.resourceType} '${resource.name}'`,
+            ...(gatewayLines.length > 0 ? { "gateways removed": gatewayLines.join("; ") } : {}),
             ...(shouldShowAppCodeNotice(resource.resourceType)
               ? { notes: APP_CODE_RETAINED_NOTICE }
               : {}),

@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "bun:test";
-import { ProjectSpecSchema, ProjectNameSchema } from "./project";
+import { boxGatewaySpec, ProjectSpecSchema, ProjectNameSchema } from "./project";
 
 const minimalProject = { name: "project", version: 2 };
 
@@ -406,5 +406,145 @@ describe("project custom validation", () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe("projectType", () => {
+  test("is absent after a parse of a project without it, so a write-back adds no key", () => {
+    expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("projectType");
+  });
+
+  test('accepts "box"', () => {
+    expect(ProjectSpecSchema.parse({ ...minimalProject, projectType: "box" }).projectType).toBe(
+      "box",
+    );
+  });
+
+  test.each([["Box"], ["standard"], [{}], [null]])("rejects %j", (projectType) => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, projectType }).success).toBe(false);
+  });
+
+  test("rejects the old box key", () => {
+    expect(ProjectSpecSchema.safeParse({ ...minimalProject, box: {} }).success).toBe(false);
+  });
+});
+
+describe("gateway boundRuntime and discoveryPrefix", () => {
+  const gateway = (fields: Record<string, unknown>) => ({
+    name: "agent-box-egress",
+    authorizerType: "AWS_IAM",
+    targets: [],
+    ...fields,
+  });
+  const parse = (fields: Record<string, unknown>) =>
+    ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      runtimes: [runtime],
+      agentCoreGateways: [gateway(fields)],
+    });
+
+  test("accepts a boundRuntime that names a runtime, with a discoveryPrefix", () => {
+    expect(parse({ boundRuntime: "agent", discoveryPrefix: "AGENTCORE_GATEWAY_BOX" }).success).toBe(
+      true,
+    );
+  });
+
+  test("rejects a boundRuntime that names no runtime", () => {
+    const result = parse({ boundRuntime: "gone" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" has boundRuntime "gone", but no runtime has that name',
+    );
+  });
+
+  test("rejects a boundRuntime that is not a runtime name", () => {
+    expect(parse({ boundRuntime: "my agent" }).success).toBe(false);
+  });
+
+  test("rejects discoveryPrefix without boundRuntime", () => {
+    const result = parse({ discoveryPrefix: "AGENTCORE_GATEWAY_BOX" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" sets discoveryPrefix without boundRuntime',
+    );
+  });
+
+  test.each(["my-prefix", "", "1BOX"])("rejects discoveryPrefix %j", (discoveryPrefix) => {
+    expect(parse({ boundRuntime: "agent", discoveryPrefix }).success).toBe(false);
+  });
+});
+
+describe("Box project gateways", () => {
+  const runtimeNamed = (name: string) => ({ ...runtime, name, codeLocation: `./${name}` });
+  const parse = (runtimes: string[], gateways: unknown[]) =>
+    ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      projectType: "box",
+      runtimes: runtimes.map(runtimeNamed),
+      agentCoreGateways: gateways,
+    });
+  const messages = (result: ReturnType<typeof parse>) =>
+    result.success ? [] : result.error.issues.map(({ message }) => message);
+
+  test("accepts a Box project with a Box gateway for each runtime", () => {
+    expect(
+      parse(["agent", "search"], [boxGatewaySpec("agent"), boxGatewaySpec("search")]).success,
+    ).toBe(true);
+  });
+
+  test("rejects a runtime with no Box gateway, and prints the entry to add back", () => {
+    const result = parse(["agent", "search", "checkout"], [boxGatewaySpec("search")]);
+    const found = messages(result);
+    expect(found).toHaveLength(2);
+    expect(found[0]).toContain('Runtime "agent" has no Box gateway.');
+    expect(found[0]).toContain('delete the runtime from "runtimes" by hand');
+    expect(found[0]).not.toContain("remove runtime");
+    expect(found[0]).toContain(JSON.stringify(boxGatewaySpec("agent"), null, 2));
+    expect(found[1]).toContain('Runtime "checkout" has no Box gateway.');
+  });
+
+  test("finds the Box gateway by boundRuntime, not by name", () => {
+    expect(parse(["agent"], [{ ...boxGatewaySpec("agent"), name: "renamed" }]).success).toBe(true);
+  });
+
+  test("does not ask for Box gateways in a project without projectType", () => {
+    const result = ProjectSpecSchema.safeParse({ ...minimalProject, runtimes: [runtime] });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("gateway variable prefixes", () => {
+  const parse = (agentCoreGateways: unknown[]) =>
+    ProjectSpecSchema.safeParse({ ...minimalProject, runtimes: [runtime], agentCoreGateways });
+
+  test("rejects two gateways bound to one runtime with the same discoveryPrefix", () => {
+    const result = parse([
+      { name: "one", boundRuntime: "agent", discoveryPrefix: "AGENTCORE_GATEWAY_BOX", targets: [] },
+      { name: "two", boundRuntime: "agent", discoveryPrefix: "AGENTCORE_GATEWAY_BOX", targets: [] },
+    ]);
+    expect(result.error?.issues.map(({ message }) => message)).toEqual([
+      'Gateways "one" and "two" both set AGENTCORE_GATEWAY_BOX_* on runtime "agent". Rename one gateway or give it a different discoveryPrefix',
+    ]);
+  });
+
+  test("rejects a gateway named box next to a Box gateway", () => {
+    const result = parse([{ name: "box", targets: [] }, boxGatewaySpec("agent")]);
+    expect(result.error?.issues.map(({ message }) => message)).toEqual([
+      'Gateways "box" and "agent-box-egress" both set AGENTCORE_GATEWAY_BOX_* on runtime "agent". Rename one gateway or give it a different discoveryPrefix',
+    ]);
+  });
+
+  test("rejects two unbound gateways whose names differ only in letter case, once", () => {
+    const result = parse([
+      { name: "Foo", targets: [] },
+      { name: "foo", targets: [] },
+    ]);
+    expect(result.error?.issues.map(({ message }) => message)).toEqual([
+      'Gateways "Foo" and "foo" both set AGENTCORE_GATEWAY_FOO_* on every runtime and harness. Rename one gateway or give it a different discoveryPrefix',
+    ]);
+  });
+
+  test("accepts gateways with different prefixes", () => {
+    expect(parse([{ name: "tools", targets: [] }, boxGatewaySpec("agent")]).success).toBe(true);
   });
 });

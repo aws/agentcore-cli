@@ -537,9 +537,14 @@ export type RemoveResourcesResult = {
   removedEnvKeys: string[];
 };
 
+/** A gateway removed together with another resource, as a gateway bound to a removed runtime. */
+export type RemovedGateway = { name: string; targetCount: number };
+
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
+  /** Gateways bound to a removed runtime (each Box gateway is), removed with their targets. */
+  removedGateways: RemovedGateway[];
 };
 
 /**

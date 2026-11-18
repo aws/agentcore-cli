@@ -13,6 +13,7 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { ExportHarnessInput, Project, ProjectEvent } from "../../handlers/project/types";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
+import { boxGatewaySpec } from "../../projectSchemas/project";
 import { readEnvFile } from "../../io/envFile";
 
 const originalCwd = process.cwd();
@@ -485,6 +486,42 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     expect(main).toMatch(
       /budget\.after_model_call\(event\["event"\]\["metadata"\]\)\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n\s+if inline_handoff:\n\s+break\n/,
     );
+  });
+
+  test("writes the Box gateway of the exported runtime into a Box project", async () => {
+    const { manager: subject } = manager();
+    const created = await projectWithHarness(subject);
+    // Make it a Box project, as a Box template writes it: a Box gateway for each runtime.
+    const path = join(created.rootPath, "agentcore", "agentcore.json");
+    const onDisk = (await Bun.file(path).json()) as {
+      runtimes: { name: string }[];
+      agentCoreGateways?: unknown[];
+    };
+    await Bun.write(
+      path,
+      JSON.stringify({
+        ...onDisk,
+        projectType: "box",
+        agentCoreGateways: [
+          ...(onDisk.agentCoreGateways ?? []),
+          ...onDisk.runtimes.map(({ name }) => boxGatewaySpec(name)),
+        ],
+      }),
+    );
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+    expect(project.spec.projectType).toBe("box");
+
+    await drain(subject.exportHarness(project, exportInput()));
+
+    const spec = (await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json()) as {
+      agentCoreGateways: { name: string }[];
+    };
+    const gateway = spec.agentCoreGateways.find(({ name }) => name === "assistantAgent-box-egress");
+    expect(gateway).toMatchObject({
+      boundRuntime: "assistantAgent",
+      discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+      targets: [],
+    });
   });
 
   test("loads only the MCP tools allowedTools selects", async () => {

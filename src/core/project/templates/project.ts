@@ -8,7 +8,8 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { mergeSpecEntries } from "./spec";
-import type { Template, TemplateRenderer } from "./types";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
+import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
 type CreateProjectConfig = {
@@ -45,12 +46,12 @@ export async function createProjectTree(
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
-        json({
-          name: input.projectName,
-          version: 2,
-          managedBy: "CDK",
-          ...mergeSpecEntries(templates.map(({ spec }) => spec)),
-        }),
+        json(
+          newProjectSpec(
+            input.projectName,
+            templates.map(({ spec }) => spec),
+          ),
+        ),
       ),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () =>
@@ -67,3 +68,22 @@ export async function createProjectTree(
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * The agentcore.json of a new project, from the spec entries of its templates. Only a Box template
+ * (one with `projectType: "box"`) makes a Box project: it gets `projectType` and one Box gateway
+ * for each runtime. No other command adds `projectType`.
+ */
+export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
+  const { projectType, ...merged } = mergeSpecEntries(entries);
+  const boxGateways =
+    projectType === "box" ? (merged.runtimes ?? []).map(({ name }) => boxGatewaySpec(name)) : [];
+  return {
+    name: projectName,
+    version: 2,
+    managedBy: "CDK",
+    ...(projectType && { projectType }),
+    ...merged,
+    ...(boxGateways.length > 0 && { agentCoreGateways: boxGateways }),
+  };
+}

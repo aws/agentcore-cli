@@ -20,13 +20,13 @@ import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { knowledgeBaseSchema } from "./screen";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const KB_HELP =
   "a ten-character Knowledge Base ID, or the name of a Knowledge Base in this project";
 
-const { addGateway, cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
-  "add-gateway-connector-wizard",
-);
+const { addGateway, cleanup, inProject, projectSpec, run, writeProjectSpec } =
+  createGatewayProjectTestHarness("add-gateway-connector-wizard");
 
 afterEach(cleanup);
 afterEach(cleanupScreens);
@@ -46,6 +46,21 @@ async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
 }
 
 describe("gateway-connector wizard helpers", () => {
+  test("does not offer a Box gateway, which takes only passthrough targets", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-connector");
+
+    await waitForText(screen.lastFrame, "no Gateways in this project");
+    expect(screen.lastFrame()).not.toContain("box-egress");
+    screen.unmount();
+  });
+
   test("a Knowledge Base is a ten-character ID or a project Knowledge Base name", () => {
     const external = knowledgeBaseSchema([]);
     expect(external.safeParse("ABCDEFGHIJ").success).toBe(true);
