@@ -24,6 +24,7 @@ import {
 } from "../../importBedrockAgent";
 import { RegionKey } from "../../../keys";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
+import { buildConfigFlag, parseBuildConfig, RuntimeBuildConfigSchema } from "../buildConfig";
 
 const CONFIGURATION = "Configuration:";
 const ENVIRONMENT = "Environment:";
@@ -185,6 +186,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         z.enum(["strands", "langgraph"]).optional(),
         { group: BEDROCK_AGENT_IMPORT },
       ),
+      buildConfigFlag("CodeZip, Container, or ContainerLocal"),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
@@ -203,7 +205,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         }
       }
       if (isImport) {
-        const offending = (["language", "protocol"] as const).find(
+        const offending = (["language", "protocol", "build-config"] as const).find(
           (flagName) => flags[flagName] !== undefined,
         );
         if (offending !== undefined) {
@@ -261,6 +263,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
 
       const infra = {
         name: flags.name,
+        ...parseBuildConfig(flags["build-config"], RuntimeBuildConfigSchema),
         description: flags.description,
         executionRoleArn: flags["role-arn"],
         additionalPolicies: flags["additional-policies"],

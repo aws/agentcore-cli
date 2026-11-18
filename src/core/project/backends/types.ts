@@ -1,3 +1,4 @@
+import type { WorkloadBuilds } from "../../../handlers/project/types";
 import type {
   DeployResult,
   Project,
@@ -17,6 +18,8 @@ export type DeployBackendInput = {
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
   skipBootstrap?: boolean;
+  /** Effective workload build modes the manager resolved; resolved here when absent. */
+  workloadBuilds?: WorkloadBuilds;
 };
 
 export type ResolveDeployedResourcesBackendInput = {
