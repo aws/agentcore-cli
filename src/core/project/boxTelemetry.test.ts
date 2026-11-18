@@ -9,12 +9,17 @@ import {
 } from "./boxTelemetry";
 
 const LOGS: CloudWatchTelemetry = {
+  name: "logs",
   kind: "cloudwatch_logs",
   region: "us-west-2",
   logGroup: "my-group",
   logStream: "my-stream",
 };
-const TRACES: CloudWatchTelemetry = { kind: "cloudwatch_traces", region: "us-west-2" };
+const TRACES: CloudWatchTelemetry = {
+  name: "traces",
+  kind: "cloudwatch_traces",
+  region: "us-west-2",
+};
 
 const LOGS_STATEMENT = {
   Sid: "BoxTelemetryToCloudWatchLogs",

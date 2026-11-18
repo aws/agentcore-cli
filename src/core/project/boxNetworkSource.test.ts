@@ -194,6 +194,14 @@ describe("the telemetry of each box runtime", () => {
 
     const networks = await readBoxNetworks(spec, root, resolver);
 
+    const logs = {
+      name: "logs",
+      kind: "cloudwatch_logs" as const,
+      region: "us-west-2",
+      logGroup: "group-a",
+      logStream: "s",
+    };
+    expect(calls).toEqual([".box/profile.toml"]);
     expect(networks.map(({ runtime, telemetry }) => [runtime, telemetry])).toEqual([
       [
         "agent",

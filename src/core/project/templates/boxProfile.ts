@@ -7,7 +7,7 @@ import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../project
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
-import type { BoxNetwork, BoxNetworkSource } from "../boxNetwork";
+import type { BoxNetwork, BoxNetworkSource, CloudWatchTelemetry } from "../boxNetwork";
 import { modelProviderCredentialName } from "./runtime";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
@@ -608,11 +608,33 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
 }
 
 /**
+ * A CloudWatch target of the box profile on the Runtime: its `[telemetry.<name>]`
+ * table with the same keys, signed with the execution role through a bare
+ * `aws://`, whatever the box profile signs it with. Starts with a blank line.
+ */
+function runtimeTelemetrySection(target: CloudWatchTelemetry): string {
+  const logs =
+    target.kind === "cloudwatch_logs"
+      ? `log_group = ${str(target.logGroup)}\nlog_stream = ${str(target.logStream)}\n`
+      : "";
+  const include = target.include ? `include = ${list([...target.include])}\n` : "";
+  const key = tomlKey(target.name);
+  return `
+# The [telemetry.${key}] target of ${BOX_PROFILE_FILE}, signed with the execution role.
+[telemetry.${key}]
+kind = ${str(target.kind)}
+region = ${str(target.region)}
+${logs}${include}secret.ref = ${str(RUNTIME_AWS_SIGNER)}
+`;
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway; and,
  * from the runtime's Box network model, the box profile's policy files under
- * `policies`, and the HTTP MCP server that a target serves. agentcore.json does not record the framework, and the profile
+ * `policies`, the HTTP MCP server that a target serves, and each CloudWatch
+ * `[telemetry]` target. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
  * one of the frameworks that run in a box. The agent starts under
  * opentelemetry-instrument unless `instrumentation.enableOtel` is false, as a
@@ -621,7 +643,8 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region" | "hosts">>,
+  network?: Pick<BoxNetwork, "policyFiles"> &
+    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry">>,
 ): string {
   const input = {
     runtimeName: runtime.name,
@@ -635,7 +658,7 @@ export function renderRuntimeBoxProfile(
     box: true,
   } as ScaffoldRuntimeInput;
   const region = network?.region ?? BOX_GATEWAY_BEDROCK_REGION;
-  return renderBoxProfile(
+  const profile = renderBoxProfile(
     spec.name,
     input,
     "runtime",
@@ -644,6 +667,7 @@ export function renderRuntimeBoxProfile(
     network?.region,
     runtime.instrumentation?.enableOtel ?? true,
   )!;
+  return profile + (network?.telemetry ?? []).map(runtimeTelemetrySection).join("");
 }
 
 /**
