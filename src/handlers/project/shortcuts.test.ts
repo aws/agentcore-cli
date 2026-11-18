@@ -20,13 +20,18 @@ describe("template order", () => {
       "agent-python-strands-container",
       "agent-python-strands-box-container",
       "agent-python-langchain",
+      "agent-python-langchain-box",
       "environment-python-bma",
       "agent-python-minimal",
+      "agent-python-minimal-box",
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
+      "a2a-python-strands-box",
       "agui-python-strands",
+      "agui-python-strands-box",
       "mcp-python-fastmcp",
+      "mcp-python-fastmcp-box",
       "empty",
     ]);
   });
@@ -103,21 +108,25 @@ describe("Box gateway entry", () => {
     expect(entry.name).toBe("my-agent-box");
   });
 
-  test.each(["agent-python-strands-box", "agent-python-strands-box-container"] as const)(
-    "%s declares it with no target, which build adds",
-    (template) => {
-      expect(
-        resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
-      ).toEqual({
-        name: "agent-box",
-        protocolType: "None",
-        authorizerType: "AWS_IAM",
-        enableSemanticSearch: true,
-        exceptionLevel: "NONE",
-        targets: [],
-      });
-    },
-  );
+  test.each([
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+    "a2a-python-strands-box",
+    "agui-python-strands-box",
+  ] as const)("%s declares it with no target, which build adds", (template) => {
+    expect(
+      resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }).boxGatewayEntry,
+    ).toEqual({
+      name: "agent-box",
+      protocolType: "None",
+      authorizerType: "AWS_IAM",
+      enableSemanticSearch: true,
+      exceptionLevel: "NONE",
+      targets: [],
+    });
+  });
 
   test.each([
     "agent-python-strands",

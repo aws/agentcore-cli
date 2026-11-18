@@ -552,8 +552,17 @@ describe("startsInBoxOnCodeZip", () => {
   test("starts only the CodeZip box template in a box", () => {
     const plain = (name: RuntimeTemplateShortcutName) => resolveRuntimeTemplateShortcut(name);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-minimal-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-minimal"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-python-langchain-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-langchain"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("a2a-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("a2a-python-strands"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp-box"))).toBe(true);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });

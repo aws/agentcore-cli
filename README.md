@@ -197,9 +197,11 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
-`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
-`agentcore create --template <name>` makes a Box project from either; every other template runs
+These templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+`agent-python-strands-box-container` (Container), and the CodeZip templates
+`agent-python-strands-box`, `agent-python-minimal-box`, `agent-python-langchain-box`,
+`a2a-python-strands-box`, `agui-python-strands-box` and `mcp-python-fastmcp-box`.
+`agentcore create --template <name>` makes a Box project from any of them; every other template runs
 its agent without box, and `--isolation private-vpc` needs a box template. box comes from the
 public GitHub release `v0.1.11-linux-preview.3` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
@@ -240,10 +242,9 @@ publish it as a pre-release with the same file names and set `box.version` to it
 `build` and `deploy` read the box profile as box resolves it, with `box profile show
 .box/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
 
-On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
-the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
-rewrites it every 15 minutes, because box refuses the bare `aws://` that would read the role
-directly.
+On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
+profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes
+itself.
 
 ### Create, run and deploy
 
