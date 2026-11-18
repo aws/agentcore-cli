@@ -17,22 +17,32 @@ const BoxEgressSecretSchema = z
   .strict();
 export type BoxEgressSecret = z.infer<typeof BoxEgressSecretSchema>;
 
+const BoxEgressBackendSchema = z
+  .object({ url: z.string(), auth: BoxEgressSecretSchema.optional() })
+  .strict();
+
 /** One compiled `[egress.<name>]` entry, with the fields Box accepts and no others. */
 export const BoxEgressEntrySchema = z
   .object({
     destinations: z.array(z.string().min(1)).min(1),
     protocol: z.enum(["http", "mcp"]).optional(),
     secret: BoxEgressSecretSchema.optional(),
-    backends: z
-      .array(z.object({ url: z.string(), auth: BoxEgressSecretSchema.optional() }).strict())
-      .optional(),
+    backends: z.array(BoxEgressBackendSchema).optional(),
   })
   .strict();
 
-/** One `[mcp.<name>]` entry. Only an `http` server's destinations matter here. */
-export const BoxMcpEntrySchema = z
-  .object({ type: z.string(), destinations: z.array(z.string()).optional() })
-  .passthrough();
+/** One `[mcp.<name>]` entry, of any transport. */
+export const BoxMcpEntrySchema = z.object({ type: z.string() }).passthrough();
+
+/** One compiled `[mcp.<name>]` entry with `type = "http"`, with the fields Box accepts and no others. */
+export const BoxHttpMcpEntrySchema = z
+  .object({
+    type: z.literal("http"),
+    destinations: z.array(z.string().min(1)).min(1),
+    secret: BoxEgressSecretSchema.optional(),
+    backends: z.array(BoxEgressBackendSchema).optional(),
+  })
+  .strict();
 
 export interface Destination {
   readonly host: string;

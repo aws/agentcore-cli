@@ -1,7 +1,7 @@
 /**
- * The host map: every `host` or `host:port` that an `[egress]` destination or a permit with a
- * fixed host names, each decided by evaluating the whole Box policy on sample requests to it, as
- * Box does. It is the one place that evaluates the policy.
+ * The host map: every `host` or `host:port` that an `[egress]` destination, an HTTP `[mcp]`
+ * server, or a permit with a fixed host names, each decided by evaluating the whole Box policy on
+ * sample requests to it, as Box does. It is the one place that evaluates the policy.
  */
 import {
   clausesFor,
@@ -17,6 +17,7 @@ import {
 import type { SourceSpan, Statement } from "./dogwood";
 import {
   BoxEgressEntrySchema,
+  BoxHttpMcpEntrySchema,
   BoxMcpEntrySchema,
   parseDestination,
   targetHostProblem,
@@ -58,9 +59,11 @@ export interface HostMapInput {
   readonly mcp: Readonly<Record<string, unknown>>;
 }
 
-/** The `[egress]` entry that names a host. */
+/** The `[egress]` entry or the HTTP `[mcp]` server that names a host. */
 export interface MappedEntry {
-  readonly egressEntry: string;
+  /** `egress` for an `[egress.<name>]` entry, and `mcp` for an `[mcp.<name>]` server. */
+  readonly table: "egress" | "mcp";
+  readonly name: string;
   /** The entry's destinations on this host. */
   readonly destinations: readonly string[];
   /** Whether the entry names more than one host. */
@@ -86,8 +89,23 @@ export interface MappedHost {
   readonly reachable: boolean;
 }
 
+/** The entry as a message names it: `[egress.github]` or `[mcp.docs]`. */
+export function entryLabel(entry: Pick<MappedEntry, "table" | "name">): string {
+  return `[${entry.table}.${entry.name}]`;
+}
+
+/** The field of a failure that names the entry. */
+export function entryRef(
+  entry: Pick<MappedEntry, "table" | "name">,
+): Pick<ConversionFailure, "egressEntry" | "mcpEntry"> {
+  return entry.table === "egress" ? { egressEntry: entry.name } : { mcpEntry: entry.name };
+}
+
 export interface HostMap {
-  /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
+  /**
+   * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the
+   * hosts only the permits name.
+   */
   readonly hosts: readonly MappedHost[];
   readonly failures: readonly ConversionFailure[];
   /** The permits that allow only WebSocket handshakes, which get no target and no failure. */
@@ -130,11 +148,14 @@ interface Policy {
 class HostMapBuilder {
   private readonly failures: ConversionFailure[] = [];
   private readonly nodes = new Map<string, Node>();
-  /** Hosts and ports of `[egress]` entries that failed and no other entry holds. */
+  /** Hosts and ports of entries that failed and no other entry holds, with the entry's label. */
   private readonly blocked = new Map<string, string>();
   /** The rule ids the box CLI adds for an entry that failed, which fail with it. */
   private readonly covered = new Set<string>();
-  private readonly mcpHosts = new Set<string>();
+  /** Each host that an `[egress]` destination names, on any port, with the first entry's label. */
+  private readonly egressHosts = new Map<string, string>();
+  /** Each host of an HTTP MCP server, with its node's key and the server's label. */
+  private readonly mcpHosts = new Map<string, { readonly key: string; readonly label: string }>();
   private readonly websocketOnly: { ruleId: string; span: SourceSpan }[] = [];
 
   run(input: HostMapInput): HostMap {
@@ -147,7 +168,7 @@ class HostMapBuilder {
       for (const suffix of ["connect", "request"]) this.covered.add(`route_${name}_${suffix}`);
       for (const d of destinations) {
         const key = hostKey(d.host, d.port);
-        if (!this.nodes.has(key)) this.blocked.set(key, name);
+        if (!this.nodes.has(key)) this.blocked.set(key, `[egress.${name}]`);
       }
     }
     for (const [name, entry] of Object.entries(input.mcp)) this.addMcpEntry(name, entry);
@@ -191,6 +212,12 @@ class HostMapBuilder {
       ? parsed.data.destinations.map((text) => ({ text, parsed: parseDestination(text) }))
       : [];
     const groups: { key: string; first: Destination; texts: string[] }[] = [];
+    for (const { parsed: d } of destinations) {
+      const host = d && !d.wildcard ? d.host.toLowerCase() : undefined;
+      if (host !== undefined && !this.egressHosts.has(host)) {
+        this.egressHosts.set(host, `[egress.${name}]`);
+      }
+    }
     if (!parsed.success) {
       const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "entry"}: ${i.message}`);
       problems.push({
@@ -198,7 +225,7 @@ class HostMapBuilder {
         reason: `is not a valid entry (${issues.join("; ")}). Correct the entry.`,
       });
     } else {
-      problems.push(...entryProblems(parsed.data, destinations));
+      problems.push(...entryProblems(name, parsed.data, destinations));
       for (const { text, parsed: d } of destinations) {
         if (!d || d.wildcard) continue;
         const key = hostKey(d.host, d.port);
@@ -210,7 +237,7 @@ class HostMapBuilder {
 
     if (parsed.success && problems.length === 0) {
       for (const group of groups) {
-        const holder = this.nodes.get(group.key)?.entry?.egressEntry;
+        const holder = this.nodes.get(group.key)?.entry?.name;
         if (holder === undefined) continue;
         problems.push({
           code: "EGRESS_DESTINATION_OVERLAP",
@@ -226,7 +253,8 @@ class HostMapBuilder {
           host: group.first.host,
           port: group.first.port,
           entry: {
-            egressEntry: name,
+            table: "egress",
+            name,
             destinations: group.texts,
             split: groups.length > 1,
             ...(parsed.data.secret && { secret: parsed.data.secret }),
@@ -241,32 +269,73 @@ class HostMapBuilder {
     return destinations.flatMap(({ parsed: d }) => (d && !d.wildcard ? [d] : []));
   }
 
-  /** Fails an HTTP MCP server at its entry; its own rules fail with it. */
+  /**
+   * Adds the node of an HTTP MCP server, which Box's own `mcp_<name>_` rules name, or records why
+   * it fails and blocks its hosts. Its own rules fail with it.
+   */
   private addMcpEntry(name: string, raw: unknown): void {
-    const parsed = BoxMcpEntrySchema.safeParse(raw);
-    if (!parsed.success) {
+    const label = `[mcp.${name}]`;
+    const typed = BoxMcpEntrySchema.safeParse(raw);
+    if (!typed.success) {
       this.failures.push({
         code: "INVALID_INPUT",
         mcpEntry: name,
-        reason:
-          "is not a valid MCP entry. Give it a `type`, and for a server over HTTP, a list of " +
-          "`destinations`.",
+        reason: "is not a valid MCP entry. Give it a `type`.",
       });
       return;
     }
-    if (parsed.data.type !== "http") return;
-    for (const suffix of ["connect", "request", "call"]) this.covered.add(`mcp_${name}_${suffix}`);
-    for (const text of parsed.data.destinations ?? []) {
-      const destination = parseDestination(text);
-      if (destination) this.mcpHosts.add(destination.host);
+    if (typed.data.type !== "http") return;
+    const parsed = BoxHttpMcpEntrySchema.safeParse(raw);
+    const destinations = parsed.success
+      ? parsed.data.destinations.map((text) => ({ text, parsed: parseDestination(text) }))
+      : [];
+    const problems: { code: FailureCode; reason: string }[] = [];
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "entry"}: ${i.message}`);
+      problems.push({
+        code: "INVALID_INPUT",
+        reason: `is not a valid MCP entry (${issues.join("; ")}). Correct the entry.`,
+      });
+    } else {
+      problems.push(...mcpEntryProblems(parsed.data, destinations));
     }
-    this.failures.push({
-      code: "MCP_OVER_HTTP",
-      mcpEntry: name,
-      reason:
-        "is an MCP server over HTTP, and the deployed agent cannot reach it through the " +
-        "gateway. Make it a stdio server, or remove it.",
-    });
+    const only = destinations[0]?.parsed;
+    if (parsed.success && problems.length === 0 && only) {
+      const holder = this.egressHosts.get(only.host) ?? this.mcpHosts.get(only.host)?.label;
+      if (holder === undefined) {
+        const key = hostKey(only.host, only.port);
+        this.nodes.set(key, {
+          host: only.host,
+          port: only.port,
+          entry: {
+            table: "mcp",
+            name,
+            destinations: parsed.data.destinations,
+            split: false,
+            ...(parsed.data.secret && { secret: parsed.data.secret }),
+          },
+          namedBy: [],
+        });
+        this.mcpHosts.set(only.host, { key, label });
+        return;
+      }
+      problems.push({
+        code: "EGRESS_DESTINATION_OVERLAP",
+        reason:
+          `names ${only.host}, and ${holder} names that host too, but Box gives each request to ` +
+          `the host of an MCP server to that server. Keep ${only.host} in only one of the two.`,
+      });
+    }
+    for (const { code, reason } of problems) this.failures.push({ code, mcpEntry: name, reason });
+    for (const suffix of ["connect", "request", "call"]) this.covered.add(`mcp_${name}_${suffix}`);
+    // A host that another entry names, on any port, is that entry's.
+    for (const { parsed: d } of destinations) {
+      if (!d || d.wildcard) continue;
+      const host = d.host.toLowerCase();
+      const key = hostKey(host, d.port);
+      const held = this.nodes.has(key) || this.egressHosts.has(host) || this.mcpHosts.has(host);
+      if (!held) this.blocked.set(key, label);
+    }
   }
 
   /**
@@ -282,7 +351,6 @@ class HostMapBuilder {
             clause.fields.filter((a) => a.field === field);
           const host = pinnedValue(atoms("host"), "host");
           if (typeof host !== "string" || !atoms("host").every((a) => holds(a, host))) continue;
-          if (this.mcpHosts.has(host)) continue;
           const pinned = pinnedValue(atoms("port"), "port");
           let port: number;
           if (typeof pinned === "number") {
@@ -306,6 +374,8 @@ class HostMapBuilder {
           }
           const key = hostKey(host, port);
           if (this.blocked.has(key)) continue;
+          const server = this.mcpHosts.get(host);
+          if (server !== undefined && server.key !== key) continue;
           let node = this.nodes.get(key);
           if (!node) {
             node = { host, port, namedBy: [] };
@@ -427,7 +497,7 @@ class HostMapBuilder {
       }
       return undefined;
     }
-    if (!hostAtoms.every((a) => holds(a, host)) || this.mcpHosts.has(host)) return undefined;
+    if (!hostAtoms.every((a) => holds(a, host))) return undefined;
     const problem = targetHostProblem(host);
     if (problem !== undefined) {
       this.ruleFailure(
@@ -457,8 +527,18 @@ class HostMapBuilder {
       this.ruleFailure(
         rule,
         "EGRESS_ENTRY_FAILED",
-        `allows ${key}, and [egress.${blockedBy}] for that host has a problem. Fix ` +
-          `[egress.${blockedBy}] first.`,
+        `allows ${key}, and ${blockedBy} for that host has a problem. Fix ${blockedBy} first.`,
+      );
+      return undefined;
+    }
+    const server = this.mcpHosts.get(host);
+    if (server !== undefined && server.key !== key) {
+      this.ruleFailure(
+        rule,
+        "EGRESS_DESTINATION_OVERLAP",
+        `allows ${key}, and ${server.label} names ${host}, but Box gives each request to the ` +
+          `host of an MCP server to that server. Allow ${host} only on port 443, or remove the ` +
+          "rule.",
       );
       return undefined;
     }
@@ -671,6 +751,7 @@ export function sampleRequests(
 
 /** What keeps an entry from routing to gateway targets, each reason to follow its name. */
 function entryProblems(
+  name: string,
   entry: {
     readonly protocol?: string;
     readonly backends?: readonly unknown[];
@@ -692,8 +773,8 @@ function entryProblems(
     problems.push({
       code: "MCP_OVER_HTTP",
       reason:
-        'is an MCP server (protocol = "mcp"), and the deployed agent cannot reach it through the ' +
-        "gateway. Run the server as a stdio server under [mcp], or remove the entry.",
+        'sets protocol = "mcp", which Box does not take. Declare the server as ' +
+        `[mcp.${name}] with type = "http", and remove this entry.`,
     });
   }
   if ((entry.backends?.length ?? 0) > 0) {
@@ -737,6 +818,78 @@ function entryProblems(
         `sends its secret only under ${scoped.parsed!.path}, and a gateway target sends its ` +
         "credential on every path of the host. Remove the path from the destination.",
     });
+  }
+  return problems;
+}
+
+/**
+ * What keeps an HTTP MCP server from going through one gateway target, each reason to follow its
+ * name. Box refuses a backend for a server that names more than one host, a wildcard, or a path.
+ */
+function mcpEntryProblems(
+  entry: { readonly backends?: readonly unknown[] },
+  destinations: readonly { text: string; parsed?: Destination }[],
+): { code: FailureCode; reason: string }[] {
+  const problems: { code: FailureCode; reason: string }[] = [];
+  if (destinations.length > 1) {
+    problems.push({
+      code: "MCP_DESTINATION_NOT_ONE_HOST",
+      reason:
+        `names ${destinations.length} destinations, and the gateway route of an MCP server ` +
+        "takes exactly one host. Declare one [mcp] server for each host.",
+    });
+  }
+  if ((entry.backends?.length ?? 0) > 0) {
+    problems.push({
+      code: "EGRESS_HAS_BACKEND",
+      reason:
+        "already has `backends`, and build sends the server through the gateway itself. Remove " +
+        "`backends` from the entry.",
+    });
+  }
+  for (const { text, parsed: d } of destinations) {
+    const quoted = JSON.stringify(text);
+    if (!d) {
+      problems.push({
+        code: "INVALID_INPUT",
+        reason:
+          `has the destination ${quoted}, which is not a host or host:port, with or without a ` +
+          "path. Correct the destination.",
+      });
+      continue;
+    }
+    if (d.wildcard) {
+      problems.push({
+        code: "MCP_DESTINATION_NOT_ONE_HOST",
+        reason:
+          `has the wildcard destination ${quoted}, and the gateway route of an MCP server takes ` +
+          "one exact host. Name the server's host.",
+      });
+      continue;
+    }
+    if (d.path !== undefined) {
+      problems.push({
+        code: "MCP_DESTINATION_NOT_ONE_HOST",
+        reason:
+          `has the destination ${quoted}, and the gateway route of an MCP server takes a host ` +
+          `with no path. Remove ${d.path} from the destination. The agent's MCP client keeps ` +
+          "the path in its URL.",
+      });
+    }
+    const problem = targetHostProblem(d.host);
+    if (problem !== undefined) {
+      problems.push({
+        code: "INVALID_HOST",
+        reason: `has the destination ${quoted}, whose host ${problem.why}. ${problem.fix}`,
+      });
+    } else if (d.port !== 443) {
+      problems.push({
+        code: "MCP_PORT_NOT_443",
+        reason:
+          `has the destination ${quoted}, and build sends an MCP server through the gateway ` +
+          "only on port 443. Use port 443.",
+      });
+    }
   }
   return problems;
 }

@@ -113,16 +113,18 @@ Build and deploy read `box/<runtime>/local/profile.toml` and the policy files it
 `box/<runtime>/local/`; they generate the Runtime profile and its resources under
 `box/<runtime>/aws/`.
 
-- **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
-  names, and that the policy allows at least one request to, gets one passthrough target on
-  `<runtime>-box`. A host the gateway already has a target for keeps that target. Build owns
+- **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
+  with `type = "http"`, or a policy permit names, and that the policy allows at least one
+  request to, gets one passthrough target on `<runtime>-box`. The target of an MCP server is
+  `egress-<server>`. Its `protocolType` is `CUSTOM`, thus only Box makes the decision on each
+  `mcp:call`. A host the gateway already has a target for keeps that target. Build owns
   only the targets whose name starts with `egress-`: it adds them, changes them, and removes
   one when no host needs it. It never changes another target.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
-  host, a plain-HTTP-only host, an unsupported secret, an MCP server over HTTP, and similar
-  cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
+  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
   number of problems, then gives one line for each problem: its `file:line:column` in your
   profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
   by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as
@@ -132,7 +134,9 @@ Build and deploy read `box/<runtime>/local/profile.toml` and the policy files it
   AWS service that no policy of the gateway's role grants.
 - **The AgentCore Runtime profile.** The generated `box/<runtime>/aws/profile.toml` (copied into
   `.box-dist/`) has one `[egress.<target>]` route through the gateway for each target of
-  `<runtime>-box`. Each policy file is copied beside it, byte for byte, and listed under `policies`.
+  `<runtime>-box`. For the target of an MCP server, the profile has an `[mcp.<server>]` server
+  through the gateway, not an `[egress]` route. That server keeps its `env://` secret, thus the
+  agent keeps its stand-in key. Each policy file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.
