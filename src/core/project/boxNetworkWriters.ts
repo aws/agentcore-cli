@@ -22,6 +22,8 @@ import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxPr
 import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  boxLocalDir,
+  boxLocalProfileFile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
@@ -159,7 +161,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     if (!host) {
       messages.push(
         `removing target '${target.name}' from gateway '${network.gateway}' in agentcore.json: ` +
-          "Box allows no request to its host in .box/profile.toml",
+          `Box allows no request to its host in ${boxLocalProfileFile(network.runtime)}`,
       );
       continue;
     }
@@ -289,7 +291,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
-            copyOf: `.box/${file}`,
+            copyOf: `${boxLocalDir(runtime)}/${file}`,
           })),
         ];
       }),
