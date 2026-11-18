@@ -293,7 +293,43 @@ bun run "$CLI" gateway list
 bun run "$CLI" identity api-key-credential-provider get --name github
 ```
 
-## 10. Tear down
+## 10. (Optional) Send box telemetry to CloudWatch
+
+Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
+
+1. Create the log group and the log stream. Box does not create them.
+
+   ```sh
+   aws logs create-log-group --log-group-name /aws/box/<project>
+   aws logs create-log-stream --log-group-name /aws/box/<project> --log-stream-name <agent>
+   ```
+
+2. Add a target to the agent's box profile:
+
+   ```toml
+   [telemetry.logs]
+   kind = "cloudwatch_logs"
+   region = "us-west-2"
+   log_group = "/aws/box/<project>"
+   log_stream = "<agent>"
+   include = ["deny", "permit", "trace"]
+   secret.ref = "aws://"
+   ```
+
+3. Run `agentcore deploy`. Build copies the table into the Runtime profile, so on AgentCore Runtime
+   box signs with the execution role. It also grants that role `logs:PutLogEvents` on the stream,
+   in `agentcore/box-telemetry-policy-<agent>.json`, which it lists in the runtime's
+   `additionalPolicies`.
+
+4. Invoke the agent, then read the records:
+
+   ```sh
+   aws logs filter-log-events --log-group-name /aws/box/<project> --filter-pattern '"deny"'
+   ```
+
+   Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
+
+## 11. Tear down
 
 Deploy bills you while resources exist. Remove them when done.
 
