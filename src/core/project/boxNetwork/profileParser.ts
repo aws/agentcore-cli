@@ -10,21 +10,17 @@ import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
 import { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
 
-/** The box profile, from the project root. */
-export const BOX_PROFILE_PATH = ".box/profile.toml";
-
-/** The packs the converter reads: `box/base` declares no route, and `box/bedrock` one. */
-const KNOWN_PACKS: ReadonlySet<string> = new Set(["box/base", BOX_BEDROCK_PACK]);
-
-export interface ParsedProfile {
-  /** `[egress]`, with the route of `box/bedrock` merged under the profile's own. */
-  readonly egress: Record<string, unknown>;
-  readonly mcp: Record<string, unknown>;
-  /** The policy files, relative to the profile's folder, in the order the profile names them. */
-  readonly policyFiles: readonly string[];
+/** Where the profile's own text sets a key, as `<profile path>:line:column`. */
+export interface ProfilePlaces {
+  /** By `egress.<name>` and `mcp.<name>`, the first line that sets the entry. */
+  readonly entries: ReadonlyMap<string, string>;
+  readonly packs?: string;
+  readonly policies?: string;
 }
 
 export interface ParsedProfile {
+  /** The profile's path from the project root, which a failure names when it has no line. */
+  readonly path: string;
   /** `[egress]` as Box resolves it, with each open route. */
   readonly egress: Record<string, unknown>;
   readonly mcp: Record<string, unknown>;
@@ -44,12 +40,13 @@ export interface ProfileFailure {
 }
 
 /**
- * The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile to, with each
- * open route after the routes of `[egress]`.
+ * The `[egress]` and `[mcp]` tables of the `box.toml` that Box resolves the profile at
+ * `profilePath` to, with each open route after the routes of `[egress]`.
  */
 export function parseResolvedProfile(
   { boxToml, openRoutes }: Pick<ResolvedBoxProfile, "boxToml" | "openRoutes">,
   policyFiles: readonly string[],
+  profilePath: string,
 ): { readonly profile: ParsedProfile; readonly failures: readonly ProfileFailure[] } {
   for (const key of ["egress", "mcp"] as const) {
     if (boxToml[key] !== undefined && !isTable(boxToml[key])) {
@@ -57,8 +54,8 @@ export function parseResolvedProfile(
         `Box resolves \`${key}\` in this profile to a value that is not a table. Write each ` +
         `entry as a table, such as [${key}.github].`;
       return {
-        profile: { egress: {}, mcp: {}, policyFiles },
-        failures: [{ code: "INVALID_PROFILE", reason, place: BOX_PROFILE_PATH }],
+        profile: { path: profilePath, egress: {}, mcp: {}, policyFiles },
+        failures: [{ code: "INVALID_PROFILE", reason, place: profilePath }],
       };
     }
   }
@@ -69,6 +66,7 @@ export function parseResolvedProfile(
   }
   return {
     profile: {
+      path: profilePath,
       egress,
       mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
       policyFiles,
@@ -79,19 +77,21 @@ export function parseResolvedProfile(
 }
 
 /**
- * The network inputs of the box profile `text`, and every failure of the profile. `bedrockRegion`
- * is the region the AgentCore Runtime profile gives box/bedrock, when it replaces the profile's.
+ * The policy files that the box profile `text`, at `profilePath` from the project root, names
+ * under `policies`, as Box reads them: files inside the profile's folder, each named once.
+ * `agentcore dev` reads them with no box, so this refuses the `policy` key, as box does.
  */
 export function profilePolicyFiles(
   text: string,
-  bedrockRegion?: string,
-): {
-  readonly profile: ParsedProfile;
-  readonly failures: readonly ProfileFailure[];
-} {
-  const fail = (code: ProfileFailure["code"], reason: string, key?: string) => ({
-    profile: EMPTY_PROFILE,
-    failures: [{ code, reason, place: placeOfKey(text, key) }],
+  profilePath: string,
+): { ok: true; files: string[] } | { ok: false; failure: ProfileFailure } {
+  const fail = (
+    reason: string,
+    place: string,
+    code: ProfileFailure["code"] = "INVALID_PROFILE",
+  ) => ({
+    ok: false as const,
+    failure: { code, reason, place },
   });
   let table: Record<string, unknown>;
   try {
@@ -99,24 +99,14 @@ export function profilePolicyFiles(
   } catch (error) {
     const at = error as { line?: number; column?: number };
     const place =
-      at.line !== undefined ? `${BOX_PROFILE_PATH}:${at.line}:${at.column ?? 1}` : BOX_PROFILE_PATH;
-    const reason = (at.message ?? String(error)).split("\n")[0]!;
-    return { profile: EMPTY_PROFILE, failures: [{ code: "INVALID_PROFILE", reason, place }] };
-  }
-  const packs = table.packs ?? [];
-  if (!Array.isArray(packs) || !packs.every((pack) => typeof pack === "string")) {
-    return fail("INVALID_PROFILE", "`packs` is not a list of pack names", "packs");
-  }
-  for (const key of ["egress", "mcp"] as const) {
-    if (table[key] !== undefined && !isTable(table[key])) {
-      return fail("INVALID_PROFILE", `\`${key}\` is not a table`, key);
-    }
+      at.line !== undefined ? `${profilePath}:${at.line}:${at.column ?? 1}` : profilePath;
+    return fail(`This is not valid TOML (${tomlProblem(error)}). Correct the syntax.`, place);
   }
   if (table.policy !== undefined) {
     return fail(
       "Box does not take the key `policy`. List your policy files under `policies` instead, " +
         'such as policies = ["policy.dw"].',
-      placeOfKey(text, "policy"),
+      placeOfKey(text, profilePath, "policy"),
       "UNSUPPORTED_POLICY_KEY",
     );
   }
@@ -185,7 +175,8 @@ function policyFilesOf(
   table: Record<string, unknown>,
 ): { ok: true; files: string[] } | { ok: false; reason: string } {
   const named = table.policies ?? [];
-  const place = placeOfKey(text, "policies");
+  const place = placeOfKey(text, profilePath, "policies");
+  const folder = posix.dirname(profilePath);
   if (!Array.isArray(named) || !named.every((file) => typeof file === "string" && file !== "")) {
     return fail(
       '`policies` must be a list of policy file paths, such as ["policy.dw"]. Correct it.',
@@ -197,8 +188,8 @@ function policyFilesOf(
     const normal = posix.normalize(file.replace(/\\/g, "/"));
     if (posix.isAbsolute(normal) || normal === ".." || normal.startsWith("../")) {
       return fail(
-        `\`policies\` names ${JSON.stringify(file)}, which is outside .box/. Move the file into ` +
-          ".box/, and name it from there.",
+        `\`policies\` names ${JSON.stringify(file)}, which is outside ${folder}/. Move the file ` +
+          `into ${folder}/, and name it from there.`,
         place,
       );
     }
@@ -211,16 +202,16 @@ function policyFilesOf(
 }
 
 /**
- * Where the profile `text` sets each `[egress.<name>]` and `[mcp.<name>]` entry, `packs`, and
- * `policies`: the first line of each, by its table header, its dotted key, or its key under
- * `[egress]` or `[mcp]`.
+ * Where the profile `text`, at `profilePath` from the project root, sets each `[egress.<name>]`
+ * and `[mcp.<name>]` entry, `packs`, and `policies`: the first line of each, by its table header,
+ * its dotted key, or its key under `[egress]` or `[mcp]`.
  */
-export function profilePlaces(text: string): ProfilePlaces {
+export function profilePlaces(text: string, profilePath: string): ProfilePlaces {
   const entries = new Map<string, string>();
   const keys = new Map<string, string>();
   let table: string[] = [];
   text.split("\n").forEach((line, index) => {
-    const place = `${BOX_PROFILE_PATH}:${index + 1}:${line.search(/\S/) + 1}`;
+    const place = `${profilePath}:${index + 1}:${line.search(/\S/) + 1}`;
     const header = /^\s*\[\[?([^\]]*)\]\]?\s*(?:#.*)?$/.exec(line);
     const assignment = header ? undefined : /^\s*([^\s=#[][^=]*?)\s*=/.exec(line);
     if (!header && !assignment) return;
@@ -251,12 +242,12 @@ function keyPath(text: string): string[] {
   return parts;
 }
 
-/** `.box/profile.toml:<line>:<column>` of the first line that sets `key`, or the file. */
-function placeOfKey(text: string, key: string): string {
+/** `<profilePath>:<line>:<column>` of the first line that sets `key`, or the file. */
+function placeOfKey(text: string, profilePath: string, key: string): string {
   const lines = text.split("\n");
   const index = lines.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
-  if (index === -1) return BOX_PROFILE_PATH;
-  return `${BOX_PROFILE_PATH}:${index + 1}:${lines[index]!.search(/\S/) + 1}`;
+  if (index === -1) return profilePath;
+  return `${profilePath}:${index + 1}:${lines[index]!.search(/\S/) + 1}`;
 }
 
 /** The TOML reader's message, without its "Invalid TOML document:" start and its excerpt. */

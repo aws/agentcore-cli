@@ -16,7 +16,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
+`~/.agentcore/box/`, check its SHA-256s, generate it into the agent's `.box/<runtime>/aws/`, and copy
+that into the zip or the image's `.box-dist/`.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
 from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
@@ -102,13 +103,16 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
-turn them into the runtime's Box network. They change nothing in `.box/`.
+Build and deploy run `box profile show .box/<runtime>/local/profile.toml --format json` in the
+project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
+resolves the profile to into the runtime's Box network. Every pack, option, and rule Box adds is
+already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
+the Runtime profile and its resources under `.box/<runtime>/aws/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
   with `type = "http"`, or a policy permit names, and that the policy allows at least one
@@ -128,10 +132,14 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
   `[egress.github]`. Nothing is written.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
-  AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
-  file is copied beside it, byte for byte, and listed under `policies`.
+  AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
+  the gateway's `additionalPolicies` that is missing or is not JSON, as it counts none of its
+  actions.
+- **The AgentCore Runtime profile.** The generated `.box/<runtime>/aws/profile.toml` (copied into
+  `.box-dist/`) has one `[egress.<target>]` route through the gateway for each target of
+  `<runtime>-box`. For the target of an MCP server, the profile has an `[mcp.<server>]` server
+  through the gateway, not an `[egress]` route. That server keeps its `env://` secret, thus the
+  agent keeps its stand-in key. Each policy file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.
@@ -145,7 +153,95 @@ rm -rf node_modules/@aws/agentcore-cdk
 npm install "$L3"/aws-agentcore-cdk-*.tgz
 ```
 
-## 6. Build
+## 6. Test locally with `agentcore dev`
+
+`agentcore dev` runs the agent in a box on your machine, so you can try the project before you
+deploy. It deploys nothing. The agent signs its Bedrock calls with your `[default]` AWS profile
+(`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
+(`LOCAL_DEV=1`).
+
+### Which box builds exist
+
+The box release has these builds:
+
+| Machine             | Build                                      | CodeZip dev | Container dev |
+| ------------------- | ------------------------------------------ | ----------- | ------------- |
+| macOS, Apple chip   | `box-v<version>-aarch64-apple-darwin`      | yes         | yes           |
+| Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes         | yes           |
+| Linux or macOS, x86 | none                                       | no          | no            |
+
+- The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64.
+  It runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host
+  would need to emulate arm64.
+- **CodeZip** dev runs the `box` on your `PATH` natively, so it needs the build for your machine.
+  On an arm64 Linux host it uses the same Linux build as the Runtime.
+- Build and deploy need a `box` on your `PATH` on every machine, to read the profile. So for now
+  build and deploy work only on an Apple chip Mac or an arm64 Linux host.
+
+### Before you start
+
+In the shell you run dev from:
+
+```
+box --version
+aws sts get-caller-identity
+```
+
+- `box --version` must print `0.1.11-linux-preview.5` or later. Dev and build read the profile
+  with `box profile show --format json`, which older builds do not have.
+- The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
+  After you refresh them, restart dev.
+
+### Run dev
+
+In the project from step 3:
+
+```
+cd "$DEMO/$PROJECT"
+bun run "$CLI" dev
+```
+
+Then, in a second shell in the project folder:
+
+```
+bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 times 23?"}'
+```
+
+**Container template** (`agent-python-strands-box-container`, the one step 3 creates):
+
+- Dev builds the image with Docker, Podman or Finch. Set `AGENTCORE_CONTAINER_TOOL=finch` (or
+  `docker`, `podman`) to pick one. The image downloads the Linux box release while it builds.
+- Dev passes your resolved AWS credentials into the container as profile `default`, and refreshes
+  them while it runs.
+- Invoke once the dev output shows `0.0.0.0:8080 is relayed to the agent's port 8081`.
+- The container runs with `--cap-add SYS_ADMIN` and unconfined seccomp, AppArmor and system paths,
+  which box's Linux sandbox needs. A container tool that refuses these flags cannot run it.
+- The agent has read-only access to `/app`, plus exec on `/app/.venv`, so it can run its venv but
+  not change it.
+
+**CodeZip template** (`agent-python-strands-box`; create it in step 3 with
+`--template agent-python-strands-box`):
+
+- Dev runs `box run .box/<runtime>/local/profile.toml` in the project folder with the `box` on
+  your `PATH`. The box listens on 8080 and relays to the agent on 8081.
+- Invoke once the dev output shows `Uvicorn running on http://127.0.0.1:8081`.
+- Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`. With `--skip-install`, run
+  `uv sync` there first.
+- Port 8080 must be free. Dev refuses another port, because the profile's ingress listens on 8080.
+- On macOS the box runs under Seatbelt, which cannot start inside another sandbox. Run dev from a
+  normal terminal, not from an agent's sandboxed shell.
+
+### What to check
+
+- The answer comes back from `invoke --local`.
+- The dev output shows box starting the agent: `box: running profile <project>` and the
+  `[agent]` filesystem summary, with `deny_write  .../.venv  (read-only)` for CodeZip.
+- With the step 4 `[egress]` entry, calls to its host go out, and calls to other hosts are blocked
+  (`ProxyConnectionError ... 127.0.0.1:<port>` in the agent's log means box blocked the host).
+
+Stop dev with Ctrl+C before you build.
+
+## 7. Build
 
 Export `GITHUB_TOKEN` before build. Build reads it and writes its value into
 `agentcore/.env.local` under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`.
@@ -207,7 +303,7 @@ Box can send each policy decision (permit, deny, trace) to CloudWatch Logs.
    aws logs create-log-stream --log-group-name /aws/box/<project> --log-stream-name <agent>
    ```
 
-2. Add a target to the agent's box profile:
+2. Add a target to the agent's box profile, `.box/<agent>/local/profile.toml`:
 
    ```toml
    [telemetry.logs]

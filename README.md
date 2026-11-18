@@ -221,10 +221,12 @@ How each command uses it:
 
 - A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
   `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
-  SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
-- A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
-  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
-  (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
+  SHA-256, and generate box, its packs and the shim into the agent's `.box/<name>/aws/`. They then
+  copy that folder into the runtime's `.box-dist/` so the zip carries it.
+- A container agent's image downloads box while it builds. `build` and `deploy` generate the release
+  that `box.version` names, with its checksum, as `box-release.env` in the agent's `.box/<name>/aws/`,
+  then copy it into the build context's `.box-dist/` beside the Dockerfile (`dev` stages the local
+  profile into `.box-dev/` instead). The Dockerfile downloads that release with `curl`,
   checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
   the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
   builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.
@@ -238,6 +240,9 @@ which `agentcore create` writes. The pinned version keeps the checksums in `boxR
 another version takes them from its release's `SHA256SUMS.txt`. `box.version` picks box only: the
 ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
+
+`build` and `deploy` read each agent's box profile as box resolves it, with `box profile show
+.box/<name>/local/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

@@ -33,6 +33,7 @@ import {
 import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  boxLocalDir,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
@@ -271,7 +272,7 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     })),
   ],
   edits: (networks, { spec, projectRoot }) => {
-    // Each box runtime reads its own box/<name>/local profile, so each one gets the policy of its
+    // Each box runtime reads its own .box/<name>/local profile, so each one gets the policy of its
     // own telemetry only.
     const files: BoxNetworkFile[] = [];
     const boxed: string[] = [];
@@ -344,7 +345,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
-            copyOf: `.box/${file}`,
+            copyOf: `${boxLocalDir(runtime)}/${file}`,
           })),
         ];
       }),
