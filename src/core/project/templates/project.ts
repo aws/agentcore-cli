@@ -87,11 +87,13 @@ export async function createProjectTree(
  * Create alone writes them, because only create writes the box profiles.
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  for (const name of [BOX_CODEZIP_ENTRYPOINT, "start.sh"]) {
-    template.tree.children.push(
-      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
-    );
-  }
+  // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
+  // Python and code paths the box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+  template.tree.children.push(
+    FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
+      config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+    ),
+  );
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     // The box release build and deploy ship; change it to move to another release. dev runs the

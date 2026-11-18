@@ -33,8 +33,8 @@ const GITHUB_KEY = {
 };
 const GATEWAY_BACKEND = (target: string) => [
   {
-    url: `@GATEWAY_BOX_URL@/${target}`,
-    auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+    url: `\${{ inputs.gateway.url }}/${target}`,
+    auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
   },
 ];
 

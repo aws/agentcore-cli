@@ -789,6 +789,26 @@ describe("FsProjectManager.create box profile", () => {
     expect(events).toContainEqual({ type: "warning", message: boxProfileWarnings(runtime)[0]! });
   });
 
+  test("scaffolds a CodeZip box agent that runs box through start.py, with no start.sh", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const appDir = join(directory, "example", "app", "agent_python_strands_box");
+    // start.py execs box run and exports the paths the box/agentcore-codezip pack reads; no start.sh.
+    const startPy = await readFile(join(appDir, "start.py"), "utf8");
+    expect(startPy).toContain("os.execve");
+    expect(startPy).toContain("BOX_PYTHON");
+    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(false);
+    const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].entrypoint).toBe("start.py");
+    expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
+  });
+
   test("leaves an existing box profile unchanged", async () => {
     const directory = await inTempDirectory();
     const path = join(directory, "example", BOX_PROFILE_FILE);
@@ -2071,7 +2091,7 @@ describe("FsProjectManager.build", () => {
       join(root, "app", "agent_python_strands_box", ".box-dist", "profile.toml"),
       "utf8",
     );
-    expect(profile).toContain('url = "@GATEWAY_BOX_URL@/agentcore"');
+    expect(profile).toContain('url = "${{ inputs.gateway.url }}/agentcore"');
 
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
