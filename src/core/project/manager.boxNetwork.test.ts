@@ -992,4 +992,52 @@ describe("deploy writes the Box network before the backend deploys", () => {
     expect(calls[0]!.input.boxNetworks.map(({ gateway: name }) => name)).toEqual([GATEWAY]);
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
   });
+
+  test("moves the Memory policy with the agentcore target to the region of its target", async () => {
+    const backend: ProjectBackend = {
+      async *build() {},
+      async *deploy() {
+        yield { type: "step", message: "deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const { manager, root } = await strandsProject({ backends: { CDK: backend } });
+    const memoryStatements = async () =>
+      JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
+    const agentcoreAuth = async () =>
+      (await boxGateway(root)).targets.find(({ name }) => name === "agentcore")?.outboundAuth;
+    const statementsFor = (region: string) => [
+      expect.objectContaining({
+        Resource: [
+          `arn:aws:bedrock-agentcore:${region}:*:memory/demo_*agent_python_strandsMemory-*`,
+        ],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ];
+    await build(manager, root);
+    expect(await agentcoreAuth()).toMatchObject({ region: "us-west-2" });
+    expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    await writeFile(
+      path(root, "agentcore/aws-targets.json"),
+      JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),
+    );
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await drain(
+      manager.deploy(project, {
+        target: "primary",
+        region: "us-west-2",
+        confirmTeardown: async () => false,
+      }),
+    );
+
+    expect(await agentcoreAuth()).toMatchObject({ region: "eu-west-1" });
+    expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
+  });
 });

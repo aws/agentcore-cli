@@ -127,16 +127,31 @@ describe("addBoxMemoryTarget", () => {
 });
 
 describe("boxMemoryPolicy", () => {
-  test("allows the Memory data plane on the default Memory in any target", () => {
-    const policy = boxMemoryPolicy(spec(), ROOT) as {
-      Statement: Array<{ Action: string[]; Resource: string[] }>;
-    };
+  type Policy = {
+    Statement: Array<{ Action: string[]; Resource: string[]; Condition: unknown }>;
+  };
+  const SAME_ACCOUNT = { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } };
+
+  test("allows the Memory data plane on the default Memory in any target, in the gateway role's account", () => {
+    const policy = boxMemoryPolicy(spec(), ROOT) as Policy;
 
     expect(policy.Statement[0]!.Resource).toEqual([
-      "arn:aws:bedrock-agentcore:*:*:memory/demo_*agentMemory-*",
+      "arn:aws:bedrock-agentcore:us-west-2:*:memory/demo_*agentMemory-*",
     ]);
+    expect(policy.Statement[0]!.Condition).toEqual(SAME_ACCOUNT);
     expect(policy.Statement[0]!.Action).toContain("bedrock-agentcore:ListEvents");
     expect(policy.Statement[0]!.Action).toContain("bedrock-agentcore:CreateEvent");
+  });
+
+  test("names the region it is given, and no other", () => {
+    const policy = boxMemoryPolicy(spec(), ROOT, "eu-central-1") as Policy;
+
+    expect(policy.Statement).toEqual([
+      expect.objectContaining({
+        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
+        Condition: SAME_ACCOUNT,
+      }),
+    ]);
   });
 
   test("is undefined when no boxed runtime has its default Memory", () => {
