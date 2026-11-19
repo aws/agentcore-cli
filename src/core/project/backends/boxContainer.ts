@@ -1,4 +1,5 @@
-import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -83,22 +84,22 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
  * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
  */
-export function stageBoxImage(
+export async function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[],
   release: BoxRelease,
   folder: string = BOX_IMAGE_DIST,
-): void {
+): Promise<void> {
   const dist = join(context, folder);
-  rmSync(dist, { recursive: true, force: true });
-  mkdirSync(dist, { recursive: true });
-  writeFileSync(join(dist, "profile.toml"), profileText);
-  writeFileSync(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
+  await rm(dist, { recursive: true, force: true });
+  await mkdir(dist, { recursive: true });
+  await writeFile(join(dist, "profile.toml"), profileText);
+  await writeFile(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
-    mkdirSync(dirname(to), { recursive: true });
-    copyFileSync(from, to);
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
   }
 }
 
@@ -141,15 +142,15 @@ export async function stageBoxContainers(
   for (const [index, { dist }] of staged.entries()) {
     const runtime = runtimes[index]!;
     const folder = join(project.rootPath, ...dist.split("/"));
-    rmSync(folder, { recursive: true, force: true });
-    mkdirSync(folder, { recursive: true });
+    await rm(folder, { recursive: true, force: true });
+    await mkdir(folder, { recursive: true });
     const release = await releaseFor(runtime.box?.version);
-    writeFileSync(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
+    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
     const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);
-    rmSync(contextDist, { recursive: true, force: true });
-    cpSync(folder, contextDist, { recursive: true });
+    await rm(contextDist, { recursive: true, force: true });
+    await cp(folder, contextDist, { recursive: true });
   }
   return runtimes.map((runtime) => runtime.name);
 }

@@ -59,8 +59,8 @@ export async function createProjectTree(
           ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
-            // The entry that adds the template's targets (a model endpoint) to the runtime's
-            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
+            // The runtime's Box gateway entry, with no targets; build adds the model target. It
+            // sits in agentCoreGateways, not in the template's runtime files.
             ...(options?.runtime?.boxGatewayEntry
               ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
               : []),

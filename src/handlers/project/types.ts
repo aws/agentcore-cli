@@ -101,8 +101,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Runs the agent in Strands Box: set by the box templates only. */
     box: z.boolean().optional(),
     /**
-     * The entry that adds the template's targets (the Bedrock model endpoint) to this runtime's Box
-     * gateway, `<runtime>-box`; absent when the agent calls no Bedrock model.
+     * The entry for this runtime's Box gateway, `<runtime>-box`, with no targets; build adds the
+     * Bedrock model target. Absent when the agent calls no Bedrock model.
      */
     boxGatewayEntry: AgentCoreGatewaySchema.optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
@@ -622,8 +622,8 @@ export interface ProjectManager {
   ): Promise<AwsDeploymentTarget | undefined>;
 
   /**
-   * The AWS name of the Box gateway that the last deploy to the target recorded, or undefined
-   * when it recorded none. Read-only, for the deploy handler's up-front confirmation.
+   * The AWS names of the Box gateways that the last deploy to the target recorded, or an empty
+   * list when it recorded none. Read-only, for the deploy handler's up-front confirmation.
    */
   recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]>;
 

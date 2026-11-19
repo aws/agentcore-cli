@@ -55,7 +55,23 @@ If installation was successful, a virtual environment is already created with de
 Activate the environment with `source .venv/bin/activate` on macOS/Linux, `.venv\Scripts\activate.bat` in Windows
 Command Prompt, or `.\.venv\Scripts\activate.ps1` in Windows PowerShell.
 
-`agentcore dev` will start a local server on 0.0.0.0:8080.
+`agentcore dev` serves the agent on port 8080, through its box (see below).
+
+# Running in Strands Box
+
+This agent runs in a box (Strands Box), both under `agentcore dev` and on AgentCore Runtime. The box
+allows only what the agent's box profile grants: the files it may read and write, and the hosts it
+may reach.
+
+- `.box/<agent>/local/profile.toml`, at the project root, is the profile `agentcore dev` runs.
+  `agentcore build` and `agentcore deploy` generate the Runtime profile from it into
+  `.box/<agent>/aws/`.
+- A CodeZip agent runs under `agentcore dev` in the `box` on your PATH. Install it from the box
+  release that `agentcore create` names when it is missing. The box listens on 127.0.0.1:8080 and
+  relays to the agent on 8081, so keep both ports free.
+- A container agent's image downloads box while it builds, and its entry point is `box run`, so it
+  needs no local `box`. `.box-dist/` and `.box-dev/` in the build context are staged box files,
+  which `.gitignore` leaves out.
 
 # Deployment
 

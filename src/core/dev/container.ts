@@ -101,6 +101,11 @@ const BOX_RUN_FLAGS = [
 type ContainerTool = (typeof CONTAINER_TOOLS)[number];
 type ToolAvailable = typeof toolAvailable;
 
+/** Whether a value, such as AGENTCORE_CONTAINER_TOOL, names a container tool dev supports. */
+function isContainerTool(value: string): value is ContainerTool {
+  return (CONTAINER_TOOLS as readonly string[]).includes(value);
+}
+
 type ContainerDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
   toolAvailable?: ToolAvailable;
@@ -217,8 +222,11 @@ export class ContainerDevRunner implements DevRunner {
       signal: input.signal,
     };
 
-    yield { type: "status", message: `Building image with ${tool}` };
     try {
+      if (boxDist) {
+        yield { type: "status", message: `Staged box for the image in ${join(context, boxDist)}` };
+      }
+      yield { type: "status", message: `Building image with ${tool}` };
       yield* this.streamProcess(buildCommand, buildOptions);
     } finally {
       // The image holds it now; removed so that no deploy uploads dev's profile.
@@ -290,12 +298,21 @@ export class ContainerDevRunner implements DevRunner {
       imageTag,
     ];
 
-    if (boxAws) {
-      yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
-    }
-    yield { type: "status", message: "Starting container" };
     const refresh = boxAws ? startRefresh(boxAws) : undefined;
     try {
+      if (boxAws) {
+        yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
+      } else if (boxed) {
+        // Box signs as the image's user, who usually cannot read the mounted ~/.aws.
+        yield {
+          type: "status",
+          message:
+            "No AWS credentials resolved for box, so it gets your ~/.aws, which it may not be " +
+            "able to read. If box fails to sign, refresh your credentials (for example " +
+            "`aws sso login`), then retry.",
+        };
+      }
+      yield { type: "status", message: "Starting container" };
       yield* this.streamProcess(runCommand, {
         cwd: context,
         env: this.processEnv,
@@ -340,7 +357,7 @@ export class ContainerDevRunner implements DevRunner {
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
-    stageBoxImage(
+    await stageBoxImage(
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot, input.runtime.name),
@@ -355,7 +372,7 @@ export class ContainerDevRunner implements DevRunner {
     // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
     const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
     if (chosen) {
-      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
+      if (!isContainerTool(chosen)) {
         throw new InputValidationError(
           `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
         );
@@ -365,7 +382,7 @@ export class ContainerDevRunner implements DevRunner {
         throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
       }
       signal.throwIfAborted();
-      return chosen as ContainerTool;
+      return chosen;
     }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
