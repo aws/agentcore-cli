@@ -15,6 +15,7 @@ import {
   type ProfileCloudWatchTelemetry,
   type ThirdPartyTelemetry,
 } from "./telemetry";
+import type { TomlTable } from "../runtimeProfile/types";
 
 /** Where the profile's own text sets a key, as `<profile path>:line:column`. */
 export interface ProfilePlaces {
@@ -40,6 +41,14 @@ export interface ParsedProfile {
   readonly leftOutTelemetry?: readonly LeftOutTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
+  /**
+   * The profile's own text as a TOML table, which build derives the AgentCore Runtime profile from,
+   * and where the text sets each key, by its dotted path; absent when build has no profile text.
+   */
+  readonly source?: {
+    readonly table: Readonly<TomlTable>;
+    readonly places: ReadonlyMap<string, string>;
+  };
 }
 
 /** A failure of the profile, or of Box's resolution of it, at its line when one is known. */
