@@ -9,6 +9,7 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
 import { MissingToolError } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 import { BoxDevRunner } from "./box";
 
 /** The line of a CodeZip profile that names its runtime's folder. */
@@ -45,7 +46,8 @@ async function scene(
   if (profiled) {
     await mkdir(join(projectRoot, ".box"));
     await writeFile(join(projectRoot, ".box", "profile.toml"), options.profile ?? PROFILE);
-    await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
+    await mkdir(join(projectRoot, "app", "agent", ".venv", "bin"), { recursive: true });
+    await writeFile(join(projectRoot, "app", "agent", ".venv", "bin", "python"), "");
   }
 
   const calls: { command: string[]; options: StreamProcessOptions }[] = [];
@@ -219,7 +221,8 @@ describe("BoxDevRunner", () => {
         message:
           "the box profile .box/profile.toml reads GITHUB_TOKEN for [egress.github], but it is " +
           "not set, and box does not start without it. Export it in this shell " +
-          "(export GITHUB_TOKEN=...) or put it in agentcore/.env.local, then restart dev.",
+          "(export GITHUB_TOKEN=...) or put it in " +
+          `${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
       });
       // box run still starts, so its own error follows the warning.
       expect(calls).toHaveLength(1);
@@ -343,9 +346,13 @@ describe("BoxDevRunner", () => {
     ]);
   });
 
-  test("tells the user to run uv sync when the runtime has no .venv", async () => {
+  test.each([
+    ["has no .venv", true],
+    ["has the empty .venv that create --skip-install leaves", false],
+  ])("tells the user to run uv sync when the runtime %s", async (_, removeVenv) => {
     const { projectRoot, calls, runner } = await scene(true);
-    await rm(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
+    const venv = join(projectRoot, "app", "agent", ".venv");
+    await rm(removeVenv ? venv : join(venv, "bin"), { recursive: true });
 
     const run = collect(runner.run(input(projectRoot)));
 

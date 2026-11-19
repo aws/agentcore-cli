@@ -1015,6 +1015,22 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
     });
 
+    test("hands box in the container the shell's env:// key over .env.local's", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell" },
+      });
+      // input.env is what dev read from agentcore/.env.local.
+      const fromFile = input(root, projectRuntime);
+
+      await collect(runner.run({ ...fromFile, env: { GITHUB_TOKEN: "ghp_file" } }));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_shell");
+    });
+
     test("warns when the profile's env:// key is not set, before the container's box reports it", async () => {
       const { projectRuntime, root } = await boxedScene({
         profileText:

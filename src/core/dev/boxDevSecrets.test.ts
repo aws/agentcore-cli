@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EnvLocalFile } from "../project/envLocal";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../project/envLocal";
 import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
 
 const GITHUB_ROUTE =
@@ -72,9 +72,10 @@ describe("boxDevSecrets", () => {
     });
   });
 
-  test("leaves out a pack's variable and a secret that is not env://", async () => {
+  test("leaves out a pack's variable, a secret that is not env://, and a blank name", async () => {
     const root = await project(
-      'packs = ["box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n',
+      'packs = ["box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n' +
+        '[egress.blank]\ndestinations = ["blank.example.com"]\nsecret.ref = "env://  "\n',
     );
 
     expect(await boxDevSecrets(root, { AWS_BEARER_TOKEN_BEDROCK: "token", default: "x" })).toEqual({
@@ -104,7 +105,8 @@ describe("missingBoxSecretWarning", () => {
     expect(missingBoxSecretWarning({ variable: "GITHUB_TOKEN", table: "[egress.github]" })).toBe(
       "the box profile .box/profile.toml reads GITHUB_TOKEN for [egress.github], but it is not " +
         "set, and box does not start without it. Export it in this shell " +
-        "(export GITHUB_TOKEN=...) or put it in agentcore/.env.local, then restart dev.",
+        "(export GITHUB_TOKEN=...) or put it in " +
+        `${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
     );
   });
 });

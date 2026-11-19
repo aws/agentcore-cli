@@ -79,10 +79,12 @@ export class BoxDevRunner implements DevRunner {
           `${input.port}. Free port ${listen}, then retry.`,
       );
     }
+    // `create --skip-install` leaves an empty .venv, which `uv sync` fills; the profile runs its
+    // Python.
     const venv = join(input.projectRoot, input.runtime.codeLocation, ".venv");
-    if (!existsSync(venv)) {
+    if (!existsSync(join(venv, "bin", "python"))) {
       throw new ResourceNotFoundError(
-        `${venv} does not exist. Run \`uv sync\` in ${input.runtime.codeLocation}, then retry.`,
+        `${venv} has no Python. Run \`uv sync\` in ${input.runtime.codeLocation}, then retry.`,
       );
     }
     await this.checkTool("box", BOX_INSTALL_HINT);

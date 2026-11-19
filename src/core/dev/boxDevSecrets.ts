@@ -42,7 +42,7 @@ export async function boxDevSecrets(
       const ref = (entry as { secret?: { ref?: unknown } } | null)?.secret?.ref;
       if (typeof ref !== "string" || !ref.startsWith(ENV_SCHEME)) continue;
       const variable = ref.slice(ENV_SCHEME.length);
-      if (variable === "" || variable in found) continue;
+      if (variable.trim() === "" || variable in found) continue;
       const value = env[variable];
       if (!hasValue(value)) {
         if (!missing.some((other) => other.variable === variable)) {
