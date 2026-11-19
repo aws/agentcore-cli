@@ -370,12 +370,24 @@ Local checks, in `agentcore/agentcore.json`:
   `egress-github` target for `https://api.github.com`.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 
-Live checks, after deploy:
+Live checks, after deploy. Deploy names each AWS resource after the project and the deploy target
+(`default`), so the names differ from those in `agentcore.json`:
+
+- The Box gateway `agent-box` deploys as `<project>-default-agent-box`, for example
+  `cliDemo-default-agent-box`. Its ID is that name in lowercase with a suffix, for example
+  `clidemo-default-agent-box-njdu1hh4uy`, and is a stack output.
+- The credential `github` deploys as the API key credential provider `<project>_default_github`,
+  for example `cliDemo_default_github`.
 
 ```
-bun run "$CLI" gateway list
-bun run "$CLI" identity api-key-credential-provider get --name github
+GATEWAY_ID=$(aws cloudformation describe-stacks --stack-name "AgentCore-$PROJECT-default" --query "Stacks[0].Outputs[?starts_with(OutputKey, 'ApplicationGatewayAgentBoxIdOutput')].OutputValue" --output text)
+echo "$GATEWAY_ID"
+bun run "$CLI" gateway get --id "$GATEWAY_ID"
+bun run "$CLI" identity api-key-credential-provider get --name "${PROJECT}_default_github"
 ```
+
+`gateway list` shows every gateway in the account and region, not only this project's, so look
+the Box gateway up by its ID as above.
 
 ## 10. Read box telemetry and gateway logs in CloudWatch
 
@@ -420,12 +432,28 @@ To send box telemetry to your own log group instead:
 
 ## 11. Tear down
 
-Deploy bills you while resources exist. Remove them when done.
+Deploy bills you while resources exist. Remove them when done. `--yes` confirms that deploy deletes
+the stack, since the project then declares nothing to deploy; without it, deploy stops and asks you
+to re-run with `--yes`.
 
 ```
 bun run "$CLI" remove all --yes
-bun run "$CLI" deploy
+bun run "$CLI" deploy --yes
 ```
+
+Two things outlive the stack. Delete them too:
+
+- The API key credential provider of step 4's `github` credential, `<project>_default_github`:
+
+  ```
+  bun run "$CLI" identity api-key-credential-provider delete --name "${PROJECT}_default_github"
+  ```
+
+- The log group you created in step 10, if you sent box telemetry to your own log group:
+
+  ```
+  aws logs delete-log-group --log-group-name "/aws/box/$PROJECT"
+  ```
 
 ## Troubleshooting
 
