@@ -1530,6 +1530,77 @@ describe("CdkBackend.resolveProjectResources", () => {
     expect(subject.accountCredentials).toEqual([]);
   });
 
+  /** Each gateway's targets as `[gateway, [[target, id]...]]`; a target with no id has none. */
+  const gatewayTargetIds = (resources: ResolvedProjectResource[]) =>
+    resources
+      .filter(({ resourceType }) => resourceType === "gateway")
+      .map(({ name, children }) => [
+        name,
+        (children ?? []).map((child) => [
+          child.name,
+          child.deploymentState === "deployed" && "id" in child ? child.id : undefined,
+        ]),
+      ]);
+
+  test("resolves a target name that two gateways share to each gateway's own id", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      agentCoreGateways: [
+        { name: "agent-box", targets: [{ name: "bedrock" }, { name: "egress-github" }] },
+        { name: "second_agent-box", targets: [{ name: "bedrock" }] },
+      ],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        // The L3 adds the gateway name only for a target name that two or more gateways have.
+        Outputs: [
+          out(`${S}-GatewayTarget-agent-box-bedrock-Id`, "bedrock-of-agent"),
+          out(`${S}-GatewayTarget-second-agent-box-bedrock-Id`, "bedrock-of-second"),
+          out(`${S}-GatewayTarget-egress-github-Id`, "github-of-agent"),
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(gatewayTargetIds(resources)).toEqual([
+      [
+        "agent-box",
+        [
+          ["bedrock", "bedrock-of-agent"],
+          ["egress-github", "github-of-agent"],
+        ],
+      ],
+      ["second_agent-box", [["bedrock", "bedrock-of-second"]]],
+    ]);
+  });
+
+  test("resolves the target of one gateway through the export name without the gateway", async () => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      agentCoreGateways: [{ name: "agent-box", targets: [{ name: "bedrock" }] }],
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [out(`${S}-GatewayTarget-bedrock-Id`, "bedrock-1")],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(gatewayTargetIds(resources)).toEqual([["agent-box", [["bedrock", "bedrock-1"]]]]);
+  });
+
   test("nests a gateway's targets under the gateway", async () => {
     const input = await project();
     input.spec = {

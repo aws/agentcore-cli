@@ -663,8 +663,12 @@ export class CdkBackend implements ProjectBackend {
         case "gateway":
           return asArn(byExportName("Gateway", name, "Arn"));
         case "gateway-target":
-          // The L3 exports an id for targets and never an ARN
-          return asId(byExportName("GatewayTarget", name, "Id"));
+          // The L3 exports an id for targets and never an ARN. A target name that two or more
+          // gateways have also has the gateway name: <StackName>-GatewayTarget-<gateway>-<target>-Id.
+          return asId(
+            byExportName("GatewayTarget", owner ?? "", name, "Id") ??
+              byExportName("GatewayTarget", name, "Id"),
+          );
         case "policy":
           // ExportName: <StackName>-Policy-<engineName>-<policyName>-Arn
           return asArn(byExportName("Policy", owner ?? "", name, "Arn"));
