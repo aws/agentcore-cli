@@ -42,8 +42,15 @@ export class EnvLocalFile {
    * Appends entries, creating the file when missing. Keys that already exist
    * are left unchanged so user-managed values survive re-runs. Returns the keys
    * written and those skipped.
+   *
+   * `options.keep` decides from an existing key's decrypted value whether that
+   * key stays unchanged; without it, every existing key does. A key that `keep`
+   * rejects gets the entry's value in place, and counts as written.
    */
-  async insertIfNew(entries: EnvLocalEntry[]): Promise<{ written: string[]; skipped: string[] }> {
+  async insertIfNew(
+    entries: EnvLocalEntry[],
+    options: { keep?: (value: string) => boolean } = {},
+  ): Promise<{ written: string[]; skipped: string[] }> {
     const existing = await this.readOrNull();
     if (existing !== null) await this.enforcePermissions();
     const existingKeys = new Set(
@@ -52,19 +59,54 @@ export class EnvLocalFile {
         .map((line) => KEY_LINE.exec(line)?.[1])
         .filter((key) => key !== undefined),
     );
+    const { keep } = options;
+    // Decrypt only the existing keys that `keep` must check, so a secret this
+    // call does not touch cannot block the write.
+    const checked = new Set(
+      entries.map((entry) => entry.key).filter((key) => existingKeys.has(key)),
+    );
+    const values: Record<string, string> =
+      keep !== undefined && existing !== null && checked.size > 0
+        ? await this.secrets.decrypt(
+            Object.fromEntries(
+              Object.entries(parseEnv(existing) as Record<string, string>).filter(([key]) =>
+                checked.has(key),
+              ),
+            ),
+          )
+        : {};
 
     const written: string[] = [];
     const skipped: string[] = [];
+    const replacements = new Map<string, string>();
     let content = existing ?? "";
     for (const entry of entries) {
       if (existingKeys.has(entry.key)) {
-        skipped.push(entry.key);
+        const value = values[entry.key];
+        if (
+          keep === undefined ||
+          value === undefined ||
+          keep(value) ||
+          replacements.has(entry.key)
+        ) {
+          skipped.push(entry.key);
+          continue;
+        }
+        const encrypted = await this.secrets.encrypt({ [entry.key]: entry.value ?? "" });
+        replacements.set(entry.key, formatValue(encrypted[entry.key]));
+        written.push(entry.key);
         continue;
       }
       const separator = content === "" || content.endsWith("\n") ? "" : "\n";
       const encrypted = await this.secrets.encrypt({ [entry.key]: entry.value ?? "" });
       content += `${separator}# ${entry.comment}\n${entry.key}=${formatValue(encrypted[entry.key])}\n`;
       written.push(entry.key);
+    }
+    if (replacements.size > 0) {
+      content = content.replace(ENV_ENTRY, (span, prefix: string, key: string) => {
+        const value = replacements.get(key);
+        return value === undefined ? span : `${prefix}${value}`;
+      });
     }
 
     content = await this.encryptContent(content);

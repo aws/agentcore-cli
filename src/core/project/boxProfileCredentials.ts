@@ -20,6 +20,13 @@ export type BoxKeySources = {
   envLocal: Readonly<Record<string, string | undefined>>;
 };
 
+/**
+ * Whether a variable holds a key: set, and not blank. {@link planBoxProfileCredentials} uses it to
+ * decide that a reserved variable needs a seed, and build passes it as `keep` to
+ * `EnvLocalFile.insertIfNew`, so a blank entry that build seeds is also the one it overwrites.
+ */
+export const boxKeyIsSet = hasValue;
+
 /** What {@link planBoxProfileCredentials} did with the box profile's `env://` routes. */
 export type BoxCredentialPlan = {
   /** One message for each credential added, and for each route skipped for a reason to report. */
@@ -103,12 +110,12 @@ export function planBoxProfileCredentials(
   /** Stores the route's key under `credential`'s reserved variable; false when there is none. */
   const seed = ({ variable }: BoxEnvRoute, credential: string): boolean => {
     const key = credentialEnvVarName(credential);
-    if (hasValue(sources.env[key]) || hasValue(sources.envLocal[key])) return true;
+    if (boxKeyIsSet(sources.env[key]) || boxKeyIsSet(sources.envLocal[key])) return true;
     if (entries.some((entry) => entry.key === key)) return true;
-    const value = hasValue(sources.env[variable])
+    const value = boxKeyIsSet(sources.env[variable])
       ? sources.env[variable]
       : sources.envLocal[variable];
-    if (!hasValue(value)) return false;
+    if (!boxKeyIsSet(value)) return false;
     entries.push({
       key,
       value,

@@ -157,6 +157,33 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_stored");
   });
 
+  test("seeds the key over a blank reserved variable in .env.local", async () => {
+    const { subject, built } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(subject, GITHUB_PROFILE);
+    await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=\n`);
+
+    const messages = await drain(subject.build(created));
+
+    // Build adds the credential, so the key it reads on deploy must be set, not left blank.
+    expect(built[0]?.spec.credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "github",
+    });
+    expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_shell");
+    expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
+  });
+
+  test("keeps a reserved variable that .env.local already sets", async () => {
+    const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(subject, GITHUB_PROFILE);
+    await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=ghp_user\n`);
+
+    const messages = await drain(subject.build(created));
+
+    expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_user");
+    expect(messages).not.toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
+  });
+
   test("adds no credential, and says which variable to set, when the key is in neither place", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);
@@ -188,6 +215,18 @@ describe("FsProjectManager.build: box env:// credentials", () => {
       name: "github",
     });
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+  });
+
+  test("seeds a blank reserved variable when .env.local also holds an unused undecryptable entry", async () => {
+    const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(subject, GITHUB_PROFILE);
+    await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=\n`);
+    await appendEnvLocal(created.rootPath, `OTHER_API_KEY='${UNDECRYPTABLE}'`);
+
+    const messages = await drain(subject.build(created));
+
+    expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+    expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
   });
 
   test("builds when the shell sets the variable of an undecryptable .env.local entry", async () => {

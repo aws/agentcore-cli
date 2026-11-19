@@ -64,6 +64,7 @@ import {
   boxNetworkEdits,
   writeBoxNetworkFiles,
 } from "./boxNetworkWriters";
+import { boxKeyIsSet } from "./boxProfileCredentials";
 import { createProjectTree } from "./templates/project";
 import {
   boxProfilePath,
@@ -1653,7 +1654,8 @@ export class FsProjectManager implements ProjectManager {
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {
-      const { written } = await envLocal.insertIfNew([...edits.envLocal]);
+      // A blank entry is one the plan seeds, so it gets the seed rather than being skipped.
+      const { written } = await envLocal.insertIfNew([...edits.envLocal], { keep: boxKeyIsSet });
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
     const warnings = networks.flatMap((network) => [
