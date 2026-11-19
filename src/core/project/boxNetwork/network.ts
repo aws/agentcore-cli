@@ -4,7 +4,11 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
+import {
+  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  boxGatewayAgentCoreHost,
+} from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -224,6 +228,30 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
 /** Whether build manages `target`: it adds, changes, and removes each target with the prefix. */
 export function isManagedTarget(target: Pick<AgentCoreGatewayTarget, "name">): boolean {
   return target.name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+}
+
+/** The names of the Box gateway targets that build writes for the agent's model and Memory calls. */
+const BOX_DEFAULT_TARGET_NAMES: readonly string[] = [
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+];
+
+/**
+ * The refusal of a user target named `name` on a Box gateway, or `undefined` when build does not
+ * own the name. Build writes the `bedrock` and `agentcore` targets and every `egress-` target, so a
+ * user target of such a name would take the agent's Bedrock or Memory route, or build would
+ * rewrite or remove it.
+ */
+export function reservedBoxTargetNameProblem(name: string, gateway: string): string | undefined {
+  if (!BOX_DEFAULT_TARGET_NAMES.includes(name) && !isManagedTarget({ name })) return undefined;
+  const reserved = [
+    ...BOX_DEFAULT_TARGET_NAMES.map((n) => `'${n}'`),
+    `'${BOX_EGRESS_TARGET_PREFIX}*'`,
+  ];
+  return (
+    `the gateway target name '${name}' is reserved on Box gateway '${gateway}': build writes the ` +
+    `targets ${reserved.join(", ")} for the agent's model, Memory, and egress calls. Choose another name.`
+  );
 }
 
 /** The host map key of a passthrough target's endpoint, or `undefined` for another target. */

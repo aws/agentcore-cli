@@ -4,6 +4,7 @@ export {
   boxGatewayOf,
   buildBoxNetwork,
   isManagedTarget,
+  reservedBoxTargetNameProblem,
   type BoxEgressAuth,
   type BoxHostSource,
   type BoxNetwork,
