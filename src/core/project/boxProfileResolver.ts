@@ -8,6 +8,7 @@ import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
+import { resolveExecutable } from "../../io/exec";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -131,7 +132,12 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
       }
     } catch (error) {
       if (!(error instanceof ProcessFailedError)) throw error;
-      if (error.meta.exitCode === null && stderr.length === 0) {
+      // A signal also stops box with no exit code, so box is missing only when PATH has none.
+      if (
+        error.meta.exitCode === null &&
+        stderr.length === 0 &&
+        resolveExecutable("box", { env: this.env }) === null
+      ) {
         throw new InvalidEnvironmentError(
           `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
           { cause: error },

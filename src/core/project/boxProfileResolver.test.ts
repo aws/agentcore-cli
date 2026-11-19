@@ -320,12 +320,36 @@ describe("BoxCliProfileResolver", () => {
     );
 
     await expect(
-      new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/profile.toml"),
+      new BoxCliProfileResolver({ env: { PATH: "" }, ...fake }).resolve(
+        "/work/demo",
+        ".box/profile.toml",
+      ),
     ).rejects.toThrow(
       new InvalidEnvironmentError(
         "Box is not installed or not on PATH. Install it " +
           "(https://github.com/mquang-amazon/box-releases), then retry.",
       ),
+    );
+  });
+
+  test("does not say Box is not installed when a signal stops the box on PATH", async () => {
+    const bin = await mkdtemp(join(tmpdir(), "box-path-"));
+    directories.push(bin);
+    await writeFile(join(bin, process.platform === "win32" ? "box.exe" : "box"), "", {
+      mode: 0o755,
+    });
+    const fake = streamer(
+      [],
+      new ProcessFailedError(COMMAND, "/work/demo", null, "terminated by SIGKILL"),
+    );
+
+    const error = await new BoxCliProfileResolver({ env: { PATH: bin }, ...fake })
+      .resolve("/work/demo", ".box/profile.toml")
+      .catch((caught: unknown) => caught);
+
+    expect((error as Error).message).toBe(
+      "Box stopped on .box/profile.toml with exit code unknown and printed no error. Run " +
+        "'box profile show .box/profile.toml' in the project folder to see why.",
     );
   });
 
