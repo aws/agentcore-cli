@@ -115,7 +115,7 @@ import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
 import { prepareRuntimes } from "./runtimeBuild";
 import { isContainerBuild } from "../../projectSchemas/constants";
-import { resolveWorkloadBuilds } from "./backends/cdk/localContainers";
+import { resolveWorkloads } from "./backends/cdk/localContainers";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -497,12 +497,12 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    const destination = join(process.cwd(), input.name);
     if (input.scaffoldHarnessInput) {
-      validateHarnessTemplateSource(input.scaffoldHarnessInput);
+      validateHarnessTemplateSource(input.scaffoldHarnessInput, destination);
     }
 
     const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
-    const destination = join(process.cwd(), input.name);
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
@@ -767,6 +767,14 @@ export class FsProjectManager implements ProjectManager {
         });
         const result = await resolver.resolve(resourceConfig);
         await result.tree.write(dirname(outputPath));
+        if (resourceConfig.dockerfile && !resourceConfig.buildContextPath) {
+          yield {
+            type: "step",
+            message:
+              `copied ${resourceConfig.dockerfile} to app/${harnessName}/Dockerfile; later ` +
+              "edits to the original are not used",
+          };
+        }
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
         if (harnessEnvEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
@@ -815,6 +823,14 @@ export class FsProjectManager implements ProjectManager {
             throw err;
           }
           if (folderExisted) scaffoldedPaths.push(...written);
+          if (written.includes(join(outputPath, "Dockerfile"))) {
+            yield {
+              type: "step",
+              message:
+                `copied ${input.resourceConfig.dockerfile} to ${relativeFolder}/Dockerfile; ` +
+                "later edits to the original are not used",
+            };
+          }
           for (const child of tree.children) {
             if (!written.includes(join(outputPath, child.name))) {
               yield {
@@ -1596,7 +1612,7 @@ export class FsProjectManager implements ProjectManager {
     project = synced.project;
     // Resolved once, after auto-detection, so the caller (telemetry) and the
     // backend see the build modes this deploy actually uses.
-    const workloadBuilds = resolveWorkloadBuilds(project);
+    const { builds: workloadBuilds, local: localWorkloads } = resolveWorkloads(project);
     input.onWorkloadBuilds?.(workloadBuilds);
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
@@ -1700,6 +1716,7 @@ export class FsProjectManager implements ProjectManager {
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
       workloadBuilds,
+      localWorkloads,
     });
   }
 

@@ -404,8 +404,10 @@ export const ProjectRuntimeSchema = z
         });
       }
     }
+    // Reserved by the CodeBuild build environment; ContainerLocal builds locally.
+    // Keep in step with the @aws/agentcore-cdk schema.
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
-      if (isReservedBuildArgKey(key)) {
+      if (data.build !== "ContainerLocal" && isReservedBuildArgKey(key)) {
         ctx.addIssue({
           code: "custom",
           message: `customDockerBuildArgs key "${key}" is reserved by the build environment (must not be ${RESERVED_BUILD_ARG_KEYS.join(", ")}, or start with CODEBUILD_ or AWS_)`,

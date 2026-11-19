@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { resolveCdkDockerExecutable, resolveContainerTool } from "./containerTool";
 
 function available(installed: Record<string, { build: boolean }>) {
@@ -38,6 +39,18 @@ describe("resolveCdkDockerExecutable", () => {
       "/opt/bin/nerdctl",
     );
     expect(probes).toEqual([]);
+  });
+
+  test("resolves a relative CDK_DOCKER path against the current directory", async () => {
+    const { check } = available({});
+    expect(await resolveCdkDockerExecutable({ CDK_DOCKER: "./bin/dw" }, check)).toBe(
+      resolve(process.cwd(), "bin", "dw"),
+    );
+    expect(await resolveCdkDockerExecutable({ CDK_DOCKER: "tools/dw" }, check)).toBe(
+      resolve(process.cwd(), "tools", "dw"),
+    );
+    // A bare name is looked up on PATH, so it stays as-is.
+    expect(await resolveCdkDockerExecutable({ CDK_DOCKER: "nerdctl" }, check)).toBe("nerdctl");
   });
 
   test("detects the builder when CDK_DOCKER is unset", async () => {

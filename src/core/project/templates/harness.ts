@@ -60,7 +60,7 @@ export function harnessApiKeyCredentialName(
 type GetHarnessTemplateResolverConfig = {
   assetSource: AssetSource;
   templateRenderer: TemplateRenderer;
-  projectRoot?: string;
+  projectRoot: string;
 };
 
 /** Given a harness spec, resolve the {@link TemplateResolver} that renders its config directory **/
@@ -143,6 +143,8 @@ function buildTemplateContext(spec: HarnessSpec) {
     apiKeyExample: provider !== "bedrock" && !model.apiKeyArn && !model.apiKeyCredentialName,
     modelMaxTokensExample: !("maxTokens" in spec.model),
     managedMemoryEmpty: mode === "managed" && Object.keys(memoryConfig).length === 0,
+    // A local build needs no CodeBuild VPC, so it gets no networkConfig.vpcId hint.
+    containerLocal: spec.build === "ContainerLocal",
     additionalSettings: Object.entries(yaml)
       .filter(([key]) => !TEMPLATE_FIELDS.has(key))
       .map(([, value]) => value),
@@ -151,14 +153,11 @@ function buildTemplateContext(spec: HarnessSpec) {
 
 export function validateHarnessTemplateSource(
   spec: z.input<typeof HarnessSpecSchema>,
-  projectRoot?: string,
+  projectRoot: string,
 ): void {
-  if (spec.buildContextPath && !projectRoot) {
-    throw new InputValidationError("projectRoot is required for a Harness build context override.");
-  }
   const dockerfile =
     spec.dockerfile && typeof spec.buildContextPath === "string"
-      ? resolve(projectRoot!, spec.buildContextPath, spec.dockerfile)
+      ? resolve(projectRoot, spec.buildContextPath, spec.dockerfile)
       : spec.dockerfile;
   if (dockerfile && !existsSync(dockerfile)) {
     throw new ResourceNotFoundError(`no dockerfile exists at ${dockerfile}`);

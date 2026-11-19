@@ -51,7 +51,9 @@ export function describeChange(name: string, change: RuntimeChange): string {
   return change.field === "build" && change.to === "Container"
     ? `${line}. It now builds and deploys as a container image from that Dockerfile; to go ` +
         `back, delete the Dockerfile, then in agentcore.json set "build": "CodeZip", remove ` +
-        `"dockerfile", and add back the "runtimeVersion" removed below.`
+        `"dockerfile", and add back the "runtimeVersion" removed below. Container images are ` +
+        `built by CodeBuild; a local build (ContainerLocal) can only be chosen when adding a ` +
+        `workload, with --build-config, and a workload cannot be switched to it later.`
     : line;
 }
 

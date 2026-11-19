@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
@@ -209,6 +209,10 @@ type HarnessOptions = {
   describedStack?: Stack | null;
   /** Failure thrown by the fake synth process after emitting its output. */
   synthError?: Error;
+  /** Failure a fake process throws for a given command, e.g. a local image build. */
+  commandError?: (command: string[]) => Error | undefined;
+  /** Output a fake process streams for a given command, e.g. `docker buildx inspect`. */
+  commandOutput?: (command: string[]) => string | undefined;
   /** Chunks the fake synth process streams through onOutput. */
   synthOutput?: string[];
   /** Lines the fake Toolkit reports through each operation's onOutput sink. */
@@ -217,6 +221,8 @@ type HarnessOptions = {
 
 function harness(options: HarnessOptions = {}) {
   const commands: { command: string[]; cwd: string }[] = [];
+  /** BUILDX_BUILDER each command ran with, from its env (undefined when inherited). */
+  const commandBuilders: { command: string[]; buildxBuilder: string | undefined }[] = [];
   const runs: { operation: CdkOperation; options: CdkRunOptions }[] = [];
   const credentialRegions: string[] = [];
   const accountCredentials: CdkCredentialProvider[] = [];
@@ -249,10 +255,19 @@ function harness(options: HarnessOptions = {}) {
         },
       }) as unknown as ReturnType<NonNullable<CdkBackendConfig["createCloudFormationClient"]>>,
     checkLocalBuilder: options.checkLocalBuilder,
-    resolveContainerExecutable: options.resolveContainerExecutable ?? (async () => "docker"),
+    // An explicit `resolveContainerExecutable: undefined` keeps the backend's own resolver.
+    resolveContainerExecutable:
+      "resolveContainerExecutable" in options
+        ? options.resolveContainerExecutable
+        : async () => "docker",
     identity: unusedIdentity(),
-    runner: async (command, { cwd, onOutput }) => {
+    runner: async (command, { cwd, env, onOutput }) => {
       commands.push({ command, cwd });
+      commandBuilders.push({ command, buildxBuilder: env?.BUILDX_BUILDER });
+      const commandError = options.commandError?.(command);
+      if (commandError) throw commandError;
+      const commandOutput = options.commandOutput?.(command);
+      if (commandOutput !== undefined) onOutput?.(commandOutput);
       for (const chunk of options.synthOutput ?? []) onOutput?.(chunk);
       if (options.synthError) throw options.synthError;
     },
@@ -329,6 +344,7 @@ function harness(options: HarnessOptions = {}) {
     backend,
     bootstrapCredentials,
     bootstrapRegions,
+    commandBuilders,
     commands,
     credentialRegions,
     credentials,
@@ -464,8 +480,34 @@ describe("CdkBackend.build", () => {
     expect(h.commands[1]?.command.slice(0, 3)).toEqual(["docker", "build", "--load"]);
     const warnings = events.filter((event) => event.type === "warning");
     expect(warnings.map((event) => event.message).join("\n")).toContain(
-      "docker buildx use default",
+      "build and publish with the docker-driver builder of the active Docker context",
     );
+  });
+  test("names the build context and Dockerfile when a local image build fails", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+        dockerfile: "Dockerfile.agent",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name], { localImages: { "runtime/agent": "abc123" } });
+    await writeLocalImageManifest(p);
+    const h = harness({
+      checkLocalBuilder: async () => ({}),
+      commandError: (command) =>
+        command[1] === "build" ? new Error("COPY requirements.txt: not found") : undefined,
+    });
+    const error = await collect(h.backend.build(p)).catch((caught: unknown) => caught as Error);
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toContain("Building the runtime/agent image failed.");
+    expect(message).toContain("Build context: app/agent/");
+    expect(message).toContain("Dockerfile: app/agent/Dockerfile.agent");
+    expect(message).toContain("COPY requirements.txt: not found");
   });
   test("builds no images when no workload builds locally", async () => {
     const p = await project();
@@ -582,6 +624,48 @@ describe("CdkBackend.build", () => {
 });
 
 describe("CdkBackend.deploy", () => {
+  test.each(["build", "deploy"] as const)(
+    "%s resolves a relative CDK_DOCKER against the current directory",
+    async (operation) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name], { localImages: { "runtime/agent": "abc123" } });
+      await writeLocalImageManifest(p);
+      const checked: string[] = [];
+      const h = harness({
+        describedStack: null,
+        resolveContainerExecutable: undefined,
+        checkLocalBuilder: async (_runner, _cwd, executable) => {
+          checked.push(executable);
+          return {};
+        },
+      });
+      const expected = resolve(process.cwd(), "bin", "dw");
+      const previous = process.env.CDK_DOCKER;
+      process.env.CDK_DOCKER = "./bin/dw";
+      try {
+        if (operation === "build") await collect(h.backend.build(p));
+        else await collectDeploy(h.backend.deploy(p, deployInput()));
+      } finally {
+        if (previous === undefined) delete process.env.CDK_DOCKER;
+        else process.env.CDK_DOCKER = previous;
+      }
+      expect(checked).toEqual([expected]);
+      if (operation === "deploy") {
+        const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+        expect(deployRun?.options.containerExecutable).toBe(expected);
+      } else {
+        expect(h.commands[1]?.command[0]).toBe(expected);
+      }
+    },
+  );
   test.each([
     ["Container", "ContainerLocal"],
     ["ContainerLocal", "Container"],
@@ -601,9 +685,12 @@ describe("CdkBackend.deploy", () => {
       checkLocalBuilder: async () => ({}),
     });
     await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
-      "between Container and ContainerLocal is not supported",
+      "cannot be switched into or out of ContainerLocal",
     );
-    expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
+    // Besides a buildx builder query, only synth ran: nothing was built or deployed.
+    expect(
+      h.commands.map(({ command }) => command).filter((command) => command[1] !== "buildx"),
+    ).toEqual([synthCommand(p)]);
     expect(h.runs).toHaveLength(0);
     expect(h.bootstrapRegions).toHaveLength(0);
     expect(h.transactionSearchRegions).toHaveLength(0);
@@ -758,7 +845,7 @@ describe("CdkBackend.deploy", () => {
       checkLocalBuilder: async () => ({}),
     });
     await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
-      "between Container and ContainerLocal is not supported",
+      "cannot be switched into or out of ContainerLocal",
     );
     expect(h.stackReads[0]?.stackName).toBe("CustomOrders");
     expect(h.runs).toHaveLength(0);
@@ -783,7 +870,7 @@ describe("CdkBackend.deploy", () => {
       checkLocalBuilder: async () => ({}),
     });
     await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
-      "between Container and ContainerLocal is not supported",
+      "cannot be switched into or out of ContainerLocal",
     );
     expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-default-0");
     expect(h.runs).toHaveLength(0);
@@ -814,7 +901,8 @@ describe("CdkBackend.deploy", () => {
     );
     expect(provisioned).toBe(false);
     expect(h.runs).toHaveLength(0);
-    expect(h.commands).toHaveLength(0);
+    // Only the buildx builder query ran, not synth.
+    expect(h.commands.map(({ command }) => command)).toEqual([["docker", "buildx", "inspect"]]);
   });
 
   test("reuses the workload build modes the command resolved instead of rereading harness.yaml", async () => {
@@ -912,6 +1000,179 @@ describe("CdkBackend.deploy", () => {
     expect(warnings.map((event) => event.message).join("\n")).toContain(
       "'multiarch-builder' uses the docker-container driver",
     );
+  });
+  test.each([
+    ["docker", "docker-container", "desktop-linux"],
+    ["/usr/local/bin/docker", "kubernetes", "desktop-linux"],
+    ["docker", "docker", undefined],
+    ["finch", "docker-container", undefined],
+  ] as const)(
+    "with %s and a %s buildx driver, hands CDK BUILDX_BUILDER=%s",
+    async (executable, driver, expected) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      const checks: (string | undefined)[] = [];
+      const h = harness({
+        describedStack: null,
+        resolveContainerExecutable: async () => executable,
+        commandOutput: (command) =>
+          command[1] === "buildx"
+            ? `Name: ci\nDriver: ${driver}\n`
+            : command[1] === "context"
+              ? "desktop-linux\n"
+              : undefined,
+        checkLocalBuilder: async (_runner, _cwd, _executable, options) => {
+          checks.push(options?.buildxBuilder);
+          return {};
+        },
+      });
+      await collectDeploy(h.backend.deploy(p, deployInput()));
+      const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+      expect(deployRun?.options.buildxBuilder).toBe(expected);
+      expect(checks).toEqual([expected]);
+    },
+  );
+  test.each(["default", "colima"])(
+    "probes and deploys with the same BUILDX_BUILDER for Docker context %s",
+    async (context) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      // The real check runs: an x86 daemon, so the ARM64 probe builds.
+      const h = harness({
+        describedStack: null,
+        commandOutput: (command) => {
+          if (command[1] === "info") return '{"OSType":"linux","Architecture":"x86_64"}';
+          if (command[1] === "context") return `${context}\n`;
+          if (command[1] === "buildx") {
+            // The redirected builder is the context's docker-driver builder.
+            return h.commandBuilders.at(-1)?.buildxBuilder === context
+              ? `Name: ${context}\nDriver: docker\n`
+              : "Name: ci\nDriver: docker-container\n";
+          }
+          return undefined;
+        },
+      });
+      const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+      const probe = h.commandBuilders.find(
+        ({ command }) => command[1] === "build" && command.includes("linux/arm64"),
+      );
+      const inspects = h.commandBuilders.filter(({ command }) => command[1] === "buildx");
+      const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+      expect(deployRun?.options.buildxBuilder).toBe(context);
+      expect(probe?.buildxBuilder).toBe(context);
+      // First the active builder is read, then the chosen one is inspected.
+      expect(inspects.map(({ buildxBuilder }) => buildxBuilder)).toEqual([undefined, context]);
+      const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+      expect(warnings.join("\n")).toContain(`BUILDX_BUILDER=${context}`);
+    },
+  );
+  test("falls back to the active builder with a warning when docker context show fails", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const checks: (string | undefined)[] = [];
+    const h = harness({
+      describedStack: null,
+      commandOutput: (command) =>
+        command[1] === "buildx" ? "Name: ci\nDriver: docker-container\n" : undefined,
+      commandError: (command) =>
+        command[1] === "context"
+          ? new Error("docker: 'context' is not a docker command")
+          : undefined,
+      checkLocalBuilder: async (_runner, _cwd, _executable, options) => {
+        checks.push(options?.buildxBuilder);
+        return { buildx: { name: "ci", driver: "docker-container" } };
+      },
+    });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+    expect(deployRun?.options).not.toHaveProperty("buildxBuilder");
+    expect(checks).toEqual([undefined]);
+    const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+    const warning = warnings.find((message) => message.includes("docker context"));
+    expect(warning).toContain("could not read the active Docker context");
+    expect(warning).toContain("'context' is not a docker command");
+    expect(warnings.join("\n")).not.toContain("BUILDX_BUILDER");
+  });
+  test("warns that a bring-your-own execution role needs ECR pull access", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+        executionRoleArn: "arn:aws:iam::111122223333:role/Mine",
+      }),
+      ProjectRuntimeSchema.parse({
+        name: "other",
+        build: "ContainerLocal",
+        codeLocation: "app/other",
+        entrypoint: "main.py",
+      }),
+    );
+    p.spec.harnesses.push({ name: "helper", path: "app/helper" });
+    await mkdir(join(p.rootPath, "app", "helper"), { recursive: true });
+    await writeFile(
+      join(p.rootPath, "app", "helper", "harness.yaml"),
+      "name: helper\nmodel: {bedrockModelConfig: {modelId: test-model}}\n" +
+        "dockerfile: Dockerfile\nbuild: ContainerLocal\n" +
+        "executionRoleArn: arn:aws:iam::111122223333:role/HarnessRole\n",
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ describedStack: null, checkLocalBuilder: async () => ({}) });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+    const warning = warnings.find((message) => message.includes("executionRoleArn"));
+    expect(warning).toContain("runtime/agent, harness/helper use ContainerLocal");
+    expect(warning).not.toContain("runtime/other");
+    expect(warning).toContain("ecr:GetAuthorizationToken on *");
+    expect(warning).toContain("ecr:BatchGetImage and ecr:GetDownloadUrlForLayer");
+    expect(warning).toContain("cdk-<qualifier>-container-assets-<account>-<region>");
+    expect(warning).toContain("fails at first invoke");
+    expect(warning).not.toContain("111122223333");
+  });
+  test("does not warn about execution roles the project creates", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ describedStack: null, checkLocalBuilder: async () => ({}) });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    expect(
+      events.some(
+        (event) => event.type === "warning" && event.message.includes("executionRoleArn"),
+      ),
+    ).toBe(false);
   });
   test("skips builder detection when no workload builds locally", async () => {
     const p = await project();

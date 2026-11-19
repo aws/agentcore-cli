@@ -90,7 +90,30 @@ describe("project add harness", () => {
     [
       "a build without a Dockerfile",
       ["--build-config", '{"build":"ContainerLocal"}'],
-      "build requires a Dockerfile",
+      "Invalid value for option '--build-config': build requires a Dockerfile",
+    ],
+    [
+      "build args without a Dockerfile",
+      ["--build-config", '{"customDockerBuildArgs":{"A":"1"}}'],
+      "Invalid value for option '--build-config': customDockerBuildArgs requires a Dockerfile",
+    ],
+    [
+      "an absolute buildContextPath",
+      [
+        "--build-config",
+        '{"build":"ContainerLocal","buildContextPath":"/tmp/ctx","dockerfile":"Dockerfile"}',
+      ],
+      "Invalid value for option '--build-config': buildContextPath must be relative to the project root",
+    ],
+    [
+      "a reserved build argument for Container",
+      [
+        "--dockerfile",
+        "Dockerfile",
+        "--build-config",
+        '{"customDockerBuildArgs":{"AWS_REGION":"x"}}',
+      ],
+      "Invalid value for option '--build-config': customDockerBuildArgs must not use keys reserved",
     ],
   ])("rejects %s", async (_label, flags, message) => {
     const { projectRoot, cleanup } = await initProject();
@@ -134,6 +157,29 @@ describe("project add harness", () => {
     const spec = parse(await Bun.file(join(projectRoot, "app", "local", "harness.yaml")).text());
     expect(spec).toMatchObject({ dockerfile: "Agent.Dockerfile", buildContextPath: "docker" });
     expect(existsSync(join(projectRoot, "app", "local", "Dockerfile.dockerignore"))).toBe(false);
+  });
+  test("says it copied the Dockerfile and that later edits to the original are not used", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await Bun.write(dockerfile, "FROM scratch\n");
+    const { io } = await run([
+      "add",
+      "harness",
+      "--name",
+      "local",
+      "--build-config",
+      JSON.stringify({
+        build: "ContainerLocal",
+        dockerfile,
+        customDockerBuildArgs: { AWS_REGION: "us-west-2" },
+      }),
+    ]);
+    expect(io.stderr()).toContain(
+      `copied ${dockerfile} to app/local/Dockerfile; later edits to the original are not used`,
+    );
+    const spec = parse(await Bun.file(join(projectRoot, "app", "local", "harness.yaml")).text());
+    expect(spec.customDockerBuildArgs).toEqual({ AWS_REGION: "us-west-2" });
   });
   test("without --build-config a --dockerfile harness records no build key", async () => {
     const { projectRoot, cleanup } = await initProject();

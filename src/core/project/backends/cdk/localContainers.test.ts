@@ -1,8 +1,60 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { InputValidationError } from "../../../../errors";
 import { HarnessSpecSchema } from "../../../../projectSchemas/harness";
+import { ProjectSpecSchema } from "../../../../projectSchemas/project";
 import { ProjectRuntimeSchema } from "../../../../projectSchemas/runtime";
-import type { WorkloadBuildMode } from "../../../../handlers/project/types";
-import { assertSupportedBuildTransitions, type DeployedTemplate } from "./localContainers";
+import type { Project, WorkloadBuildMode } from "../../../../handlers/project/types";
+import {
+  assertSupportedBuildTransitions,
+  resolveWorkloads,
+  type DeployedTemplate,
+} from "./localContainers";
+
+describe("resolveWorkloads", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+  function harnessProject(entryName: string, yaml: string): Project {
+    const rootPath = mkdtempSync(join(tmpdir(), "agentcore-local-containers-"));
+    roots.push(rootPath);
+    mkdirSync(join(rootPath, "app", "helper"), { recursive: true });
+    writeFileSync(join(rootPath, "app", "helper", "harness.yaml"), yaml);
+    const spec = ProjectSpecSchema.parse({ name: "example", version: 2 });
+    spec.harnesses.push({ name: entryName, path: join("app", "helper") });
+    return { name: "example", rootPath, spec };
+  }
+
+  test("keys a harness by its agentcore.json entry name, not the name in harness.yaml", () => {
+    const p = harnessProject(
+      "helper",
+      "name: renamed\nmodel: {bedrockModelConfig: {modelId: test-model}}\n" +
+        "dockerfile: Dockerfile\nbuild: ContainerLocal\n",
+    );
+    const { builds, local } = resolveWorkloads(p);
+    expect(builds).toEqual({ "harness/helper": "ContainerLocal" });
+    expect([...local.keys()]).toEqual(["harness/helper"]);
+  });
+  test("names the file when harness.yaml is invalid", () => {
+    const p = harnessProject("helper", "name: helper\nbuild: NotABuildMode\n");
+    const error = (() => {
+      try {
+        resolveWorkloads(p);
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(error).toBeInstanceOf(InputValidationError);
+    const message = (error as Error).message;
+    expect(message).toContain(
+      `Invalid harness.yaml at '${join(p.rootPath, "app", "helper", "harness.yaml")}'`,
+    );
+    expect(message).toContain("build");
+  });
+});
 
 describe("container configuration", () => {
   const networkConfig = {
@@ -34,6 +86,31 @@ describe("container configuration", () => {
       }).success,
     ).toBe(true);
   });
+  test("applies the CodeBuild reserved build-arg rule to Container builds only", () => {
+    const customDockerBuildArgs = { AWS_REGION: "us-west-2", CODEBUILD_X: "1" };
+    const runtime = (build: string) =>
+      ProjectRuntimeSchema.safeParse({
+        name: "agent",
+        build,
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+        dockerfile: "Dockerfile",
+        customDockerBuildArgs,
+      }).success;
+    const harness = (build: string | undefined) =>
+      HarnessSpecSchema.safeParse({
+        name: "agent",
+        model: { provider: "bedrock", modelId: "test-model" },
+        ...(build && { build }),
+        dockerfile: "Dockerfile",
+        customDockerBuildArgs,
+      }).success;
+    expect(runtime("ContainerLocal")).toBe(true);
+    expect(runtime("Container")).toBe(false);
+    expect(harness("ContainerLocal")).toBe(true);
+    expect(harness("Container")).toBe(false);
+    expect(harness(undefined)).toBe(false);
+  });
   test.each(["Container", "ContainerLocal"])(
     "rejects explicit %s build settings for a prebuilt harness image",
     (build) => {
@@ -53,6 +130,10 @@ describe("assertSupportedBuildTransitions", () => {
   test.each([
     ["Container", "ContainerLocal"],
     ["ContainerLocal", "Container"],
+    ["CodeZip", "ContainerLocal"],
+    ["ContainerLocal", "CodeZip"],
+    ["Managed", "ContainerLocal"],
+    ["ContainerLocal", "Managed"],
   ] as const satisfies [string, WorkloadBuildMode][])(
     "rejects a deployed %s to %s transition",
     (before, after) => {
@@ -65,18 +146,69 @@ describe("assertSupportedBuildTransitions", () => {
             "example",
             "default",
           ),
-        ).toThrow("between Container and ContainerLocal is not supported");
+        ).toThrow("cannot be switched into or out of ContainerLocal");
       }
     },
   );
   test.each([
-    ["CodeZip", "ContainerLocal"],
-    ["ContainerLocal", "CodeZip"],
-    ["Managed", "ContainerLocal"],
+    ["CodeZip", "Container", 'delete the Dockerfile and set "build": "CodeZip" in agentcore.json'],
+    ["Container", "CodeZip", 'set "build": "Container" and its "dockerfile" in agentcore.json'],
+  ] as const)("rejects a deployed runtime %s to %s transition", (before, after, keep) => {
+    expect(() =>
+      assertSupportedBuildTransitions(
+        { Metadata: { "agentcore:builds": { "runtime/agent": before } } },
+        { "runtime/agent": after },
+        "example",
+        "default",
+      ),
+    ).toThrow(
+      `Cannot change runtime/agent from ${before} to ${after}. The service does not allow ` +
+        "changing a Runtime's artifact type, so the deploy would fail and roll back. Add a " +
+        `Runtime with a new name, or keep the deployed build: ${keep}`,
+    );
+  });
+  test("rejects a pre-feature CodeZip runtime becoming Container", () => {
+    const previous: DeployedTemplate = {
+      Resources: {
+        Runtime: {
+          Type: "AWS::BedrockAgentCore::Runtime",
+          Properties: {
+            AgentRuntimeName: "example_default_agent",
+            AgentRuntimeArtifact: { CodeConfiguration: { Code: {} } },
+          },
+        },
+      },
+    };
+    expect(() =>
+      assertSupportedBuildTransitions(
+        previous,
+        { "runtime/agent": "Container" },
+        "example",
+        "default",
+      ),
+    ).toThrow("Cannot change runtime/agent from CodeZip to Container");
+  });
+  test.each([
+    ["Managed", "Container"],
+    ["Container", "Managed"],
+  ] as const)("leaves a deployed harness %s to %s transition allowed", (before, after) => {
+    expect(() =>
+      assertSupportedBuildTransitions(
+        { Metadata: { "agentcore:builds": { "harness/agent": before } } },
+        { "harness/agent": after },
+        "example",
+        "default",
+      ),
+    ).not.toThrow();
+  });
+  test.each([
+    ["ContainerUri", "ContainerLocal"],
+    ["ContainerLocal", "ContainerUri"],
+    ["Managed", "ContainerUri"],
   ] as const satisfies [string, WorkloadBuildMode][])(
     "allows a deployed %s to %s transition",
     (before, after) => {
-      const key = "runtime/agent";
+      const key = "harness/agent";
       expect(() =>
         assertSupportedBuildTransitions(
           { Metadata: { "agentcore:builds": { [key]: before } } },
@@ -134,10 +266,10 @@ describe("assertSupportedBuildTransitions", () => {
           "example",
           "prod-us",
         ),
-      ).toThrow("between Container and ContainerLocal is not supported");
+      ).toThrow("cannot be switched into or out of ContainerLocal");
     },
   );
-  test("allows a pre-feature CodeZip runtime to become ContainerLocal", () => {
+  test("rejects a pre-feature CodeZip runtime becoming ContainerLocal", () => {
     const previous: DeployedTemplate = {
       Resources: {
         Runtime: {
@@ -156,7 +288,19 @@ describe("assertSupportedBuildTransitions", () => {
         "example",
         "default",
       ),
-    ).not.toThrow();
+    ).toThrow("Cannot change runtime/agent from CodeZip to ContainerLocal");
+  });
+  test("says how to recover: a new name, the deployed build mode, or deploying the removal first", () => {
+    expect(() =>
+      assertSupportedBuildTransitions(
+        { Metadata: { "agentcore:builds": { "runtime/agent": "Container" } } },
+        { "runtime/agent": "ContainerLocal" },
+        "example",
+        "default",
+      ),
+    ).toThrow(
+      /only a new workload can use ContainerLocal\. Keep the deployed build mode \(Container\), or add a workload with a new name\..*deploy the removal first, then add it again\./,
+    );
   });
   test("recognizes v0 target-less physical names", () => {
     const previous: DeployedTemplate = {
@@ -255,7 +399,7 @@ describe("assertSupportedBuildTransitions", () => {
         "example",
         "default",
       ),
-    ).toThrow("between Container and ContainerLocal is not supported");
+    ).toThrow("cannot be switched into or out of ContainerLocal");
     expect(() =>
       assertSupportedBuildTransitions(
         previous,

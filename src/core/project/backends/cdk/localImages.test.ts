@@ -103,6 +103,31 @@ describe("localImageBuilds", () => {
     );
   });
 
+  test("fails when the asset manifest has no build context for a recorded image", async () => {
+    const directory = await fixtureCopy();
+    await editJson(join(directory, "AgentCore-Fixture.assets.json"), (manifest) => {
+      delete manifest.dockerImages[ORDERS_HASH].source.directory;
+    });
+    await expect(localImageBuilds(json, directory, "Fixture", FIXTURE_BUILDS)).rejects.toThrow(
+      /asset manifest of stack .* has no build context for runtime\/orders.*too old/,
+    );
+  });
+
+  test("trims separators from both ends of the image name", async () => {
+    const directory = await fixtureCopy();
+    await editJson(join(directory, "AgentCore-Fixture.template.json"), (template) => {
+      const recorded = template.Metadata["agentcore:localImages"];
+      recorded["runtime/orders_"] = recorded["runtime/orders"];
+      delete recorded["runtime/orders"];
+    });
+    const images = await localImageBuilds(json, directory, "_Fixture", {
+      "runtime/orders_": "ContainerLocal",
+      "harness/assistant": "ContainerLocal",
+    });
+    const orders = images.find((image) => image.resource === "runtime/orders_")!;
+    expect(orders.tag).toBe(`agentcore-local/fixture-runtime-orders:${ORDERS_HASH}`);
+  });
+
   test("rejects malformed local image metadata", async () => {
     const directory = await fixtureCopy();
     await editJson(join(directory, "AgentCore-Fixture.template.json"), (template) => {
