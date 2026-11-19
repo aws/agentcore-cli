@@ -13,7 +13,6 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { ExportHarnessInput, Project, ProjectEvent } from "../../handlers/project/types";
 import { HarnessSpecSchema } from "../../projectSchemas/harness";
-import { boxGatewaySpec } from "../../projectSchemas/project";
 import { readEnvFile } from "../../io/envFile";
 
 const originalCwd = process.cwd();
@@ -490,28 +489,8 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 
   test("writes the Box gateway of the exported runtime into a Box project", async () => {
     const { manager: subject } = manager();
-    const created = await projectWithHarness(subject);
-    // Make it a Box project, as a Box template writes it: a Box gateway for each runtime.
-    const path = join(created.rootPath, "agentcore", "agentcore.json");
-    const onDisk = (await Bun.file(path).json()) as {
-      runtimes: { name: string }[];
-      agentCoreGateways?: { boundRuntime?: string }[];
-    };
-    const gateways = onDisk.agentCoreGateways ?? [];
-    await Bun.write(
-      path,
-      JSON.stringify({
-        ...onDisk,
-        projectType: "box",
-        agentCoreGateways: [
-          ...gateways,
-          ...onDisk.runtimes
-            .filter(({ name }) => !gateways.some(({ boundRuntime }) => boundRuntime === name))
-            .map(({ name }) => boxGatewaySpec(name)),
-        ],
-      }),
-    );
-    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+    // agent-python-minimal gets a box profile, so create makes a Box project.
+    const project = await projectWithHarness(subject);
     expect(project.spec.projectType).toBe("box");
 
     await drain(subject.exportHarness(project, exportInput()));

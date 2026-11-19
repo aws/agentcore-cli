@@ -147,7 +147,8 @@ describe("project remove", () => {
 
     const agentcoreJson = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
     const remaining = (agentcoreJson[specKey] ?? []) as { name: string }[];
-    expect(remaining.map((r) => r.name)).toEqual(expectedRemaining);
+    // Compared as sets: these tests are about what remove leaves, not the order create writes.
+    expect(remaining.map((r) => r.name).sort()).toEqual([...expectedRemaining].sort());
     expect(stderr.includes(APP_CODE_RETAINED_NOTICE)).toBe(showsAppCodeNotice ?? false);
   });
 
