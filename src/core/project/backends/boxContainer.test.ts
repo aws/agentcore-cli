@@ -44,6 +44,8 @@ async function project(dockerfile: string): Promise<Project> {
           codeLocation: "app/agent",
           dockerfile: "Dockerfile",
           modelProvider: "Bedrock",
+          // create writes box.version only for the box container template, whose image copies box.
+          ...(dockerfile.includes(".box-dist") && { box: { version: "1.0.0" } }),
         },
       ],
       memories: [],
@@ -100,6 +102,15 @@ describe("stageBoxContainers", () => {
     await stageBoxContainers(demo, [], releaseOf().releaseFor);
 
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
+  });
+
+  test("stages nothing for a user's image that copies .box-dist/ but has no box.version", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    delete demo.spec.runtimes[0]!.box;
+
+    const { releaseFor, versions } = releaseOf();
+    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual([]);
+    expect(versions).toEqual([]);
   });
 
   test("stages nothing for an image that does not copy .box-dist/", async () => {

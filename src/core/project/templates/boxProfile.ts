@@ -196,6 +196,22 @@ export function startsInBoxOnCodeZip(runtime: ScaffoldRuntimeInput): boolean {
   );
 }
 
+/**
+ * Whether a runtime runs its agent in a box: in a Box project (`boxProject`, which is
+ * `"projectType": "box"`), a runtime with `box.version`, which `agentcore create` writes only for
+ * a box template. Build, deploy and dev decide this here and nowhere else. The entry point and the
+ * Dockerfile say only how box starts, so a user's own `start.py` or Dockerfile never makes a
+ * runtime boxed.
+ */
+export function runsInBox(boxProject: boolean, runtime: Pick<ProjectRuntime, "box">): boolean {
+  return boxProject && runtime.box !== undefined;
+}
+
+/** {@link runsInBox} for a runtime of `spec`. */
+export function runtimeRunsInBox(spec: ProjectSpec, runtime: ProjectRuntime): boolean {
+  return runsInBox(isBoxProject(spec), runtime);
+}
+
 /** Whether a runtime's entry point is the box start script that create writes. */
 export function runsBoxStartScript(entrypoint: string): boolean {
   return entrypoint.split(":")[0] === BOX_CODEZIP_ENTRYPOINT;

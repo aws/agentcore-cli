@@ -10,7 +10,7 @@ import {
   boxIngressPort,
   boxProfileIsFor,
   boxProfilePath,
-  runsBoxStartScript,
+  runsInBox,
 } from "../project/templates/boxProfile";
 
 type BoxDevRunnerConfig = {
@@ -40,43 +40,32 @@ export class BoxDevRunner implements DevRunner {
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
-    // As build and deploy, dev treats a runtime as boxed only in a Box project.
-    if (!input.boxProject) {
-      if (runsBoxStartScript(input.runtime.entrypoint)) {
-        throw new ProjectStateError(
-          notBoxProjectMessage(input.runtime.name, input.runtime.entrypoint),
-        );
+    const profile = boxProfilePath(input.projectRoot);
+    // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
+    if (!runsInBox(input.boxProject, input.runtime)) {
+      if (input.runtime.box !== undefined) {
+        throw new ProjectStateError(notBoxProjectMessage(input.runtime.name));
       }
-      // A box profile here was written for a Box project, so say why dev does not use it.
-      if (existsSync(boxProfilePath(input.projectRoot))) {
+      // A box profile here was written for a box runtime, so say why dev does not use it.
+      if (existsSync(profile)) {
         yield {
           type: "status",
-          message: 'Running without a box: agentcore.json has no "projectType": "box"',
+          message: input.boxProject
+            ? `Running without a box: runtime "${input.runtime.name}" has no box.version in agentcore.json`
+            : 'Running without a box: agentcore.json has no "projectType": "box"',
         };
       }
       yield* this.fallback.run(input);
       return;
     }
-    const profile = boxProfilePath(input.projectRoot);
     const hasProfile = existsSync(profile);
     if (!hasProfile || !boxProfileIsFor(readFileSync(profile, "utf8"), input.runtime)) {
-      // start.py starts box on AgentCore Runtime, and runs no agent of its own.
-      if (runsBoxStartScript(input.runtime.entrypoint)) {
-        throw new ResourceNotFoundError(
-          `runtime "${input.runtime.name}" runs its agent in a box (entrypoint ` +
-            `${input.runtime.entrypoint}), but ${profile} ` +
-            (hasProfile ? "is the box profile of another runtime." : "does not exist.") +
-            " Restore the profile that `agentcore create` wrote.",
-        );
-      }
-      if (hasProfile) {
-        yield {
-          type: "status",
-          message: `Running without a box: ${profile} is the box profile of another runtime`,
-        };
-      }
-      yield* this.fallback.run(input);
-      return;
+      throw new ResourceNotFoundError(
+        `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +
+          `agentcore.json), but ${profile} ` +
+          (hasProfile ? "is the box profile of another runtime." : "does not exist.") +
+          " Restore the profile that `agentcore create` wrote.",
+      );
     }
     const listen = boxIngressPort(input.runtime.protocol);
     if (input.port !== listen) {
@@ -108,12 +97,12 @@ export class BoxDevRunner implements DevRunner {
 }
 
 /**
- * Why dev cannot run a runtime that starts box: agentcore.json lost its `"projectType": "box"`, so
- * build and deploy would give it no Box gateway, and dev does not run it in a box either.
+ * Why dev cannot run a box runtime: agentcore.json lost its `"projectType": "box"`, so build and
+ * deploy would give it no Box gateway, and dev does not run it in a box either.
  */
-export function notBoxProjectMessage(runtimeName: string, startsBoxWith: string): string {
+export function notBoxProjectMessage(runtimeName: string): string {
   return (
-    `runtime "${runtimeName}" runs its agent in a box (${startsBoxWith}), but agentcore.json ` +
+    `runtime "${runtimeName}" runs its agent in a box (it has box.version), but agentcore.json ` +
     `has no "projectType": "box". Add "projectType": "box" back to agentcore.json, then retry.`
   );
 }

@@ -24,10 +24,11 @@ CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build f
 from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
 is needed.
 
-Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
-have `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a
-plain runtime the usual way, and stops on one that starts box (a CodeZip `start.py` entrypoint, or
-a Dockerfile that installs box) with `agentcore.json has no "projectType": "box"`.
+Dev, build and deploy run a runtime's agent in a box only when `agentcore.json` has
+`"projectType": "box"` and the runtime has `"box": { "version": ... }`. `create` writes both, and
+only for the box templates. The runtime's entry point and Dockerfile never decide it, so your own
+`start.py` runs the usual way. A runtime with `box.version` in a project without
+`"projectType": "box"` stops dev with `agentcore.json has no "projectType": "box"`.
 
 To try an unreleased box build, publish it as a pre-release with the same file names and set
 `box.version` to it: a version the CLI does not pin takes its checksums from the release's

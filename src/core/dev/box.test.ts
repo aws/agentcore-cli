@@ -73,6 +73,7 @@ function input(
   protocol?: ProjectRuntime["protocol"],
   entrypoint = "main.py",
   boxProject = true,
+  box = true,
 ): DevServerInput {
   return {
     runtime: {
@@ -81,6 +82,8 @@ function input(
       codeLocation: "app/agent",
       protocol,
       entrypoint,
+      // create writes box.version only for a box template.
+      ...(box && { box: { version: "1.0.0" } }),
     } as ProjectRuntime,
     projectRoot,
     boxProject,
@@ -110,7 +113,9 @@ describe("BoxDevRunner", () => {
   test("needs no box for a project without a box profile", async () => {
     const { projectRoot, checked, fallbackRuns, runner } = await scene(false, false);
 
-    await collect(runner.run(input(projectRoot)));
+    await collect(
+      runner.run(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false)),
+    );
 
     expect(checked).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
@@ -156,14 +161,16 @@ describe("BoxDevRunner", () => {
   test("runs the agent the usual way when the project has no box profile", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
 
-    const events = await collect(runner.run(input(projectRoot)));
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false)),
+    );
 
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 
-  test("refuses a runtime that starts box, when the project has no box profile", async () => {
+  test("refuses a box runtime when the project has no box profile", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
 
     const error = await collect(runner.run(input(projectRoot, 8080, "HTTP", "start.py"))).catch(
@@ -172,7 +179,7 @@ describe("BoxDevRunner", () => {
 
     expect(error).toBeInstanceOf(ResourceNotFoundError);
     expect((error as Error).message).toContain(
-      'runtime "agent" runs its agent in a box (entrypoint start.py)',
+      'runtime "agent" runs its agent in a box (it has box.version in agentcore.json)',
     );
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(0);
@@ -182,7 +189,7 @@ describe("BoxDevRunner", () => {
     const { projectRoot, calls, fallbackRuns, runner, checked } = await scene(true);
 
     const events = await collect(
-      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false)),
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false, false)),
     );
 
     expect(calls).toEqual([]);
@@ -202,9 +209,25 @@ describe("BoxDevRunner", () => {
     const { projectRoot, runner } = await scene(false);
 
     const events = await collect(
-      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false)),
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false, false)),
     );
 
+    expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test.each([
+    ["outside a Box project", false],
+    ["in a Box project", true],
+  ])("runs a user's own start.py with no box.version the usual way %s", async (_, boxProject) => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
+
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "start.py", boxProject, /* box */ false)),
+    );
+
+    // Only box.version in a Box project makes a runtime boxed, not its entry point.
+    expect(calls).toEqual([]);
+    expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 
@@ -217,7 +240,7 @@ describe("BoxDevRunner", () => {
 
     expect(error).toBeInstanceOf(ProjectStateError);
     expect((error as Error).message).toBe(
-      'runtime "agent" runs its agent in a box (start.py), but agentcore.json has no ' +
+      'runtime "agent" runs its agent in a box (it has box.version), but agentcore.json has no ' +
         '"projectType": "box". Add "projectType": "box" back to agentcore.json, then retry.',
     );
     expect(calls).toEqual([]);
@@ -235,11 +258,9 @@ describe("BoxDevRunner", () => {
   test("runs another runtime the usual way, since the profile is the first runtime's", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
     const second = input(projectRoot);
-    second.runtime = {
-      ...second.runtime,
-      name: "second",
-      codeLocation: "app/second",
-    } as ProjectRuntime;
+    // The second runtime was added without a box template, so it has no box.version.
+    const { box: _box, ...plain } = second.runtime;
+    second.runtime = { ...plain, name: "second", codeLocation: "app/second" } as ProjectRuntime;
 
     const events = await collect(runner.run(second));
 
@@ -248,7 +269,7 @@ describe("BoxDevRunner", () => {
     expect(events).toEqual([
       {
         type: "status",
-        message: expect.stringContaining("is the box profile of another runtime"),
+        message: 'Running without a box: runtime "second" has no box.version in agentcore.json',
       },
       { type: "stdout", line: "fallback" },
     ]);

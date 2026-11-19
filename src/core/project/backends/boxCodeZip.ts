@@ -3,12 +3,12 @@ import { join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
-import { BOX_CODEZIP_DIST, runsBoxStartScript } from "../templates/boxProfile";
+import { BOX_CODEZIP_DIST, runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
 
 /**
- * Stages box into each CodeZip runtime whose entry point is the box start
- * script, so the zip carries it: `<codeLocation>/.box-dist/` gets box, its
+ * Stages box into each CodeZip runtime that runs in a box ({@link runtimeRunsInBox}),
+ * so the zip carries it: `<codeLocation>/.box-dist/` gets box, its
  * helpers, its packs, the libffi shim built for the runtime's Python, and what
  * the runtime profile writer writes from the runtime's Box network model: the
  * Runtime profile and a byte copy of each policy file it names. The folder is
@@ -21,7 +21,7 @@ export async function stageBoxCodeZip(
   box: (version: string | undefined) => Promise<BoxLinuxBuild>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
-    (runtime) => runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint),
+    (runtime) => runtime.build === "CodeZip" && runtimeRunsInBox(project.spec, runtime),
   );
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({

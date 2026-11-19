@@ -25,6 +25,8 @@ function spec(options: { entrypoint?: string; memories?: string[] } = {}): Proje
         build: "CodeZip",
         entrypoint: options.entrypoint ?? "start.py",
         codeLocation: "app/agent",
+        // create writes box.version only for a box template, whose entry point is start.py.
+        ...(options.entrypoint === undefined && { box: { version: "1.0.0" } }),
       },
     ],
     memories: (options.memories ?? ["agentMemory"]).map((name) => ({
@@ -185,7 +187,7 @@ describe("addBoxBedrockTarget", () => {
 
     for (const project of [mcp, openai, plain]) {
       expect(addBoxBedrockTarget(project, ROOT)).toEqual([]);
-      expect(boxBedrockPolicy(project, ROOT)).toBeUndefined();
+      expect(boxBedrockPolicy(project)).toBeUndefined();
     }
   });
 
@@ -200,7 +202,7 @@ describe("addBoxBedrockTarget", () => {
   });
 
   test("grants the gateway role the model invoke actions in any region", () => {
-    expect(boxBedrockPolicy(spec(), ROOT)).toEqual({
+    expect(boxBedrockPolicy(spec())).toEqual({
       Version: "2012-10-17",
       Statement: [
         {

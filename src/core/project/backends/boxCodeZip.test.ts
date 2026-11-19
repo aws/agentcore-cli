@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,6 +69,8 @@ async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Prom
           codeLocation: "app/agent",
           runtimeVersion,
           modelProvider: "Bedrock",
+          // create writes box.version only for a box template, whose entry point is start.py.
+          ...(entrypoint === "start.py" && { box: { version: "1.0.0" } }),
         },
       ],
       memories: [],
@@ -133,6 +136,26 @@ describe("stageBoxCodeZip", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
     expect(await Bun.file(join(dist, "ffi", "libffi.so.8")).exists()).toBe(false);
+  });
+
+  test.each([
+    ["a user's own start.py, with no box.version", false, "box"],
+    ["a box runtime outside a Box project", true, undefined],
+  ] as const)("stages nothing for %s", async (_label, boxVersion, projectType) => {
+    const demo = await project("start.py");
+    const runtime = demo.spec.runtimes[0]!;
+    if (!boxVersion) delete runtime.box;
+    (demo.spec as { projectType?: string }).projectType = projectType;
+    const asked: (string | undefined)[] = [];
+
+    expect(
+      await stageBoxCodeZip(demo, [], async (version) => {
+        asked.push(version);
+        return linuxBuild();
+      }),
+    ).toEqual([]);
+    expect(asked).toEqual([]);
+    expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 
   test("replaces what an earlier deploy staged", async () => {

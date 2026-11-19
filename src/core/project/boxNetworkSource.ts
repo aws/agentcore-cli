@@ -8,12 +8,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
-import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectSpec } from "../../projectSchemas/project";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
-import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
+import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
-import { BOX_PROFILE_FILE, boxProfilePath } from "./templates/boxProfile";
+import { BOX_PROFILE_FILE, boxProfilePath, runtimeRunsInBox } from "./templates/boxProfile";
 import {
   boxGatewayOf,
   buildBoxNetwork,
@@ -48,9 +48,7 @@ export async function readBoxNetworks(
   resolver: BoxProfileResolver,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): Promise<BoxNetwork[]> {
-  const runtimes = isBoxProject(spec)
-    ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
-    : [];
+  const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
   const { parsed, failures: found } = await readResolvedPolicy(projectRoot, resolver, region);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a

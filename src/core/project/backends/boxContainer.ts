@@ -6,7 +6,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
-import { runsBoxStartScript } from "../templates/boxProfile";
+import { runtimeRunsInBox } from "../templates/boxProfile";
 import type { BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
@@ -104,8 +104,8 @@ export async function stageBoxImage(
 }
 
 /**
- * Stages box for build and deploy into each container runtime whose
- * Dockerfile copies `.box-dist/`: the box release its `box.version` names, and
+ * Stages box for build and deploy into each container runtime that runs in a box
+ * ({@link runtimeRunsInBox}): the box release its `box.version` names, and
  * what the runtime profile writer writes from the runtime's Box network model,
  * the Runtime profile and a byte copy of each policy file it names. Returns the names of the runtimes it staged.
  */
@@ -114,8 +114,8 @@ export async function stageBoxContainers(
   networks: readonly BoxNetwork[],
   releaseFor: (version: string | undefined) => Promise<BoxRelease>,
 ): Promise<string[]> {
-  const runtimes = project.spec.runtimes.filter((runtime) =>
-    imageCopiesBox(project.rootPath, runtime),
+  const runtimes = project.spec.runtimes.filter(
+    (runtime) => runtime.build === "Container" && runtimeRunsInBox(project.spec, runtime),
   );
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
@@ -147,16 +147,4 @@ export async function stageBoxContainers(
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
   }
   return runtimes.map((runtime) => runtime.name);
-}
-
-/**
- * Whether a runtime runs its agent in a box on AgentCore Runtime: a CodeZip
- * runtime whose entry point is the box start script, or a container runtime
- * whose Dockerfile copies `.box-dist/`.
- */
-export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): boolean {
-  return (
-    (runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint)) ||
-    imageCopiesBox(projectRoot, runtime)
-  );
 }

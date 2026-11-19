@@ -812,9 +812,11 @@ describe("ContainerDevRunner", () => {
         /** The text of `.box/profile.toml`. */
         profileText?: string;
         dockerfile?: string;
+        /** Whether the runtime has box.version, which create writes only for a box template. */
+        box?: boolean;
       } = {},
     ) {
-      const projectRuntime = runtime();
+      const projectRuntime = runtime(options.box === false ? {} : { box: { version: "1.0.0" } });
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
@@ -850,6 +852,7 @@ describe("ContainerDevRunner", () => {
     test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -984,7 +987,7 @@ describe("ContainerDevRunner", () => {
 
       expect(error).toBeInstanceOf(ProjectStateError);
       expect((error as Error).message).toContain(
-        'runs its agent in a box (its Dockerfile installs box), but agentcore.json has no "projectType": "box"',
+        'runs its agent in a box (it has box.version), but agentcore.json has no "projectType": "box"',
       );
       expect(calls.map(({ command }) => command[1])).not.toContain("build");
       expect(calls.map(({ command }) => command[1])).not.toContain("run");
@@ -1003,6 +1006,7 @@ describe("ContainerDevRunner", () => {
     test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -1144,7 +1148,10 @@ describe("ContainerDevRunner", () => {
     });
 
     test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
-      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
+      const { projectRuntime, root } = await boxedScene({
+        dockerfile: "FROM scratch\n",
+        box: false,
+      });
       const awsDirectory = join(root, ".aws");
       await mkdir(awsDirectory);
       let resolved = 0;
@@ -1172,7 +1179,7 @@ describe("ContainerDevRunner", () => {
       );
 
       expect(error).toBeInstanceOf(ResourceNotFoundError);
-      expect((error as Error).message).toContain("its Dockerfile copies .box-dist/");
+      expect((error as Error).message).toContain("it has box.version in agentcore.json");
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
   });
