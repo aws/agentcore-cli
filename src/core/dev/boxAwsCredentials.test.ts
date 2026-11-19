@@ -15,7 +15,8 @@ const SECOND: AwsCredentialIdentity = { accessKeyId: "AKIDSECOND", secretAccessK
 function hostPath(mounts: string[], container: string): string {
   const flag = mounts.find((value) => value.includes(`:${container}:`));
   if (!flag) throw new Error(`no mount for ${container}`);
-  return flag.slice(0, flag.indexOf(":"));
+  // A Windows host path has its own colon (C:\...), so the host path ends at the container one.
+  return flag.slice(0, flag.indexOf(`:${container}:`));
 }
 
 describe("writeBoxDevAwsFiles", () => {

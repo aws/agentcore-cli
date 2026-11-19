@@ -309,7 +309,10 @@ process.exit(0);
     const parent = await script(
       "late-output.mjs",
       `import { spawn } from "node:child_process";
-spawn("sh", ["-c", "sleep 1.5; echo LATE_LINE"], { stdio: ["ignore", "inherit", "inherit"] });
+// node, not sh, so the test runs on Windows too.
+spawn(process.execPath, ["-e", "setTimeout(() => console.log('LATE_LINE'), 1500)"], {
+  stdio: ["ignore", "inherit", "inherit"],
+});
 console.log("early");
 `,
     );

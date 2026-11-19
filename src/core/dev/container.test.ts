@@ -87,9 +87,11 @@ function harness(
       const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
       call.envFile = { path, contents, mode: metadata.mode & 0o777 };
     }
-    const awsFlag = command.findIndex((part) => part.endsWith(":/aws-config/credentials:ro"));
+    const awsMount = ":/aws-config/credentials:ro";
+    const awsFlag = command.findIndex((part) => part.endsWith(awsMount));
     if (awsFlag >= 0) {
-      const path = command[awsFlag]!.split(":")[0]!;
+      // A Windows host path has its own colon (C:\...), so the host path ends at the mount.
+      const path = command[awsFlag]!.slice(0, -awsMount.length);
       const [contents, file, folder] = await Promise.all([
         readFile(path, "utf8"),
         stat(path),
@@ -1070,9 +1072,9 @@ describe("ContainerDevRunner", () => {
         contents:
           "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret-example\n" +
           "aws_session_token = token-example\n",
-        // Readable by the container's user; the folder keeps other host users out.
-        mode: 0o644,
-        folderMode: 0o700,
+        // Readable by the container's user; the folder keeps other host users out. Windows has no
+        // mode bits.
+        ...(process.platform !== "win32" && { mode: 0o644, folderMode: 0o700 }),
       });
       const env = parseEnv(run.envFile!.contents);
       expect(env).toMatchObject({
