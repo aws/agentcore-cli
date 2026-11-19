@@ -437,6 +437,11 @@ bun run "$CLI" deploy
   set. Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
   expired. Refresh them and restart dev.
+- **Dev warns that the box profile `reads GITHUB_TOKEN for [egress.github], but it is not set`, and
+  box then stops with `credential variable GITHUB_TOKEN is not set`.** Dev reads each `env://` key
+  of the profile from the shell it runs in, then from `agentcore/.env.local`. Export it in that
+  shell (`export GITHUB_TOKEN=...`), set it on the same line as dev, or put it in
+  `agentcore/.env.local`, then restart dev. A variable set without `export` does not reach dev.
 - **Dev on macOS fails with `sandbox initialization failed: Operation not permitted`.** Dev is
   running inside another sandbox. Run it from a normal terminal.
 - **Build says Box is not installed or not on PATH.** Install `box` and put it on your `PATH`,
