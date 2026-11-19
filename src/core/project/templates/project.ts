@@ -26,7 +26,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; privateVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -44,6 +44,12 @@ export async function createProjectTree(
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
     if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
+    if (input.privateVpc && hasBoxProfile(options.runtime)) {
+      for (const runtime of template.spec.runtimes ?? []) {
+        runtime.containment = "PRIVATE_VPC";
+        runtime.network = { mode: "CONTAINED" };
+      }
+    }
     // Only a box template (agent-python-strands-box or agent-python-strands-box-container) runs its
     // agent in a box, so only it makes a Box project.
     templates.push(

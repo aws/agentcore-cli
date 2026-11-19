@@ -237,6 +237,34 @@ describe("agentcore create", () => {
     });
   });
 
+  test.each([
+    ["no containment", undefined, undefined, undefined],
+    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["private-vpc", "private-vpc" as const, "PRIVATE_VPC", { mode: "CONTAINED" }],
+  ])("with %s writes containment %p on the runtime", async (_name, containment, value, network) => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        containment,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    const [runtime] = (await specOnDisk(project)).runtimes as {
+      containment?: string;
+      network?: unknown;
+    }[];
+    expect(runtime?.containment).toBe(value);
+    expect(runtime?.network).toEqual(network);
+  });
+
   test("templates that are not Box templates write no projectType and no gateway", () => {
     const spec = newProjectSpec("example", [{ runtimes: [{ name: "agent" } as never] }]);
     expect("projectType" in spec).toBe(false);
