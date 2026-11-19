@@ -168,6 +168,13 @@ async function runAdd(
   }
 }
 
+/** Every event an operation yields, in order. */
+async function collectEvents(iterator: AsyncGenerator<ProjectEvent, unknown>) {
+  const events: ProjectEvent[] = [];
+  for await (const event of iterator) events.push(event);
+  return events;
+}
+
 async function projectManifest(projectRoot: string): Promise<string[]> {
   return (await readdir(projectRoot, { recursive: true, withFileTypes: true }))
     .filter((entry) => entry.isFile())
@@ -615,6 +622,17 @@ describe("FsProjectManager.create", () => {
     expect(plain.commands).toContainEqual({
       command: ["uv", "sync"],
       cwd: join(directory, "plain", "app", "agent_python_minimal"),
+    });
+
+    // A box container's image builds its own venv, so the host venv keeps the user's uv settings.
+    const container = manager(userEnv);
+    await runCreate(container.manager, {
+      name: "container",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX_CONTAINER,
+    });
+    expect(container.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "container", "app", AGENT_PYTHON_STRANDS_BOX_CONTAINER.runtimeName),
     });
   });
 
@@ -3281,6 +3299,65 @@ describe("docs-only runtimes", () => {
     });
 
     expect(await readFile(join(appDir, "notes.txt"), "utf-8")).toBe("keep me\n");
+  });
+
+  test("a box runtime gets its own box profile, calling Bedrock in the region build uses", async () => {
+    const { manager: subject } = manager({ AWS_REGION: "ap-southeast-2" });
+    const project = await emptyProject(subject);
+
+    const events = await collectEvents(
+      subject.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+        },
+      }),
+    );
+
+    const path = join(project.rootPath, boxLocalProfileFile("agent"));
+    expect(await readFile(path, "utf-8")).toContain('bedrock.region = "ap-southeast-2"');
+    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("a box runtime keeps a box profile that is already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const path = join(project.rootPath, boxLocalProfileFile("agent"));
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, "# mine\n");
+
+    const events = await collectEvents(
+      subject.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+        },
+      }),
+    );
+
+    expect(await readFile(path, "utf-8")).toBe("# mine\n");
+    expect(events).toContainEqual({
+      type: "warning",
+      message: `box profile ${path} already exists; left unchanged`,
+    });
+  });
+
+  test("a box runtime that fails to commit leaves no box profile behind", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+
+    await addFails(subject, project, {
+      resourceType: "runtime",
+      resourceConfig: {
+        name: "agent",
+        networkMode: "VPC",
+        scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+      },
+    });
+
+    expect(existsSync(join(project.rootPath, ".box", "agent"))).toBe(false);
   });
 
   test("build writes what the code changed to agentcore.json, then hands off to the backend", async () => {

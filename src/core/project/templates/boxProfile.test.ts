@@ -62,7 +62,7 @@ const STRANDS = template("agent-python-strands");
 const VENV_GRANTS = {
   read: [
     "${{ workspace }}/app/agent",
-    "${{ workspace }}/app/agent/.venv",
+    { path: "${{ workspace }}/app/agent/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
@@ -271,6 +271,19 @@ describe("renderBoxProfile", () => {
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
         "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
+    ]);
+  });
+
+  test("names the provider section generically for a LiteLLM model ID with no prefix", () => {
+    const runtime = template("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "gpt-4o",
+      apiKey: "sk-test",
+    });
+    expect(boxProfileWarnings(runtime)).toEqual([
+      "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
+        "section with its provider's host to .box/agent/local/profile.toml (or use an openai/, " +
+        "anthropic/ or gemini/ model ID), or the box blocks the agent's model calls",
     ]);
   });
 

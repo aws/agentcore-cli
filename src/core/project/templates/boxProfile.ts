@@ -374,7 +374,7 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
   return {
     command,
     env: { LOCAL_DEV: "1", ...env },
-    read: [str(appDir), str(`${appDir}/.venv`), uvPython],
+    read: [str(appDir), optional(`${appDir}/.venv`), uvPython],
     exec: [optional(`${appDir}/.venv`), uvPython],
     denyWrite: [optional(`${appDir}/.venv`)],
   };
@@ -779,11 +779,17 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
   const route = apiKeyRoute(runtime);
   if (route === undefined) {
     const modelId = runtime.modelId ?? DEFAULT_MODEL_IDS.LiteLLM;
-    const prefix = modelId.split("/")[0];
+    // With no provider prefix (`gpt-4o`), LiteLLM guesses the provider, so the section has no
+    // name to suggest; a prefix the profile knows gets its route without editing.
+    const [prefix, model] = modelId.split("/");
+    const section = model === undefined ? "[egress.<provider>]" : `[egress.${prefix}]`;
+    const prefixHint =
+      model === undefined ? " (or use an openai/, anthropic/ or gemini/ model ID)" : "";
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
-        `[egress.${prefix}] section with its provider's host to ${boxLocalProfileFile(runtime.runtimeName)}, or the box ` +
-        "blocks the agent's model calls",
+        `${section} section with its provider's host to ` +
+        `${boxLocalProfileFile(runtime.runtimeName)}${prefixHint}, or the box blocks the ` +
+        "agent's model calls",
     ];
   }
   if (runtime.apiKey !== undefined || route.providerVariable === undefined) return [];

@@ -908,12 +908,19 @@ export class FsProjectManager implements ProjectManager {
         // not left without one. Create writes the first runtime's profile on its own path.
         const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
         if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
+          const profilePath = boxLocalProfilePath(project.rootPath, addedRuntimeInput.runtimeName);
+          const agentBoxDir = dirname(dirname(profilePath));
+          const agentBoxDirExisted = existsSync(agentBoxDir);
+          const profileExisted = existsSync(profilePath);
           yield* this.writeBoxProfile(
             project.rootPath,
             projectSpec.name,
             addedRuntimeInput,
             await this.boxBuildRegion(),
           );
+          // Removed with the runtime's folder if the spec does not commit, so a retry writes it anew.
+          if (!agentBoxDirExisted) scaffoldedPaths.push(agentBoxDir);
+          else if (!profileExisted) scaffoldedPaths.push(profilePath);
         }
         break;
       }
@@ -2122,11 +2129,12 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      // A boxed agent's profile grants exec only on the uv-managed Pythons in uv's default folder,
-      // so its venv must link to one there, not to a Homebrew or system Python, or to a Python in
-      // the user's own UV_PYTHON_INSTALL_DIR.
+      // A boxed CodeZip agent's profile grants exec only on the uv-managed Pythons in uv's default
+      // folder, so its venv must link to one there, not to a Homebrew or system Python, or to a
+      // Python in the user's own UV_PYTHON_INSTALL_DIR. A box container's image builds its own
+      // venv, so its host venv may use any Python.
       const env =
-        input && hasBoxProfile(input)
+        input && startsInBoxOnCodeZip(input)
           ? { ...this.processEnv, ...boxUvSyncEnv(homedir()) }
           : undefined;
       yield* this.run(["uv", "sync"], appDir, undefined, env);
