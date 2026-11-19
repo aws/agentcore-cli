@@ -34,6 +34,14 @@ async function temp(prefix: string): Promise<string> {
   return directory;
 }
 
+/** Writes the local box profile of the runtime `name`, and the venv of its app folder. */
+async function profile(projectRoot: string, name: string): Promise<void> {
+  const local = join(projectRoot, ".box", name, "local");
+  await mkdir(local, { recursive: true });
+  await writeFile(join(local, "profile.toml"), PROFILE.replace("app/agent", `app/${name}`));
+  await mkdir(join(projectRoot, "app", name, ".venv"), { recursive: true });
+}
+
 /** A project named `Demo` that holds the agent's box profile in .box/agent/local when `profiled`. */
 async function scene(
   profiled: boolean,
@@ -98,6 +106,14 @@ function input(
   };
 }
 
+/** `agent`'s dev input for the runtime `second`, in app/second. */
+function secondOf(agent: DevServerInput): DevServerInput {
+  return {
+    ...agent,
+    runtime: { ...agent.runtime, name: "second", codeLocation: "app/second" } as ProjectRuntime,
+  };
+}
+
 async function collect(events: AsyncIterable<DevEvent>): Promise<DevEvent[]> {
   const collected: DevEvent[] = [];
   for await (const event of events) collected.push(event);
@@ -142,6 +158,20 @@ describe("BoxDevRunner", () => {
       },
       { type: "stdout", line: "Uvicorn running" },
     ]);
+  });
+
+  test("runs each runtime with the box profile of that runtime", async () => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
+    await profile(projectRoot, "second");
+
+    await collect(runner.run(secondOf(input(projectRoot))));
+    await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command[2])).toEqual([
+      ".box/second/local/profile.toml",
+      ".box/agent/local/profile.toml",
+    ]);
+    expect(fallbackRuns).toEqual([]);
   });
 
   test("hands box run the .env.local values, so it can attach the API key, and not dev's OTEL ones", async () => {
@@ -301,7 +331,21 @@ describe("BoxDevRunner", () => {
 
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
+    // The profile of `agent` is not the profile of `second`, so dev says nothing about it.
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test("refuses a box runtime that has no box profile of its own, though another runtime has one", async () => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
+
+    const run = collect(runner.run(secondOf(input(projectRoot, 8080, "HTTP", "start.py"))));
+
+    await expect(run).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(run).rejects.toThrow(
+      `but ${join(projectRoot, ".box", "second", "local", "profile.toml")} does not exist.`,
+    );
+    expect(calls).toEqual([]);
+    expect(fallbackRuns).toEqual([]);
   });
 
   test("tells the user to run uv sync when the runtime has no .venv", async () => {

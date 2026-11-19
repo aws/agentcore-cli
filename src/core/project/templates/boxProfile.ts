@@ -205,6 +205,11 @@ export function boxLocalProfileFile(agentName: string): string {
   return posix.join(boxLocalDir(agentName), "profile.toml");
 }
 
+/** The `[profile] name` of an agent's local box profile: the project's name, then the agent's. */
+export function boxLocalProfileName(projectName: string, agentName: string): string {
+  return `${projectName}-${agentName}`;
+}
+
 /** An agent's local box profile at `projectRoot`. */
 export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
   return join(projectRoot, boxLocalProfileFile(agentName));
@@ -496,6 +501,10 @@ export function renderBoxProfile(
   // profile's [egress] sections, so only the local profile names the provider's host here.
   const keyed = callsModel && !onRuntime ? apiKeyRoute(runtime) : undefined;
   const environment = { ...runner.env, ...PYTHON_ENV };
+  // box keeps one profile of each name on a machine, so each runtime's local profile has its own.
+  const profileName = onRuntime
+    ? projectName
+    : boxLocalProfileName(projectName, runtime.runtimeName);
 
   // The optional sections, each empty or ending in a newline.
   const header = codeZipOnRuntime
@@ -566,7 +575,7 @@ ${header}
 packs = ${packs}
 ${policies}${plugins}
 [profile]
-name = ${str(projectName)}
+name = ${str(profileName)}
 
 ${projectSection}
 ${options}[agent]

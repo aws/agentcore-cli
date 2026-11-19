@@ -31,7 +31,27 @@ async function project(profile?: string): Promise<string> {
   return root;
 }
 
+/** Writes `profile` as the local box profile of the runtime `agentName`. */
+async function writeProfile(root: string, agentName: string, profile: string): Promise<void> {
+  const local = join(root, ".box", agentName, "local");
+  await mkdir(local, { recursive: true });
+  await writeFile(join(local, "profile.toml"), profile);
+}
+
 describe("boxDevSecrets", () => {
+  test("reads only the named runtime's own box profile", async () => {
+    const root = await project(GITHUB_ROUTE);
+    await writeProfile(
+      root,
+      "second",
+      '[egress.docs]\ndestinations = ["docs.example.com"]\nsecret.ref = "env://DOCS_KEY"\n',
+    );
+
+    expect(
+      await boxDevSecrets(root, "second", { GITHUB_TOKEN: "ghp_1", DOCS_KEY: "docs_1" }),
+    ).toEqual({ env: { DOCS_KEY: "docs_1" }, missing: [] });
+  });
+
   test("returns an env:// route's variable under its own name, and writes no .env.local", async () => {
     const root = await project(GITHUB_ROUTE);
 

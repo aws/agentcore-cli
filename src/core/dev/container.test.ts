@@ -843,6 +843,19 @@ describe("ContainerDevRunner", () => {
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
     });
 
+    test("stages the runtime's own box profile, not the profile of another runtime", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      await mkdir(join(root, ".box", "other", "local"), { recursive: true });
+      await writeFile(join(root, ".box", "other", "local", "profile.toml"), "# other\n");
+      const { runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# local profile\n",
+      );
+    });
+
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { calls, runner } = harness({ processEnv: credentials });

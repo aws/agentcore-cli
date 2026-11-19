@@ -92,6 +92,13 @@ describe("stageBoxContainers", () => {
     // The container also stages the @box/agentcore pack, beside box's own packs in the image.
     expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
+    // The runtime's .box/agent/aws/ holds what the profile writer stages in the build context.
+    const aws = join(demo.rootPath, ".box", "agent", "aws");
+    for (const file of ["profile.toml", PACK_PATH]) {
+      expect(await readFile(join(aws, file), "utf8")).toBe(
+        await readFile(join(dist, file), "utf8"),
+      );
+    }
   });
 
   test("replaces what an earlier build staged", async () => {

@@ -95,7 +95,7 @@ describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
       packs: ["@box/base", "@box/bedrock"],
-      profile: { name: "V3Demo" },
+      profile: { name: "V3Demo-agent" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
@@ -109,8 +109,21 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
-    expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
+  test("names itself after the project and the runtime, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
+    // box keeps one profile of each name on a machine, and each runtime has its own local profile.
+    expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo-agent" });
+    expect(
+      (
+        parse(
+          renderBoxProfile("V3Demo", template("agent-python-minimal", { runtimeName: "second" }))!,
+        ) as {
+          profile: unknown;
+        }
+      ).profile,
+    ).toEqual({ name: "V3Demo-second" });
+    expect(renderBoxProfile("V3Demo", STRANDS)).toContain(
+      "Run `box run .box/agent/local/profile.toml`",
+    );
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {

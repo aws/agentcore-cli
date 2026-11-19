@@ -37,26 +37,28 @@ async function linuxBuild(): Promise<BoxLinuxBuild> {
   return { binaries: root, resources: join(root, "resources") };
 }
 
-async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Promise<Project> {
+async function project(
+  entrypoint: string,
+  runtimeVersion = "PYTHON_3_14",
+  names = ["agent"],
+): Promise<Project> {
   const rootPath = await temp("box-project-");
-  await mkdir(join(rootPath, "app", "agent"), { recursive: true });
+  for (const name of names) await mkdir(join(rootPath, "app", name), { recursive: true });
   return {
     name: "demo",
     rootPath,
     spec: {
       name: "demo",
-      runtimes: [
-        {
-          name: "agent",
-          build: "CodeZip",
-          entrypoint,
-          codeLocation: "app/agent",
-          runtimeVersion,
-          modelProvider: "Bedrock",
-        },
-      ],
+      runtimes: names.map((name) => ({
+        name,
+        build: "CodeZip",
+        entrypoint,
+        codeLocation: `app/${name}`,
+        runtimeVersion,
+        modelProvider: "Bedrock",
+      })),
       memories: [],
-      agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
+      agentCoreGateways: names.map((name) => getBoxGatewayBedrockEntry(name)),
     },
   } as unknown as Project;
 }
@@ -144,6 +146,36 @@ describe("stageBoxCodeZip", () => {
     );
   });
 
+  test("stages each runtime's own Runtime profile and policy files into its own code folder", async () => {
+    const build = await linuxBuild();
+    const demo = await project("start.py", "PYTHON_3_14", ["agent", "second"]);
+    for (const [name, file] of [
+      ["agent", "policy.dw"],
+      ["second", "rules.dw"],
+    ] as const) {
+      await mkdir(join(demo.rootPath, ".box", name, "local"), { recursive: true });
+      await writeFile(join(demo.rootPath, ".box", name, "local", file), `// ${name}\n`);
+    }
+    const networks = [model(["policy.dw"]), model(["rules.dw"], "second")];
+
+    expect(await stageBoxCodeZip(demo, networks, async () => build)).toEqual(["agent", "second"]);
+
+    for (const [name, file, other] of [
+      ["agent", "policy.dw", "rules.dw"],
+      ["second", "rules.dw", "policy.dw"],
+    ] as const) {
+      const dist = join(demo.rootPath, "app", name, ".box-dist");
+      expect(await readFile(join(dist, file), "utf8")).toBe(`// ${name}\n`);
+      expect(await Bun.file(join(dist, other)).exists()).toBe(false);
+      const profile = await readFile(join(dist, "profile.toml"), "utf8");
+      expect(profile).toContain(`policies = ["${file}"]`);
+      expect(profile).toContain(`# The policy files of .box/${name}/local/profile.toml,`);
+      expect(await readFile(join(demo.rootPath, ".box", name, "aws", "profile.toml"), "utf8")).toBe(
+        profile,
+      );
+    }
+  });
+
   test("stages no policy file and names none when the model has none", async () => {
     const build = await linuxBuild();
     const demo = await project("start.py");
@@ -155,11 +187,11 @@ describe("stageBoxCodeZip", () => {
   });
 });
 
-/** A model of runtime `agent` with the default Memory route and the policy files given. */
-function model(policyFiles: string[]): BoxNetwork {
+/** A model of the runtime `runtime` with the default Memory route and the policy files given. */
+function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
   return {
-    runtime: "agent",
-    gateway: "agent-box",
+    runtime,
+    gateway: `${runtime}-box`,
     region: "us-west-2",
     hosts: [],
     credentials: [],
