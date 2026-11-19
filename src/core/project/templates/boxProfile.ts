@@ -386,7 +386,7 @@ export function renderBoxProfile(
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
   const callsModel = protocol !== "MCP";
-  const bedrock = callsModel && callsBedrockModel(runtime);
+  const bedrock = writesBedrockRoute(runtime);
   const keyed = callsModel ? apiKeyRoute(runtime) : undefined;
   const environment = { ...runner.env, ...PYTHON_ENV };
 
@@ -511,14 +511,22 @@ function runtimeGatewayRoutes(
         `[egress.${BEDROCK_ROUTE}] route. Rename the target.`,
     );
   }
+  const hostOf = (target: (typeof targets)[number]) => new URL(target.passthrough!.endpoint).host;
+  // Two routes with one destination would leave box to pick one, so a host has one target.
+  const byHost = new Map<string, string>();
+  for (const target of targets) {
+    const other = byHost.get(hostOf(target));
+    if (other !== undefined) {
+      throw new InputValidationError(
+        `gateway '${gateway.name}' has two passthrough targets for ${hostOf(target)}, '${other}' ` +
+          `and '${target.name}', so runtime '${runtime.name}' would get two routes to one host. ` +
+          "Remove one of them.",
+      );
+    }
+    byHost.set(hostOf(target), target.name);
+  }
   return targets
-    .map((target) =>
-      runtimeGatewayRouteSection(
-        gateway.name,
-        target.name,
-        new URL(target.passthrough!.endpoint).host,
-      ),
-    )
+    .map((target) => runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target)))
     .join("");
 }
 
@@ -541,14 +549,12 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  // As renderBoxProfile decides it: an MCP server calls no model.
-  const callsBedrock = (input.protocol ?? "HTTP") !== "MCP" && callsBedrockModel(input);
   return renderBoxProfile(
     spec.name,
     input,
     DEFAULT_EGRESS_BEDROCK_REGION,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, callsBedrock),
+    runtimeGatewayRoutes(spec, runtime, writesBedrockRoute(input)),
   )!;
 }
 
@@ -628,7 +634,18 @@ function list(values: string[]): string {
   return `[${values.map(str).join(", ")}]`;
 }
 
-/** A TOML key: bare when TOML allows it, else a quoted string. */
+/**
+ * A TOML key: bare when TOML allows it, else a quoted string. Defensive: AgentCore Gateway takes
+ * only target names of letters, digits and single dashes, which are bare keys already.
+ */
 function tomlKey(key: string): string {
   return /^[A-Za-z0-9_-]+$/.test(key) ? key : str(key);
+}
+
+/**
+ * Whether the profile has the `[egress.bedrock]` route: the agent calls a Bedrock model, which an
+ * MCP server does not.
+ */
+function writesBedrockRoute(runtime: ScaffoldRuntimeInput): boolean {
+  return (runtime.protocol ?? "HTTP") !== "MCP" && callsBedrockModel(runtime);
 }

@@ -529,6 +529,17 @@ describe("renderRuntimeBoxProfile", () => {
     expect(egressOf(openai).bedrock).toEqual(gatewayRoute("bedrock", "bedrock.example.com"));
   });
 
+  test("refuses two passthrough targets for one host, which would give two routes to it", () => {
+    const project = spec([], {}, [GITHUB, passthrough("github-v2", "https://api.github.com/v2")]);
+
+    expect(() => renderRuntimeBoxProfile(project, project.runtimes[0]!)).toThrow(
+      new InputValidationError(
+        "gateway 'agent-box-egress' has two passthrough targets for api.github.com, 'github' and " +
+          "'github-v2', so runtime 'agent' would get two routes to one host. Remove one of them.",
+      ),
+    );
+  });
+
   test("renders the CodeZip form for start.py and the image form for a container", () => {
     const codeZip = spec(["agentMemory"]);
     const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
