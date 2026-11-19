@@ -3,19 +3,17 @@ import { join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
-import { BOX_CODEZIP_DIST, runsBoxStartScript } from "../templates/boxProfile";
+import { BOX_CODEZIP_DIST, runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
-import { assertStartScriptCopiesPolicyFiles } from "./boxStaging";
 
 /**
- * Stages box into each CodeZip runtime whose entry point is the box start
- * script, so the zip carries it: `<codeLocation>/.box-dist/` gets box, its
+ * Stages box into each CodeZip runtime that runs in a box ({@link runtimeRunsInBox}),
+ * so the zip carries it: `<codeLocation>/.box-dist/` gets box, its
  * helpers, its packs, the libffi shim built for the runtime's Python, and what
  * the runtime profile writer writes from the runtime's Box network model: the
  * Runtime profile and a byte copy of each policy file it names. The folder is
  * rewritten on every build and deploy. `box` is asked for only when a runtime
- * needs it, after each start.sh passes. Returns the names of the runtimes it
- * staged.
+ * needs it. Returns the names of the runtimes it staged.
  */
 export async function stageBoxCodeZip(
   project: Project,
@@ -23,12 +21,15 @@ export async function stageBoxCodeZip(
   box: (version: string | undefined) => Promise<BoxLinuxBuild>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
-    (runtime) => runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint),
+    (runtime) => runtime.build === "CodeZip" && runtimeRunsInBox(project.spec, runtime),
   );
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
+    // A CodeZip deploy reads the deployed resources, its Python and its code path through the
+    // box/agentcore and box/agentcore-codezip packs.
+    kind: "codezip" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -37,13 +38,6 @@ export async function stageBoxCodeZip(
     envLocal: {},
   });
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
-  for (const runtime of runtimes) {
-    assertStartScriptCopiesPolicyFiles(
-      join(project.rootPath, runtime.codeLocation, "start.sh"),
-      runtime.name,
-      networks.find((network) => network.runtime === runtime.name)?.policyFiles ?? [],
-    );
-  }
   // One build for each box version the runtimes name, so each downloads once.
   const builds = new Map<string | undefined, BoxLinuxBuild>();
   for (const runtime of runtimes) {

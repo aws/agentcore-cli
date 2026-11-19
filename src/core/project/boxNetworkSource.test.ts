@@ -16,7 +16,13 @@ const SPEC = {
   name: "demo",
   projectType: "box",
   runtimes: [
-    { name: "agent", build: "CodeZip", entrypoint: "start.py", codeLocation: "app/agent" },
+    {
+      name: "agent",
+      build: "CodeZip",
+      entrypoint: "start.py",
+      codeLocation: "app/agent",
+      box: { version: "1.0.0" },
+    },
   ],
   memories: [],
   credentials: [],

@@ -43,10 +43,9 @@ export async function createProjectTree(
 
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
-    if (isBoxedContainer(options.runtime)) withBoxContainerStartScript(config, template);
-    // A runtime that gets a box profile runs its agent in a box, so its template is a Box template.
-    // Until the box templates make Box projects opt-in, that is every Python CodeZip template and
-    // the Strands container template.
+    if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
+    // Only a box template (agent-python-strands-box or agent-python-strands-box-container) runs its
+    // agent in a box, so only it makes a Box project.
     templates.push(
       hasBoxProfile(options.runtime)
         ? { ...template, spec: { ...template.spec, projectType: "box" } }
@@ -86,21 +85,17 @@ export async function createProjectTree(
 
 /**
  * Starts the runtime's agent in a box on a CodeZip deploy: start.py, the
- * entry point, runs start.sh, which runs `box run` with what deploy stages.
- * Create alone writes them, because only create writes the box profiles.
- * start.sh is kept as box-start.sh in the assets: the standalone binary embeds
- * each asset under its folder and stem, and start.py already has that stem.
+ * entry point, runs `box run` with what deploy stages. Create alone writes it,
+ * because only create writes the box profiles.
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  const files = [
-    [BOX_CODEZIP_ENTRYPOINT, BOX_CODEZIP_ENTRYPOINT],
-    ["start.sh", "box-start.sh"],
-  ] as const;
-  for (const [name, asset] of files) {
-    template.tree.children.push(
-      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${asset}`)),
-    );
-  }
+  // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
+  // Python and code paths the box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+  template.tree.children.push(
+    FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
+      config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+    ),
+  );
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     // The box release build and deploy ship; change it to move to another release. dev runs the
@@ -110,17 +105,11 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 }
 
 /**
- * The container image's entry point, start.sh, which the Dockerfile copies
- * into /opt/box: it fills in the deployed resources and starts `box run`.
- * Dev, build and deploy stage box into .box-dist/, which the Dockerfile copies.
+ * The box release a container image stages: build and deploy use `box.version` to download box in
+ * the Dockerfile. The image runs `box run` directly and needs no start script.
  */
-function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
-  template.tree.children.push(
-    FsTreeNode.createFile("start.sh", () =>
-      config.assetSource.read("templates/box-container/start.sh"),
-    ),
-  );
-  // The box release that dev, build and deploy stage into the image; change it to move to another.
+function withBoxContainerBoxVersion(template: Template): void {
+  // The box release that build and deploy stage into the image; change it to move to another.
   for (const runtime of template.spec.runtimes ?? [])
     runtime.box = { version: BOX_RELEASE.version };
 }

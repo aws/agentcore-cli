@@ -21,38 +21,12 @@ ENV UV_SYSTEM_PYTHON=1 \
 
 RUN useradd -m -u 1000 bedrock_agentcore
 
-# box, its two helpers and its packs, from the public box release (Linux arm64). The CLI names the
-# release in box-release.env, from box.version in agentcore.json (else the box release it pins),
-# with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
-# as .box-dev/ and names it with BOX_DIST, so it never overwrites what build and deploy staged.
-# Before the app is copied, so a code change does not download box again.
-ARG BOX_DIST=.box-dist
-COPY ${BOX_DIST}/box-release.env /tmp/box-release.env
-RUN . /tmp/box-release.env \
-    && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL --retry 3 -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
-    && echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c - \
-    && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box --no-same-owner && rm /tmp/box.tar.gz /tmp/box-release.env
-
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
-# The AgentCore Runtime box profile and the policy files it names, which build and deploy stage
-# beside this file; dev stages the project's .box/profile.toml. The folder is copied whole, so each
-# policy file stays beside the profile. start.sh runs box with the profile's path, outside /app, the
-# workspace.
-COPY ${BOX_DIST}/ /opt/box/
-RUN /opt/box/box --version
-COPY start.sh /opt/box/
-# box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copies
-# in /app are not the agent's, so they go.
-RUN rm -rf /app/.box-dist /app/.box-dev \
-    && chmod 0755 /opt/box/start.sh \
-    && chown bedrock_agentcore:bedrock_agentcore /app
 USER bedrock_agentcore
 
 # AgentCore Runtime service contract ports
@@ -62,5 +36,8 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
-# start.sh starts box in /app; box listens on 8080 and runs the agent in its sandbox on 8081.
-ENTRYPOINT ["/opt/box/start.sh"]
+{{#if enableOtel}}
+CMD ["opentelemetry-instrument", "python", "-m", "{{entrypoint}}"]
+{{else}}
+CMD ["python", "-m", "{{entrypoint}}"]
+{{/if}}

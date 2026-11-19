@@ -29,6 +29,7 @@ import { JsonKey, RegionKey } from "../../keys";
 import { coreOptsFromCtx } from "../../utils";
 import type { CoreHarnessClient } from "../../harness/types";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
+import { isBoxProject } from "../../../projectSchemas/project";
 import { createDeployProjectHandler, DEPLOY_NEXT_STEP } from "../deploy";
 import type { Project, ProjectManager } from "../types";
 import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
@@ -439,6 +440,7 @@ async function runRuntimeDev({
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
+          boxProject: isBoxProject(project.spec),
           runners: config.runners,
           getDevEnvVarsForRuntime,
           // The --port guard above rejects an explicit port with more than one
@@ -649,6 +651,7 @@ async function runWithoutUi({
   for await (const event of runner.run({
     runtime,
     projectRoot: project.rootPath,
+    boxProject: isBoxProject(project.spec),
     port: devPort.port,
     env,
     signal,

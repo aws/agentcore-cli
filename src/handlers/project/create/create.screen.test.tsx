@@ -1019,7 +1019,9 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await r.press("down"); // environment-python-bma
     await waitForText(r.lastFrame, "● environment-python-bma");
@@ -1047,7 +1049,9 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await r.press("down"); // environment-python-bma
     await r.press("down"); // agent-python-minimal
@@ -1091,7 +1095,9 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
     await r.press("down"); // agent-python-strands-container
+    await r.press("down"); // agent-python-strands-box-container
     await r.press("down"); // agent-python-langchain
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
@@ -1132,7 +1138,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 10; i++) await r.press("down");
+    for (let i = 0; i < 12; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 

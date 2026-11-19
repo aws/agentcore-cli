@@ -14,6 +14,7 @@ import {
   telemetryPolicyWriter,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
+import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
@@ -63,7 +64,13 @@ function spec(targets: AgentCoreGatewayTarget[] = [MINE]) {
     name: "demo",
     projectType: "box",
     runtimes: [
-      { name: "agent", build: "CodeZip", entrypoint: "start.py", codeLocation: "app/agent" },
+      {
+        name: "agent",
+        build: "CodeZip",
+        entrypoint: "start.py",
+        codeLocation: "app/agent",
+        box: { version: "1.0.0" },
+      },
     ],
     memories: [],
     credentials: [],
@@ -435,22 +442,41 @@ describe("telemetryPolicyWriter", () => {
 
 describe("runtimeProfileWriter", () => {
   test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
-    const writer = runtimeProfileWriter([{ runtime: "agent", dist: "app/agent/.box-dist" }]);
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "codezip" },
+    ]);
     const models = [network({ policyFiles: ["policy.dw", "rules/extra.dw"] })];
 
     const { files } = run([writer], models);
 
     expect(writer.writes(models, contextFor())).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_CODEZIP_PACK_PATH}` },
       { kind: "file", path: "app/agent/.box-dist/policy.dw" },
       { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
     ]);
-    expect(files.slice(1)).toEqual([
+    // The writer writes exactly the files it declares.
+    expect(files.map(({ path }) => ({ kind: "file", path })) as unknown).toEqual(
+      writer.writes(models, contextFor()),
+    );
+    expect(files.slice(3)).toEqual([
       { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/policy.dw" },
       { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/rules/extra.dw" },
     ]);
     expect("text" in files[0]! && files[0].text).toContain(
       'policies = ["policy.dw", "rules/extra.dw"]',
     );
+  });
+
+  test("stages only the box/agentcore pack for a container", () => {
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
+    ]);
+
+    expect(writer.writes([network()], contextFor())).toEqual([
+      { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
+    ]);
   });
 });

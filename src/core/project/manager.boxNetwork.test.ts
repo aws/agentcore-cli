@@ -84,8 +84,8 @@ const gatewayRoute = (target: string, host: string) => ({
   destinations: [host],
   backends: [
     {
-      url: `@GATEWAY_BOX_URL@/${target}`,
-      auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+      url: `\${{ inputs.gateway.url }}/${target}`,
+      auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
     },
   ],
 });
@@ -164,7 +164,9 @@ async function strandsProject(
   const { value: created } = await drain(
     manager.create({
       name: "demo",
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+        runtimeName: "agent_python_strands",
+      }),
       skipInstall: true,
       skipGit: true,
     }),
@@ -639,10 +641,10 @@ describe("build writes the telemetry policy of the box profile", () => {
 
     await build(manager, root);
 
-    // On the Runtime, the default AWS profile that start.sh writes is the execution role.
+    // On the Runtime, a bare aws:// is the default credential chain: the execution role.
     expect((await runtimeProfile(root)).telemetry).toEqual({
-      logs: { ...LOGS, secret: { ref: "aws://default" } },
-      traces: { ...TRACES, secret: { ref: "aws://default" } },
+      logs: { ...LOGS, secret: { ref: "aws://" } },
+      traces: { ...TRACES, secret: { ref: "aws://" } },
     });
     expect(await text(root, RUNTIME_PROFILE)).not.toContain("my-profile");
   });
@@ -691,7 +693,7 @@ describe("build writes the telemetry policy of the box profile", () => {
 
   describe("for a target with no region", () => {
     const { region: _region, ...REGIONLESS_LOGS } = LOGS;
-    const logsIn = (region: string) => ({ ...LOGS, region, secret: { ref: "aws://default" } });
+    const logsIn = (region: string) => ({ ...LOGS, region, secret: { ref: "aws://" } });
     const statementIn = (region: string) => ({
       ...LOGS_STATEMENT,
       Resource: [`arn:aws:logs:${region}:*:log-group:my-group:log-stream:my-stream`],
@@ -708,7 +710,7 @@ describe("build writes the telemetry policy of the box profile", () => {
 
       expect((await runtimeProfile(root)).telemetry).toEqual({
         logs: logsIn("eu-central-1"),
-        traces: { ...TRACES, region: "eu-west-1", secret: { ref: "aws://default" } },
+        traces: { ...TRACES, region: "eu-west-1", secret: { ref: "aws://" } },
       });
       expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
         statementIn("eu-central-1"),

@@ -3,7 +3,13 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  ProjectStateError,
+  ResourceNotFoundError,
+} from "../../errors";
+import { notBoxProjectMessage } from "./box";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -16,13 +22,12 @@ import {
   BOX_DEV_DIST,
   BOX_DIST_ARG,
   BOX_IMAGE_DIST,
-  imageCopiesBox,
   imageTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
 import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { boxProfileIsFor, boxProfilePath } from "../project/templates/boxProfile";
+import { boxProfileIsFor, boxProfilePath, runsInBox } from "../project/templates/boxProfile";
 import {
   BOX_DEV_AWS_REFRESH_MS,
   resolveDefaultAwsCredentials,
@@ -244,11 +249,9 @@ export class ContainerDevRunner implements DevRunner {
     // Box in the container signs with the `[default]` profile, which it reads only from the AWS
     // files, as the image's user. A boxed container gets its own copy of the resolved credentials
     // as that profile, since that user cannot read ~/.aws; without credentials it gets ~/.aws.
+    // They are the credentials of the identity this container runs with, from its environment.
     const boxAws = boxed
-      ? await writeBoxDevAwsFiles(
-          this.resolveAwsCredentials,
-          forwardedEnv.AWS_REGION ?? forwardedEnv.AWS_DEFAULT_REGION,
-        )
+      ? await writeBoxDevAwsFiles(this.resolveAwsCredentials, { ...forwardedEnv })
       : undefined;
     let awsMount: string[] = [];
     if (boxAws) {
@@ -325,18 +328,25 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   /**
-   * Stages box into the build context when the Dockerfile copies it, with the project's box
-   * profile and the policy files it names, and returns the folder it staged, or undefined for an
-   * image without box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
+   * Stages box into the build context for a runtime that runs in a box (`runsInBox`), with the
+   * project's box profile and the policy files it names, and returns the folder it staged, or
+   * undefined for a runtime outside a box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
   private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
-    if (!imageCopiesBox(input.projectRoot, input.runtime)) return undefined;
+    // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
+    if (!runsInBox(input.boxProject, input.runtime)) {
+      // A box runtime's image installs box and starts `box run`, which needs the Box project.
+      if (input.runtime.box !== undefined) {
+        throw new ProjectStateError(notBoxProjectMessage(input.runtime.name));
+      }
+      return undefined;
+    }
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
-        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+        `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
           `but its box profile ${profile} does not exist. Restore the profile that ` +
           "`agentcore create` wrote.",
       );
@@ -344,9 +354,9 @@ export class ContainerDevRunner implements DevRunner {
     const profileText = readFileSync(profile, "utf8");
     if (!boxProfileIsFor(profileText, input.runtime)) {
       throw new InputValidationError(
-        `runtime "${input.runtime.name}" runs its agent in a box (its Dockerfile copies .box-dist/), ` +
+        `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
           `but ${profile} is the box profile of another runtime. Write a box profile for this ` +
-          "runtime there, or stop its Dockerfile from copying .box-dist/.",
+          "runtime there.",
       );
     }
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
