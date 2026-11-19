@@ -9,7 +9,7 @@ import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
 /**
  * Stages box into each CodeZip runtime whose entry point is the box start
  * script. It generates the canonical AWS tree in `.box/<name>/aws/`: box, its
- * helpers, its packs, the libffi shim built for the runtime's Python, and what
+ * helpers, its packs, and what
  * the runtime profile writer writes from the runtime's Box network model (the
  * Runtime profile and a byte copy of each policy file it names). It then copies
  * that tree into `<codeLocation>/.box-dist/`, so the zip carries it. Both
