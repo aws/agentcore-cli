@@ -1091,9 +1091,35 @@ describe("ContainerDevRunner", () => {
       await mkdir(awsDirectory);
       const { calls, runner } = harness({ awsDirectory, processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
       expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
+      expect(events).toContainEqual({
+        type: "status",
+        message: expect.stringContaining("No AWS credentials resolved for box"),
+      });
+    });
+
+    test("removes the credentials folder when the consumer stops at its status line", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const { calls, runner } = harness({
+        processEnv: credentials,
+        resolveAwsCredentials: async () => ({
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "secret-example",
+        }),
+      });
+      const iterator = runner.run(input(root, projectRuntime));
+      let next = await iterator.next();
+      while (!next.done && !("message" in next.value && next.value.message.startsWith("Passing"))) {
+        next = await iterator.next();
+      }
+      expect(next.done).toBe(false);
+      await iterator.return(undefined);
+
+      // The cleanup ran, which removes the credentials folder too, though the container never ran.
+      expect(commandCall(calls, "stop")).toBeDefined();
+      expect(calls.some(({ command }) => command[1] === "run")).toBe(false);
     });
 
     test("leaves an image without box on ~/.aws, without resolving credentials", async () => {

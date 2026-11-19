@@ -219,8 +219,11 @@ export class ContainerDevRunner implements DevRunner {
       signal: input.signal,
     };
 
-    yield { type: "status", message: `Building image with ${tool}` };
     try {
+      if (boxDist) {
+        yield { type: "status", message: `Staged box for the image in ${join(context, boxDist)}` };
+      }
+      yield { type: "status", message: `Building image with ${tool}` };
       yield* this.streamProcess(buildCommand, buildOptions);
     } finally {
       // The image holds it now; removed so that no deploy uploads dev's profile.
@@ -292,12 +295,21 @@ export class ContainerDevRunner implements DevRunner {
       imageTag,
     ];
 
-    if (boxAws) {
-      yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
-    }
-    yield { type: "status", message: "Starting container" };
     const refresh = boxAws ? startRefresh(boxAws) : undefined;
     try {
+      if (boxAws) {
+        yield { type: "status", message: "Passing your AWS credentials to box as profile default" };
+      } else if (boxed) {
+        // Box signs as the image's user, who usually cannot read the mounted ~/.aws.
+        yield {
+          type: "status",
+          message:
+            "No AWS credentials resolved for box, so it gets your ~/.aws, which it may not be " +
+            "able to read. If box fails to sign, refresh your credentials (for example " +
+            "`aws sso login`), then retry.",
+        };
+      }
+      yield { type: "status", message: "Starting container" };
       yield* this.streamProcess(runCommand, {
         cwd: context,
         env: this.processEnv,
@@ -343,7 +355,7 @@ export class ContainerDevRunner implements DevRunner {
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
-    stageBoxImage(
+    await stageBoxImage(
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot),

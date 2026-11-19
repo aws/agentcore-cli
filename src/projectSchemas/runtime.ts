@@ -318,9 +318,10 @@ export const ProjectRuntimeSchema = z
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /**
-     * The box release a CodeZip runtime that runs its agent in a box uses: `agentcore dev` runs
-     * its build for your machine, and build and deploy ship its Linux build. Absent means the box
-     * release this CLI pins. A container runtime's Dockerfile names its own.
+     * The box release a runtime that runs its agent in a box uses on AgentCore Runtime: build and
+     * deploy ship its Linux build in a CodeZip runtime's zip, and a container image downloads it
+     * (under `agentcore dev` too). `agentcore dev` runs a CodeZip agent with the `box` on your PATH
+     * instead. Absent means the box release this CLI pins.
      */
     box: z.object({ version: BoxVersionSchema }).optional(),
     envVars: z.array(EnvVarSchema).optional(),
