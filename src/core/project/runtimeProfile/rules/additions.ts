@@ -12,6 +12,7 @@
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
  * | `[telemetry.<name>]` | each CloudWatch target is signed with a bare `aws://`, in the deploy region when it names none |
+ * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
@@ -55,6 +56,23 @@ const RUNTIME_ENV_NAMES: ReadonlySet<string> = new Set([
   ...Object.keys(RUNTIME_AWS_STAND_INS),
 ]);
 
+/** The variable in which AgentCore Runtime names the runtime's own log group and log stream. */
+const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
+/**
+ * The CloudWatch Logs target of a Runtime profile that has no `cloudwatch_logs` target: the
+ * runtime's own log group and log stream, in its own region. The runtime ID exists only after
+ * deploy, so box reads the three values through inputs of box/agentcore when the run starts.
+ */
+export const DEFAULT_TELEMETRY_TARGET = {
+  kind: "cloudwatch_logs",
+  region: RUNTIME_INPUTS.awsRegion,
+  log_group: "${{ inputs.runtime.log_group }}",
+  log_stream: "${{ inputs.runtime.log_stream }}",
+  include: ["deny", "permit", "trace"],
+  secret: { ref: RUNTIME_AWS_SIGNER },
+} as const;
+
 /**
  * The Runtime's region in the agent's environment, from the box/agentcore `aws.region` input.
  * box/bedrock sets `AWS_REGION` itself, so the profile sets it only without that pack.
@@ -64,8 +82,11 @@ export function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
 }
 
-/** The comment lines above the Runtime profile of `context.runtime`. */
-export function runtimeProfileHeader(context: RuntimeProfileContext): string[] {
+/** The comment lines above `profile`, the Runtime profile of `context.runtime`. */
+export function runtimeProfileHeader(
+  context: RuntimeProfileContext,
+  profile: Readonly<TomlTable> = {},
+): string[] {
   const packs =
     context.paths.build === "CodeZip"
       ? `The ${AGENTCORE_PACK_NAME} and ${AGENTCORE_CODEZIP_PACK_NAME} packs carry the deployed ` +
@@ -77,6 +98,14 @@ export function runtimeProfileHeader(context: RuntimeProfileContext): string[] {
     `${Object.keys(RUNTIME_AWS_STAND_INS).join(" and ")} are stand-ins so boto3 in the box can ` +
       "build its requests. They authenticate nothing: every AWS route goes to the Box gateway, " +
       "and box signs each request for it with the execution role.",
+    ...Object.entries(tableOf(profile.telemetry))
+      .filter(([, target]) => sameValue(target, DEFAULT_TELEMETRY_TARGET))
+      .map(
+        ([name]) =>
+          `[telemetry.${name}] is the default CloudWatch Logs target: the runtime's own log group ` +
+          `and log stream, which box reads from ${RUNTIME_LOGS_HEADERS_ENV} when the run starts. ` +
+          `Add a cloudwatch_logs target to ${context.profileFile} to use another.`,
+      ),
   ];
 }
 
@@ -89,9 +118,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const options = runtimeOptions(result.options, bedrock, context.region);
   if (options !== undefined) result.options = options;
   result.agent = runtimeAgent(result.agent, bedrock, context);
-  if (result.telemetry !== undefined || context.telemetry.length > 0) {
-    result.telemetry = runtimeTelemetry(result.telemetry, context);
-  }
+  result.telemetry = runtimeTelemetry(result.telemetry, context);
   return { table: result, problems: [], warnings: [] };
 }
 
@@ -284,7 +311,8 @@ function onAllAddresses(entry: unknown): unknown {
  * `[telemetry]` for the Runtime: each CloudWatch target of the local profile with its keys, signed
  * with a bare `aws://`, in the deploy region when it names none; then each CloudWatch target of the
  * context that the local profile does not declare, as box resolves it. A target of another kind
- * stays as it is.
+ * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes last, as
+ * `agentcore`, or as `agentcore_default` when a target has that name.
  */
 function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): unknown {
   if (telemetry !== undefined && !isTable(telemetry)) return telemetry;
@@ -316,6 +344,13 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
       ...(target.include && { include: [...target.include] }),
       secret: { ref: RUNTIME_AWS_SIGNER },
     };
+  }
+  const logs = Object.values(result).some(
+    (entry) => isTable(entry) && entry.kind === "cloudwatch_logs",
+  );
+  if (!logs) {
+    const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
+    result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
   }
   return result;
 }

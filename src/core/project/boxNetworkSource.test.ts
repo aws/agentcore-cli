@@ -8,6 +8,8 @@ import type { ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
+import { telemetryPolicyWriter } from "./boxNetworkWriters";
+import { boxTelemetryPolicyFile } from "./boxTelemetry";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -143,6 +145,39 @@ describe("readBoxNetworks", () => {
       ["second", "second-box", ["docs.example.com"], ["rules.dw"]],
       ["quiet", "quiet-box", [], []],
     ]);
+  });
+
+  test("grants nothing for a cloudwatch_logs target whose log group is an input, and does not stop for it", async () => {
+    const root = await project([]);
+    const inputs = {
+      kind: "cloudwatch_logs",
+      region: "${{ inputs.aws.region }}",
+      log_group: "${{ inputs.runtime.log_group }}",
+      log_stream: "${{ inputs.runtime.log_stream }}",
+      secret: { ref: "aws://" },
+    };
+    const shown = boxShowOf({ egress: API_ROUTE });
+    const plain = new FakeBoxProfileResolver(shown);
+    const withInputs = new FakeBoxProfileResolver({
+      ...shown,
+      boxToml: { ...shown.boxToml, telemetry: { mine: inputs } },
+    });
+
+    const [base] = await readBoxNetworks(SPEC, root, plain);
+    const [network] = await readBoxNetworks(SPEC, root, withInputs);
+
+    // The Runtime profile sends to the runtime's own log group through inputs by default.
+    const telemetry = network?.runtimeProfile?.telemetry as Record<string, unknown>;
+    expect(telemetry.agentcore).toMatchObject({ log_group: "${{ inputs.runtime.log_group }}" });
+    expect(network?.telemetry).toBeUndefined();
+    expect(network?.failures).toEqual(base!.failures);
+    expect(network?.warnings).toEqual(base!.warnings);
+    const { files } = telemetryPolicyWriter.edits([network!], {
+      spec: SPEC,
+      projectRoot: root,
+      env: {},
+    });
+    expect(files).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
   });
 
   test("refuses an entry whose API key credential another runtime takes for another variable", async () => {
