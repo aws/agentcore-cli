@@ -23,7 +23,7 @@ export type BoxDevSecrets = {
  * `box run` as they are and writes none of them anywhere. A CodeZip agent's `box run` inherits the
  * whole environment already; a box container gets them in its environment, since it gets nothing
  * else from the host's. Only the profile's own tables count: a pack's variable, such as
- * box/bedrock's `AWS_BEARER_TOKEN_BEDROCK`, is not the profile author's to pass. A profile that does
+ * @box/bedrock's `AWS_BEARER_TOKEN_BEDROCK`, is not the profile author's to pass. A profile that does
  * not parse has none here; `box run` reports it.
  */
 export async function boxDevSecrets(

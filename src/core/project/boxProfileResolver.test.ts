@@ -22,7 +22,7 @@ const SHOWN = String.raw`{
   "profile": ".box/agent/local/profile.toml",
   "packs": [
     {
-      "name": "box/base",
+      "name": "@box/base",
       "version": "1"
     }
   ],
@@ -105,7 +105,7 @@ const RELEASES = "https://github.com/mquang-amazon/box-releases";
  * route `keyed` with one.
  */
 const OPEN_ROUTES_PROFILE =
-  'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[agent]\ncommand = ["/bin/sh"]\n\n' +
+  'packs = ["@box/base"]\npolicies = ["policy.dw"]\n\n[agent]\ncommand = ["/bin/sh"]\n\n' +
   '[egress.auth]\ndestinations = ["login.example.com", "auth.example.com:8443"]\n\n' +
   '[egress.github]\ndestinations = ["api.github.com"]\n\n' +
   '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n';
@@ -113,7 +113,8 @@ const OPEN_ROUTES_PROFILE =
 /**
  * `box profile show open --format json --full` for {@link OPEN_ROUTES_PROFILE} and {@link POLICY},
  * as box prints it, with HOME at /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations
- * of an open route into one string, and later boxes give a list.
+ * of an open route into one string, and later boxes give a list. preview.6 printed the first for
+ * the same profile with its pack named box/base, the name it had before `@box/`.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(
@@ -143,7 +144,7 @@ describe("parseBoxProfileShow", () => {
       },
       policy: SHOWN_POLICY,
       openRoutes: [],
-      packs: [{ name: "box/base", version: "1" }],
+      packs: [{ name: "@box/base", version: "1" }],
       warnings: [],
     });
     expect(Object.keys(resolved.boxToml)).toEqual([
@@ -161,7 +162,7 @@ describe("parseBoxProfileShow", () => {
   test("refuses output that is not one JSON document, such as the text that `show` prints", () => {
     expect(() =>
       parseBoxProfileShow(
-        "profile .box/agent/local/profile.toml resolves for this directory\n  packs    box/base 1\n",
+        "profile .box/agent/local/profile.toml resolves for this directory\n  packs    @box/base 1\n",
         ".box/agent/local/profile.toml",
       ),
     ).toThrow(
@@ -200,7 +201,7 @@ describe("parseBoxProfileShow", () => {
       { ...noBoxToml, box_toml: [], policy: undefined },
       "a box.toml table or the policy.dw text",
     ],
-    ["packs as text", { ...document, packs: "box/base 1" }, "a list of packs"],
+    ["packs as text", { ...document, packs: "@box/base 1" }, "a list of packs"],
     [
       "a destination that is not text",
       { ...document, open_routes: [{ route: "auth", destinations: ["login.example.com", 443] }] },
@@ -415,14 +416,14 @@ const ROUTES = {
 const SERVERS = { docs: { type: "http", destinations: ["docs.example.com"] } };
 
 describe("the copy of the profile for the build region", () => {
-  /** A project whose profile imports box/bedrock for us-west-2, so a build for eu-central-1 copies it. */
+  /** A project whose profile imports @box/bedrock for us-west-2, so a build for eu-central-1 copies it. */
   async function regionalProject(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "box-profile-region-"));
     directories.push(root);
     await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
     await writeFile(
       join(root, ".box", "agent", "local", "profile.toml"),
-      'packs = ["box/base", "box/bedrock"]\n\n[options]\nbedrock.region = "us-west-2"\n',
+      'packs = ["@box/base", "@box/bedrock"]\n\n[options]\nbedrock.region = "us-west-2"\n',
     );
     return root;
   }
@@ -558,7 +559,7 @@ describe("the box on PATH", () => {
       await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
       await writeFile(
         join(root, ".box", "agent", "local", "profile.toml"),
-        'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
+        'packs = ["@box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
           '[agent]\ncommand = ["/bin/sh"]\n\n[egress.github]\ndestinations = ["api.github.com"]\n\n' +
           '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n\n' +
           '[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',

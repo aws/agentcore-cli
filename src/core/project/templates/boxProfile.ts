@@ -58,12 +58,18 @@ const BOX_PYTHON_ENV = "BOX_PYTHON";
 const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
 const BOX_CODE_ENV = "BOX_CODE";
 
+/** The pack of box that each box profile imports. */
+export const BOX_BASE_PACK = "@box/base";
+
+/** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
+export const BOX_BEDROCK_PACK = "@box/bedrock";
+
 /** The generated pack both Runtime profiles import for the deployed resources: {@link renderAgentCorePack}. */
-export const AGENTCORE_PACK_NAME = "box/agentcore";
+export const AGENTCORE_PACK_NAME = "@box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
 
 /** The generated pack the CodeZip Runtime profile adds for the Runtime Python and code: {@link renderAgentCoreCodeZipPack}. */
-export const AGENTCORE_CODEZIP_PACK_NAME = "box/agentcore-codezip";
+export const AGENTCORE_CODEZIP_PACK_NAME = "@box/agentcore-codezip";
 export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
 
 /**
@@ -74,7 +80,7 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
 const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
 
 /**
- * Bounds the `aws.region` input, as box/bedrock bounds `bedrock.region`: box requires a `pattern` or
+ * Bounds the `aws.region` input, as @box/bedrock bounds `bedrock.region`: box requires a `pattern` or
  * `values` on an input that reaches a backend's `auth.aws.region`.
  */
 const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
@@ -143,7 +149,7 @@ const RUNTIME_AWS_STAND_IN_LINES = [
 ].join("\n");
 
 /**
- * The tools of box/base that get the project's write grant: box gives each one its own grant, so
+ * The tools of @box/base that get the project's write grant: box gives each one its own grant, so
  * each lists the agent's `deny_write` folders as well.
  */
 const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
@@ -412,7 +418,7 @@ function containerRunner(workloadPort: number, dev: boolean): Runner {
 /**
  * A Python agent on a CodeZip deploy: the Runtime unpacks the zip into a
  * read-only folder and runs its own Python, at paths only the microVM knows.
- * The box/agentcore-codezip pack reads them from the environment start.py
+ * The @box/agentcore-codezip pack reads them from the environment start.py
  * exports (`${{ inputs.code.dir }}`, `${{ inputs.python.path }}`,
  * `${{ inputs.python.prefix }}`), and the box starts in a writable folder
  * outside the code, so nothing the agent runs needs `deny_write`.
@@ -498,9 +504,9 @@ export function renderBoxProfile(
 
   // The optional sections, each empty or ending in a newline.
   const header = codeZipOnRuntime
-    ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore and box/agentcore-codezip packs carry the deployed resources, the Runtime Python, and the code directory."
+    ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The @box/agentcore and @box/agentcore-codezip packs carry the deployed resources, the Runtime Python, and the code directory."
     : onRuntime
-      ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
+      ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The @box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
         : `# Written by \`agentcore create\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
@@ -540,14 +546,14 @@ export function renderBoxProfile(
         ""
       : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
-# rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
+# rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
 secret.ref = "aws://default"
 `;
   const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";
   const packs = list([
-    "box/base",
-    ...(bedrock ? ["box/bedrock"] : []),
+    BOX_BASE_PACK,
+    ...(bedrock ? [BOX_BEDROCK_PACK] : []),
     // Both Runtime profiles read the deployed resources from the environment through this pack.
     ...(onRuntime ? [AGENTCORE_PACK_NAME] : []),
     // The CodeZip Runtime also reads its Python and code paths through this one.
@@ -859,7 +865,7 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
- * The `box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
+ * The `@box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
  * reads from the environment the Runtime sets after deploy. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
@@ -918,7 +924,7 @@ ${agentEnv}`;
 }
 
 /**
- * The `box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
+ * The `@box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
  * and base prefix, and the read-only code directory, which only the microVM knows. start.py exports
  * them ({@link BOX_PYTHON_ENV}, {@link BOX_PYTHON_PREFIX_ENV}, {@link BOX_CODE_ENV}) before it runs
  * box, and the profile reads them through these inputs, so no start script fills the profile in. box

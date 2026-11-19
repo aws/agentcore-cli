@@ -80,7 +80,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
   } as unknown as ProjectSpec;
   const mcp = options.mcp ?? {};
   const profile = [
-    'packs = ["box/base"]',
+    'packs = ["@box/base"]',
     ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");

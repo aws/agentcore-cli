@@ -4,7 +4,7 @@
 # code paths that only the microVM knows, and hands over to `box run`.
 #
 # The box profile reads the deployed resources, the gateway URL, the Python interpreter and the code
-# directory from the environment through the box/agentcore and box/agentcore-codezip packs, and
+# directory from the environment through the @box/agentcore and @box/agentcore-codezip packs, and
 # signs AWS routes with the execution role through a bare `aws://`. So there is nothing to fill in,
 # no credentials to write, and no start.sh.
 import os

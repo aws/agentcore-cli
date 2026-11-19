@@ -76,7 +76,7 @@ describe("boxDevSecrets", () => {
 
   test("leaves out a pack's variable and a secret that is not env://", async () => {
     const root = await project(
-      'packs = ["box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n',
+      'packs = ["@box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n',
     );
 
     expect(

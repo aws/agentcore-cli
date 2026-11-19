@@ -5,7 +5,7 @@
  * each runtime, which the CLI owns, with one field for each target. The AgentCore Runtime profile
  * names that field, and the execution role can read that secret.
  *
- * Box reads such a secret only through its `box/aws-secrets-manager` plugin, which no Linux release
+ * Box reads such a secret only through its `@box/aws-secrets-manager` plugin, which no Linux release
  * of Box has yet. So build does all of this only when {@link BOX_SECRETS_MANAGER_ENV} is `1`.
  */
 import { partition } from "@aws-sdk/util-endpoints";
@@ -25,7 +25,7 @@ export function boxSecretsManagerEnabled(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** The Box plugin that reads `aws-secretsmanager://` references. Only the profile may list it. */
-export const BOX_SECRETS_MANAGER_PLUGIN = "box/aws-secrets-manager";
+export const BOX_SECRETS_MANAGER_PLUGIN = "@box/aws-secrets-manager";
 
 /** The scheme Box reads a secret from AWS Secrets Manager with: `aws-secretsmanager://ID#FIELD`. */
 export const SECRETS_MANAGER_SCHEME = "aws-secretsmanager://";

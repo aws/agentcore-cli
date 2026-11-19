@@ -324,9 +324,9 @@ function withStatement(
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
-  /** Whether the runtime is a container. Both runtimes stage the `box/agentcore` pack. */
+  /** Whether the runtime is a container. Both runtimes stage the `@box/agentcore` pack. */
   readonly container: boolean;
-  /** Whether the runtime is a CodeZip deploy, which also stages the `box/agentcore-codezip` pack. */
+  /** Whether the runtime is a CodeZip deploy, which also stages the `@box/agentcore-codezip` pack. */
   readonly codezip: boolean;
 }
 

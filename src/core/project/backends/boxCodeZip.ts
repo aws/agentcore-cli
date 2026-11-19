@@ -30,7 +30,7 @@ export async function stageBoxCodeZip(
     runtime: runtime.name,
     dist: boxAwsDir(runtime.name),
     // A CodeZip deploy reads the deployed resources, its Python and its code path through the
-    // box/agentcore and box/agentcore-codezip packs, so it is not a container.
+    // @box/agentcore and @box/agentcore-codezip packs, so it is not a container.
     container: false,
     codezip: true,
   }));

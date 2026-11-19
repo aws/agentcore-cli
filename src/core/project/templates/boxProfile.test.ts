@@ -94,7 +94,7 @@ const UVICORN = [
 describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
-      packs: ["box/base", "box/bedrock"],
+      packs: ["@box/base", "@box/bedrock"],
       profile: { name: "V3Demo" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -123,7 +123,7 @@ describe("renderBoxProfile", () => {
     "runs %s with uvicorn on Bedrock, like the Strands agent",
     (name) => {
       const { packs, agent, egress } = profile(name);
-      expect(packs).toEqual(["box/base", "box/bedrock"]);
+      expect(packs).toEqual(["@box/base", "@box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
       expect(egress?.bedrock).toEqual({ secret: { ref: "aws://default" } });
@@ -156,7 +156,7 @@ describe("renderBoxProfile", () => {
 
   test("gives the MCP server no route, because it calls no model", () => {
     const mcp = profile("mcp-python-fastmcp");
-    expect(mcp.packs).toEqual(["box/base"]);
+    expect(mcp.packs).toEqual(["@box/base"]);
     expect(mcp.options).toBeUndefined();
     expect(mcp.egress).toBeUndefined();
   });
@@ -219,7 +219,7 @@ describe("renderBoxProfile", () => {
         apiKey: "sk-test",
         ...overrides,
       });
-      expect(packs).toEqual(["box/base"]);
+      expect(packs).toEqual(["@box/base"]);
       expect(options).toBeUndefined();
       expect(egress).toEqual({ [route]: expected });
     },
@@ -227,7 +227,7 @@ describe("renderBoxProfile", () => {
 
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
     const { packs, egress } = profile("agent-python-strands", { modelProvider: "LiteLLM" });
-    expect(packs).toEqual(["box/base", "box/bedrock"]);
+    expect(packs).toEqual(["@box/base", "@box/bedrock"]);
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
 
@@ -302,7 +302,7 @@ describe("renderBoxProfile", () => {
 
   test("runs the Strands container image's agent from /app, where box starts in the image", () => {
     const container = profile("agent-python-strands-container");
-    expect(container.packs).toEqual(["box/base", "box/bedrock"]);
+    expect(container.packs).toEqual(["@box/base", "@box/bedrock"]);
     // The image's code and venv are in /app, the workspace, not in app/<runtime>.
     expect(container.agent.command.slice(0, 6)).toEqual([
       "${{ workspace }}/.venv/bin/python",
@@ -372,10 +372,10 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
   test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
     const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
     // No start.sh fills this profile in: the packs carry the deployed resources, Python, and code.
-    expect(text).toContain("box/agentcore-codezip packs carry");
+    expect(text).toContain("@box/agentcore-codezip packs carry");
     expect(text).not.toContain("# @AGENT_ENV@");
     expect(parse(text)).toEqual({
-      packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
+      packs: ["@box/base", "@box/bedrock", "@box/agentcore", "@box/agentcore-codezip"],
       profile: { name: "V3Demo" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -413,11 +413,11 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     (name) => {
       const text = renderBoxProfile("V3Demo", template(name), "runtime")!;
       // No start.sh fills this profile in: the agentcore pack carries the deployed resources.
-      expect(text).toContain("The box/agentcore pack carries the deployed resources' variables.");
+      expect(text).toContain("The @box/agentcore pack carries the deployed resources' variables.");
       expect(text).not.toContain("# @AGENT_ENV@");
       expect(runtimeProfile(name)).toEqual({
-        // The container reads the deployed resources from the environment through box/agentcore.
-        packs: ["box/base", "box/bedrock", "box/agentcore"],
+        // The container reads the deployed resources from the environment through @box/agentcore.
+        packs: ["@box/base", "@box/bedrock", "@box/agentcore"],
         profile: { name: "V3Demo" },
         project: { access: "read" },
         options: { bedrock: { region: "us-west-2" } },
@@ -454,7 +454,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
-    expect(openai.packs).toEqual(["box/base", "box/agentcore", "box/agentcore-codezip"]);
+    expect(openai.packs).toEqual(["@box/base", "@box/agentcore", "@box/agentcore-codezip"]);
     expect(openai.egress).toBeUndefined();
   });
 });
@@ -684,7 +684,7 @@ describe("renderRuntimeBoxProfile", () => {
     };
     /**
      * The default target of the Runtime profile: the runtime's own log group and log stream, in its
-     * own region, which box reads through the inputs of the box/agentcore pack.
+     * own region, which box reads through the inputs of the @box/agentcore pack.
      */
     const DEFAULT_TARGET = {
       kind: "cloudwatch_logs",
@@ -773,8 +773,8 @@ describe("renderRuntimeBoxProfile", () => {
       }
       // The plugin that reads the scheme: one top-level line, above the first table.
       const toml = parse(text) as { plugins?: unknown };
-      expect(toml.plugins).toEqual(["box/aws-secrets-manager"]);
-      expect(text.indexOf('plugins = ["box/aws-secrets-manager"]')).toBeLessThan(
+      expect(toml.plugins).toEqual(["@box/aws-secrets-manager"]);
+      expect(text.indexOf('plugins = ["@box/aws-secrets-manager"]')).toBeLessThan(
         text.indexOf("\n["),
       );
       expect(text.match(/^plugins = /gm)).toHaveLength(1);
@@ -824,7 +824,7 @@ describe("renderRuntimeBoxProfile", () => {
       expect(text).not.toContain("/aws/bedrock-agentcore/box/");
     });
 
-    test("reads each value of the default target through an input that the box/agentcore pack declares", () => {
+    test("reads each value of the default target through an input that the @box/agentcore pack declares", () => {
       const project = spec([bedrock]);
       const { inputs } = parse(renderAgentCorePack(project)) as {
         inputs: Record<string, Record<string, unknown>>;
@@ -944,9 +944,9 @@ describe("renderAgentCorePack", () => {
     ) as Record<string, any>;
   }
 
-  test("names itself box/agentcore and ships as a support pack", () => {
+  test("names itself @box/agentcore and ships as a support pack", () => {
     const toml = pack([]);
-    expect(toml.pack).toEqual({ name: "box/agentcore", version: 1, kind: "support" });
+    expect(toml.pack).toEqual({ name: "@box/agentcore", version: 1, kind: "support" });
   });
 
   test("declares the gateway URL input from the environment, bounded by a pattern", () => {
@@ -1001,8 +1001,8 @@ describe("renderAgentCorePack", () => {
 describe("renderAgentCoreCodeZipPack", () => {
   const toml = () => parse(renderAgentCoreCodeZipPack()) as Record<string, any>;
 
-  test("names itself box/agentcore-codezip and ships as a support pack", () => {
-    expect(toml().pack).toEqual({ name: "box/agentcore-codezip", version: 1, kind: "support" });
+  test("names itself @box/agentcore-codezip and ships as a support pack", () => {
+    expect(toml().pack).toEqual({ name: "@box/agentcore-codezip", version: 1, kind: "support" });
   });
 
   test("declares the Runtime Python and code directory from the environment start.py exports", () => {
