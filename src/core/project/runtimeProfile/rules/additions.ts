@@ -11,6 +11,7 @@
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region, the AWS stand-ins, and (CodeZip) the ffi `PYTHONPATH` come in; a value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
+ * | `[tool.<name>]` | a table of the template becomes its Runtime table, or goes when the Runtime has none; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target is signed with a bare `aws://`, in the deploy region when it names none |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  *
@@ -118,6 +119,11 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const options = runtimeOptions(result.options, bedrock, context.region);
   if (options !== undefined) result.options = options;
   result.agent = runtimeAgent(result.agent, bedrock, context);
+  if (result.tool !== undefined) {
+    const tool = runtimeTools(result.tool, context);
+    if (tool === undefined) delete result.tool;
+    else result.tool = tool;
+  }
   result.telemetry = runtimeTelemetry(result.telemetry, context);
   return { table: result, problems: [], warnings: [] };
 }
@@ -178,6 +184,27 @@ function runtimeAgent(agent: unknown, bedrock: boolean, context: RuntimeProfileC
     result.ingress = runtimeIngress(local.ingress, templateLocal.ingress, templateRuntime.ingress);
   }
   return result;
+}
+
+/**
+ * `[tool]` for the Runtime. A `[tool.<name>]` of the template that the local profile keeps as the
+ * template has it becomes the template's Runtime table, or goes when the Runtime has none: the
+ * `deny_write` that a CodeZip template gives a tool of @box/base protects the local venv, and the
+ * Runtime has no venv. Each other tool table stays. An empty `[tool]` goes.
+ */
+function runtimeTools(tool: unknown, context: RuntimeProfileContext): unknown {
+  if (!isTable(tool)) return tool;
+  const templateLocal = tableOf(context.template.local.tool);
+  const templateRuntime = tableOf(context.template.runtime.tool);
+  const result: TomlTable = {};
+  for (const [name, entry] of Object.entries(tool)) {
+    if (!Object.hasOwn(templateLocal, name) || !sameValue(entry, templateLocal[name])) {
+      result[name] = entry;
+    } else if (Object.hasOwn(templateRuntime, name)) {
+      result[name] = structuredClone(templateRuntime[name]);
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 /** A command with no `--reload`, `--reload-dir <dir>`, or `--reload-dir=<dir>`. */

@@ -2,7 +2,8 @@
  * Rule 2 of the derivation: on AgentCore Runtime, each call of the box goes through the runtime's
  * Box gateway. Each passthrough target of that gateway, as build writes the gateway, gets one
  * route: the box sends the calls to the target's host to `${{ inputs.gateway.url }}/<target>`, and
- * signs them for the gateway in the build region with a bare `aws://`, the execution role. The
+ * signs them for the gateway in the Runtime's own region, `${{ inputs.aws.region }}`, with a bare
+ * `aws://`, the execution role. The
  * gateway then calls the host with the target's own auth.
  *
  * | Local profile | Runtime profile |
@@ -58,7 +59,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       host.sources.some((source) => source.kind === "entry" && source.egressEntry === name),
     );
     for (const route of routesOf(hosts, routes)) {
-      egress[route.target] = egressRoute(entry, route, context.region);
+      egress[route.target] = egressRoute(entry, route);
       written.add(route.target);
     }
   }
@@ -71,16 +72,16 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     }
     const route = routes.find(({ server }) => server?.mcpEntry === name);
     if (route?.server === undefined) continue;
-    mcp[name] = mcpServer(entry, route, route.server, context.region);
+    mcp[name] = mcpServer(entry, route, route.server);
     written.add(route.target);
   }
 
   for (const route of routes) {
     if (written.has(route.target)) continue;
     if (route.server) {
-      mcp[route.server.mcpEntry] = mcpServer({}, route, route.server, context.region);
+      mcp[route.server.mcpEntry] = mcpServer({}, route, route.server);
     } else {
-      egress[route.target] = egressRoute({}, route, context.region);
+      egress[route.target] = egressRoute({}, route);
     }
   }
 
@@ -164,9 +165,9 @@ function isHttpServer(entry: Readonly<TomlTable>): boolean {
  * The `[egress.<target>]` route of `route`, with each key of `entry` that the gateway form does not
  * set. Its secret goes: the gateway target sends the credential.
  */
-function egressRoute(entry: Readonly<TomlTable>, route: GatewayRoute, region: string): TomlTable {
+function egressRoute(entry: Readonly<TomlTable>, route: GatewayRoute): TomlTable {
   const { destinations: _destinations, secret: _secret, backends: _backends, ...kept } = entry;
-  return { destinations: [route.host], ...kept, backends: [gatewayBackend(route, region)] };
+  return { destinations: [route.host], ...kept, backends: [gatewayBackend(route)] };
 }
 
 /**
@@ -175,12 +176,7 @@ function egressRoute(entry: Readonly<TomlTable>, route: GatewayRoute, region: st
  * the server, as Box resolves it, stays without `inject`: the agent keeps its stand-in, and the
  * gateway sends the key. Box refuses a signed secret beside a backend, so that one goes.
  */
-function mcpServer(
-  entry: Readonly<TomlTable>,
-  route: GatewayRoute,
-  server: McpSource,
-  region: string,
-): TomlTable {
+function mcpServer(entry: Readonly<TomlTable>, route: GatewayRoute, server: McpSource): TomlTable {
   const {
     type: _type,
     destinations: _destinations,
@@ -200,14 +196,20 @@ function mcpServer(
     destinations: [route.host],
     ...(secret && { secret }),
     ...kept,
-    backends: [gatewayBackend(route, region)],
+    backends: [gatewayBackend(route)],
   };
 }
 
-/** The backend of a route: the route's gateway target, signed for the gateway in `region`. */
-function gatewayBackend(route: GatewayRoute, region: string): TomlTable {
+/**
+ * The backend of a route: the route's gateway target, signed for the gateway in the Runtime's own
+ * region, which box reads from the `aws.region` input of the agentcore pack.
+ */
+function gatewayBackend(route: GatewayRoute): TomlTable {
   return {
     url: `${RUNTIME_INPUTS.gatewayUrl}/${route.target}`,
-    auth: { ref: RUNTIME_AWS_SIGNER, aws: { service: "bedrock-agentcore", region } },
+    auth: {
+      ref: RUNTIME_AWS_SIGNER,
+      aws: { service: "bedrock-agentcore", region: RUNTIME_INPUTS.awsRegion },
+    },
   };
 }
