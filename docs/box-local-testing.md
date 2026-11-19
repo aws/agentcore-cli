@@ -109,13 +109,15 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
-turn them into the runtime's Box network. They change nothing in `.box/`.
+Build and deploy read each runtime's own `.box/<runtime>/local/profile.toml` and the policy files
+it lists under `policies`, and turn them into that runtime's Box network. They change nothing in
+`.box/<runtime>/local/`; they generate the Runtime profile and its resources under
+`.box/<runtime>/aws/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
@@ -130,9 +132,10 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box-egress`. Each policy
-  file is copied beside it, byte for byte, and listed under `policies`.
+- **The AgentCore Runtime profile.** The generated `.box/<runtime>/aws/profile.toml`, copied into
+  `.box-dist/`, has one `[egress.<target>]` route through the gateway for each target of
+  `<runtime>-box-egress`. Each policy file is copied beside it, byte for byte, and listed under
+  `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.

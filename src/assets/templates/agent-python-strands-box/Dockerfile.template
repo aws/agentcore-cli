@@ -42,11 +42,11 @@ COPY --chown=bedrock_agentcore:bedrock_agentcore . .
 RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 
 # The box profile, its policy files, and the generated box/agentcore pack, which build and deploy
-# stage in the box dist folder; dev stages the project's .box/profile.toml there. The profile reads
-# the gateway URL and the deployed resources from the environment through the pack and signs with a
-# bare `aws://`, so the image runs `box run` directly, with no start script. box requires the profile
-# be owned by the agent and writable only by it, and outside /app; the generated pack joins box's own
-# packs beside the binary.
+# stage in the box dist folder; dev stages the runtime's .box/<runtime>/local/profile.toml there.
+# The profile reads the gateway URL and the deployed resources from the environment through the
+# pack and signs with a bare `aws://`, so the image runs `box run` directly, with no start script.
+# box requires the profile be owned by the agent and writable only by it, and outside /app; the
+# generated pack joins box's own packs beside the binary.
 COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/
 RUN set -eu; \
     if [ -d /home/bedrock_agentcore/box-profile/resources ]; then \

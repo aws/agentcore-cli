@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { join, posix } from "node:path";
-import { InputValidationError } from "../../../errors/errors";
+import { InputValidationError, ProjectStateError } from "../../../errors/errors";
 import {
   DEFAULT_EGRESS_BEDROCK_REGION,
   callsBedrockModel,
@@ -158,9 +159,31 @@ export function boxLocalProfileFile(agentName: string): string {
   return posix.join(boxLocalDir(agentName), "profile.toml");
 }
 
+/** The `[profile] name` of an agent's local box profile: the project's name, then the agent's. */
+export function boxLocalProfileName(projectName: string, agentName: string): string {
+  return `${projectName}-${agentName}`;
+}
+
 /** An agent's local box profile at `projectRoot`. */
 export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
   return join(projectRoot, boxLocalProfileFile(agentName));
+}
+
+/** The one box profile of a project in the layout before each agent had its own. */
+const PROJECT_BOX_PROFILE_FILE = posix.join(BOX_ROOT, "profile.toml");
+
+/**
+ * Throws when the project at `projectRoot` keeps `.box/profile.toml`, the one box profile of the
+ * earlier layout, which no command reads now.
+ */
+export function assertNoProjectBoxProfile(projectRoot: string): void {
+  if (!existsSync(join(projectRoot, ...PROJECT_BOX_PROFILE_FILE.split("/")))) return;
+  throw new ProjectStateError(
+    `${PROJECT_BOX_PROFILE_FILE} is the box profile of an earlier layout, and no command reads ` +
+      `it now: each agent has its own profile, ${boxLocalProfileFile("<runtime>")}. Move the ` +
+      "profile and its policy files into that folder of the runtime it runs, then remove " +
+      `${PROJECT_BOX_PROFILE_FILE}.`,
+  );
 }
 
 /**
@@ -489,6 +512,10 @@ export function renderBoxProfile(
     ...PYTHON_ENV,
     ...(onRuntime && runtimeRegionEnv(bedrock)),
   };
+  // box keeps one profile of each name on a machine, so each runtime's local profile has its own.
+  const profileName = onRuntime
+    ? projectName
+    : boxLocalProfileName(projectName, runtime.runtimeName);
 
   // The optional sections, each empty or ending in a newline.
   const header = codeZipOnRuntime
@@ -554,7 +581,7 @@ ${header}
 packs = ${packs}
 ${policies}
 [profile]
-name = ${str(projectName)}
+name = ${str(profileName)}
 
 ${projectSection}
 ${options}[agent]

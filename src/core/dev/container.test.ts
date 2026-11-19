@@ -860,6 +860,34 @@ describe("ContainerDevRunner", () => {
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
     });
 
+    test("stages the runtime's own box profile, not the profile of another runtime", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      await mkdir(join(root, ".box", "other", "local"), { recursive: true });
+      await writeFile(join(root, ".box", "other", "local", "profile.toml"), "# other\n");
+      const { runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# local profile\n",
+      );
+    });
+
+    test("refuses a project that keeps .box/profile.toml, and stages nothing", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      await writeFile(join(root, ".box", "profile.toml"), "# earlier layout\n");
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const run = collect(runner.run(input(root, projectRuntime)));
+
+      await expect(run).rejects.toBeInstanceOf(ProjectStateError);
+      await expect(run).rejects.toThrow(
+        ".box/profile.toml is the box profile of an earlier layout",
+      );
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
+    });
+
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { calls, runner } = harness({ processEnv: credentials });

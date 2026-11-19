@@ -29,6 +29,13 @@ async function project(profile?: string): Promise<string> {
   return root;
 }
 
+/** Writes `profile` as the local box profile of the runtime `agentName`. */
+async function writeProfile(root: string, agentName: string, profile: string): Promise<void> {
+  const local = join(root, ".box", agentName, "local");
+  await mkdir(local, { recursive: true });
+  await writeFile(join(local, "profile.toml"), profile);
+}
+
 const envLocal = (root: string) => new EnvLocalFile(root).read();
 
 describe("writeBoxDevEnvLocal", () => {
@@ -80,6 +87,21 @@ describe("writeBoxDevEnvLocal", () => {
       await writeBoxDevEnvLocal(root, AGENT, { AWS_BEARER_TOKEN_BEDROCK: "token", default: "x" }),
     ).toEqual([]);
     expect(existsSync(new EnvLocalFile(root).path)).toBe(false);
+  });
+
+  test("reads only the named runtime's own box profile", async () => {
+    const root = await project(GITHUB_ROUTE);
+    await writeProfile(
+      root,
+      "second",
+      '[egress.docs]\ndestinations = ["docs.example.com"]\nsecret.ref = "env://DOCS_KEY"\n',
+    );
+    const env = { GITHUB_TOKEN: "ghp_1", DOCS_KEY: "docs_1" };
+
+    expect(await writeBoxDevEnvLocal(root, "second", env)).toEqual([
+      `writing DOCS_KEY to ${ENV_LOCAL_RELATIVE_PATH} for box egress 'docs' (env://DOCS_KEY)`,
+    ]);
+    expect(await envLocal(root)).toEqual({ DOCS_KEY: "docs_1" });
   });
 
   test("does nothing without a box profile", async () => {

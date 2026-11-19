@@ -6,6 +6,7 @@ import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
 import {
+  assertNoProjectBoxProfile,
   boxIngressPort,
   boxLocalProfileFile,
   boxLocalProfilePath,
@@ -58,6 +59,7 @@ export class BoxDevRunner implements DevRunner {
       yield* this.fallback.run(input);
       return;
     }
+    assertNoProjectBoxProfile(input.projectRoot);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +

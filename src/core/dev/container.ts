@@ -27,7 +27,11 @@ import {
 } from "../project/backends/boxContainer";
 import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { boxLocalProfilePath, runsInBox } from "../project/templates/boxProfile";
+import {
+  assertNoProjectBoxProfile,
+  boxLocalProfilePath,
+  runsInBox,
+} from "../project/templates/boxProfile";
 import {
   BOX_DEV_AWS_REFRESH_MS,
   resolveDefaultAwsCredentials,
@@ -343,6 +347,7 @@ export class ContainerDevRunner implements DevRunner {
       }
       return undefined;
     }
+    assertNoProjectBoxProfile(input.projectRoot);
     const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(

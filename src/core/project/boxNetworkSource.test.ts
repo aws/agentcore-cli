@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InvalidEnvironmentError } from "../../errors/errors";
+import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
@@ -54,6 +54,18 @@ async function writeProfile(root: string, agentName: string, policies: string[])
   );
 }
 
+/** {@link SPEC} with a box runtime and a bound Box gateway for each of `names` after `agent`. */
+function specWith(...names: string[]): ProjectSpec {
+  return {
+    ...SPEC,
+    runtimes: [
+      ...SPEC.runtimes,
+      ...names.map((name) => ({ ...SPEC.runtimes[0]!, name, codeLocation: `app/${name}` })),
+    ],
+    agentCoreGateways: [boxGatewaySpec("agent"), ...names.map((name) => boxGatewaySpec(name))],
+  } as unknown as ProjectSpec;
+}
+
 const failuresOf = async (root: string) =>
   (await readBoxNetworks(SPEC, root, new FakeBoxProfileResolver()))[0]!.failures.map(
     ({ code, reason, place }) => ({ code, reason, place }),
@@ -94,6 +106,90 @@ describe("readBoxNetworks", () => {
     );
 
     expect(network?.gateway).toBe("renamed");
+  });
+
+  test("reads each runtime's own local box profile and policy files, one after the other", async () => {
+    const root = await project(["policy.dw"]);
+    await writeProfile(root, "second", ["rules.dw"]);
+    await writeFile(join(root, ".box", "second", "local", "rules.dw"), "// second\n");
+    const egress: Record<string, Record<string, unknown>> = {
+      ".box/agent/local/profile.toml": API_ROUTE,
+      ".box/second/local/profile.toml": { docs: { destinations: ["docs.example.com"] } },
+    };
+    const calls: string[] = [];
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        calls.push(profilePath);
+        return boxShowOf({ egress: egress[profilePath] ?? {} });
+      },
+    };
+
+    const networks = await readBoxNetworks(specWith("second", "quiet"), root, resolver);
+
+    expect(calls).toEqual([".box/agent/local/profile.toml", ".box/second/local/profile.toml"]);
+    expect(
+      networks.map(({ runtime, gateway, hosts, policyFiles }) => [
+        runtime,
+        gateway,
+        hosts.map(({ authority }) => authority),
+        policyFiles,
+      ]),
+    ).toEqual([
+      ["agent", "agent-box-egress", ["api.example.com"], ["policy.dw"]],
+      ["second", "second-box-egress", ["docs.example.com"], ["rules.dw"]],
+      ["quiet", "quiet-box-egress", [], []],
+    ]);
+  });
+
+  test("refuses an entry whose API key credential another runtime takes for another variable", async () => {
+    const root = await project([]);
+    const github = (variable: string, host: string) => ({
+      github: { destinations: [host], secret: { ref: `env://${variable}` } },
+    });
+    const profiles: Record<string, ReturnType<typeof github>> = {
+      ".box/agent/local/profile.toml": github("GITHUB_TOKEN", "api.github.com"),
+      ".box/second/local/profile.toml": github("OTHER_TOKEN", "api.other.example.com"),
+      ".box/third/local/profile.toml": github("GITHUB_TOKEN", "uploads.github.com"),
+    };
+    for (const [file, egress] of Object.entries(profiles)) {
+      const { destinations, secret } = egress.github;
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(
+        join(root, file),
+        `# ${file}\n[egress.github]\ndestinations = ${JSON.stringify(destinations)}\n` +
+          `secret.ref = "${secret.ref}"\n`,
+      );
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+    };
+
+    const networks = await readBoxNetworks(specWith("second", "third"), root, resolver);
+
+    expect(
+      networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+    ).toEqual([[], [["API_KEY_CREDENTIAL_SHARED", ".box/second/local/profile.toml:2:1"]], []]);
+    expect(networks[1]!.failures[0]!.reason).toBe(
+      "[egress.github] needs the API key credential 'github' for env://OTHER_TOKEN, and runtime " +
+        "'agent' takes that credential for env://GITHUB_TOKEN. One credential holds one key. " +
+        "Rename the entry in one of the two profiles.",
+    );
+  });
+
+  test("refuses a project that keeps .box/profile.toml, and runs no box", async () => {
+    const root = await project([]);
+    await writeFile(join(root, ".box", "profile.toml"), "# earlier layout\n");
+    const box = new FakeBoxProfileResolver();
+
+    const read = readBoxNetworks(SPEC, root, box);
+
+    await expect(read).rejects.toBeInstanceOf(ProjectStateError);
+    await expect(read).rejects.toThrow(
+      ".box/profile.toml is the box profile of an earlier layout, and no command reads it now: " +
+        "each agent has its own profile, .box/<runtime>/local/profile.toml. Move the profile and " +
+        "its policy files into that folder of the runtime it runs, then remove .box/profile.toml.",
+    );
+    expect(box.calls).toEqual([]);
   });
 
   test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {

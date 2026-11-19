@@ -14,6 +14,7 @@ import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
+  assertNoProjectBoxProfile,
   boxLocalDir,
   boxLocalProfileFile,
   boxLocalProfilePath,
@@ -43,7 +44,8 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
 /**
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
  * own local box profile as `resolver` resolves it for a build in `region`. A project with no box
- * runtime resolves nothing, and an agent with no local box profile resolves no profile.
+ * runtime resolves nothing, and an agent with no local box profile resolves no profile. Throws for
+ * a project that keeps the one box profile of the earlier layout.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,
@@ -53,11 +55,13 @@ export async function readBoxNetworks(
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
+  assertNoProjectBoxProfile(projectRoot);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
+  const keys: SharedKeys = new Map();
   for (const runtime of runtimes) {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
     const entry = boxGatewayOf(withDefaults, runtime.name);
@@ -78,9 +82,54 @@ export async function readBoxNetworks(
       targets: entry.targets,
       grantedActions: granted.actions,
     });
-    networks.push({ ...network, warnings: [...network.warnings, ...granted.warnings] });
+    networks.push({
+      ...network,
+      warnings: [...network.warnings, ...granted.warnings],
+      failures: [...network.failures, ...sharedKeyFailures(network, parsed, keys)],
+    });
   }
   return networks;
+}
+
+/** By API key credential, the variable and the runtime of the first entry that takes it. */
+type SharedKeys = Map<string, { readonly variable: string; readonly runtime: string }>;
+
+/**
+ * A failure for each `[egress]` entry of `network` whose API key credential an entry of an earlier
+ * box runtime takes for another variable, as `keys` records them. Each runtime has its own
+ * profile, but agentcore.json has one credential of each name, and one credential holds one key.
+ */
+function sharedKeyFailures(
+  network: BoxNetwork,
+  parsed: ParsedPolicy,
+  keys: SharedKeys,
+): BoxNetworkFailure[] {
+  const failures: BoxNetworkFailure[] = [];
+  for (const { outboundAuth: auth, sources } of network.hosts) {
+    if (auth.kind !== "apiKey") continue;
+    const holder = keys.get(auth.credentialName);
+    if (holder === undefined) {
+      keys.set(auth.credentialName, { variable: auth.variable, runtime: network.runtime });
+      continue;
+    }
+    // hostTargets already refuses two entries of one profile that share a credential.
+    if (holder.variable === auth.variable || holder.runtime === network.runtime) continue;
+    const source = sources.find((candidate) => candidate.kind === "entry");
+    const entry = source?.kind === "entry" ? source.egressEntry : undefined;
+    failures.push({
+      code: "API_KEY_CREDENTIAL_SHARED",
+      ...(entry !== undefined && { egressEntry: entry }),
+      reason:
+        `${entry === undefined ? "An entry" : `[egress.${entry}]`} needs the API key credential ` +
+        `'${auth.credentialName}' for env://${auth.variable}, and runtime '${holder.runtime}' ` +
+        `takes that credential for env://${holder.variable}. One credential holds one key. ` +
+        "Rename the entry in one of the two profiles.",
+      place:
+        (entry === undefined ? undefined : parsed.profile.places?.entries.get(`egress.${entry}`)) ??
+        parsed.profile.path,
+    });
+  }
+  return failures;
 }
 
 /**
