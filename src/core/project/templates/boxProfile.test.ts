@@ -373,8 +373,15 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           ...AWS_STAND_INS,
         },
         filesystem: {
-          read: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}", "/usr/lib64", "/lib64"],
-          exec: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}"],
+          read: [
+            "${{ inputs.code.dir }}",
+            "${{ inputs.python.path }}",
+            { path: "${{ inputs.python.prefix }}/lib", optional: true },
+            { path: "${{ inputs.python.prefix }}/lib64", optional: true },
+            "/usr/lib64",
+            "/lib64",
+          ],
+          exec: ["${{ inputs.code.dir }}", "${{ inputs.python.path }}"],
         },
         ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
       },
@@ -459,6 +466,33 @@ describe("renderRuntimeBoxProfile", () => {
       agentCoreGateways: [{ ...getBoxGatewayEntry("agent"), targets }],
     } as unknown as ProjectSpec;
   }
+
+  test.each(["CodeZip", "Container"] as const)(
+    "grants configured storage reads and keeps deferred %s ingress private",
+    (build) => {
+      const project = spec([], {
+        build,
+        filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/workspace/" } }],
+      });
+      const result = parse(
+        renderRuntimeBoxProfile(project, project.runtimes[0]!),
+      ) as unknown as BoxProfile;
+      expect(result.agent.ingress).toEqual([{ listen: "127.0.0.1:8082", workload_port: 8081 }]);
+      expect(result.agent.filesystem.read).toContain("/mnt/workspace");
+      expect(result.agent.filesystem.read).not.toContain("/mnt");
+      expect(result.agent.filesystem.exec).not.toContain("/mnt/workspace");
+      expect(result.agent.filesystem).not.toHaveProperty("write");
+    },
+  );
+
+  test("keeps the eager public ingress when no storage is configured", () => {
+    const project = spec([]);
+    const result = parse(
+      renderRuntimeBoxProfile(project, project.runtimes[0]!),
+    ) as unknown as BoxProfile;
+    expect(result.agent.ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 8081 }]);
+    expect(result.agent.filesystem.read).not.toContain("/mnt/workspace");
+  });
 
   type Egress = Record<string, { secret?: { ref?: string }; backends?: { url: string }[] }>;
   const egressOf = (project: ProjectSpec) =>

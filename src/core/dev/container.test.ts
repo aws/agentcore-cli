@@ -862,6 +862,8 @@ describe("ContainerDevRunner", () => {
       // The box release the image downloads, and the local profile.
       expect((await readdir(join(context, ".box-dist"))).sort()).toEqual([
         "box-release.env",
+        "box_container_start.py",
+        "box_runtime.py",
         "profile.toml",
       ]);
       expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
@@ -892,6 +894,9 @@ describe("ContainerDevRunner", () => {
         stream: async function* (command) {
           // What docker build sees: dev's folder, while it builds.
           if (command[1] === "build") {
+            expect(existsSync(join(context, ".box-dev", "box_runtime.py"))).toBe(true);
+            expect(existsSync(join(context, ".box-dev", "box_container_start.py"))).toBe(true);
+            expect(existsSync(join(context, ".box-dev", "runtime-start.json"))).toBe(false);
             staged = await readFile(join(context, ".box-dev", "profile.toml"), "utf8");
           }
           yield* [];

@@ -325,10 +325,11 @@ describe("runtimeProfileWriter", () => {
 
     expect(writer.writes(models)).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: "app/agent/.box-dist/runtime-start.json" },
       { kind: "file", path: "app/agent/.box-dist/policy.dw" },
       { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
     ]);
-    expect(files.slice(1)).toEqual([
+    expect(files.slice(2)).toEqual([
       { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/agent/local/policy.dw" },
       { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/agent/local/rules/extra.dw" },
     ]);

@@ -8,6 +8,7 @@ import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
 import type { BoxNetwork, BoxNetworkSource, CloudWatchTelemetry } from "../boxNetwork";
+import { BOX_DEFERRED_INGRESS_PORT, boxRuntimeMounts, type BoxRuntimeMount } from "../boxRuntime";
 import { modelProviderCredentialName } from "./runtime";
 
 /** Where uv installs the Pythons it manages, as a boxy path. */
@@ -18,7 +19,7 @@ const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
 
 /**
  * The entry point of a runtime that runs its agent in a box on a CodeZip
- * deploy: start.py runs start.sh, which starts `box run`. Create writes both.
+ * deploy: start.py prepares the generated profile and starts Box. Create writes the launcher.
  */
 export const BOX_CODEZIP_ENTRYPOINT = "start.py";
 
@@ -357,11 +358,19 @@ function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner 
       // trampolines, which Box Core's W^X filter allows.
       PYTHONPATH: `${code}/${BOX_CODEZIP_DIST}/ffi:${code}`,
     },
-    read: [code, pythonPrefix, "/usr/lib64", "/lib64"].map(str),
+    // Managed Python can have /usr as its prefix. Grant its libraries and exact interpreter,
+    // because Box rejects system roots and the agent does not need every executable below them.
+    read: [
+      str(code),
+      str(python),
+      optional(`${pythonPrefix}/lib`),
+      optional(`${pythonPrefix}/lib64`),
+      str("/usr/lib64"),
+      str("/lib64"),
+    ],
     execComment:
-      "# Box Core adds the loader folders itself and refuses exec on them, so they are read only.\n" +
-      "# One grant may not sit inside another, so the Python prefix covers its bin/ folder.\n",
-    exec: [code, pythonPrefix].map(str),
+      "# Only the Python interpreter and deployed code are executable; libraries remain read only.\n",
+    exec: [code, python].map(str),
     denyWrite: [],
   };
 }
@@ -392,12 +401,14 @@ export function renderBoxProfile(
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  runtimeMounts: readonly BoxRuntimeMount[] = [],
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
   const protocol = runtime.protocol ?? "HTTP";
   const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
-  const ingressPort = boxIngressPort(protocol);
+  const deferred = target === "runtime" && runtimeMounts.length > 0;
+  const ingressPort = deferred ? BOX_DEFERRED_INGRESS_PORT : boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
@@ -414,7 +425,7 @@ export function renderBoxProfile(
       ? runtimeCodeZipRunner(protocol, workloadPort)
       : codeZipRunner(protocol, appDir, workloadPort);
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
-  const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
+  const listenHost = !deferred && (container || onRuntime) ? "0.0.0.0" : "127.0.0.1";
   const callsModel = protocol !== "MCP";
   const bedrock = callsModel && callsBedrockModel(runtime);
   // On the Runtime, each model route is a Box gateway target that build derives from the local
@@ -496,7 +507,7 @@ command = ${list(runner.command)}
 ${env}${awsStandIns}
 
 [agent.filesystem]
-read = [${runner.read.join(", ")}]
+read = [${[...runner.read, ...runtimeMounts.map(({ path }) => str(path))].join(", ")}]
 ${execComment}exec = [${runner.exec.join(", ")}]
 ${denyWrite}
 [[agent.ingress]]
@@ -672,6 +683,7 @@ export function renderRuntimeBoxProfile(
     runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
+    boxRuntimeMounts(runtime),
   )!;
   const profileFile = boxLocalProfileFile(runtime.name);
   return (

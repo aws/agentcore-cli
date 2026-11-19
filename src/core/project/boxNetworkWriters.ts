@@ -25,6 +25,7 @@ import {
   boxMemoryPolicy,
 } from "./boxMemory";
 import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+import { BOX_RUNTIME_CONFIG, renderBoxRuntimeConfig } from "./boxRuntime";
 import {
   boxTelemetryPolicy,
   boxTelemetryPolicyFile,
@@ -313,6 +314,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
     writes: (networks) =>
       staged.flatMap(({ runtime, dist, container, codezip }) => [
         { kind: "file" as const, path: `${dist}/profile.toml` },
+        { kind: "file" as const, path: `${dist}/${BOX_RUNTIME_CONFIG}` },
         // Both Runtime profiles read the deployed resources through this pack.
         ...(container || codezip
           ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }]
@@ -332,6 +334,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
         const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
           { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
+          { path: `${dist}/${BOX_RUNTIME_CONFIG}`, text: renderBoxRuntimeConfig(entry) },
           ...(container || codezip
             ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
             : []),

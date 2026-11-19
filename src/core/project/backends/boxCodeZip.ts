@@ -5,6 +5,7 @@ import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { BOX_CODEZIP_DIST, boxAwsDir, runsBoxStartScript } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
+import { assertBoxStorageLauncher, stageBoxRuntimeAssets } from "./boxRuntimeAssets";
 
 /**
  * Stages box into each CodeZip runtime whose entry point is the box start
@@ -26,6 +27,12 @@ export async function stageBoxCodeZip(
     (runtime) => runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint),
   );
   if (runtimes.length === 0) return [];
+  for (const runtime of runtimes) {
+    await assertBoxStorageLauncher(
+      runtime,
+      join(project.rootPath, runtime.codeLocation, "start.py"),
+    );
+  }
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: boxAwsDir(runtime.name),
@@ -61,6 +68,7 @@ export async function stageBoxCodeZip(
     const ffi = entry.runtimeVersion ? build.ffi[entry.runtimeVersion] : undefined;
     if (ffi) cpSync(ffi, join(folder, "ffi"), { recursive: true });
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
+    await stageBoxRuntimeAssets(folder, false);
     // Copy the canonical AWS tree into the code folder's .box-dist so the zip carries it.
     const codeDist = join(project.rootPath, ...entry.codeLocation.split("/"), BOX_CODEZIP_DIST);
     rmSync(codeDist, { recursive: true, force: true });
