@@ -142,7 +142,7 @@ const backendText = (table: string, target: string) =>
 describe("the gateway rule", () => {
   test("carries each key it does not own, and a stdio [mcp] server, as the local profile has them", () => {
     const text = [
-      'packs = ["box/base", "team/search"]',
+      'packs = ["@box/base", "team/search"]',
       'agent-args = ["--verbose"]',
       'unknown-key = "box refuses it locally first"',
       "[agent]",
@@ -165,7 +165,7 @@ describe("the gateway rule", () => {
 
   test("sends each host of an [egress] entry to its gateway target, and keeps its other keys", () => {
     const text = [
-      'packs = ["box/base"]',
+      'packs = ["@box/base"]',
       "[egress.github]",
       'destinations = ["api.github.com"]',
       'protocol = "http"',
@@ -181,7 +181,7 @@ describe("the gateway rule", () => {
     // The secret moves to the gateway target, which sends the key.
     expect(table).toEqual(
       parse(
-        'packs = ["box/base"]\n' +
+        'packs = ["@box/base"]\n' +
           "[egress.egress-github]\n" +
           'destinations = ["api.github.com"]\n' +
           'protocol = "http"\n' +
@@ -405,7 +405,7 @@ function rendered(label: string): TomlTable {
 
 describe("the gateway rule and the Runtime renderer it replaced", () => {
   const TEXT = [
-    'packs = ["box/base", "box/bedrock"]',
+    'packs = ["@box/base", "@box/bedrock"]',
     'policies = ["policy.dw"]',
     "",
     "[agent]",
@@ -434,7 +434,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
     'type = "stdio"',
     'command = ["${{ workspace }}/app/agent/notes"]',
   ].join("\n");
-  /** The `[egress]` and `[mcp]` tables that Box resolves the profile to, with box/bedrock. */
+  /** The `[egress]` and `[mcp]` tables that Box resolves the profile to, with @box/bedrock. */
   const EGRESS = {
     bedrock: {
       destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],

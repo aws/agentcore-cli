@@ -34,7 +34,7 @@ export async function stageBoxCodeZip(
     runtime: runtime.name,
     dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
     // A CodeZip deploy reads the deployed resources, its Python and its code path through the
-    // box/agentcore and box/agentcore-codezip packs.
+    // @box/agentcore and @box/agentcore-codezip packs.
     kind: "codezip" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {

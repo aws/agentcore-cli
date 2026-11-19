@@ -26,7 +26,7 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
     hosts: [],
     envRoutes: [],
     policyFiles: [],
-    runtimeProfile: { packs: ["box/base", "box/agentcore"], profile: { name: "demo" } },
+    runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
     runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
@@ -449,7 +449,7 @@ describe("runtimeProfileWriter", () => {
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "codezip" },
     ]);
     const policies = ["policy.dw", "rules/extra.dw"];
-    const runtimeProfile = { packs: ["box/base", "box/agentcore"], policies };
+    const runtimeProfile = { packs: ["@box/base", "@box/agentcore"], policies };
     const models = [network({ policyFiles: policies, runtimeProfile })];
 
     const { files } = run([writer], models);
@@ -485,7 +485,7 @@ describe("runtimeProfileWriter", () => {
     );
   });
 
-  test("stages only the box/agentcore pack for a container", () => {
+  test("stages only the @box/agentcore pack for a container", () => {
     const writer = runtimeProfileWriter([
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
     ]);

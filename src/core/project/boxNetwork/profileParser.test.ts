@@ -168,7 +168,7 @@ describe("profilePlaces", () => {
   test("places each entry by its header, its dotted key, or its key under [egress]", () => {
     const places = profilePlaces(
       [
-        'packs = ["box/base", "box/bedrock"]',
+        'packs = ["@box/base", "@box/bedrock"]',
         'policies = ["policy.dw"]',
         "",
         "[egress.github]",

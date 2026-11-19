@@ -363,7 +363,7 @@ describe("CdkBackend.build", () => {
             hosts: [],
             envRoutes: [],
             policyFiles: [],
-            runtimeProfile: { packs: ["box/base", "box/agentcore"] },
+            runtimeProfile: { packs: ["@box/base", "@box/agentcore"] },
             grantedActions: [],
             warnings: [],
             failures: [],

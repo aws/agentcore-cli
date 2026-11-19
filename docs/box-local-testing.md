@@ -142,7 +142,7 @@ it lists under `policies`, and turn them into that runtime's Box network. They c
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
-  - the `box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
+  - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role. With no `cloudwatch_logs` target, the box sends its
     records to the runtime's own log group.
 

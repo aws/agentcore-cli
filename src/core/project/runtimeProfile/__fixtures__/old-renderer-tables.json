@@ -2,10 +2,10 @@
   "templates": {
     "CodeZip HTTP Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -78,10 +78,10 @@
     },
     "CodeZip HTTP Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -163,10 +163,10 @@
     },
     "CodeZip HTTP Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -249,10 +249,10 @@
     },
     "CodeZip HTTP Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -325,10 +325,10 @@
     },
     "CodeZip HTTP Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -410,10 +410,10 @@
     },
     "CodeZip HTTP Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -496,9 +496,9 @@
     },
     "CodeZip HTTP OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -567,9 +567,9 @@
     },
     "CodeZip HTTP OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -647,9 +647,9 @@
     },
     "CodeZip HTTP OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -728,9 +728,9 @@
     },
     "CodeZip HTTP OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -799,9 +799,9 @@
     },
     "CodeZip HTTP OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -879,9 +879,9 @@
     },
     "CodeZip HTTP OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -960,9 +960,9 @@
     },
     "CodeZip MCP Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -1024,9 +1024,9 @@
     },
     "CodeZip MCP Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1097,9 +1097,9 @@
     },
     "CodeZip MCP Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1171,9 +1171,9 @@
     },
     "CodeZip MCP Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -1235,9 +1235,9 @@
     },
     "CodeZip MCP Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1308,9 +1308,9 @@
     },
     "CodeZip MCP Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1382,9 +1382,9 @@
     },
     "CodeZip MCP OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -1446,9 +1446,9 @@
     },
     "CodeZip MCP OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1519,9 +1519,9 @@
     },
     "CodeZip MCP OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1593,9 +1593,9 @@
     },
     "CodeZip MCP OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -1657,9 +1657,9 @@
     },
     "CodeZip MCP OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1730,9 +1730,9 @@
     },
     "CodeZip MCP OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1804,10 +1804,10 @@
     },
     "CodeZip A2A Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -1874,10 +1874,10 @@
     },
     "CodeZip A2A Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -1953,10 +1953,10 @@
     },
     "CodeZip A2A Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2033,10 +2033,10 @@
     },
     "CodeZip A2A Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -2103,10 +2103,10 @@
     },
     "CodeZip A2A Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2182,10 +2182,10 @@
     },
     "CodeZip A2A Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2262,9 +2262,9 @@
     },
     "CodeZip A2A OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -2327,9 +2327,9 @@
     },
     "CodeZip A2A OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2401,9 +2401,9 @@
     },
     "CodeZip A2A OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2476,9 +2476,9 @@
     },
     "CodeZip A2A OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -2541,9 +2541,9 @@
     },
     "CodeZip A2A OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2615,9 +2615,9 @@
     },
     "CodeZip A2A OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2690,10 +2690,10 @@
     },
     "CodeZip AGUI Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -2759,10 +2759,10 @@
     },
     "CodeZip AGUI Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2837,10 +2837,10 @@
     },
     "CodeZip AGUI Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -2916,10 +2916,10 @@
     },
     "CodeZip AGUI Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -2985,10 +2985,10 @@
     },
     "CodeZip AGUI Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3063,10 +3063,10 @@
     },
     "CodeZip AGUI Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3142,9 +3142,9 @@
     },
     "CodeZip AGUI OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -3206,9 +3206,9 @@
     },
     "CodeZip AGUI OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3279,9 +3279,9 @@
     },
     "CodeZip AGUI OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3353,9 +3353,9 @@
     },
     "CodeZip AGUI OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -3417,9 +3417,9 @@
     },
     "CodeZip AGUI OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3490,9 +3490,9 @@
     },
     "CodeZip AGUI OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -3564,9 +3564,9 @@
     },
     "Container HTTP Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -3648,9 +3648,9 @@
     },
     "Container HTTP Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -3741,9 +3741,9 @@
     },
     "Container HTTP Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -3835,9 +3835,9 @@
     },
     "Container HTTP Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -3919,9 +3919,9 @@
     },
     "Container HTTP Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4012,9 +4012,9 @@
     },
     "Container HTTP Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4106,8 +4106,8 @@
     },
     "Container HTTP OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -4185,8 +4185,8 @@
     },
     "Container HTTP OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4273,8 +4273,8 @@
     },
     "Container HTTP OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4362,8 +4362,8 @@
     },
     "Container HTTP OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -4441,8 +4441,8 @@
     },
     "Container HTTP OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4529,8 +4529,8 @@
     },
     "Container HTTP OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4618,8 +4618,8 @@
     },
     "Container MCP Bedrock memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -4697,8 +4697,8 @@
     },
     "Container MCP Bedrock memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4785,8 +4785,8 @@
     },
     "Container MCP Bedrock memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -4874,8 +4874,8 @@
     },
     "Container MCP Bedrock memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -4953,8 +4953,8 @@
     },
     "Container MCP Bedrock memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5041,8 +5041,8 @@
     },
     "Container MCP Bedrock memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5130,8 +5130,8 @@
     },
     "Container MCP OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -5209,8 +5209,8 @@
     },
     "Container MCP OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5297,8 +5297,8 @@
     },
     "Container MCP OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5386,8 +5386,8 @@
     },
     "Container MCP OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -5465,8 +5465,8 @@
     },
     "Container MCP OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5553,8 +5553,8 @@
     },
     "Container MCP OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -5644,10 +5644,10 @@
   "boxTemplates": {
     "a2a-python-strands-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -5733,10 +5733,10 @@
     },
     "a2a-python-strands-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -5831,10 +5831,10 @@
     },
     "a2a-python-strands-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -5930,10 +5930,10 @@
     },
     "a2a-python-strands-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -6036,10 +6036,10 @@
     },
     "a2a-python-strands-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6151,10 +6151,10 @@
     },
     "a2a-python-strands-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6267,9 +6267,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -6351,9 +6351,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6444,9 +6444,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6538,9 +6538,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -6639,9 +6639,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6749,9 +6749,9 @@
     },
     "a2a-python-strands-box provider=OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -6860,10 +6860,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -6955,10 +6955,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7059,10 +7059,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7164,10 +7164,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -7276,10 +7276,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7397,10 +7397,10 @@
     },
     "agent-python-langchain-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7519,10 +7519,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -7614,10 +7614,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7718,10 +7718,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -7823,10 +7823,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -7935,10 +7935,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8056,10 +8056,10 @@
     },
     "agent-python-minimal-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8178,10 +8178,10 @@
     },
     "agent-python-strands-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -8273,10 +8273,10 @@
     },
     "agent-python-strands-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8377,10 +8377,10 @@
     },
     "agent-python-strands-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8482,10 +8482,10 @@
     },
     "agent-python-strands-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -8594,10 +8594,10 @@
     },
     "agent-python-strands-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8715,10 +8715,10 @@
     },
     "agent-python-strands-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -8837,9 +8837,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -8927,9 +8927,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -9026,9 +9026,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -9126,9 +9126,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -9233,9 +9233,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -9349,9 +9349,9 @@
     },
     "agent-python-strands-box provider=OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -9466,9 +9466,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -9569,9 +9569,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -9681,9 +9681,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -9794,9 +9794,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -9914,9 +9914,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10043,9 +10043,9 @@
     },
     "agent-python-strands-box-container provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10173,8 +10173,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -10271,8 +10271,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10378,8 +10378,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10486,8 +10486,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "profile": {
         "name": "demo"
@@ -10601,8 +10601,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10725,8 +10725,8 @@
     },
     "agent-python-strands-box-container provider=OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore"
+        "@box/base",
+        "@box/agentcore"
       ],
       "policies": [
         "policy.dw"
@@ -10850,10 +10850,10 @@
     },
     "agui-python-strands-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -10938,10 +10938,10 @@
     },
     "agui-python-strands-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11035,10 +11035,10 @@
     },
     "agui-python-strands-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11133,10 +11133,10 @@
     },
     "agui-python-strands-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -11238,10 +11238,10 @@
     },
     "agui-python-strands-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11352,10 +11352,10 @@
     },
     "agui-python-strands-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/bedrock",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/bedrock",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11467,9 +11467,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -11550,9 +11550,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11642,9 +11642,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11735,9 +11735,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -11835,9 +11835,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -11944,9 +11944,9 @@
     },
     "agui-python-strands-box provider=OpenAI memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -12054,9 +12054,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=0 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -12137,9 +12137,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=0 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -12229,9 +12229,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=0 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -12322,9 +12322,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=1 telemetry=none": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "profile": {
         "name": "demo"
@@ -12422,9 +12422,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=1 telemetry=logs and traces": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"
@@ -12531,9 +12531,9 @@
     },
     "mcp-python-fastmcp-box provider=of the template memories=1 telemetry=traces only": {
       "packs": [
-        "box/base",
-        "box/agentcore",
-        "box/agentcore-codezip"
+        "@box/base",
+        "@box/agentcore",
+        "@box/agentcore-codezip"
       ],
       "policies": [
         "policy.dw"

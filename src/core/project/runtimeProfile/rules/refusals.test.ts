@@ -46,7 +46,7 @@ const APP = "${{ workspace }}/app/agent";
 
 /** A local profile that can go to a CodeZip Runtime: each path moves, and each program is there. */
 const WORKS = toml(
-  'packs = ["box/base", "box/bedrock"]',
+  'packs = ["@box/base", "@box/bedrock"]',
   "",
   "[agent]",
   `command = ["${APP}/.venv/bin/python", "-m", "uvicorn", "main:app", "--app-dir", "${APP}"]`,

@@ -4,9 +4,9 @@
  *
  * | Key | Runtime profile |
  * | --- | --- |
- * | `packs` | the user's packs in their order, then box/agentcore, and box/agentcore-codezip for CodeZip |
+ * | `packs` | the user's packs in their order, then @box/agentcore, and @box/agentcore-codezip for CodeZip |
  * | `[profile] name` | the project's name |
- * | `[options] bedrock.region` | the build region, where the profile sets it or imports box/bedrock |
+ * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region, the AWS stand-ins, and (CodeZip) the ffi `PYTHONPATH` come in; a value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
@@ -20,6 +20,7 @@
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
+  BOX_BEDROCK_PACK,
   BOX_CODEZIP_DIST,
 } from "../../templates/boxProfile";
 import {
@@ -31,9 +32,6 @@ import {
 
 /** The credential that signs an AWS call on AgentCore Runtime: the execution role. */
 export const RUNTIME_AWS_SIGNER = "aws://";
-
-/** The pack that sets `AWS_REGION` itself, from its `bedrock.region` input. */
-const BEDROCK_PACK = "box/bedrock";
 
 /** The variable that tells the template's agent that it runs under `agentcore dev`. */
 const LOCAL_DEV = "LOCAL_DEV";
@@ -63,7 +61,7 @@ const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 /**
  * The CloudWatch Logs target of a Runtime profile that has no `cloudwatch_logs` target: the
  * runtime's own log group and log stream, in its own region. The runtime ID exists only after
- * deploy, so box reads the three values through inputs of box/agentcore when the run starts.
+ * deploy, so box reads the three values through inputs of @box/agentcore when the run starts.
  */
 export const DEFAULT_TELEMETRY_TARGET = {
   kind: "cloudwatch_logs",
@@ -75,8 +73,8 @@ export const DEFAULT_TELEMETRY_TARGET = {
 } as const;
 
 /**
- * The Runtime's region in the agent's environment, from the box/agentcore `aws.region` input.
- * box/bedrock sets `AWS_REGION` itself, so the profile sets it only without that pack.
+ * The Runtime's region in the agent's environment, from the @box/agentcore `aws.region` input.
+ * @box/bedrock sets `AWS_REGION` itself, so the profile sets it only without that pack.
  */
 export function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   const region = RUNTIME_INPUTS.awsRegion;
@@ -115,7 +113,8 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const packs = runtimePacks(result.packs, context);
   result.packs = packs;
   result.profile = { ...(isTable(result.profile) ? result.profile : {}), name: context.spec.name };
-  const bedrock = Array.isArray(packs) && packs.includes(BEDROCK_PACK);
+  // The pack that sets `AWS_REGION` itself, from its `bedrock.region` input.
+  const bedrock = Array.isArray(packs) && packs.includes(BOX_BEDROCK_PACK);
   const options = runtimeOptions(result.options, bedrock, context.region);
   if (options !== undefined) result.options = options;
   result.agent = runtimeAgent(result.agent, bedrock, context);
@@ -142,7 +141,7 @@ function runtimePacks(packs: unknown, context: RuntimeProfileContext): unknown {
 
 /**
  * `[options]` with `bedrock.region` in the build region, the region of the gateway's `bedrock`
- * target: where the profile sets it, as a dotted or a quoted key, or where it imports box/bedrock.
+ * target: where the profile sets it, as a dotted or a quoted key, or where it imports @box/bedrock.
  */
 function runtimeOptions(options: unknown, bedrock: boolean, region: string): unknown {
   if (options !== undefined && !isTable(options)) return options;

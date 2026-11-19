@@ -368,8 +368,8 @@ export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
   /**
-   * How the runtime deploys. Both kinds stage the `box/agentcore` pack; a CodeZip deploy also
-   * stages the `box/agentcore-codezip` pack.
+   * How the runtime deploys. Both kinds stage the `@box/agentcore` pack; a CodeZip deploy also
+   * stages the `@box/agentcore-codezip` pack.
    */
   readonly kind: "container" | "codezip";
 }

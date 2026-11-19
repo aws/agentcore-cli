@@ -882,7 +882,7 @@ describe("FsProjectManager.create box profile", () => {
     });
 
     const appDir = join(directory, "example", "app", "agent_python_strands_box");
-    // start.py execs box run and exports the paths the box/agentcore-codezip pack reads; no start.sh.
+    // start.py execs box run and exports the paths the @box/agentcore-codezip pack reads; no start.sh.
     const startPy = await readFile(join(appDir, "start.py"), "utf8");
     expect(startPy).toContain("os.execve");
     expect(startPy).toContain("BOX_PYTHON");

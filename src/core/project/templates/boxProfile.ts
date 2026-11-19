@@ -53,12 +53,18 @@ const BOX_CODE_ENV = "BOX_CODE";
  */
 const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
+/** The pack of box that each box profile imports. */
+export const BOX_BASE_PACK = "@box/base";
+
+/** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
+export const BOX_BEDROCK_PACK = "@box/bedrock";
+
 /** {@link renderAgentCorePack}. */
-export const AGENTCORE_PACK_NAME = "box/agentcore";
+export const AGENTCORE_PACK_NAME = "@box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
 
 /** {@link renderAgentCoreCodeZipPack}. */
-export const AGENTCORE_CODEZIP_PACK_NAME = "box/agentcore-codezip";
+export const AGENTCORE_CODEZIP_PACK_NAME = "@box/agentcore-codezip";
 export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
 
 /**
@@ -69,7 +75,7 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
 const GATEWAY_URL_PATTERN =
   "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*";
 
-/** As box/bedrock bounds `bedrock.region`. */
+/** As @box/bedrock bounds `bedrock.region`. */
 const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
 
 /**
@@ -79,9 +85,9 @@ const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-
 const ABSOLUTE_PATH_PATTERN = "(/[.]{0,2}[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)+";
 
 /**
- * The tools of box/base that get the project's write grant: box gives each one its own grant, so
- * each lists the agent's `deny_write` folders as well. Taken from box/base in the box release that
- * `boxRelease.json` pins (0.1.11-linux-preview.6). When the pin moves, check box/base's tools: box
+ * The tools of @box/base that get the project's write grant: box gives each one its own grant, so
+ * each lists the agent's `deny_write` folders as well. Taken from @box/base in the box release that
+ * `boxRelease.json` pins (0.1.11-linux-preview.6). When the pin moves, check the tools of @box/base: box
  * refuses a CodeZip box profile if a tool it misses gets the project write grant.
  */
 const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
@@ -474,13 +480,13 @@ export function renderBoxProfile(
   const bedrockRoute = bedrock
     ? `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
-# rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
+# rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
 secret.ref = "aws://default"
 `
     : "";
   const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";
-  const packs = list(["box/base", ...(bedrock ? ["box/bedrock"] : [])]);
+  const packs = list([BOX_BASE_PACK, ...(bedrock ? [BOX_BEDROCK_PACK] : [])]);
   const env = Object.entries(environment)
     .map(([name, value]) => `${name} = ${str(value)}`)
     .join("\n");
@@ -593,7 +599,7 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
- * The `box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
+ * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
  * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
  * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
@@ -654,7 +660,7 @@ ${agentEnv}`;
 }
 
 /**
- * The `box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
+ * The `@box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
  * and base prefix, and the read-only code directory, which only the microVM knows. start.py exports
  * them ({@link BOX_PYTHON_ENV}, {@link BOX_PYTHON_PREFIX_ENV}, {@link BOX_CODE_ENV}) before it runs
  * box, and the profile reads them through these inputs, so no start script fills the profile in. box

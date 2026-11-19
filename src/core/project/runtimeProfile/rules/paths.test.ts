@@ -51,7 +51,7 @@ const PYTHONPATH = `${CODE}/.box-dist/ffi:${CODE}`;
 
 /** A local profile with a stdio MCP server and a tool, each with a key build does not know. */
 const LEAVES = toml(
-  'packs = ["box/base"]',
+  'packs = ["@box/base"]',
   "",
   "[agent]",
   'command = ["/bin/echo"]',
@@ -238,7 +238,7 @@ describe("the paths rule", () => {
 
   test("changes no key that another rule writes, and no value with no path of the project", () => {
     const text = toml(
-      'packs = ["box/base"]',
+      'packs = ["@box/base"]',
       'policies = ["policies/app.dw"]',
       "[profile]",
       'name = "demo-agent"',

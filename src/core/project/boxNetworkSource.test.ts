@@ -111,6 +111,41 @@ describe("readBoxNetworks", () => {
     expect(network?.runtimeProfile?.project).toEqual({ access: "read" });
   });
 
+  test("stops before box runs when the profile names a pack or a plugin that box ships by its old box/ name", async () => {
+    const root = await project([]);
+    await writeFile(
+      join(root, ...LOCAL, "profile.toml"),
+      'packs = ["box/base", "box/bedrock", "@box/node", "team-pack", "box/base"]\n' +
+        'plugins = ["box/aws-secrets-manager"]\n',
+    );
+    const box = new FakeBoxProfileResolver();
+
+    const stopped = readBoxNetworks(SPEC, root, box);
+
+    await expect(stopped).rejects.toBeInstanceOf(ProjectStateError);
+    await expect(stopped).rejects.toThrow(
+      'The box profile .box/agent/local/profile.toml names "box/base", "box/bedrock", ' +
+        '"box/aws-secrets-manager". Box now names each pack and plugin that it ships ' +
+        '"@box/<name>", and it refuses the old "box/<name>" name. In ' +
+        '.box/agent/local/profile.toml, change "box/base" to "@box/base", "box/bedrock" to ' +
+        '"@box/bedrock", "box/aws-secrets-manager" to "@box/aws-secrets-manager", then build again.',
+    );
+    expect(box.calls).toEqual([]);
+  });
+
+  test("runs box for a profile with only @box/ names and names of its own", async () => {
+    const root = await project([]);
+    await writeFile(
+      join(root, ...LOCAL, "profile.toml"),
+      'packs = ["@box/base", "@box/bedrock", "team-pack"]\nplugins = ["@box/aws-secrets-manager"]\n',
+    );
+    const box = new FakeBoxProfileResolver();
+
+    await readBoxNetworks(SPEC, root, box);
+
+    expect(box.calls).toHaveLength(1);
+  });
+
   test("finds each runtime's Box gateway by boundRuntime, whatever its name", async () => {
     const root = await project([]);
     const spec = {

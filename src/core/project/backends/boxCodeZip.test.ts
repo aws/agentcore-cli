@@ -280,7 +280,7 @@ function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
 /** A derived Runtime profile that names `policyFiles`. */
 function runtimeProfileOf(policyFiles: string[], runtime = "agent"): TomlTable {
   return {
-    packs: ["box/base", "box/agentcore", "box/agentcore-codezip"],
+    packs: ["@box/base", "@box/agentcore", "@box/agentcore-codezip"],
     ...(policyFiles.length > 0 && { policies: policyFiles }),
     profile: { name: "demo" },
     agent: { command: [`\${{ inputs.code.dir }}/${runtime}`] },

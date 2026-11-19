@@ -11,7 +11,7 @@ import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
-/** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
+/** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
 
 const directories: string[] = [];
@@ -89,7 +89,7 @@ describe("stageBoxContainers", () => {
       `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
-    // The container also stages the box/agentcore pack, beside box's own packs in the image.
+    // The container also stages the @box/agentcore pack, beside box's own packs in the image.
     expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
     // The runtime's .box/agent/aws/ holds a copy of what the profile writer stages, and no box.
@@ -176,7 +176,7 @@ function model(policyFiles: string[]): BoxNetwork {
     envRoutes: [],
     policyFiles,
     runtimeProfile: {
-      packs: ["box/base", "box/agentcore"],
+      packs: ["@box/base", "@box/agentcore"],
       ...(policyFiles.length > 0 && { policies: policyFiles }),
       profile: { name: "demo" },
     },

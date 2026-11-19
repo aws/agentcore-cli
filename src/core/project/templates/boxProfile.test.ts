@@ -65,7 +65,7 @@ const UVICORN = [
 describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
-      packs: ["box/base", "box/bedrock"],
+      packs: ["@box/base", "@box/bedrock"],
       profile: { name: "V3Demo-agent" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -107,7 +107,7 @@ describe("renderBoxProfile", () => {
     "runs %s with uvicorn on Bedrock, like the Strands agent",
     (name) => {
       const { packs, agent, egress } = profile(name);
-      expect(packs).toEqual(["box/base", "box/bedrock"]);
+      expect(packs).toEqual(["@box/base", "@box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
       expect(egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
@@ -140,7 +140,7 @@ describe("renderBoxProfile", () => {
 
   test("gives the MCP server no route, because it calls no model", () => {
     const mcp = profile("mcp-python-fastmcp");
-    expect(mcp.packs).toEqual(["box/base"]);
+    expect(mcp.packs).toEqual(["@box/base"]);
     expect(mcp.options).toBeUndefined();
     expect(mcp.egress).toBeUndefined();
   });
@@ -203,7 +203,7 @@ describe("renderBoxProfile", () => {
         apiKey: "sk-test",
         ...overrides,
       });
-      expect(packs).toEqual(["box/base"]);
+      expect(packs).toEqual(["@box/base"]);
       expect(options).toBeUndefined();
       expect(egress).toEqual({ [route]: expected });
     },
@@ -211,7 +211,7 @@ describe("renderBoxProfile", () => {
 
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
     const { packs, egress } = profile("agent-python-strands", { modelProvider: "LiteLLM" });
-    expect(packs).toEqual(["box/base", "box/bedrock"]);
+    expect(packs).toEqual(["@box/base", "@box/bedrock"]);
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
 
@@ -399,9 +399,9 @@ describe("renderAgentCorePack", () => {
     ) as Record<string, any>;
   }
 
-  test("names itself box/agentcore and ships as a support pack", () => {
+  test("names itself @box/agentcore and ships as a support pack", () => {
     const toml = pack([]);
-    expect(toml.pack).toEqual({ name: "box/agentcore", version: 1, kind: "support" });
+    expect(toml.pack).toEqual({ name: "@box/agentcore", version: 1, kind: "support" });
   });
 
   test("declares the gateway URL input from the environment, bounded by a pattern", () => {
@@ -469,8 +469,8 @@ describe("renderAgentCorePack", () => {
 describe("renderAgentCoreCodeZipPack", () => {
   const toml = () => parse(renderAgentCoreCodeZipPack()) as Record<string, any>;
 
-  test("names itself box/agentcore-codezip and ships as a support pack", () => {
-    expect(toml().pack).toEqual({ name: "box/agentcore-codezip", version: 1, kind: "support" });
+  test("names itself @box/agentcore-codezip and ships as a support pack", () => {
+    expect(toml().pack).toEqual({ name: "@box/agentcore-codezip", version: 1, kind: "support" });
   });
 
   test("declares the Runtime Python and code directory from the environment start.py exports", () => {

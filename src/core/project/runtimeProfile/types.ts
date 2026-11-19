@@ -13,15 +13,15 @@ export type TomlTable = Record<string, unknown>;
 
 /** The inputs that the generated packs fill in on AgentCore Runtime, as a profile names them. */
 export const RUNTIME_INPUTS = {
-  /** The runtime's Box gateway URL (box/agentcore). */
+  /** The runtime's Box gateway URL (@box/agentcore). */
   gatewayUrl: "${{ inputs.gateway.url }}",
-  /** The Runtime's region (box/agentcore). */
+  /** The Runtime's region (@box/agentcore). */
   awsRegion: "${{ inputs.aws.region }}",
-  /** The unpacked zip of a CodeZip runtime (box/agentcore-codezip). */
+  /** The unpacked zip of a CodeZip runtime (@box/agentcore-codezip). */
   codeDir: "${{ inputs.code.dir }}",
-  /** The Python of a CodeZip Runtime (box/agentcore-codezip). */
+  /** The Python of a CodeZip Runtime (@box/agentcore-codezip). */
   pythonPath: "${{ inputs.python.path }}",
-  /** The base prefix of that Python (box/agentcore-codezip). */
+  /** The base prefix of that Python (@box/agentcore-codezip). */
   pythonPrefix: "${{ inputs.python.prefix }}",
 } as const;
 
