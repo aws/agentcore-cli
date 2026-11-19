@@ -202,7 +202,7 @@ Two templates run their agent in a box, both under `agentcore dev` and on AgentC
 `agentcore create --template <name>` makes a Box project from either; every other template runs
 its agent without box. A Box project holds that one runtime, so `agentcore add runtime` and
 `agentcore export harness` refuse it. The runtime needs its `"box": { "version": ... }` in
-`agentcore.json`, which create writes; build and deploy stop without it. box comes from the public GitHub release `v0.1.11-linux-preview.7` of
+`agentcore.json`, which create writes; build and deploy stop without it. box comes from the public GitHub release `v0.1.11-mquang.preview.9` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
