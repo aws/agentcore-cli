@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
 import { cnConnectorTargetMessage } from "../../../../core/project/manager";
 
@@ -12,7 +13,7 @@ const COMPLETE_CONNECTOR = JSON.stringify({
   connectorId: "web-search",
 });
 
-const { addGateway, cleanup, inProject, projectSpec, run } =
+const { addGateway, cleanup, inProject, projectSpec, run, writeProjectSpec } =
   createGatewayProjectTestHarness("gateway-connector");
 
 afterEach(cleanup);
@@ -98,6 +99,29 @@ describe("project add gateway-connector", () => {
       },
     });
     expect(io.stderr()).not.toContain("added Connector Target");
+  });
+
+  test("notes the bound runtime when the connector goes on a Box gateway", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const runtime = spec.runtimes[0].name;
+    const box = boxGatewaySpec(runtime);
+    await writeProjectSpec(projectRoot, { ...spec, projectType: "box", agentCoreGateways: [box] });
+    const note = `Gateway '${box.name}' is bound to runtime '${runtime}', so only that runtime gets its variables`;
+
+    const human = await run([
+      "add",
+      "gateway-connector",
+      ...["--gateway", box.name, "--name", "web", "--connector", "web-search"],
+    ]);
+    const asJson = await run([
+      "add",
+      "gateway-connector",
+      ...["--gateway", box.name, "--name", "web2", "--connector", "web-search", "--json"],
+    ]);
+
+    expect(human.stderr()).toContain(note);
+    expect(JSON.parse(asJson.stdout()).notes).toEqual([note]);
   });
 
   test("adds Web Search and external Knowledge Base connectors", async () => {

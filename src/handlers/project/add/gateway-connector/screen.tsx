@@ -22,7 +22,7 @@ import type { Project } from "../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { toAddGatewayConnectorInput, type GatewayConnectorShortcutInput } from "./index";
 import { RegionKey } from "../../../keys";
-import { isBoundGateway } from "../../../../projectSchemas/project";
+import { boundRuntimeNote, defaultGatewayChoice } from "../shared";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-connector"];
 const DESCRIPTION = "add a connector-backed Target to a project Gateway";
@@ -73,7 +73,7 @@ function gatewayChoices(gateways: readonly AgentCoreGateway[]): Choice<string>[]
   return gateways.map((gateway) => ({
     value: gateway.name,
     label: gateway.name,
-    description: `${gateway.targets.length} ${gateway.targets.length === 1 ? "Target" : "Targets"}`,
+    description: `${gateway.targets.length} ${gateway.targets.length === 1 ? "Target" : "Targets"}${boundRuntimeNote(gateway)}`,
   }));
 }
 
@@ -142,18 +142,14 @@ function AddGatewayConnectorWizard({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  // A gateway bound to a runtime (each Box gateway is) takes only passthrough targets, which this
-  // wizard does not build, so it is not offered.
-  const gateways = (project.spec.agentCoreGateways ?? []).filter(
-    (gateway) => !isBoundGateway(gateway),
-  );
+  const gateways = project.spec.agentCoreGateways ?? [];
   const kbSchema = useMemo(
     () => knowledgeBaseSchema((project.spec.knowledgeBases ?? []).map((kb) => kb.name)),
     [project.spec.knowledgeBases],
   );
 
   const [values, setValues] = useState<GatewayConnectorFormValues>({
-    gateway: gateways[0]?.name ?? "",
+    gateway: defaultGatewayChoice(gateways),
     connector: "web-search",
     knowledgeBase: "",
     name: "web-search",

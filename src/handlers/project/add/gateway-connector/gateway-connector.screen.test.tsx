@@ -46,7 +46,7 @@ async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
 }
 
 describe("gateway-connector wizard helpers", () => {
-  test("does not offer a Box gateway, which takes only passthrough targets", async () => {
+  test("offers the Box gateway, which takes every target type", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     await writeProjectSpec(projectRoot, {
@@ -56,8 +56,9 @@ describe("gateway-connector wizard helpers", () => {
     });
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
-    await waitForText(screen.lastFrame, "no Gateways in this project");
-    expect(screen.lastFrame()).not.toContain("box-egress");
+    await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
+    expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
     screen.unmount();
   });
 

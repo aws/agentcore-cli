@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const ENDPOINT = "https://mcp.example.com";
@@ -36,6 +37,44 @@ async function projectWithCredentials() {
 }
 
 describe("project add gateway-target", () => {
+  test("names the bound runtime when the target goes on a Box gateway", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const runtime = spec.runtimes[0].name;
+    const box = boxGatewaySpec(runtime);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      agentCoreGateways: [box],
+    });
+    await addGateway();
+
+    const onBox = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", box.name, "--name", "search", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none"],
+    ]);
+    const onTools = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", "tools", "--name", "docs", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none"],
+    ]);
+
+    const note = `Gateway '${box.name}' is bound to runtime '${runtime}', so only that runtime gets its variables`;
+    expect(onBox.stderr()).toContain(note);
+    expect(onTools.stderr()).not.toContain("bound to runtime");
+
+    const asJson = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", box.name, "--name", "wiki", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none", "--json"],
+    ]);
+    expect(JSON.parse(asJson.stdout()).notes).toEqual([note]);
+  });
+
   test("adds endpoint and project Runtime shortcuts", async () => {
     const projectRoot = await inProject();
     await addGateway();

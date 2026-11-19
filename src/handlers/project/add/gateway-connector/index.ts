@@ -10,7 +10,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { AddResourceInput } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, addDescription } from "../shared";
+import { addProjectResource, addDescription, boundGatewayAddedNotes } from "../shared";
 
 // The curated-connector shortcut as the flags state it: which connector, and
 // for bedrock-knowledge-bases, which Knowledge Base.
@@ -118,7 +118,10 @@ export const createAddGatewayConnectorHandler = (config: AddProjectResourceConfi
         project,
         input,
         `added Connector Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
-        { resourceType: "gateway-connector" },
+        {
+          resourceType: "gateway-connector",
+          notes: boundGatewayAddedNotes(project, flags.gateway),
+        },
       );
     },
   });

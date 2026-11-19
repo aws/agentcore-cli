@@ -401,6 +401,30 @@ describe("project remove screen", () => {
     r.unmount();
   });
 
+  test("the confirmation lists the Box gateway and its targets before removal", async () => {
+    const core = new TestCoreClient();
+    const { project: created, specPath } = await createProject(core);
+    const onDisk = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    const boxGateway = {
+      ...boxGatewaySpec(RUNTIME),
+      targets: [
+        { name: "search", targetType: "mcpServer", endpoint: "https://search.example.com/mcp" },
+      ],
+    };
+    await writeFile(
+      specPath,
+      JSON.stringify({ ...onDisk, projectType: "box", agentCoreGateways: [boxGateway] }),
+    );
+    const project = (await core.projectManager.resolve({ filePath: created.rootPath }))!;
+    const r = render("/agentcore/remove/runtime/0", core, project);
+
+    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    const confirmFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(confirmFrame).toContain("also removes");
+    expect(confirmFrame).toContain(`gateway '${boxGateway.name}' and its target 'search'`);
+    r.unmount();
+  });
+
   test("enter after success refreshes the list when the project is pinned in context", async () => {
     const core = new TestCoreClient();
     const { project } = await createProject(core, POLICY);

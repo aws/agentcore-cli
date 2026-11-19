@@ -13,7 +13,7 @@ import { boxGatewaySpec } from "../../projectSchemas/project";
  * `"projectType": "box"` is written by `agentcore create` from a Box template only. A Box project
  * keeps one Box gateway for each runtime: a gateway with `boundRuntime` set to the runtime, written
  * by the CLI. It is created with the runtime, removed with the runtime, refused by `remove gateway`,
- * and takes only passthrough targets. The CDK library binds it from its `boundRuntime` and
+ * and takes every target type. The CDK library binds it from its `boundRuntime` and
  * `discoveryPrefix`. A project without the field behaves as before.
  */
 
@@ -243,15 +243,16 @@ describe("gateway targets in a Box project", () => {
     await expect(add).rejects.toThrow("no gateway named 'box' exists in this project");
   });
 
-  test("add gateway-target refuses an MCP target and writes nothing", async () => {
+  test("add gateway-target adds an MCP target to the Box gateway", async () => {
     const manager = subject();
     const project = await createdProject(manager);
-    const before = await specText(project);
 
-    await expect(drain(manager.addResource(project, mcpTarget("search")))).rejects.toThrow(
-      "the gateway 'agent-box-egress' is bound to a runtime and takes only passthrough targets, but target 'search' is mcpServer.",
-    );
-    expect(await specText(project)).toBe(before);
+    await drain(manager.addResource(project, mcpTarget("search")));
+
+    const spec = await specOnDisk(project);
+    expect(spec.agentCoreGateways).toMatchObject([
+      { name: "agent-box-egress", targets: [{ name: "search", targetType: "mcpServer" }] },
+    ]);
   });
 
   test("add gateway --name box is refused, because its variable prefix is the Box gateway's", async () => {

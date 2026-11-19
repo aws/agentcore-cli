@@ -10,7 +10,12 @@ import { isBoundGateway, type ProjectSpec } from "../../../projectSchemas/projec
 import type { Project, RemoveResourceInput } from "../types";
 import type { ScreenProps } from "../../types";
 import { ProjectGate, projectQueryKey } from "../ProjectGate";
-import { APP_CODE_RETAINED_NOTICE, removedGatewayLines, shouldShowAppCodeNotice } from "./notice";
+import {
+  APP_CODE_RETAINED_NOTICE,
+  boundGatewayWarningLines,
+  removedGatewayLines,
+  shouldShowAppCodeNotice,
+} from "./notice";
 
 type RootResourceType =
   | "runtime"
@@ -329,10 +334,16 @@ function RemoveConfirm({
   const queryClient = useQueryClient();
   const removedProject = useRef<Project | null>(null);
 
+  // A runtime takes its bound gateways (each Box gateway is) and their targets with it.
+  const alsoRemoves =
+    resource.resourceType === "runtime"
+      ? boundGatewayWarningLines(resource.name, project.spec.agentCoreGateways)
+      : [];
   const rows: SummaryRows = {
     type: config.resourceType,
     ...(resource.parentName ? { [config.parentColumnLabel ?? "parent"]: resource.parentName } : {}),
     project: project.name,
+    ...(alsoRemoves.length > 0 ? { "also removes": alsoRemoves.join("; ") } : {}),
   };
 
   return (
