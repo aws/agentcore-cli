@@ -276,7 +276,6 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
 }
 
 /**
-/**
  * The Strands container image's agent: the code and its venv are in /app,
  * where box starts, and the venv links to the image's own Python in
  * /usr/local. `agentcore dev` sets LOCAL_DEV and reloads it on edits.
