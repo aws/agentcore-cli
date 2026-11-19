@@ -76,7 +76,10 @@ describe("stageBoxContainers", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     for (const binary of BINARIES) {
       expect(await readFile(join(dist, binary), "utf8")).toBe(`#!${binary}\n`);
-      expect((await stat(join(dist, binary))).mode & 0o777).toBe(0o755);
+      // Windows has no mode bits.
+      if (process.platform !== "win32") {
+        expect((await stat(join(dist, binary))).mode & 0o777).toBe(0o755);
+      }
     }
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",

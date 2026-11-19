@@ -74,8 +74,10 @@ describe("stageBoxCodeZip", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     for (const binary of BINARIES) {
       expect(await readFile(join(dist, binary), "utf8")).toBe(`#!${binary}\n`);
-      // The zip keeps file modes, so box stays runnable on the Runtime.
-      expect((await stat(join(dist, binary))).mode & 0o777).toBe(0o755);
+      // The zip keeps file modes, so box stays runnable on the Runtime. Windows has no mode bits.
+      if (process.platform !== "win32") {
+        expect((await stat(join(dist, binary))).mode & 0o777).toBe(0o755);
+      }
     }
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",
@@ -122,7 +124,7 @@ describe("stageBoxCodeZip", () => {
     const demo = await project("start.py");
 
     expect(() => stageBoxCodeZip(demo, { AGENTCORE_BOX_SOURCE: source })).toThrow(
-      /has no .*target-al2023\/release\/strands-box-sock-alias/,
+      /has no .*target-al2023[\\/]release[\\/]strands-box-sock-alias/,
     );
   });
 });

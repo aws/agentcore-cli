@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EnvLocalFile } from "../project/envLocal";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../project/envLocal";
 import { writeBoxDevEnvLocal } from "./boxEnvLocal";
 
 const GITHUB_ROUTE =
@@ -36,7 +36,7 @@ describe("writeBoxDevEnvLocal", () => {
 
     expect(await envLocal(root)).toEqual({ GITHUB_TOKEN: "ghp_1" });
     expect(messages).toEqual([
-      "writing GITHUB_TOKEN to agentcore/.env.local for box egress 'github' (env://GITHUB_TOKEN)",
+      `writing GITHUB_TOKEN to ${ENV_LOCAL_RELATIVE_PATH} for box egress 'github' (env://GITHUB_TOKEN)`,
     ]);
   });
 
