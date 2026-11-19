@@ -18,7 +18,13 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
-import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import {
+  addBoxGatewayTargets,
+  BOX_BEDROCK_POLICY_FILE,
+  BOX_MEMORY_POLICY_FILE,
+  boxBedrockPolicy,
+  boxMemoryPolicy,
+} from "./boxMemory";
 import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import { renderRuntimeBoxProfile } from "./templates/boxProfile";
@@ -245,19 +251,27 @@ function undeclaredKey(
 }
 
 /**
- * The `agentcore` target that each box runtime's Memory calls take, and the Memory policy of the
- * gateways' role, as `addBoxMemoryTarget` adds them.
+ * The `bedrock` and `agentcore` targets that each box runtime's model and Memory calls take, and
+ * the Bedrock and Memory policies of the gateways' role, as `addBoxGatewayTargets` adds them.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
-  writes: () => [{ kind: "defaultTargets" }, { kind: "file", path: BOX_MEMORY_POLICY_FILE }],
-  edits: (_networks, { spec, projectRoot }) => {
-    const policy = boxMemoryPolicy(spec, projectRoot);
+  writes: () => [
+    { kind: "defaultTargets" },
+    { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
+    { kind: "file", path: BOX_MEMORY_POLICY_FILE },
+  ],
+  edits: (networks, { spec, projectRoot }) => {
+    // Every network of one build has the region build builds for.
+    const region = networks[0]?.region;
     return {
-      spec: [(copy) => addBoxMemoryTarget(copy, projectRoot)],
-      files: policy
-        ? [{ path: BOX_MEMORY_POLICY_FILE, text: `${JSON.stringify(policy, undefined, 2)}\n` }]
-        : [],
+      spec: [(copy) => addBoxGatewayTargets(copy, projectRoot, region)],
+      files: [
+        { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec, projectRoot) },
+        { path: BOX_MEMORY_POLICY_FILE, policy: boxMemoryPolicy(spec, projectRoot) },
+      ].flatMap(({ path, policy }) =>
+        policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
+      ),
     };
   },
 };

@@ -145,7 +145,10 @@ describe("FsProjectManager.build: box env:// credentials", () => {
   test("adds no credential, and says which variable to set, when the key is in neither place", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);
-    const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
+    const credentials = async () =>
+      JSON.parse(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8"))
+        .credentials;
+    const before = await credentials();
 
     const messages = await drain(subject.build(created));
 
@@ -154,9 +157,8 @@ describe("FsProjectManager.build: box env:// credentials", () => {
         `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
         `Set GITHUB_TOKEN, or ${RESERVED}, and build again`,
     );
-    expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
-      spec,
-    );
+    // Build still adds the model's target, so only the credentials stay as they were.
+    expect(await credentials()).toEqual(before);
   });
 
   test("stops on a box profile that does not parse, and changes nothing", async () => {

@@ -55,6 +55,7 @@ import {
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
@@ -1561,24 +1562,45 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "build");
+    const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
   }
 
   /**
+   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
+   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
+   * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
+   * DEFAULT_REGION. Deploy uses its target's region instead.
+   */
+  private async boxBuildRegion(): Promise<string> {
+    return (
+      this.processEnv.AWS_REGION ||
+      this.processEnv.AWS_DEFAULT_REGION ||
+      (await regionFromConfigFile()) ||
+      DEFAULT_REGION
+    );
+  }
+
+  /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --format json --full`), then writes what the Box network writers derive
-   * from it, before synth reads agentcore.json and staging renders each Runtime profile's routes
-   * from its Box gateway's targets: agentcore.json once, patched in the raw file so unknown fields
-   * and key order survive and checked against the schema first, then the files, then
-   * `.env.local`. A failure of any model stops `command` before anything is written.
+   * (`box profile show --format json --full`) for `region`, then writes what the Box network
+   * writers derive from it, before synth reads agentcore.json and staging renders each Runtime
+   * profile's routes from its Box gateway's targets: agentcore.json once, patched in the raw file
+   * so unknown fields and key order survive and checked against the schema first, then the files,
+   * then `.env.local`. A failure of any model stops `command` before anything is written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
+    region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    const networks = await readBoxNetworks(project.spec, project.rootPath, this.boxProfileResolver);
+    const networks = await readBoxNetworks(
+      project.spec,
+      project.rootPath,
+      this.boxProfileResolver,
+      region,
+    );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
@@ -1723,7 +1745,7 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "deploy");
+    const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
 

@@ -3,6 +3,7 @@ import { parse } from "smol-toml";
 import { InputValidationError } from "../../../errors/errors";
 import {
   getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
   resolveRuntimeTemplateShortcut,
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
@@ -298,8 +299,11 @@ function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<str
   ) as Record<string, any>;
 }
 
-/** box 0.1.11-linux-preview.2 refuses a bare `aws://`, so the Runtime signs with the `default` profile. */
-const RUNTIME_ROUTE = { secret: { ref: "aws://default" } };
+/** The stand-in AWS keys the Runtime profile gives boto3, which box re-signs for the gateway. */
+const RUNTIME_AWS_STAND_INS = {
+  AWS_ACCESS_KEY_ID: "box-stand-in",
+  AWS_SECRET_ACCESS_KEY: "box-stand-in",
+};
 
 const IMAGE_PYTHON_FILESYSTEM = {
   read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
@@ -321,7 +325,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
       "runtime",
     )!;
     // start.sh replaces this line with the deployed Memories' and Gateways' variables.
-    expect(text).toContain('PYTHONUNBUFFERED = "1"\n# @AGENT_ENV@\n');
+    expect(text).toContain('AWS_SECRET_ACCESS_KEY = "box-stand-in"\n# @AGENT_ENV@\n');
     expect(parse(text)).toEqual({
       packs: ["box/base", "box/bedrock"],
       profile: { name: "V3Demo" },
@@ -344,15 +348,13 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           PYTHONPATH: "@CODE@/.box-dist/ffi:@CODE@",
           PYTHONUNBUFFERED: "1",
           PYTHONUTF8: "1",
+          ...RUNTIME_AWS_STAND_INS,
         },
         filesystem: {
           read: ["@CODE@", "@PYTHON_PREFIX@", "/usr/lib64", "/lib64"],
           exec: ["@CODE@", "@PYTHON_PREFIX@"],
         },
         ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
-      },
-      egress: {
-        bedrock: RUNTIME_ROUTE,
       },
     });
   });
@@ -377,12 +379,14 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
             "--port",
             "8081",
           ],
-          env: { PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
+          env: {
+            PORT: "8081",
+            PYTHONUNBUFFERED: "1",
+            PYTHONUTF8: "1",
+            ...RUNTIME_AWS_STAND_INS,
+          },
           filesystem: IMAGE_PYTHON_FILESYSTEM,
           ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
-        },
-        egress: {
-          bedrock: RUNTIME_ROUTE,
         },
       });
     },
@@ -480,17 +484,45 @@ describe("renderRuntimeBoxProfile", () => {
   });
 
   test("routes no Memory calls when the project has only another Memory", () => {
-    expect(egressOf(spec(["ordersMemory"]))).toEqual({ bedrock: RUNTIME_ROUTE });
+    expect(egressOf(spec(["ordersMemory"]))).toEqual({});
   });
 
   test("gives each passthrough target of the runtime's Box gateway one route to it", () => {
-    const project = spec([], {}, [getBoxGatewayAgentCoreTargetSpec(), GITHUB]);
+    const project = spec([], {}, [
+      getBoxGatewayBedrockTargetSpec(),
+      getBoxGatewayAgentCoreTargetSpec(),
+      GITHUB,
+    ]);
 
     expect(egressOf(project)).toEqual({
+      // The model calls go through the gateway's bedrock target, which build adds.
+      bedrock: gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
       agentcore: gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
       github: gatewayRoute("github", "api.github.com"),
-      // Bedrock stays direct, signed with the execution role.
-      bedrock: RUNTIME_ROUTE,
+    });
+  });
+
+  test("signs each route for the gateway in the region build builds for", () => {
+    const project = spec([], {}, [getBoxGatewayBedrockTargetSpec("eu-central-1")]);
+    const profile = parse(
+      renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        region: "eu-central-1",
+      }),
+    );
+
+    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
+    expect((profile.egress as Record<string, unknown>).bedrock).toEqual({
+      destinations: ["bedrock-runtime.eu-central-1.amazonaws.com"],
+      backends: [
+        {
+          url: "@GATEWAY_BOX_URL@/bedrock",
+          auth: {
+            ref: "aws://default",
+            aws: { service: "bedrock-agentcore", region: "eu-central-1" },
+          },
+        },
+      ],
     });
   });
 
@@ -505,7 +537,7 @@ describe("renderRuntimeBoxProfile", () => {
   test("gives a target that is not passthrough no route", () => {
     const lambda = { name: "orders", targetType: "lambda" } as unknown as AgentCoreGatewayTarget;
 
-    expect(egressOf(spec([], {}, [lambda]))).toEqual({ bedrock: RUNTIME_ROUTE });
+    expect(egressOf(spec([], {}, [lambda]))).toEqual({});
   });
 
   test("finds the runtime's Box gateway by boundRuntime, not by name", () => {
@@ -522,22 +554,7 @@ describe("renderRuntimeBoxProfile", () => {
     const project = spec([], {}, [GITHUB]);
     delete (project as { projectType?: string }).projectType;
 
-    expect(egressOf(project)).toEqual({ bedrock: RUNTIME_ROUTE });
-  });
-
-  test("refuses a target named bedrock while the agent calls Bedrock directly", () => {
-    const project = spec([], {}, [passthrough("bedrock", "https://bedrock.example.com")]);
-
-    expect(() => renderRuntimeBoxProfile(project, project.runtimes[0]!)).toThrow(
-      new InputValidationError(
-        "gateway 'agent-box-egress' has a passthrough target named 'bedrock', but runtime " +
-          "'agent' calls Bedrock directly, and its box profile already has the [egress.bedrock] " +
-          "route. Rename the target.",
-      ),
-    );
-    // An agent on another provider has no Bedrock route, so the target gets its route.
-    const openai = spec([], { modelProvider: "OpenAI" }, project.agentCoreGateways[0]!.targets);
-    expect(egressOf(openai).bedrock).toEqual(gatewayRoute("bedrock", "bedrock.example.com"));
+    expect(egressOf(project)).toEqual({});
   });
 
   test("refuses two passthrough targets for one host, which would give two routes to it", () => {

@@ -19,6 +19,7 @@ function hostsOf(egress: Record<string, unknown>): BoxNetworkHost[] {
     spec,
     runtime,
     gateway: "agent-box-egress",
+    region: "us-west-2",
     targets: [],
     grantedActions: [],
   });

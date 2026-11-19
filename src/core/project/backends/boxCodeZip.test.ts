@@ -194,6 +194,7 @@ function model(policyFiles: string[]): BoxNetwork {
   return {
     runtime: "agent",
     gateway: "agent-box-egress",
+    region: "us-west-2",
     hosts: [],
     envRoutes: [],
     policyFiles,

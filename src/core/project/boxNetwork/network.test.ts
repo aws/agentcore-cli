@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { getBoxGatewayAgentCoreTargetSpec } from "../../../handlers/project/shortcuts";
+import {
+  getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
+} from "../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -88,6 +91,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     spec,
     runtime: RUNTIME,
     gateway: "agent-box-egress",
+    region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
   });
@@ -735,17 +739,6 @@ describe("hosts the model cannot carry", () => {
 });
 
 describe("the hosts the model gives no target", () => {
-  test("gives box/bedrock's routes no host, as the agent calls Bedrock directly", () => {
-    const signed = { secret: { ref: "aws://default" } };
-    const r = model("", {
-      bedrock: { destinations: ["bedrock-runtime.us-west-2.amazonaws.com"], ...signed },
-      bedrock_control: { destinations: ["bedrock.us-west-2.amazonaws.com"], ...signed },
-      github: GITHUB,
-    });
-    expect(r.targets()).toEqual(["api.github.com -> egress-github"]);
-    expect(r.failures()).toEqual([]);
-  });
-
   test("gives an HTTP MCP server no host, and says the agent cannot reach it on the Runtime", () => {
     const r = model(
       "",
@@ -775,6 +768,23 @@ describe("the default targets", () => {
       { targets: [getBoxGatewayAgentCoreTargetSpec()] },
     );
     expect(r.targets()).toEqual(["bedrock-agentcore.us-west-2.amazonaws.com -> agentcore"]);
+    expect(r.failures()).toEqual([]);
+  });
+
+  test("gives box/bedrock's model endpoint to the bedrock target build adds", () => {
+    const signed = { secret: { ref: "aws://default" } };
+    const r = model(
+      "",
+      {
+        bedrock: { destinations: ["bedrock-runtime.us-west-2.amazonaws.com"], ...signed },
+        bedrock_control: { destinations: ["bedrock.us-west-2.amazonaws.com"], ...signed },
+      },
+      { targets: [getBoxGatewayBedrockTargetSpec()] },
+    );
+    expect(r.targets()).toEqual([
+      "bedrock-runtime.us-west-2.amazonaws.com -> bedrock",
+      "bedrock.us-west-2.amazonaws.com -> egress-bedrock-control",
+    ]);
     expect(r.failures()).toEqual([]);
   });
 
