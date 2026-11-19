@@ -197,8 +197,10 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.3` of
+Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
+`agentcore create --template <name>` makes a Box project from either; every other template runs
+its agent without box. box comes from the public GitHub release `v0.1.11-linux-preview.3` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
@@ -234,15 +236,14 @@ another version takes them from its release's `SHA256SUMS.txt`. `box.version` pi
 ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
-On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
-the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
-rewrites it every 15 minutes, because box refuses the bare `aws://` that would read the role
-directly.
+On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
+profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes
+itself.
 
 ### Create, run and deploy
 
 ```sh
-agentcore create --name MyBoxAgent --template agent-python-strands-container
+agentcore create --name MyBoxAgent --template agent-python-strands-box-container
 cd MyBoxAgent
 AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
 agentcore deploy --yes

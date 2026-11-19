@@ -141,8 +141,10 @@ describe("project create", () => {
   });
 
   test.each([
-    ["agent-python-strands", { version: BOX_RELEASE.version }],
-    ["agent-python-strands-container", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-box-container", { version: BOX_RELEASE.version }],
+    ["agent-python-strands", undefined],
+    ["agent-python-strands-container", undefined],
   ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
@@ -468,8 +470,7 @@ describe("project create", () => {
       {
         name: "agent",
         build: "CodeZip",
-        box: { version: BOX_RELEASE.version },
-        entrypoint: "start.py",
+        entrypoint: "main.py",
         codeLocation: "app/agent",
         runtimeVersion: "PYTHON_3_14",
       },

@@ -14,14 +14,23 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   boxProfileWarnings,
   hasBoxProfile,
+  renderAgentCoreCodeZipPack,
+  renderAgentCorePack,
   renderBoxProfile,
   renderRuntimeBoxProfile,
   runsBoxStartScript,
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 
+/**
+ * The scaffold input of a template, as a box template would give it: the renderer takes every
+ * template's shape, though create writes a profile only for the box templates.
+ */
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
+  return {
+    ...resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides }),
+    box: true,
+  };
 }
 
 function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
@@ -286,7 +295,11 @@ describe("renderBoxProfile", () => {
     "environment-python-bma",
     "agent-typescript-strands",
     "agent-typescript-vercel",
-  ] as const)("writes no profile for %s yet", (name) => {
+    "agent-python-strands",
+    "agent-python-strands-container",
+    "agent-python-langchain",
+    "mcp-python-fastmcp",
+  ] as const)("writes no profile for %s, which is not a box template", (name) => {
     const runtime = resolveRuntimeTemplateShortcut(name);
     expect(hasBoxProfile(runtime)).toBe(false);
     expect(renderBoxProfile("V3Demo", runtime)).toBeUndefined();
@@ -331,27 +344,28 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
   });
 
-  test("runs agent-python-strands from the zip with the Runtime's Python, for start.sh to fill in", () => {
+  test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
     const text = renderBoxProfile(
       "V3Demo",
       template("agent-python-strands"),
       "us-west-2",
       "runtime",
     )!;
-    // start.sh replaces this line with the deployed Memories' and Gateways' variables.
-    expect(text).toContain('AWS_SECRET_ACCESS_KEY = "box-stand-in"\n# @AGENT_ENV@\n');
+    // No start.sh fills this profile in: the packs carry the deployed resources, Python, and code.
+    expect(text).toContain("box/agentcore-codezip packs carry");
+    expect(text).not.toContain("# @AGENT_ENV@");
     expect(parse(text)).toEqual({
-      packs: ["box/base", "box/bedrock"],
+      packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
       profile: { name: "V3Demo" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: [
-          "@PYTHON@",
+          "${{ inputs.python.path }}",
           "-m",
           "uvicorn",
           "main:app",
           "--app-dir",
-          "@CODE@",
+          "${{ inputs.code.dir }}",
           "--host",
           "127.0.0.1",
           "--port",
@@ -359,14 +373,14 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         ],
         env: {
           PORT: "8081",
-          PYTHONPATH: "@CODE@/.box-dist/ffi:@CODE@",
+          PYTHONPATH: "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
           PYTHONUNBUFFERED: "1",
           PYTHONUTF8: "1",
           ...RUNTIME_AWS_STAND_INS,
         },
         filesystem: {
-          read: ["@CODE@", "@PYTHON_PREFIX@", "/usr/lib64", "/lib64"],
-          exec: ["@CODE@", "@PYTHON_PREFIX@"],
+          read: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}", "/usr/lib64", "/lib64"],
+          exec: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}"],
         },
         ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
       },
@@ -376,8 +390,13 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
   test.each(["agent-python-strands-container"] as const)(
     "runs %s from /app without --reload, signing calls with the Runtime's role",
     (name) => {
+      const text = renderBoxProfile("V3Demo", template(name), "us-west-2", "runtime")!;
+      // No start.sh fills this profile in: the agentcore pack carries the deployed resources.
+      expect(text).toContain("The box/agentcore pack carries the deployed resources' variables.");
+      expect(text).not.toContain("# @AGENT_ENV@");
       expect(runtimeProfile(name)).toEqual({
-        packs: ["box/base", "box/bedrock"],
+        // The container reads the deployed resources from the environment through box/agentcore.
+        packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
@@ -418,7 +437,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
-    expect(openai.packs).toEqual(["box/base"]);
+    expect(openai.packs).toEqual(["box/base", "box/agentcore", "box/agentcore-codezip"]);
     expect(openai.egress).toBeUndefined();
   });
 });
@@ -472,10 +491,29 @@ describe("renderRuntimeBoxProfile", () => {
     destinations: [host],
     backends: [
       {
-        url: `@GATEWAY_BOX_URL@/${target}`,
-        auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+        url: `\${{ inputs.gateway.url }}/${target}`,
+        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
       },
     ],
+  });
+
+  test("signs a container's gateway route with a bare aws://, from the gateway URL input", () => {
+    const container = spec([], { build: "Container", entrypoint: "main.py" }, [
+      getBoxGatewayAgentCoreTargetSpec(),
+    ]);
+    expect(egressOf(container).agentcore as unknown).toEqual({
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      backends: [
+        {
+          // The gateway URL comes from the agentcore pack's input, not a start.sh placeholder.
+          url: "${{ inputs.gateway.url }}/agentcore",
+          auth: {
+            ref: "aws://",
+            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+          },
+        },
+      ],
+    });
   });
 
   test("names the model's policy files under policies, at the top of the profile", () => {
@@ -530,9 +568,9 @@ describe("renderRuntimeBoxProfile", () => {
       destinations: ["bedrock-runtime.eu-central-1.amazonaws.com"],
       backends: [
         {
-          url: "@GATEWAY_BOX_URL@/bedrock",
+          url: "${{ inputs.gateway.url }}/bedrock",
           auth: {
-            ref: "aws://default",
+            ref: "aws://",
             aws: { service: "bedrock-agentcore", region: "eu-central-1" },
           },
         },
@@ -586,7 +624,9 @@ describe("renderRuntimeBoxProfile", () => {
     const codeZip = spec(["agentMemory"]);
     const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
 
-    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!)).toContain('"@PYTHON@"');
+    expect(renderRuntimeBoxProfile(codeZip, codeZip.runtimes[0]!)).toContain(
+      '"${{ inputs.python.path }}"',
+    );
     expect(renderRuntimeBoxProfile(container, container.runtimes[0]!)).toContain(
       '"${{ workspace }}/.venv/bin/python"',
     );
@@ -602,16 +642,77 @@ describe("renderRuntimeBoxProfile", () => {
 });
 
 describe("startsInBoxOnCodeZip", () => {
-  test("starts every Python CodeZip template in a box, and no container or TypeScript one", () => {
-    expect(startsInBoxOnCodeZip(template("agent-python-strands"))).toBe(true);
-    expect(startsInBoxOnCodeZip(template("mcp-python-fastmcp"))).toBe(true);
-    expect(startsInBoxOnCodeZip(template("agent-python-strands-container"))).toBe(false);
-    expect(startsInBoxOnCodeZip(template("agent-typescript-strands"))).toBe(false);
+  test("starts only the CodeZip box template in a box", () => {
+    const plain = (name: RuntimeTemplateShortcutName) => resolveRuntimeTemplateShortcut(name);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });
 
   test("recognizes the start script with or without a handler", () => {
     expect(runsBoxStartScript("start.py")).toBe(true);
     expect(runsBoxStartScript("start.py:app")).toBe(true);
     expect(runsBoxStartScript("main.py")).toBe(false);
+  });
+});
+
+describe("renderAgentCorePack", () => {
+  function pack(memories: { name: string }[]) {
+    return parse(
+      renderAgentCorePack({ name: "V3Demo", memories } as unknown as ProjectSpec),
+    ) as Record<string, any>;
+  }
+
+  test("names itself box/agentcore and ships as a support pack", () => {
+    const toml = pack([]);
+    expect(toml.pack).toEqual({ name: "box/agentcore", version: 1, kind: "support" });
+  });
+
+  test("declares the gateway URL input from the environment, bounded by a pattern", () => {
+    const { inputs } = pack([]);
+    expect(inputs.gateway.url.from).toBe("env:AGENTCORE_GATEWAY_BOX_URL");
+    // The input reaches a backend url, so box needs a pattern or values on it.
+    expect(typeof inputs.gateway.url.pattern).toBe("string");
+    expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
+  });
+
+  test("declares one input per memory and carries each ID into the agent's environment", () => {
+    const toml = pack([{ name: "agentMemory" }, { name: "notes" }]);
+    expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");
+    expect(toml.inputs.memory.notes.id.from).toBe("env:MEMORY_NOTES_ID");
+    expect(toml.agent.env).toEqual({
+      MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
+      MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
+    });
+  });
+
+  test("has no agent.env when the project has no memory", () => {
+    expect(pack([]).agent).toBeUndefined();
+  });
+});
+
+describe("renderAgentCoreCodeZipPack", () => {
+  const toml = () => parse(renderAgentCoreCodeZipPack()) as Record<string, any>;
+
+  test("names itself box/agentcore-codezip and ships as a support pack", () => {
+    expect(toml().pack).toEqual({ name: "box/agentcore-codezip", version: 1, kind: "support" });
+  });
+
+  test("declares the Runtime Python and code directory from the environment start.py exports", () => {
+    const { inputs } = toml();
+    expect(inputs.python.path.from).toBe("env:BOX_PYTHON");
+    expect(inputs.python.prefix.from).toBe("env:BOX_PYTHON_PREFIX");
+    expect(inputs.code.dir.from).toBe("env:BOX_CODE");
+  });
+
+  test("bounds the inputs that reach the agent command with a pattern", () => {
+    const { inputs } = toml();
+    // The Python path (command element 0) and the code dir (--app-dir) reach `command`.
+    expect(typeof inputs.python.path.pattern).toBe("string");
+    expect(typeof inputs.code.dir.pattern).toBe("string");
+    // The prefix reaches only filesystem grants, which box does not require to be bounded.
+    expect(inputs.python.prefix.pattern).toBeUndefined();
   });
 });

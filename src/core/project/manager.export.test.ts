@@ -59,6 +59,7 @@ async function drain<T>(generator: AsyncGenerator<ProjectEvent, T>): Promise<T> 
 async function projectWithHarness(
   subject: FsProjectManager,
   harness: Record<string, unknown> = {},
+  template: Parameters<typeof resolveRuntimeTemplateShortcut>[0] = "agent-python-minimal",
 ): Promise<Project> {
   await inTempDirectory();
   let project = await drain(
@@ -66,7 +67,7 @@ async function projectWithHarness(
       name: "orders",
       skipInstall: true,
       skipGit: true,
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-minimal"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template),
     }),
   );
   project = await drain(
@@ -489,8 +490,8 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
 
   test("writes the Box gateway of the exported runtime into a Box project", async () => {
     const { manager: subject } = manager();
-    // agent-python-minimal gets a box profile, so create makes a Box project.
-    const project = await projectWithHarness(subject);
+    // A box template makes a Box project.
+    const project = await projectWithHarness(subject, {}, "agent-python-strands-box");
     expect(project.spec.projectType).toBe("box");
 
     await drain(subject.exportHarness(project, exportInput()));

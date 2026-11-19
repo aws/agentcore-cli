@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { InputValidationError, ResourceNotFoundError } from "../../errors";
+import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
@@ -40,6 +40,16 @@ export class BoxDevRunner implements DevRunner {
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
+    // As build and deploy, dev treats a runtime as boxed only in a Box project.
+    if (!input.boxProject) {
+      if (runsBoxStartScript(input.runtime.entrypoint)) {
+        throw new ProjectStateError(
+          notBoxProjectMessage(input.runtime.name, input.runtime.entrypoint),
+        );
+      }
+      yield* this.fallback.run(input);
+      return;
+    }
     const profile = boxProfilePath(input.projectRoot);
     const hasProfile = existsSync(profile);
     if (!hasProfile || !boxProfileIsFor(readFileSync(profile, "utf8"), input.runtime)) {
@@ -88,6 +98,17 @@ export class BoxDevRunner implements DevRunner {
       signal: input.signal,
     });
   }
+}
+
+/**
+ * Why dev cannot run a runtime that starts box: agentcore.json lost its `"projectType": "box"`, so
+ * build and deploy would give it no Box gateway, and dev does not run it in a box either.
+ */
+export function notBoxProjectMessage(runtimeName: string, startsBoxWith: string): string {
+  return (
+    `runtime "${runtimeName}" runs its agent in a box (${startsBoxWith}), but agentcore.json ` +
+    `has no "projectType": "box". Add "projectType": "box" back to agentcore.json, then retry.`
+  );
 }
 
 /**

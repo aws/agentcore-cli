@@ -12,7 +12,8 @@ import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 
-const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
+// A box template: only it writes the box profile whose env:// secrets build provisions.
+const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-strands-box");
 const GITHUB_PROFILE =
   '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
 /** What box resolves {@link GITHUB_PROFILE} to. */

@@ -8,7 +8,7 @@ import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../
 import { isFile } from "../runtimeBuild";
 import { runsBoxStartScript } from "../templates/boxProfile";
 import type { BoxRelease } from "./boxRelease";
-import { assertImageCopiesPolicyFiles, assertStartScriptCopiesPolicyFiles } from "./boxStaging";
+import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -121,6 +121,8 @@ export async function stageBoxContainers(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
+    container: runtime.build === "Container",
+    codezip: false,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -131,13 +133,11 @@ export async function stageBoxContainers(
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
   for (const runtime of runtimes) {
     const policyFiles = networks.find((n) => n.runtime === runtime.name)?.policyFiles ?? [];
-    const context = containerBuildContext(project.rootPath, runtime);
     assertImageCopiesPolicyFiles(
       dockerfileOf(project.rootPath, runtime),
       runtime.name,
       policyFiles,
     );
-    assertStartScriptCopiesPolicyFiles(join(context, "start.sh"), runtime.name, policyFiles);
   }
   for (const [index, { dist }] of staged.entries()) {
     const folder = join(project.rootPath, ...dist.split("/"));

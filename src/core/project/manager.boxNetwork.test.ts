@@ -83,8 +83,8 @@ const gatewayRoute = (target: string, host: string) => ({
   destinations: [host],
   backends: [
     {
-      url: `@GATEWAY_BOX_URL@/${target}`,
-      auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+      url: `\${{ inputs.gateway.url }}/${target}`,
+      auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
     },
   ],
 });
@@ -163,7 +163,9 @@ async function strandsProject(
   const { value: created } = await drain(
     manager.create({
       name: "demo",
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+        runtimeName: "agent_python_strands",
+      }),
       skipInstall: true,
       skipGit: true,
     }),

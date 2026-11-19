@@ -12,7 +12,9 @@ describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
     expect(PROJECT_TEMPLATE_NAMES).toEqual([
       "agent-python-strands",
+      "agent-python-strands-box",
       "agent-python-strands-container",
+      "agent-python-strands-box-container",
       "agent-python-langchain",
       "environment-python-bma",
       "agent-python-minimal",

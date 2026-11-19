@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
@@ -164,6 +165,35 @@ describe("agentcore create", () => {
     const spec = await specOnDisk(project);
     expect("projectType" in spec).toBe(false);
     expect(spec.agentCoreGateways ?? []).toEqual([]);
+  });
+
+  test.each([
+    ["agent-python-strands-box", "box"],
+    ["agent-python-strands-box-container", "box"],
+    ["agent-python-strands", undefined],
+    ["agent-python-strands-container", undefined],
+    ["agent-python-minimal", undefined],
+  ] as const)("create --template %s writes projectType %p", async (template, projectType) => {
+    const manager = subject();
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+
+    const project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+      }),
+    );
+
+    // Only a box template runs its agent in a box, so only it makes a Box project.
+    const spec = await specOnDisk(project);
+    expect(spec.projectType).toBe(projectType);
+    expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
+      projectType ? ["agent-box-egress"] : [],
+    );
   });
 
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
