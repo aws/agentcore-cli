@@ -1,15 +1,19 @@
 {
   "datasets": [
     {
-      "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture_second-pXAm28GIRv",
-      "datasetId": "agentcore_cli_dataset_fixture_second-pXAm28GIRv",
+      "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture_second-RJEqeXEc9E",
+      "datasetId": "agentcore_cli_dataset_fixture_second-RJEqeXEc9E",
       "datasetName": "agentcore_cli_dataset_fixture_second",
       "status": "ACTIVE",
-      "schemaType": "AGENTCORE_EVALUATION_PREDEFINED_V1",
       "exampleCount": 2,
-      "createdAt": "2026-08-13T14:22:19.871Z",
-      "updatedAt": "2026-08-13T14:22:21.067Z",
-      "draftStatus": "MODIFIED"
+      "createdAt": "2026-11-18T23:10:08.308Z",
+      "updatedAt": "2026-11-18T23:10:09.569Z",
+      "draftStatus": "MODIFIED",
+      "exampleCountByField": {
+        "turns": 2,
+        "input": 0,
+        "actorProfile": 0
+      }
     }
   ]
 }
