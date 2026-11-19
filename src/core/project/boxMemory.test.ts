@@ -133,7 +133,7 @@ describe("boxMemoryPolicy", () => {
   const SAME_ACCOUNT = { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } };
 
   test("allows the Memory data plane on the default Memory in any target, in the gateway role's account", () => {
-    const policy = boxMemoryPolicy(spec(), ROOT) as Policy;
+    const policy = boxMemoryPolicy(spec(), ROOT, "us-west-2") as Policy;
 
     expect(policy.Statement[0]!.Resource).toEqual([
       "arn:aws:bedrock-agentcore:us-west-2:*:memory/demo_*agentMemory-*",
@@ -155,8 +155,10 @@ describe("boxMemoryPolicy", () => {
   });
 
   test("is undefined when no boxed runtime has its default Memory", () => {
-    expect(boxMemoryPolicy(spec({ memories: ["ordersMemory"] }), ROOT)).toBeUndefined();
-    expect(boxMemoryPolicy(spec({ entrypoint: "main.py" }), ROOT)).toBeUndefined();
+    expect(
+      boxMemoryPolicy(spec({ memories: ["ordersMemory"] }), ROOT, "us-west-2"),
+    ).toBeUndefined();
+    expect(boxMemoryPolicy(spec({ entrypoint: "main.py" }), ROOT, "us-west-2")).toBeUndefined();
   });
 });
 

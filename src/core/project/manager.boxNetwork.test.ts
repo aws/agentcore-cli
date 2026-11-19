@@ -574,7 +574,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   const TRACES_STATEMENT = {
     Sid: "BoxTelemetryToXRay",
     Effect: "Allow",
-    Action: ["xray:PutSpans"],
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
     Resource: "*",
   };
   const ADDED =

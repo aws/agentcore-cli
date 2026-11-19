@@ -94,7 +94,7 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec, projectRoot: string): Pr
 export function boxMemoryPolicy(
   spec: ProjectSpec,
   projectRoot: string,
-  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+  region: string,
 ): Record<string, unknown> | undefined {
   const memories = boxedRuntimesWithMemory(spec, projectRoot).map(({ name }) =>
     defaultMemoryName(name),
