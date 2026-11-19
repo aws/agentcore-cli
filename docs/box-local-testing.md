@@ -277,6 +277,13 @@ export GITHUB_TOKEN=ghp_demo_value
 bun run "$CLI" dev
 ```
 
+Dev hands each `env://` key of the box profile (an `[egress]` route's or an `[mcp]` server's) to
+`box run` from your shell, and writes it nowhere. A value you put in `agentcore/.env.local` is used
+when the shell has none. If neither has it, dev warns, naming the variable and how to set it, and box
+then refuses to start (`credential variable GITHUB_TOKEN is not set`). A variable set without
+`export` stays in the shell and does not reach dev: export it, or set it on the same line
+(`GITHUB_TOKEN=... bun run "$CLI" dev`).
+
 Then, in a second shell in the project folder:
 
 ```

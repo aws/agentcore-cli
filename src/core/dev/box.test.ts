@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,14 +34,18 @@ async function temp(prefix: string): Promise<string> {
 }
 
 /** A project named `Demo` that holds the agent's box profile in .box/agent/local when `profiled`. */
-async function scene(profiled: boolean, boxOnPath = true) {
+async function scene(
+  profiled: boolean,
+  boxOnPath = true,
+  options: { profile?: string; processEnv?: NodeJS.ProcessEnv } = {},
+) {
   const projectRoot = await temp("agentcore-box-project-");
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
   if (profiled) {
     const local = join(projectRoot, ".box", "agent", "local");
     await mkdir(local, { recursive: true });
-    await writeFile(join(local, "profile.toml"), PROFILE);
+    await writeFile(join(local, "profile.toml"), options.profile ?? PROFILE);
     await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
   }
 
@@ -64,6 +69,7 @@ async function scene(profiled: boolean, boxOnPath = true) {
       checked.push(tool);
       if (!boxOnPath) throw new MissingToolError(tool, installHint);
     },
+    ...(options.processEnv && { processEnv: options.processEnv }),
   });
   return { projectRoot, calls, fallbackRuns, runner, checked };
 }
@@ -155,6 +161,68 @@ describe("BoxDevRunner", () => {
     expect(env.AGENTCORE_CREDENTIAL_AGENTOPENAIAPIKEY).toBe("sk-real");
     expect(env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(process.env.OTEL_EXPORTER_OTLP_ENDPOINT);
     expect(env.OTEL_SERVICE_NAME).toBe(process.env.OTEL_SERVICE_NAME);
+  });
+
+  describe("with an env:// key in the profile", () => {
+    const GITHUB_PROFILE =
+      PROFILE +
+      '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
+
+    test("hands box run the shell's value, and writes no .env.local", async () => {
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: { GITHUB_TOKEN: "ghp_shell" },
+      });
+
+      const events = await collect(runner.run({ ...input(projectRoot), env: {} }));
+
+      expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_shell");
+      expect(existsSync(join(projectRoot, "agentcore", ".env.local"))).toBe(false);
+      expect(events.some((event) => "message" in event && event.message.includes("not set"))).toBe(
+        false,
+      );
+    });
+
+    test("prefers the shell's value to .env.local's", async () => {
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: { GITHUB_TOKEN: "ghp_shell" },
+      });
+
+      await collect(runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }));
+
+      expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_shell");
+    });
+
+    test("uses .env.local's value when the shell has none", async () => {
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: {},
+      });
+
+      await collect(runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }));
+
+      expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_file");
+    });
+
+    test("warns when neither has it, before box run reports it", async () => {
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: {},
+      });
+
+      const events = await collect(runner.run({ ...input(projectRoot), env: {} }));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message:
+          "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], " +
+          "but it is not set, and box does not start without it. Export it in this shell " +
+          "(export GITHUB_TOKEN=...) or put it in agentcore/.env.local, then restart dev.",
+      });
+      // box run still starts, so its own error follows the warning.
+      expect(calls).toHaveLength(1);
+    });
   });
 
   test("runs the agent the usual way when the project has no box profile", async () => {
