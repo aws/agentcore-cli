@@ -136,16 +136,20 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_stored");
   });
 
-  test("says which variable to set when the key is in neither place", async () => {
+  test("adds no credential, and says which variable to set, when the key is in neither place", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);
+    const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
 
     const messages = await drain(subject.build(created));
 
     expect(messages).toContain(
-      `box egress 'github' reads env://GITHUB_TOKEN, which is not set here or in ` +
-        `${ENV_LOCAL_RELATIVE_PATH}: set GITHUB_TOKEN and build again, or set ${RESERVED}, ` +
-        "before deploy",
+      "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not " +
+        `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
+        `Set GITHUB_TOKEN, or ${RESERVED}, and build again`,
+    );
+    expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
+      spec,
     );
   });
 

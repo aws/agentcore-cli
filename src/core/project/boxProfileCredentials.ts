@@ -9,12 +9,16 @@ import type { ProjectSpec } from "../../projectSchemas/project";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import { hasValue, type BoxEnvRoute } from "./boxProfileEgress";
 import { MODEL_PROVIDER_EGRESS_ROUTES, MODEL_PROVIDER_KEY_VARIABLES } from "./templates/boxProfile";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 
 /**
- * A box `env://` route whose key deploy reads from the API key credential `credential`, under
- * that credential's reserved variable.
+ * Where build looks for a route's key: the environment it runs in, and the project's `.env.local`,
+ * where `agentcore dev` stores each box variable under its own name.
  */
-export type BoxCredentialSeed = BoxEnvRoute & { credential: string };
+export type BoxKeySources = {
+  env: NodeJS.ProcessEnv;
+  envLocal: Readonly<Record<string, string | undefined>>;
+};
 
 /** What {@link planBoxProfileCredentials} did with the box profile's `env://` routes. */
 export type BoxCredentialPlan = {
@@ -22,67 +26,102 @@ export type BoxCredentialPlan = {
   messages: string[];
   /** The credentials added to `spec.credentials`. */
   added: Credential[];
-  /** Every route an API key credential of the project now covers by its name, added or not. */
-  seeds: BoxCredentialSeed[];
+  /** The `.env.local` entries that store each key under its credential's reserved variable. */
+  entries: EnvLocalEntry[];
 };
 
 /**
  * For each `[egress.<route>] secret.ref = "env://VAR"` route of the box profile, make sure the
- * project declares an `ApiKeyCredentialProvider` named `<route>`. A later `agentcore deploy` then
- * provisions it in AgentCore Identity, so the key lives there and the runtime reads it from
- * Identity rather than from its own environment.
+ * project declares an `ApiKeyCredentialProvider` named `<route>`, and that `.env.local` holds its
+ * key under the credential's reserved variable. A later `agentcore deploy` then provisions the
+ * provider in AgentCore Identity.
+ *
+ * The key comes from the credential's reserved variable when it is already set, else from `VAR`,
+ * in `sources.env` first and then in `sources.envLocal`. Deploy provisions every declared
+ * credential and fails on one with no key, so a route whose key is in neither place gets no
+ * credential: only a message that names the variable to set. A credential an earlier build added
+ * is kept, and gets the same message if its key has gone.
  *
  * Mutates `spec.credentials` in place, and is idempotent. It skips, with no message:
- *   - a model-provider route that `agentcore create` wrote, or one that reads a provider variable
- *     (such as `OPENAI_API_KEY`): its key is the project's model-provider credential, or a variable
- *     LiteLLM reads, so a credential here would only make deploy ask for a key nothing uses;
- *   - a route whose variable is an existing API key credential's reserved variable: that
- *     credential already holds the key under that variable.
+ *   - a route whose variable an existing credential reserves: that credential holds the key;
+ *   - a model-provider route as `agentcore create` writes it (`openai`, `anthropic`, `gemini` or
+ *     `openai-compatible`, reading the provider variable such as `OPENAI_API_KEY`): its key is
+ *     the variable LiteLLM reads, not a credential;
+ *   - a route named for an API key credential that keeps its key in Secrets Manager.
  *
- * It skips, with a message, and with no failure, a route whose name `agentcore credentials add`
- * would refuse: a name that is not a valid credential name, that ends in a credential field suffix,
- * that derives the same variable as an existing credential, or that names a credential which is
- * not an API key credential.
- *
- * `seeds` lists each route whose key deploy reads from an API key credential named for the route:
- * the ones this call adds, and the ones an earlier build added. So build seeds the key on every
- * run, from one filter.
+ * It skips, with a message, a route that uses a model-provider name or variable in any other way,
+ * and a route whose name `agentcore credentials add` would refuse: a name that is not a valid
+ * credential name, that ends in a credential field suffix, that derives the same variable as an
+ * existing credential, or that names a credential which is not an API key credential.
  */
 export function planBoxProfileCredentials(
   spec: ProjectSpec,
   routes: readonly BoxEnvRoute[],
+  sources: BoxKeySources,
 ): BoxCredentialPlan {
   const reservedVars = new Map<string, string>();
-  for (const credential of spec.credentials) {
+  const reserve = (credential: Credential) => {
     for (const variable of credentialEnvironmentVariableNames(credential)) {
       reservedVars.set(variable, credential.name);
     }
-    // A credential that keeps its secret elsewhere still owns its base variable's name.
-    reservedVars.set(credentialEnvVarName(credential.name), credential.name);
-  }
-  const apiKeyVars = new Set(
-    spec.credentials
-      .filter((credential) => credential.authorizerType === "ApiKeyCredentialProvider")
-      .map((credential) => credentialEnvVarName(credential.name)),
+  };
+  for (const credential of spec.credentials) reserve(credential);
+  // A credential that keeps its secret elsewhere reserves no variable, but its name still derives
+  // one that a new credential must not take.
+  const derivedVars = new Map(
+    spec.credentials.map((credential) => [credentialEnvVarName(credential.name), credential.name]),
   );
 
   const messages: string[] = [];
   const added: Credential[] = [];
-  const seeds: BoxCredentialSeed[] = [];
-  for (const { route, variable } of routes) {
-    if (MODEL_PROVIDER_EGRESS_ROUTES.has(route) || MODEL_PROVIDER_KEY_VARIABLES.has(variable)) {
-      continue;
-    }
-    if (apiKeyVars.has(variable)) continue;
+  const entries: EnvLocalEntry[] = [];
+  /** Stores the route's key under `credential`'s reserved variable; false when there is none. */
+  const seed = ({ variable }: BoxEnvRoute, credential: string): boolean => {
+    const key = credentialEnvVarName(credential);
+    if (hasValue(sources.env[key]) || hasValue(sources.envLocal[key])) return true;
+    if (entries.some((entry) => entry.key === key)) return true;
+    const value = hasValue(sources.env[variable])
+      ? sources.env[variable]
+      : sources.envLocal[variable];
+    if (!hasValue(value)) return false;
+    entries.push({
+      key,
+      value,
+      comment: `API key for box egress 'env://${variable}', provisioned to AgentCore Identity on deploy`,
+    });
+    return true;
+  };
+  const toSet = (variable: string, credential: string) => {
+    const key = credentialEnvVarName(credential);
+    return variable === key ? variable : `${variable}, or ${key},`;
+  };
+
+  for (const entry of routes) {
+    const { route, variable } = entry;
+    if (reservedVars.has(variable)) continue;
+    const providerName = MODEL_PROVIDER_EGRESS_ROUTES.has(route);
+    const providerVariable = MODEL_PROVIDER_KEY_VARIABLES.has(variable);
+    if (providerName && providerVariable) continue;
 
     const skip = (reason: string) =>
       messages.push(`skipping box egress '${route}' (env://${variable}): ${reason}`);
+    if (providerName || providerVariable) {
+      skip(
+        providerName
+          ? `'${route}' is a model-provider route; agentcore create declares its key`
+          : `${variable} is a model provider's key variable; agentcore create declares its key`,
+      );
+      continue;
+    }
     const existing = spec.credentials.find((credential) => credential.name === route);
     if (existing !== undefined) {
-      if (existing.authorizerType === "ApiKeyCredentialProvider") {
-        seeds.push({ route, variable, credential: route });
-      } else {
+      if (existing.authorizerType !== "ApiKeyCredentialProvider") {
         skip(`credential '${route}' is a ${existing.authorizerType} credential, not an API key`);
+      } else if (credentialEnvironmentVariableNames(existing).length > 0 && !seed(entry, route)) {
+        messages.push(
+          `box egress '${route}' reads env://${variable}, which is not set here or in ` +
+            `${ENV_LOCAL_RELATIVE_PATH}: set ${toSet(variable, route)} before deploy`,
+        );
       }
       continue;
     }
@@ -100,7 +139,7 @@ export function planBoxProfileCredentials(
     }
     const credential: Credential = { authorizerType: "ApiKeyCredentialProvider", name: route };
     const clash = credentialEnvironmentVariableNames(credential)
-      .map((name) => reservedVars.get(name))
+      .map((name) => reservedVars.get(name) ?? derivedVars.get(name))
       .find((owner) => owner !== undefined);
     if (clash !== undefined) {
       skip(
@@ -109,57 +148,23 @@ export function planBoxProfileCredentials(
       );
       continue;
     }
+    if (!seed(entry, route)) {
+      messages.push(
+        `not adding credential '${route}' for box egress 'env://${variable}': ${variable} is not ` +
+          `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
+          `Set ${toSet(variable, route)} and build again`,
+      );
+      continue;
+    }
 
     spec.credentials.push(credential);
-    for (const name of credentialEnvironmentVariableNames(credential)) {
-      reservedVars.set(name, route);
-    }
-    apiKeyVars.add(credentialEnvVarName(route));
+    reserve(credential);
+    derivedVars.set(credentialEnvVarName(route), route);
     added.push(credential);
-    seeds.push({ route, variable, credential: route });
     messages.push(
       `adding API key credential '${route}' to agentcore.json for box egress 'env://${variable}', ` +
         "so deploy provisions it in AgentCore Identity",
     );
   }
-  return { messages, added, seeds };
-}
-
-/** The `.env.local` entries for {@link planBoxProfileCredentials}'s seeds, and the seeds with no key. */
-export type BoxCredentialSeedEntries = {
-  entries: EnvLocalEntry[];
-  /** The seeds whose key is in neither source, and not yet under the credential's variable. */
-  missing: BoxCredentialSeed[];
-};
-
-/**
- * The `.env.local` entries that carry each seed's key for deploy: the value of the route's box
- * variable, under the credential's reserved variable. The value comes from `env` first, then from
- * `envLocal` under the box variable's own name, where `agentcore dev` stores it. A seed whose
- * reserved variable is already set in either source needs no entry. A seed with no value in either
- * source is in `missing`, so build can name the variable before deploy fails on it.
- */
-export function boxCredentialSeedEntries(
-  seeds: readonly BoxCredentialSeed[],
-  env: NodeJS.ProcessEnv,
-  envLocal: Readonly<Record<string, string | undefined>>,
-): BoxCredentialSeedEntries {
-  const entries: EnvLocalEntry[] = [];
-  const missing: BoxCredentialSeed[] = [];
-  for (const seed of seeds) {
-    const key = credentialEnvVarName(seed.credential);
-    if (hasValue(env[key]) || hasValue(envLocal[key])) continue;
-    if (entries.some((entry) => entry.key === key)) continue;
-    const value = hasValue(env[seed.variable]) ? env[seed.variable] : envLocal[seed.variable];
-    if (!hasValue(value)) {
-      missing.push(seed);
-      continue;
-    }
-    entries.push({
-      key,
-      value,
-      comment: `API key for box egress 'env://${seed.variable}', provisioned to AgentCore Identity on deploy`,
-    });
-  }
-  return { entries, missing };
+  return { messages, added, entries };
 }

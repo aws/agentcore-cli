@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { boxCredentialSeedEntries, planBoxProfileCredentials } from "./boxProfileCredentials";
+import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
@@ -9,82 +9,183 @@ function spec(credentials: ProjectSpec["credentials"] = []): ProjectSpec {
 }
 
 const route = (name: string, variable: string): BoxEnvRoute => ({ route: name, variable });
+const shell = (env: NodeJS.ProcessEnv): BoxKeySources => ({ env, envLocal: {} });
+const GITHUB = route("github", "GITHUB_TOKEN");
+const RESERVED = credentialEnvVarName("github");
+const API_KEY = { authorizerType: "ApiKeyCredentialProvider", name: "github" } as const;
 
 describe("planBoxProfileCredentials", () => {
-  test("adds an ApiKeyCredentialProvider and a seed for each env:// route", () => {
+  test("adds an ApiKeyCredentialProvider and stores its key for each env:// route", () => {
     const s = spec();
 
-    const plan = planBoxProfileCredentials(s, [
-      route("github", "GITHUB_TOKEN"),
-      route("stripe", "STRIPE_KEY"),
-    ]);
+    const plan = planBoxProfileCredentials(
+      s,
+      [GITHUB, route("stripe", "STRIPE_KEY")],
+      shell({ GITHUB_TOKEN: "ghp_x", STRIPE_KEY: "sk_x" }),
+    );
 
     expect(s.credentials).toEqual([
-      { authorizerType: "ApiKeyCredentialProvider", name: "github" },
+      API_KEY,
       { authorizerType: "ApiKeyCredentialProvider", name: "stripe" },
     ]);
     expect(plan.added).toEqual(s.credentials);
-    expect(plan.seeds).toEqual([
-      { route: "github", variable: "GITHUB_TOKEN", credential: "github" },
-      { route: "stripe", variable: "STRIPE_KEY", credential: "stripe" },
+    expect(plan.entries).toEqual([
+      {
+        key: RESERVED,
+        value: "ghp_x",
+        comment:
+          "API key for box egress 'env://GITHUB_TOKEN', provisioned to AgentCore Identity on deploy",
+      },
+      expect.objectContaining({ key: credentialEnvVarName("stripe"), value: "sk_x" }),
     ]);
     expect(plan.messages).toHaveLength(2);
   });
 
-  test("is idempotent: a second pass adds nothing, but still seeds the route", () => {
+  test("adds no credential for a route whose key is in neither place, and says what to set", () => {
     const s = spec();
-    planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
 
-    const again = planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
+    const plan = planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: " " }));
 
-    expect(again.added).toEqual([]);
-    expect(again.messages).toEqual([]);
-    expect(again.seeds).toEqual([
-      { route: "github", variable: "GITHUB_TOKEN", credential: "github" },
+    expect(s.credentials).toEqual([]);
+    expect(plan.added).toEqual([]);
+    expect(plan.entries).toEqual([]);
+    expect(plan.messages).toEqual([
+      "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not set " +
+        `here or in agentcore/.env.local, so deploy could not provision it. Set GITHUB_TOKEN, or ${RESERVED}, ` +
+        "and build again",
     ]);
-    expect(s.credentials).toHaveLength(1);
   });
 
-  test("skips the model-provider routes create writes, by name and by provider variable", () => {
+  test("names the variable once when the route reads its own credential's variable", () => {
+    const plan = planBoxProfileCredentials(spec(), [route("github", RESERVED)], shell({}));
+
+    expect(plan.messages[0]).toEndWith(`Set ${RESERVED} and build again`);
+  });
+
+  test("takes the key from .env.local under the box variable when the shell has none", () => {
+    const plan = planBoxProfileCredentials(spec(), [GITHUB], {
+      env: {},
+      envLocal: { GITHUB_TOKEN: "ghp_stored" },
+    });
+
+    expect(plan.added).toEqual([API_KEY]);
+    expect(plan.entries.map(({ key, value }) => [key, value])).toEqual([[RESERVED, "ghp_stored"]]);
+  });
+
+  test("prefers the shell over .env.local", () => {
+    const plan = planBoxProfileCredentials(spec(), [GITHUB], {
+      env: { GITHUB_TOKEN: "ghp_shell" },
+      envLocal: { GITHUB_TOKEN: "ghp_stored" },
+    });
+
+    expect(plan.entries[0]?.value).toBe("ghp_shell");
+  });
+
+  test("adds the credential with no entry when its reserved variable is already set", () => {
+    for (const sources of [
+      { env: { [RESERVED]: "k" }, envLocal: {} },
+      { env: {}, envLocal: { [RESERVED]: "k" } },
+    ]) {
+      const plan = planBoxProfileCredentials(spec(), [GITHUB], sources);
+
+      expect(plan.added).toEqual([API_KEY]);
+      expect(plan.entries).toEqual([]);
+    }
+  });
+
+  test("is idempotent: a later build adds nothing, but still stores a key it can find", () => {
+    const s = spec([API_KEY]);
+
+    const plan = planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "ghp_x" }));
+
+    expect(plan.added).toEqual([]);
+    expect(plan.messages).toEqual([]);
+    expect(plan.entries.map(({ key }) => key)).toEqual([RESERVED]);
+    expect(s.credentials).toEqual([API_KEY]);
+  });
+
+  test("keeps an earlier build's credential and says what to set when its key has gone", () => {
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
+
+    expect(plan.added).toEqual([]);
+    expect(plan.messages).toEqual([
+      "box egress 'github' reads env://GITHUB_TOKEN, which is not set here or in " +
+        `agentcore/.env.local: set GITHUB_TOKEN, or ${RESERVED}, before deploy`,
+    ]);
+  });
+
+  test("stores nothing for an API key credential that keeps its key in Secrets Manager", () => {
+    const s = spec([
+      { ...API_KEY, secretRef: "arn:aws:secretsmanager:us-west-2:111122223333:secret:gh" },
+    ] as unknown as ProjectSpec["credentials"]);
+
+    expect(planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "ghp_x" }))).toEqual({
+      messages: [],
+      added: [],
+      entries: [],
+    });
+  });
+
+  test("skips, with no message, the model-provider routes create writes", () => {
     const s = spec();
 
-    const plan = planBoxProfileCredentials(s, [
-      route("openai", "OPENAI_API_KEY"),
-      route("anthropic", "SOMETHING_ELSE"),
-      route("my-llm", "GEMINI_API_KEY"),
-      route("openai-compatible", "LLM_KEY"),
-    ]);
+    const plan = planBoxProfileCredentials(
+      s,
+      [route("openai", "OPENAI_API_KEY"), route("anthropic", "ANTHROPIC_API_KEY")],
+      shell({ OPENAI_API_KEY: "sk-x", ANTHROPIC_API_KEY: "sk-ant-x" }),
+    );
 
-    expect(plan).toEqual({ messages: [], added: [], seeds: [] });
+    expect(plan).toEqual({ messages: [], added: [], entries: [] });
     expect(s.credentials).toEqual([]);
   });
 
-  test("skips, with no seed, a route whose variable an API key credential already reserves", () => {
+  test("skips, with no message, a route whose variable an existing credential reserves", () => {
     const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "agentOpenAIApiKey" }]);
 
-    const plan = planBoxProfileCredentials(s, [
-      route("llm", credentialEnvVarName("agentOpenAIApiKey")),
-    ]);
+    const plan = planBoxProfileCredentials(
+      s,
+      [route("openai", credentialEnvVarName("agentOpenAIApiKey"))],
+      shell({}),
+    );
 
-    expect(plan).toEqual({ messages: [], added: [], seeds: [] });
+    expect(plan).toEqual({ messages: [], added: [], entries: [] });
+  });
+
+  test("reports a route that uses a model-provider name or variable in another way", () => {
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("openai", "MY_KEY"), route("my-llm", "GEMINI_API_KEY")],
+      shell({ MY_KEY: "k", GEMINI_API_KEY: "k" }),
+    );
+
+    expect(plan.added).toEqual([]);
+    expect(plan.messages).toEqual([
+      "skipping box egress 'openai' (env://MY_KEY): 'openai' is a model-provider route; " +
+        "agentcore create declares its key",
+      "skipping box egress 'my-llm' (env://GEMINI_API_KEY): GEMINI_API_KEY is a model provider's " +
+        "key variable; agentcore create declares its key",
+    ]);
   });
 
   test("reports, but does not add, a name that is not a valid credential name", () => {
-    const s = spec();
-
-    const plan = planBoxProfileCredentials(s, [route("bad name!", "SOME_KEY")]);
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("bad name!", "SOME_KEY")],
+      shell({ SOME_KEY: "k" }),
+    );
 
     expect(plan.added).toEqual([]);
-    expect(plan.seeds).toEqual([]);
     expect(plan.messages).toEqual([
       "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
     ]);
   });
 
   test("reports, but does not add, a name that ends in a credential field suffix", () => {
-    const s = spec();
-
-    const plan = planBoxProfileCredentials(s, [route("github_client_id", "GITHUB_ID")]);
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("github_client_id", "GITHUB_ID")],
+      shell({ GITHUB_ID: "k" }),
+    );
 
     expect(plan.added).toEqual([]);
     expect(plan.messages).toHaveLength(1);
@@ -94,30 +195,32 @@ describe("planBoxProfileCredentials", () => {
   test("reports, but does not add, a name that derives an existing credential's variable", () => {
     const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "git-hub" }]);
 
-    const plan = planBoxProfileCredentials(s, [route("git_hub", "GITHUB_TOKEN")]);
+    const plan = planBoxProfileCredentials(
+      s,
+      [route("git_hub", "GITHUB_TOKEN")],
+      shell({ GITHUB_TOKEN: "k" }),
+    );
 
     expect(plan.added).toEqual([]);
-    expect(plan.seeds).toEqual([]);
+    expect(plan.entries).toEqual([]);
     expect(plan.messages).toEqual([
       "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
         "same variable, AGENTCORE_CREDENTIAL_GIT_HUB, as credential 'git-hub'",
     ]);
-    expect(s.credentials).toHaveLength(1);
   });
 
   test("reports two routes in one profile that derive the same variable, and adds the first", () => {
-    const s = spec();
-
-    const plan = planBoxProfileCredentials(s, [
-      route("git-hub", "GITHUB_TOKEN"),
-      route("git_hub", "GITHUB_TOKEN"),
-    ]);
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("git-hub", "GITHUB_TOKEN"), route("git_hub", "GITHUB_TOKEN")],
+      shell({ GITHUB_TOKEN: "k" }),
+    );
 
     expect(plan.added.map(({ name }) => name)).toEqual(["git-hub"]);
     expect(plan.messages[1]).toContain("as credential 'git-hub'");
   });
 
-  test("reports, but does not seed, a route named for a credential that is not an API key", () => {
+  test("reports, but does not use, a route named for a credential that is not an API key", () => {
     const s = spec([
       {
         authorizerType: "OAuthCredentialProvider",
@@ -126,71 +229,13 @@ describe("planBoxProfileCredentials", () => {
       },
     ] as unknown as ProjectSpec["credentials"]);
 
-    const plan = planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
+    const plan = planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "k" }));
 
     expect(plan.added).toEqual([]);
-    expect(plan.seeds).toEqual([]);
+    expect(plan.entries).toEqual([]);
     expect(plan.messages).toEqual([
       "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
         "OAuthCredentialProvider credential, not an API key",
     ]);
-  });
-});
-
-describe("boxCredentialSeedEntries", () => {
-  const seed = { route: "github", variable: "GITHUB_TOKEN", credential: "github" };
-  const reserved = credentialEnvVarName("github");
-
-  test("carries the key from the environment under the credential's reserved variable", () => {
-    const { entries, missing } = boxCredentialSeedEntries([seed], { GITHUB_TOKEN: "ghp_x" }, {});
-
-    expect(entries).toEqual([
-      {
-        key: reserved,
-        value: "ghp_x",
-        comment:
-          "API key for box egress 'env://GITHUB_TOKEN', provisioned to AgentCore Identity on deploy",
-      },
-    ]);
-    expect(missing).toEqual([]);
-  });
-
-  test("falls back to the key agentcore dev stored in .env.local under the box variable", () => {
-    const { entries } = boxCredentialSeedEntries([seed], {}, { GITHUB_TOKEN: "ghp_stored" });
-
-    expect(entries.map(({ key, value }) => [key, value])).toEqual([[reserved, "ghp_stored"]]);
-  });
-
-  test("prefers the environment over .env.local", () => {
-    const { entries } = boxCredentialSeedEntries(
-      [seed],
-      { GITHUB_TOKEN: "ghp_shell" },
-      { GITHUB_TOKEN: "ghp_stored" },
-    );
-
-    expect(entries[0]?.value).toBe("ghp_shell");
-  });
-
-  test("writes nothing when the reserved variable is already set in either place", () => {
-    const env = { GITHUB_TOKEN: "ghp_x" };
-    expect(boxCredentialSeedEntries([seed], { ...env, [reserved]: "k" }, {})).toEqual({
-      entries: [],
-      missing: [],
-    });
-    expect(boxCredentialSeedEntries([seed], env, { [reserved]: "k" })).toEqual({
-      entries: [],
-      missing: [],
-    });
-  });
-
-  test("reports a seed whose key is unset or blank in both places", () => {
-    const { entries, missing } = boxCredentialSeedEntries(
-      [seed],
-      { GITHUB_TOKEN: "  " },
-      { GITHUB_TOKEN: "" },
-    );
-
-    expect(entries).toEqual([]);
-    expect(missing).toEqual([seed]);
   });
 });
