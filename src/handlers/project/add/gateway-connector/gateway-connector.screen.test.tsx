@@ -58,6 +58,7 @@ describe("gateway-connector wizard helpers", () => {
 
     await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
     expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
+    expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
     screen.unmount();
   });
 

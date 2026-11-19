@@ -18,3 +18,28 @@ export function removedGatewayLines(runtimeName: string, gateways: RemovedGatewa
     return `removed gateway '${name}'${targets}: it is bound to runtime '${runtimeName}'`;
   });
 }
+
+/**
+ * One line for each gateway that `remove runtime` would remove with runtime `runtimeName`, with
+ * the names of its targets. The TUI shows it before the removal: a Box gateway can hold targets
+ * the user added, such as MCP servers, and they go with the runtime.
+ */
+export function boundGatewayWarningLines(
+  runtimeName: string,
+  gateways: readonly {
+    name: string;
+    boundRuntime?: string;
+    targets: readonly { name: string }[];
+  }[],
+): string[] {
+  return gateways
+    .filter((gateway) => gateway.boundRuntime === runtimeName)
+    .map(({ name, targets }) => {
+      const names = targets.map((target) => `'${target.name}'`).join(", ");
+      const what =
+        targets.length === 0
+          ? ""
+          : ` and its ${targets.length === 1 ? "target" : "targets"} ${names}`;
+      return `gateway '${name}'${what}`;
+    });
+}

@@ -64,6 +64,16 @@ export const boxGatewaySpec = (runtimeName: string) => ({
  */
 export const isBoundGateway = (gateway: { boundRuntime?: string }) =>
   gateway.boundRuntime !== undefined;
+/**
+ * The gateway an add wizard selects first: the first unbound gateway, which serves every runtime
+ * and harness. Only when every gateway is bound, the first one.
+ */
+export const defaultGatewayChoice = (
+  gateways: readonly { name: string; boundRuntime?: string }[],
+) => (gateways.find((gateway) => !isBoundGateway(gateway)) ?? gateways[0])?.name ?? "";
+/** " · bound to runtime 'x'" for a gateway bound to one runtime, so a wizard can show it. */
+export const boundRuntimeNote = (gateway: { boundRuntime?: string }) =>
+  gateway.boundRuntime === undefined ? "" : ` · bound to runtime '${gateway.boundRuntime}'`;
 /** The variable prefix a gateway sets on each workload it binds to. Matches the CDK library. */
 export const gatewayDiscoveryPrefix = (gateway: { name: string; discoveryPrefix?: string }) =>
   gateway.discoveryPrefix ??

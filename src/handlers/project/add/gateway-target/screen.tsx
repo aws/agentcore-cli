@@ -28,6 +28,7 @@ import {
   type GatewayTargetShortcutInput,
 } from "./index";
 import { RegionKey } from "../../../keys";
+import { boundRuntimeNote, defaultGatewayChoice } from "../../../../projectSchemas/project";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-target"];
 const DESCRIPTION = "add a Target to a project Gateway";
@@ -107,7 +108,7 @@ function gatewayChoices(gateways: readonly AgentCoreGateway[]): Choice<string>[]
     label: gateway.name,
     description: `${gateway.targets.length} ${gateway.targets.length === 1 ? "Target" : "Targets"} · ${
       acceptsRuntimeTargets(gateway) ? "MCP servers and Runtimes" : "MCP servers only"
-    }`,
+    }${boundRuntimeNote(gateway)}`,
   }));
 }
 
@@ -232,7 +233,7 @@ function AddGatewayTargetWizard({
     }));
 
   const [values, setValues] = useState<GatewayTargetFormValues>({
-    gateway: gateways[0]?.name ?? "",
+    gateway: defaultGatewayChoice(gateways),
     kind: "endpoint",
     endpoint: "",
     runtime: runtimes[0]?.name ?? "",

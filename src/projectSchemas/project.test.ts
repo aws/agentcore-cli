@@ -1,5 +1,11 @@
 import { describe, expect, it, test } from "bun:test";
-import { boxGatewaySpec, ProjectSpecSchema, ProjectNameSchema } from "./project";
+import {
+  boundRuntimeNote,
+  boxGatewaySpec,
+  defaultGatewayChoice,
+  ProjectSpecSchema,
+  ProjectNameSchema,
+} from "./project";
 
 const minimalProject = { name: "project", version: 2 };
 
@@ -546,5 +552,19 @@ describe("gateway variable prefixes", () => {
 
   test("accepts gateways with different prefixes", () => {
     expect(parse([{ name: "tools", targets: [] }, boxGatewaySpec("agent")]).success).toBe(true);
+  });
+});
+
+describe("gateway choices in the add wizards", () => {
+  test("the default is the first unbound gateway, and else the first gateway", () => {
+    const box = boxGatewaySpec("agent");
+    expect(defaultGatewayChoice([box, { name: "tools" }])).toBe("tools");
+    expect(defaultGatewayChoice([box])).toBe("agent-box-egress");
+    expect(defaultGatewayChoice([])).toBe("");
+  });
+
+  test("only a bound gateway gets the bound-runtime note", () => {
+    expect(boundRuntimeNote(boxGatewaySpec("agent"))).toBe(" · bound to runtime 'agent'");
+    expect(boundRuntimeNote({})).toBe("");
   });
 });
