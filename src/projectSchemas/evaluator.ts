@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TagsSchema } from "./tags";
+import { uniqueBy } from "./zod-util";
 export const EvaluationLevelSchema = z.enum(["SESSION", "TRACE", "TOOL_CALL"]);
 export type EvaluationLevel = z.infer<typeof EvaluationLevelSchema>;
 export const EvaluatorNameSchema = z
@@ -21,18 +22,62 @@ export const CategoricalRatingSchema = z.object({
   definition: z.string().min(1),
 });
 export type CategoricalRating = z.infer<typeof CategoricalRatingSchema>;
+const nonBlank = (field: string) =>
+  z.string().refine((text) => text.trim().length > 0, `${field} must not be blank`);
+const DimensionNumericalRatingSchema = NumericalRatingSchema.extend({
+  value: z.number().min(0),
+  label: nonBlank("Dimension rating label"),
+  definition: nonBlank("Dimension rating definition"),
+}).strict();
+const DimensionCategoricalRatingSchema = CategoricalRatingSchema.extend({
+  label: nonBlank("Dimension rating label"),
+  definition: nonBlank("Dimension rating definition"),
+}).strict();
+export const DimensionRatingScaleSchema = z
+  .object({
+    numerical: z.array(DimensionNumericalRatingSchema).min(1).optional(),
+    categorical: z.array(DimensionCategoricalRatingSchema).min(1).optional(),
+  })
+  .strict()
+  .refine((scale) => Boolean(scale.numerical) !== Boolean(scale.categorical), {
+    message: "Dimension rating scale must have exactly one of numerical or categorical",
+  });
+export type DimensionRatingScale = z.infer<typeof DimensionRatingScaleSchema>;
+export const EvaluationDimensionSchema = z
+  .object({
+    dimensionName: z
+      .string()
+      .regex(
+        /^[a-zA-Z][a-zA-Z0-9_]{0,47}$/,
+        "Must begin with a letter and contain only alphanumeric characters and underscores (max 48 chars)",
+      ),
+    dimensionInstruction: nonBlank("Dimension instruction").pipe(z.string().max(4000)),
+    dimensionRatingScale: DimensionRatingScaleSchema,
+  })
+  .strict();
+export type EvaluationDimension = z.infer<typeof EvaluationDimensionSchema>;
 export const RatingScaleSchema = z
   .object({
     numerical: z.array(NumericalRatingSchema).optional(),
     categorical: z.array(CategoricalRatingSchema).optional(),
+    multiDimensional: z
+      .array(EvaluationDimensionSchema)
+      .min(1)
+      .max(50)
+      .superRefine(
+        uniqueBy(
+          (dimension) => dimension.dimensionName,
+          (name) => `Duplicate dimension name: ${name}`,
+        ),
+      )
+      .optional(),
   })
   .refine(
-    (scale) => {
-      const hasNumerical = Boolean(scale.numerical);
-      const hasCategorical = Boolean(scale.categorical);
-      return hasNumerical !== hasCategorical;
+    (scale) =>
+      [scale.numerical, scale.categorical, scale.multiDimensional].filter(Boolean).length === 1,
+    {
+      message: "Rating scale must have exactly one of numerical, categorical, or multiDimensional",
     },
-    { message: "Rating scale must have either numerical or categorical, not both" },
   );
 export type RatingScale = z.infer<typeof RatingScaleSchema>;
 const BEDROCK_MODEL_ID_PATTERN = /^[a-z][a-z0-9-]*\.[a-zA-Z0-9._-]+(:[0-9]+)?$/;

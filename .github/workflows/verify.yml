@@ -65,6 +65,9 @@ jobs:
 
       - run: bun run build
       - run: bun pm pack --ignore-scripts
+      - name: Smoke test npm installation with host TypeScript versions
+        if: runner.os == 'Linux'
+        run: bun run test:package
       - run: bun run compile:${{ matrix.target }}
       - name: Smoke test binary
         run: ${{ matrix.binary }} --help
