@@ -1,13 +1,5 @@
-import {
-  chmodSync,
-  copyFileSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { chmod, copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -48,12 +40,12 @@ export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): bo
  * box comes from AGENTCORE_BOX_SOURCE, a staging-boxy checkout with a Linux
  * build in target-al2023/release, until box ships a Linux release.
  */
-export function stageBoxImage(
+export async function stageBoxImage(
   context: string,
   profileText: string,
   env: NodeJS.ProcessEnv,
   runtimeName: string,
-): void {
+): Promise<void> {
   const source = env.AGENTCORE_BOX_SOURCE;
   if (!source) {
     throw new InvalidEnvironmentError(
@@ -76,12 +68,12 @@ export function stageBoxImage(
   }
 
   const dist = join(context, BOX_IMAGE_DIST);
-  rmSync(dist, { recursive: true, force: true });
-  mkdirSync(dist, { recursive: true });
+  await rm(dist, { recursive: true, force: true });
+  await mkdir(dist, { recursive: true });
   for (const binary of BOX_BINARIES) {
-    copyFileSync(join(binaries, binary), join(dist, binary));
-    chmodSync(join(dist, binary), 0o755);
+    await copyFile(join(binaries, binary), join(dist, binary));
+    await chmod(join(dist, binary), 0o755);
   }
-  cpSync(resources, join(dist, "resources"), { recursive: true });
-  writeFileSync(join(dist, "profile.toml"), profileText);
+  await cp(resources, join(dist, "resources"), { recursive: true });
+  await writeFile(join(dist, "profile.toml"), profileText);
 }

@@ -12,7 +12,11 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import { imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
+import {
+  BOX_IMAGE_DIST,
+  imageCopiesBox,
+  stageBoxImage,
+} from "../project/backends/boxContainer";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
@@ -76,6 +80,11 @@ const BOX_RUN_FLAGS = [
 
 type ContainerTool = (typeof CONTAINER_TOOLS)[number];
 type ToolAvailable = typeof toolAvailable;
+
+/** Whether a value, such as AGENTCORE_CONTAINER_TOOL, names a container tool dev supports. */
+function isContainerTool(value: string): value is ContainerTool {
+  return (CONTAINER_TOOLS as readonly string[]).includes(value);
+}
 
 type ContainerDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
@@ -152,7 +161,13 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxed = this.stageBox(input, context);
+    const boxed = await this.stageBox(input, context);
+    if (boxed) {
+      yield {
+        type: "status",
+        message: `Staged box for the image in ${join(context, BOX_IMAGE_DIST)}`,
+      };
+    }
     const buildCommand = [tool, "build", "-f", dockerfile, "-t", imageTag, ...buildArgFlags, "."];
     const buildOptions: StreamProcessOptions = {
       cwd: context,
@@ -241,7 +256,7 @@ export class ContainerDevRunner implements DevRunner {
    * with the project's box profile, and says whether it did. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private stageBox(input: DevServerInput, context: string): boolean {
+  private async stageBox(input: DevServerInput, context: string): Promise<boolean> {
     if (!imageCopiesBox(input.projectRoot, input.runtime)) return false;
     const profile = boxProfilePath(input.projectRoot);
     if (!existsSync(profile)) {
@@ -251,7 +266,7 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
+    await stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
     return true;
   }
 
@@ -260,7 +275,7 @@ export class ContainerDevRunner implements DevRunner {
     // CLI answers `build --help` even when its engine is down, so a Finch user sets this.
     const chosen = this.processEnv.AGENTCORE_CONTAINER_TOOL;
     if (chosen) {
-      if (!(CONTAINER_TOOLS as readonly string[]).includes(chosen)) {
+      if (!isContainerTool(chosen)) {
         throw new InputValidationError(
           `AGENTCORE_CONTAINER_TOOL is '${chosen}'; use ${CONTAINER_TOOLS.join(", ")}.`,
         );
@@ -270,7 +285,7 @@ export class ContainerDevRunner implements DevRunner {
         throw new MissingToolError(chosen, CONTAINER_RUNTIME_INSTALL_HINT);
       }
       signal.throwIfAborted();
-      return chosen as ContainerTool;
+      return chosen;
     }
     for (const tool of CONTAINER_TOOLS) {
       const hasVersion = await this.toolAvailable(tool);
