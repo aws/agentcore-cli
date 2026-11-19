@@ -10,6 +10,7 @@ import {
   ResourceNotFoundError,
 } from "../../errors";
 import { notBoxProjectMessage } from "./box";
+import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -243,6 +244,19 @@ export class ContainerDevRunner implements DevRunner {
       PORT: String(containerPort),
       LOCAL_DEV: "1",
     });
+    if (boxed) {
+      // The container gets none of the host's environment, so box in it gets each env:// key of
+      // the profile here. The shell's value wins over agentcore/.env.local's, and dev writes
+      // neither anywhere but the run's own env file, removed when the run ends.
+      const secrets = await boxDevSecrets(input.projectRoot, {
+        ...input.env,
+        ...this.processEnv,
+      });
+      for (const missing of secrets.missing) {
+        yield { type: "status", message: missingBoxSecretWarning(missing) };
+      }
+      Object.assign(forwardedEnv, secrets.env);
+    }
     if (input.runtime.protocol === "MCP") {
       forwardedEnv.FASTMCP_PORT = String(containerPort);
     }

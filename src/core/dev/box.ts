@@ -5,6 +5,7 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
 import {
   BOX_PROFILE_FILE,
   boxIngressPort,
@@ -19,6 +20,8 @@ type BoxDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
   /** Fails when `box` is not on PATH, with the install hint; tests inject one. */
   checkTool?: (tool: string, installHint: string) => Promise<void>;
+  /** The environment `box run` starts from, the shell's by default; tests inject one. */
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 /**
@@ -32,11 +35,13 @@ export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
   private readonly checkTool: NonNullable<BoxDevRunnerConfig["checkTool"]>;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.checkTool = config.checkTool ?? requireTool;
+    this.processEnv = config.processEnv ?? process.env;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -84,13 +89,23 @@ export class BoxDevRunner implements DevRunner {
     if (input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
       yield { type: "status", message: "Traces are not collected when the agent runs in a box" };
     }
+    const fileEnv = credentialEnvironment(input.env);
+    // box reads each env:// key of the profile from its own environment. The shell's value wins
+    // over agentcore/.env.local's, and dev writes neither anywhere.
+    const secrets = await boxDevSecrets(input.projectRoot, {
+      ...fileEnv,
+      ...this.processEnv,
+    });
+    for (const missing of secrets.missing) {
+      yield { type: "status", message: missingBoxSecretWarning(missing) };
+    }
     yield {
       type: "status",
       message: `Starting the agent in a box (box run ${BOX_PROFILE_FILE})`,
     };
     yield* this.streamProcess(["box", "run", BOX_PROFILE_FILE, "--no-banner"], {
       cwd: input.projectRoot,
-      env: { ...process.env, ...credentialEnvironment(input.env) },
+      env: { ...this.processEnv, ...fileEnv, ...secrets.env },
       signal: input.signal,
     });
   }

@@ -5,7 +5,6 @@ import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
-import { writeBoxDevEnvLocal } from "../../../core/dev/boxEnvLocal";
 import { boxProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
@@ -394,9 +393,6 @@ async function runRuntimeDev({
           runtimeNames,
         });
         for (const message of synced.messages) renderStatus({ io: config.io, message, json });
-        for (const message of await writeBoxDevEnvLocal(project.rootPath)) {
-          renderStatus({ io: config.io, message, json });
-        }
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );

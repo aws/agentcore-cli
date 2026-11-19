@@ -994,6 +994,45 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
     });
 
+    test("hands box in the container the profile's env:// key from the shell, through the run's env file", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell", UNRELATED: "x" },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      const forwarded = parseEnv(run.envFile!.contents);
+      expect(forwarded.GITHUB_TOKEN).toBe("ghp_shell");
+      // Only the keys the profile names, not the rest of the shell.
+      expect(forwarded.UNRELATED).toBeUndefined();
+      // Passed through the env file, never on the command line, and written to no .env.local.
+      expect(run.command.join(" ")).not.toContain("ghp_shell");
+      expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
+    });
+
+    test("warns when the profile's env:// key is not set, before the container's box reports it", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message: expect.stringContaining(
+          "reads GITHUB_TOKEN for [egress.github], but it is not set",
+        ),
+      });
+      expect(commandCall(calls, "run")).toBeDefined();
+    });
+
     test("stages box of the runtime's box.version", async () => {
       const { projectRuntime, root } = await boxedScene();
       const { boxVersions, runner } = harness({ processEnv: credentials });
