@@ -116,15 +116,18 @@ export function boundRuntimeNote(gateway: { boundRuntime?: string }): string {
 }
 
 /**
- * The end of the command-line success line of add gateway-target and add gateway-connector: for
- * a gateway bound to one runtime, a sentence that only that runtime gets its variables. The
- * wizards show the same fact with {@link boundRuntimeNote}.
+ * The notes of add gateway-target and add gateway-connector for a gateway bound to one runtime:
+ * only that runtime gets its variables. They go through `addProjectResource`'s `notes`, so stderr
+ * and the `notes` of the `--json` result both carry them. The wizards show the same fact with
+ * {@link boundRuntimeNote}.
  */
-export function boundGatewayAddedNote(project: Project, gatewayName: string): string {
+export function boundGatewayAddedNotes(project: Project, gatewayName: string): string[] {
   const runtime = project.spec.agentCoreGateways.find(
     (gateway) => gateway.name === gatewayName,
   )?.boundRuntime;
   return runtime === undefined
-    ? ""
-    : `. The Gateway is bound to runtime '${runtime}', so only that runtime gets its variables`;
+    ? []
+    : [
+        `Gateway '${gatewayName}' is bound to runtime '${runtime}', so only that runtime gets its variables`,
+      ];
 }

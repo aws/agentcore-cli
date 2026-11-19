@@ -62,10 +62,17 @@ describe("project add gateway-target", () => {
       ...["--outbound-auth", "none"],
     ]);
 
-    expect(onBox.stderr()).toContain(
-      `The Gateway is bound to runtime '${runtime}', so only that runtime gets its variables`,
-    );
+    const note = `Gateway '${box.name}' is bound to runtime '${runtime}', so only that runtime gets its variables`;
+    expect(onBox.stderr()).toContain(note);
     expect(onTools.stderr()).not.toContain("bound to runtime");
+
+    const asJson = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", box.name, "--name", "wiki", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none", "--json"],
+    ]);
+    expect(JSON.parse(asJson.stdout()).notes).toEqual([note]);
   });
 
   test("adds endpoint and project Runtime shortcuts", async () => {
