@@ -29,9 +29,11 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- `box` `0.1.11-linux-preview.6` or later on your `PATH`. Build, deploy and dev run it to read the
-  box profile with `box profile show --format json --full`, and CodeZip dev runs the agent with it.
-  See [Install box](#install-box).
+- The first `box` release with
+  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), or a
+  subsequent release, on your `PATH`. Build, deploy and dev run it to read the box profile with
+  `box profile show --format json --full`, and CodeZip dev runs the agent with it. See
+  [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
   Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
   region.
@@ -259,9 +261,12 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.1.11-linux-preview.6` or later. Dev and build read the profile with
-  `box profile show --format json --full`, and the AgentCore Runtime profile signs each Box gateway
-  backend for `${{ inputs.aws.region }}`; older builds have neither.
+- `box --version` must print the version of the first box release with
+  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), or of a
+  subsequent release. Dev and build read the profile with
+  `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
+  backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
+  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box build from before that release cannot do all of these.
 - The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
   After you refresh them, restart dev.
 
@@ -392,10 +397,17 @@ the Box gateway up by its ID as above.
 ## 10. Read box telemetry and gateway logs in CloudWatch
 
 On AgentCore Runtime, box sends each policy decision (permit, deny, trace) to the log group of the
-Runtime, `/aws/bedrock-agentcore/runtimes/<runtimeId>-DEFAULT`, stream `otel-rt-logs`. Box reads
-the log group, the stream, and the region from the environment of the Runtime when it starts
-(`OTEL_EXPORTER_OTLP_LOGS_HEADERS` and `AWS_REGION`). The CLI and the L3 constructs make no log
-group for box.
+Runtime, `/aws/bedrock-agentcore/runtimes/<runtimeId>-DEFAULT`, stream `otel-rt-logs`. When the box
+profile of the agent has no `cloudwatch_logs` target, build adds the target `[telemetry.agentcore]`
+to the Runtime profile. If the profile has a target with the name `agentcore`, the name is
+`[telemetry.agentcore_default]`. When the run starts, box fills the region of the target from
+`AWS_REGION`, and its log group and stream from `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. The target sends
+the deny, permit, and trace records, and box signs it with the execution role.
+
+The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the
+runtime can write to the log group of the Runtime, thus build adds no grant for it. A runtime that
+names an `executionRoleArn` must have `logs:CreateLogStream` and `logs:PutLogEvents` on
+`/aws/bedrock-agentcore/runtimes/*`.
 
 The `logs runtime` command finds that log group from the runtime name:
 
@@ -415,7 +427,7 @@ traces to X-Ray. Read the gateway logs with the gateway ID from step 9:
 aws logs tail "/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/$GATEWAY_ID" --since 15m
 ```
 
-To send box telemetry to a log group that you make:
+To replace the default target with a log group that you make:
 
 1. Set the region of the log group, then make the log group and the log stream. Box does not make
    them, and deploy does not make them.
@@ -451,13 +463,15 @@ To send box telemetry to a log group that you make:
    bun run "$CLI" deploy
    ```
 
-   Build copies the table into the Runtime profile. On AgentCore Runtime, box signs this target with
-   the execution role. Build also writes one policy file for each box runtime,
-   `agentcore/box-telemetry-policy-<runtime>.json`, here `box-telemetry-policy-agent.json`. It adds
-   the file to the `additionalPolicies` of that runtime. The file gives the role `logs:PutLogEvents`
-   on the stream of each `cloudwatch_logs` target, and `xray:PutSpans` and `xray:PutTraceSegments`
-   for a `cloudwatch_traces` target. With `AGENTCORE_BOX_SECRETS_MANAGER=1`, deploy keeps the key of
-   each third-party target (`otlp`, `langfuse`, or `langsmith`) in the AWS Secrets Manager secret
+   Build copies the table into the Runtime profile, where it replaces the default target. A
+   `cloudwatch_traces` target or a third-party target does not replace the default target. On
+   AgentCore Runtime, box signs this target with the execution role. Build also writes one policy
+   file for each box runtime, `agentcore/box-telemetry-policy-<runtime>.json`, here
+   `box-telemetry-policy-agent.json`. It adds the file to the `additionalPolicies` of that runtime.
+   The file gives the role `logs:PutLogEvents` on the stream of each `cloudwatch_logs` target, and
+   `xray:PutSpans` and `xray:PutTraceSegments` for a `cloudwatch_traces` target. With
+   `AGENTCORE_BOX_SECRETS_MANAGER=1`, deploy keeps the key of each third-party target (`otlp`,
+   `langfuse`, or `langsmith`) in the AWS Secrets Manager secret
    `agentcore/<project>/<runtime>/box`. The file then also gives the role
    `secretsmanager:GetSecretValue` on that secret.
 
@@ -476,17 +490,33 @@ Deploy bills you while resources exist. Remove them when done. `--yes` confirms 
 the stack, since the project then declares nothing to deploy; without it, deploy stops and asks you
 to re-run with `--yes`.
 
+First keep the runtime ID from the stack outputs, because the outputs go with the stack:
+
+```
+RUNTIME_ID=$(aws cloudformation describe-stacks --stack-name "AgentCore-$PROJECT-default" --query "Stacks[0].Outputs[?ExportName=='AgentCore-$PROJECT-default-agent-RuntimeId'].OutputValue" --output text)
+echo "$RUNTIME_ID"
+```
+
+Then remove the resources and the stack:
+
 ```
 bun run "$CLI" remove all --yes
 bun run "$CLI" deploy --yes
 ```
 
-Two things outlive the stack. Delete them too:
+These outlive the stack. Delete them too:
 
 - The API key credential provider of step 4's `github` credential, `<project>_default_github`:
 
   ```
   bun run "$CLI" identity api-key-credential-provider delete --name "${PROJECT}_default_github"
+  ```
+
+- The log group of the Runtime, `/aws/bedrock-agentcore/runtimes/<runtimeId>-DEFAULT`. AgentCore
+  Runtime makes it, not the stack:
+
+  ```
+  aws logs delete-log-group --log-group-name "/aws/bedrock-agentcore/runtimes/$RUNTIME_ID-DEFAULT"
   ```
 
 - The log group from step 10, if you made one:
