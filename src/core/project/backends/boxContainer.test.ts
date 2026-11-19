@@ -7,7 +7,7 @@ import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { stageBoxContainers } from "./boxContainer";
+import { assertBoxRuntimesHaveBoxVersion, stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 /** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
@@ -113,7 +113,7 @@ describe("stageBoxContainers", () => {
     expect(versions).toEqual([]);
   });
 
-  test("stages nothing for an image that does not copy .box-dist/", async () => {
+  test("stages nothing for a runtime with no box.version", async () => {
     const demo = await project("FROM scratch\n");
 
     const { releaseFor, versions } = releaseOf();
@@ -167,3 +167,35 @@ function model(policyFiles: string[]): BoxNetwork {
     failures: [],
   };
 }
+
+describe("assertBoxRuntimesHaveBoxVersion", () => {
+  test.each(["Container", "CodeZip"] as const)(
+    "refuses a %s runtime of a Box project with no box.version, and names the pinned release",
+    async (build) => {
+      const demo = await project(BOX_DOCKERFILE);
+      const runtime = demo.spec.runtimes[0]!;
+      runtime.build = build;
+      delete runtime.box;
+
+      expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).toThrow(
+        'runtime "agent" has no box.version in agentcore.json, but every runtime of a Box ' +
+          `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
+          "runtime in agentcore.json, then retry.",
+      );
+    },
+  );
+
+  test("accepts a Box project whose runtimes have box.version", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+
+    expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).not.toThrow();
+  });
+
+  test("accepts a runtime with no box.version outside a Box project", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    delete demo.spec.runtimes[0]!.box;
+    delete (demo.spec as { projectType?: string }).projectType;
+
+    expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).not.toThrow();
+  });
+});

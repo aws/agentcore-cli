@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
+import { ProjectStateError } from "../../../errors/errors";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
+import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { runtimeRunsInBox } from "../templates/boxProfile";
-import type { BoxRelease } from "./boxRelease";
+import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
@@ -147,4 +149,22 @@ export async function stageBoxContainers(
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
   }
   return runtimes.map((runtime) => runtime.name);
+}
+
+/**
+ * Throws for a runtime of a Box project with no `box.version`. Every runtime of a Box project runs
+ * in a box, and only `box.version` makes it do so, so without it build would stage no box and the
+ * agent could not start on AgentCore Runtime. `agentcore create` writes it with the box release
+ * this CLI pins.
+ */
+export function assertBoxRuntimesHaveBoxVersion(spec: ProjectSpec): void {
+  if (!isBoxProject(spec)) return;
+  for (const runtime of spec.runtimes) {
+    if (runtime.box !== undefined) continue;
+    throw new ProjectStateError(
+      `runtime "${runtime.name}" has no box.version in agentcore.json, but every runtime of a Box ` +
+        `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
+        "runtime in agentcore.json, then retry.",
+    );
+  }
 }

@@ -488,23 +488,19 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
   });
 
-  test("writes the Box gateway of the exported runtime into a Box project", async () => {
+  test("refuses to export a harness into a Box project, which holds one runtime", async () => {
     const { manager: subject } = manager();
     // A box template makes a Box project.
     const project = await projectWithHarness(subject, {}, "agent-python-strands-box");
     expect(project.spec.projectType).toBe("box");
+    const before = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text();
 
-    await drain(subject.exportHarness(project, exportInput()));
-
-    const spec = (await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).json()) as {
-      agentCoreGateways: { name: string }[];
-    };
-    const gateway = spec.agentCoreGateways.find(({ name }) => name === "assistantAgent-box-egress");
-    expect(gateway).toMatchObject({
-      boundRuntime: "assistantAgent",
-      discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
-      targets: [],
-    });
+    await expect(drain(subject.exportHarness(project, exportInput()))).rejects.toThrow(
+      "cannot add the exported harness as a runtime: a Box project holds one runtime",
+    );
+    expect(await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text()).toBe(
+      before,
+    );
   });
 
   test("loads only the MCP tools allowedTools selects", async () => {

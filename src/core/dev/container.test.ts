@@ -849,7 +849,7 @@ describe("ContainerDevRunner", () => {
       });
     });
 
-    test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
+    test("runs a runtime with no box.version without box, whatever its Dockerfile says", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",
         box: false,
@@ -1003,7 +1003,7 @@ describe("ContainerDevRunner", () => {
       expect(boxVersions).toEqual(["2.0.0"]);
     });
 
-    test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
+    test("runs a runtime with no box.version without box's flags, even with a box profile", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n",
         box: false,

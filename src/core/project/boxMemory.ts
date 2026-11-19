@@ -92,7 +92,6 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec): ProjectRuntime[] {
  */
 export function boxMemoryPolicy(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string,
 ): Record<string, unknown> | undefined {
   const memories = boxedRuntimesWithMemory(spec).map(({ name }) => defaultMemoryName(name));
@@ -180,7 +179,6 @@ function grantPolicyFile(
  */
 export function addBoxMemoryTarget(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
   const runtimes = boxedRuntimesWithMemory(spec);
@@ -207,7 +205,6 @@ export function addBoxMemoryTarget(
  */
 export function addBoxBedrockTarget(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
   const messages: string[] = [];
@@ -226,13 +223,9 @@ export function addBoxBedrockTarget(
  */
 export function addBoxGatewayTargets(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
-  return [
-    ...addBoxBedrockTarget(spec, projectRoot, region),
-    ...addBoxMemoryTarget(spec, projectRoot, region),
-  ];
+  return [...addBoxBedrockTarget(spec, region), ...addBoxMemoryTarget(spec, region)];
 }
 
 /**

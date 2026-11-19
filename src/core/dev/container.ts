@@ -249,11 +249,9 @@ export class ContainerDevRunner implements DevRunner {
     // Box in the container signs with the `[default]` profile, which it reads only from the AWS
     // files, as the image's user. A boxed container gets its own copy of the resolved credentials
     // as that profile, since that user cannot read ~/.aws; without credentials it gets ~/.aws.
+    // They are the credentials of the identity this container runs with, from its environment.
     const boxAws = boxed
-      ? await writeBoxDevAwsFiles(
-          this.resolveAwsCredentials,
-          forwardedEnv.AWS_REGION ?? forwardedEnv.AWS_DEFAULT_REGION,
-        )
+      ? await writeBoxDevAwsFiles(this.resolveAwsCredentials, { ...forwardedEnv })
       : undefined;
     let awsMount: string[] = [];
     if (boxAws) {
@@ -330,9 +328,9 @@ export class ContainerDevRunner implements DevRunner {
   }
 
   /**
-   * Stages box into the build context when the Dockerfile copies it, with the project's box
-   * profile and the policy files it names, and returns the folder it staged, or undefined for an
-   * image without box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
+   * Stages box into the build context for a runtime that runs in a box (`runsInBox`), with the
+   * project's box profile and the policy files it names, and returns the folder it staged, or
+   * undefined for a runtime outside a box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
@@ -358,7 +356,7 @@ export class ContainerDevRunner implements DevRunner {
       throw new InputValidationError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
           `but ${profile} is the box profile of another runtime. Write a box profile for this ` +
-          "runtime there, or stop its Dockerfile from copying .box-dist/.",
+          "runtime there.",
       );
     }
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)

@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
-import { ProjectSpecSchema } from "../../../projectSchemas/project";
+import { boxGatewaySpec, ProjectSpecSchema } from "../../../projectSchemas/project";
+import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
@@ -325,6 +326,43 @@ describe("CdkBackend.build", () => {
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
+  });
+
+  test.each([
+    ["a box container", "box", true, true],
+    ["a box container with enableOtel false", "box", false, false],
+    ["a container outside a Box project", undefined, true, false],
+  ] as const)("warns that %s sends no traces: %p", async (_label, projectType, otel, warns) => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      ...(projectType && { projectType }),
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          ...(projectType && { box: { version: BOX_RELEASE.version } }),
+          ...(!otel && { instrumentation: { enableOtel: false } }),
+        },
+      ],
+      agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
+    });
+    await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
+    await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
+
+    const events = await collect(harness().backend.build(input, NO_BOX_NETWORKS));
+
+    const warning: ProjectEvent = {
+      type: "warning",
+      message:
+        "Runtime 'agent' runs its agent in a box, whose image does not run " +
+        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+    };
+    if (warns) expect(events).toContainEqual(warning);
+    else expect(events).not.toContainEqual(warning);
   });
 
   test("warns but continues when the installed CDK is legacy", async () => {

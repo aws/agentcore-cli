@@ -288,16 +288,16 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
     { kind: "file", path: BOX_MEMORY_POLICY_FILE },
   ],
-  edits: (networks, { spec, projectRoot }) => {
+  edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
     const region = networks[0]?.region;
     return {
-      spec: [(copy) => addBoxGatewayTargets(copy, projectRoot, region)],
+      spec: [(copy) => addBoxGatewayTargets(copy, region)],
       files: [
         { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec) },
         {
           path: BOX_MEMORY_POLICY_FILE,
-          policy: region === undefined ? undefined : boxMemoryPolicy(spec, projectRoot, region),
+          policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),
         },
       ].flatMap(({ path, policy }) =>
         policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],

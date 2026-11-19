@@ -54,7 +54,7 @@ export async function readBoxNetworks(
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
-  addBoxGatewayTargets(withDefaults, projectRoot, region);
+  addBoxGatewayTargets(withDefaults, region);
   return runtimes.flatMap((runtime) => {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
     const entry = boxGatewayOf(withDefaults, runtime.name);

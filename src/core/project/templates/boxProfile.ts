@@ -41,43 +41,34 @@ export const BOX_CODEZIP_ENTRYPOINT = "start.py";
 /** The folder deploy stages box into, inside the runtime's code folder, so it ships in the zip. */
 export const BOX_CODEZIP_DIST = ".box-dist";
 
-/**
- * The env vars the Runtime profile reads through its generated packs, so no start script fills the
- * profile in. The Runtime sets the gateway URL; start.py exports the CodeZip Python and code paths,
- * which only the microVM knows.
- */
+/** The Runtime sets the gateway URL; start.py exports the CodeZip paths only the microVM knows. */
 const BOX_GATEWAY_URL_ENV = "AGENTCORE_GATEWAY_BOX_URL";
 const BOX_PYTHON_ENV = "BOX_PYTHON";
 const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
 const BOX_CODE_ENV = "BOX_CODE";
 
-/** The generated pack both Runtime profiles import for the deployed resources: {@link renderAgentCorePack}. */
+/** {@link renderAgentCorePack}. */
 export const AGENTCORE_PACK_NAME = "box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
 
-/** The generated pack the CodeZip Runtime profile adds for the Runtime Python and code: {@link renderAgentCoreCodeZipPack}. */
+/** {@link renderAgentCoreCodeZipPack}. */
 export const AGENTCORE_CODEZIP_PACK_NAME = "box/agentcore-codezip";
 export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
 
 /**
- * Bounds the `gateway.url` input: an `https` host under `amazonaws.com`. box requires a `pattern` or
- * `values` on an input that reaches a backend `url`, so a value from the environment names only the
- * host the profile expects. `[.]` matches a literal dot (a TOML basic string rejects `\.`).
+ * box requires a `pattern` on an input that reaches a backend `url`. The CDK sets the gateway URL
+ * with a `/mcp` path, so a path is allowed after the host. `[.]` is a literal dot, because a TOML
+ * basic string rejects `\.`.
  */
-const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
+const GATEWAY_URL_PATTERN =
+  "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*";
 
-/**
- * Bounds the `aws.region` input, as box/bedrock bounds `bedrock.region`: an AWS region name, so a
- * value from the environment cannot put anything else into the agent's environment.
- */
+/** As box/bedrock bounds `bedrock.region`. */
 const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
 
 /**
- * Bounds an input that reaches the agent `command` or a filesystem grant (the Python path, its
- * prefix and the code dir): an absolute path of one or more segments of safe characters, so a value
- * from the environment cannot inject other arguments. No segment is `.` or `..`, and the path is not
- * empty or `/`, so no value can resolve to `/` and widen a grant. `[.]` is a literal dot, because a
- * TOML basic string rejects `\.`.
+ * For the inputs that reach the agent `command` or a filesystem grant: no extra arguments, and no
+ * `.` or `..` segment, empty value or `/`, which would widen a grant to `/`.
  */
 const ABSOLUTE_PATH_PATTERN = "(/[.]{0,2}[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)+";
 
@@ -92,10 +83,7 @@ function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
 }
 
-/**
- * The credential Box signs AWS routes with on AgentCore Runtime: a bare `aws://`, the AWS default
- * credential chain, which signs with the execution role and needs no credentials step.
- */
+/** The AWS default credential chain, which on AgentCore Runtime is the execution role. */
 const RUNTIME_AWS_SIGNER = "aws://";
 
 /**
@@ -171,11 +159,7 @@ export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   );
 }
 
-/**
- * The frameworks whose Python CodeZip agent can run in a box on AgentCore Runtime: the profile
- * knows how to serve each. Only a box template sets `boxTemplate`, and today only Strands has one;
- * the box templates for LangChain and for no framework follow in a later PR.
- */
+/** The frameworks whose Python CodeZip agent the box profile can serve. */
 const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = new Set([
   "strands",
   "langchain",
@@ -210,11 +194,6 @@ export function runsInBox(boxProject: boolean, runtime: Pick<ProjectRuntime, "bo
 /** {@link runsInBox} for a runtime of `spec`. */
 export function runtimeRunsInBox(spec: ProjectSpec, runtime: ProjectRuntime): boolean {
   return runsInBox(isBoxProject(spec), runtime);
-}
-
-/** Whether a runtime's entry point is the box start script that create writes. */
-export function runsBoxStartScript(entrypoint: string): boolean {
-  return entrypoint.split(":")[0] === BOX_CODEZIP_ENTRYPOINT;
 }
 
 /**

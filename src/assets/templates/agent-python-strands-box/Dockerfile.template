@@ -22,8 +22,8 @@ ENV UV_SYSTEM_PYTHON=1 \
 RUN useradd -m -u 1000 bedrock_agentcore
 
 # box, its two helpers and its packs, from the public box release (Linux arm64). The CLI names the
-# release in box-release.env, from box.version in agentcore.json (else the box release it pins),
-# with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
+# release in box-release.env, from box.version in agentcore.json, which this runtime needs to run in
+# a box, with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
 # as .box-dev/ and names it with BOX_DIST, so it never overwrites what build and deploy staged.
 # Before the app is copied, so a code change does not download box again.
 ARG BOX_DIST=.box-dist

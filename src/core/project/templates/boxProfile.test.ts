@@ -19,7 +19,6 @@ import {
   renderAgentCorePack,
   renderBoxProfile,
   renderRuntimeBoxProfile,
-  runsBoxStartScript,
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 
@@ -843,12 +842,6 @@ describe("startsInBoxOnCodeZip", () => {
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });
-
-  test("recognizes the start script with or without a handler", () => {
-    expect(runsBoxStartScript("start.py")).toBe(true);
-    expect(runsBoxStartScript("start.py:app")).toBe(true);
-    expect(runsBoxStartScript("main.py")).toBe(false);
-  });
 });
 
 describe("renderAgentCorePack", () => {
@@ -866,9 +859,24 @@ describe("renderAgentCorePack", () => {
   test("declares the gateway URL input from the environment, bounded by a pattern", () => {
     const { inputs } = pack([]);
     expect(inputs.gateway.url.from).toBe("env:AGENTCORE_GATEWAY_BOX_URL");
-    // The input reaches a backend url, so box needs a pattern or values on it.
-    expect(typeof inputs.gateway.url.pattern).toBe("string");
-    expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
+  });
+
+  const GATEWAY =
+    "https://agent-box-egress-abc123.gateway.bedrock-agentcore.us-west-2.amazonaws.com";
+
+  test.each([GATEWAY, `${GATEWAY}/mcp`])("the gateway URL pattern matches %s", (url) => {
+    // The CDK sets the URL with /mcp; box refuses the profile if the pattern does not match it.
+    expect(new RegExp(`^${pack([]).inputs.gateway.url.pattern}$`).test(url)).toBe(true);
+  });
+
+  test.each([
+    "http://agent.gateway.bedrock-agentcore.us-west-2.amazonaws.com",
+    "https://evil.example.com",
+    "https://agent.amazonaws.com.evil.example.com",
+    "https://agent.amazonaws.com/../x",
+    "https://agent.amazonaws.com/mcp?x=1",
+  ])("the gateway URL pattern refuses %s", (url) => {
+    expect(new RegExp(`^${pack([]).inputs.gateway.url.pattern}$`).test(url)).toBe(false);
   });
 
   test("declares the Runtime's region input from AWS_REGION, bounded by a pattern", () => {
