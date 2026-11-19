@@ -54,7 +54,7 @@ describe("deriveRuntimeProfile", () => {
   test.each([CODEZIP, CONTAINER])(
     "carries each key that no rule changes as the local profile has it ($build)",
     (runtime) => {
-      const local = { packs: ["box/base"], ...CARRIED, agent: { command: ["/bin/echo"] } };
+      const local = { packs: ["@box/base"], ...CARRIED, agent: { command: ["/bin/echo"] } };
 
       const { profile, problems } = deriveRuntimeProfile(local, context(runtime));
 
@@ -77,7 +77,7 @@ describe("deriveRuntimeProfile", () => {
 });
 
 describe("runtimePaths", () => {
-  test("moves a CodeZip runtime's code and Python to the inputs of box/agentcore-codezip", () => {
+  test("moves a CodeZip runtime's code and Python to the inputs of @box/agentcore-codezip", () => {
     expect(runtimePaths(CODEZIP)).toEqual({
       build: "CodeZip",
       localCode: "${{ workspace }}/app/agent",
@@ -117,7 +117,7 @@ describe("runtimeTemplate", () => {
 describe("profileKeyPlaces", () => {
   test("places each table, each key, and each dotted key at its first line", () => {
     const text = [
-      'packs = ["box/base"]',
+      'packs = ["@box/base"]',
       'egress.github.destinations = ["api.github.com"]',
       "",
       "[mcp.notes]",
@@ -161,7 +161,7 @@ describe("keyLabel", () => {
 
 describe("serializeRuntimeProfile", () => {
   test("writes the profile as TOML after its header comments", () => {
-    const profile = { packs: ["box/base"], ...CARRIED, mcp: { notes: { type: "stdio" } } };
+    const profile = { packs: ["@box/base"], ...CARRIED, mcp: { notes: { type: "stdio" } } };
 
     const text = serializeRuntimeProfile(profile, ["Rendered by agentcore build."]);
 

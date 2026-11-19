@@ -120,7 +120,7 @@ const CLOUDWATCH: TomlTable = {
 
 /**
  * The default target of the Runtime profile: the runtime's own log group and log stream, in its own
- * region, which box reads through the inputs of the box/agentcore pack.
+ * region, which box reads through the inputs of the @box/agentcore pack.
  */
 const DEFAULT_TARGET = {
   kind: "cloudwatch_logs",
@@ -362,18 +362,21 @@ describe("the additions rule", () => {
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {
-    const packs = ["box/gh", "box/base", "box/bedrock"];
+    const packs = ["box/gh", "@box/base", "@box/bedrock"];
 
     expect(apply({ packs }, contextOf(CODEZIP)).table.packs).toEqual([
       ...packs,
-      "box/agentcore",
-      "box/agentcore-codezip",
+      "@box/agentcore",
+      "@box/agentcore-codezip",
     ]);
-    expect(apply({ packs }, contextOf(CONTAINER)).table.packs).toEqual([...packs, "box/agentcore"]);
+    expect(apply({ packs }, contextOf(CONTAINER)).table.packs).toEqual([
+      ...packs,
+      "@box/agentcore",
+    ]);
     expect(
-      apply({ packs: ["box/agentcore", "box/base"] }, contextOf(CONTAINER)).table.packs,
-    ).toEqual(["box/agentcore", "box/base"]);
-    expect(apply({}, contextOf(CONTAINER)).table.packs).toEqual(["box/agentcore"]);
+      apply({ packs: ["@box/agentcore", "@box/base"] }, contextOf(CONTAINER)).table.packs,
+    ).toEqual(["@box/agentcore", "@box/base"]);
+    expect(apply({}, contextOf(CONTAINER)).table.packs).toEqual(["@box/agentcore"]);
   });
 
   test("names the profile for the project, and keeps the other [profile] keys", () => {
@@ -396,10 +399,10 @@ describe("the additions rule", () => {
     expect(apply(quoted, contextOf(CODEZIP)).table.options).toEqual({
       "bedrock.region": BUILD_REGION,
     });
-    expect(apply({ packs: ["box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
+    expect(apply({ packs: ["@box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
       bedrock: { region: BUILD_REGION },
     });
-    expect(apply({ packs: ["box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
+    expect(apply({ packs: ["@box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
   });
 
   describe("[agent] command", () => {
@@ -488,11 +491,13 @@ describe("the additions rule", () => {
       expect(result).not.toHaveProperty("PYTHONPATH");
     });
 
-    test("sets AWS_REGION only when the profile imports no box/bedrock", () => {
+    test("sets AWS_REGION only when the profile imports no @box/bedrock", () => {
       const local = createdProfile(CODEZIP);
 
       const bedrock = agentOf(apply(local, contextOf(CODEZIP)).table).env;
-      const other = agentOf(apply({ ...local, packs: ["box/base"] }, contextOf(CODEZIP)).table).env;
+      const other = agentOf(
+        apply({ ...local, packs: ["@box/base"] }, contextOf(CODEZIP)).table,
+      ).env;
 
       expect(bedrock).not.toHaveProperty("AWS_REGION");
       expect(other.AWS_REGION).toBe("${{ inputs.aws.region }}");
@@ -667,7 +672,7 @@ describe("the additions rule", () => {
       expect({ ...DEFAULT_TELEMETRY_TARGET } as TomlTable).toEqual(DEFAULT_TARGET);
     });
 
-    test("reads each value through an input that the box/agentcore pack declares", () => {
+    test("reads each value through an input that the @box/agentcore pack declares", () => {
       const { inputs } = parse(renderAgentCorePack(specOf(CODEZIP))) as {
         inputs: Record<string, Record<string, unknown>>;
       };
@@ -762,8 +767,8 @@ describe("the additions rule", () => {
     const [, derived, standIns] = runtimeProfileHeader(contextOf(CODEZIP));
 
     expect(derived).toContain(`from ${PROFILE_FILE}, for AgentCore Runtime`);
-    expect(derived).toContain("box/agentcore and box/agentcore-codezip packs");
-    expect(runtimeProfileHeader(contextOf(CONTAINER))[1]).not.toContain("box/agentcore-codezip");
+    expect(derived).toContain("@box/agentcore and @box/agentcore-codezip packs");
+    expect(runtimeProfileHeader(contextOf(CONTAINER))[1]).not.toContain("@box/agentcore-codezip");
     expect(standIns).toContain("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are stand-ins");
     const text = serializeRuntimeProfile(
       apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table,
