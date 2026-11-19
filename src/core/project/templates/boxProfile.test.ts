@@ -321,7 +321,9 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     // What deploy renders from agentcore.json, which records no --api-base.
     const spec = {
       name: "V3Demo",
-      runtimes: [{ name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" }],
+      runtimes: [
+        { name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAICompatible" },
+      ],
       agentCoreGateways: [],
     } as unknown as ProjectSpec;
     const text = renderRuntimeBoxProfile(spec, spec.runtimes[0]!);
