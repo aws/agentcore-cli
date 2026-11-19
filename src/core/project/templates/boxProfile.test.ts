@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
+import { InputValidationError } from "../../../errors/errors";
 import {
+  getBoxGatewayAgentCoreTargetSpec,
   resolveRuntimeTemplateShortcut,
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
+import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -403,7 +406,23 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
 });
 
 describe("renderRuntimeBoxProfile", () => {
-  function spec(memories: string[], runtime: Partial<ProjectRuntime> = {}) {
+  const GITHUB: AgentCoreGatewayTarget = {
+    name: "github",
+    targetType: "passthrough",
+    passthrough: { endpoint: "https://api.github.com" },
+    outboundAuth: { type: "NONE" },
+  } as AgentCoreGatewayTarget;
+
+  function passthrough(name: string, endpoint: string): AgentCoreGatewayTarget {
+    return { ...GITHUB, name, passthrough: { endpoint } } as AgentCoreGatewayTarget;
+  }
+
+  /** A Box project whose runtime `agent`'s Box gateway holds `targets`. */
+  function spec(
+    memories: string[],
+    runtime: Partial<ProjectRuntime> = {},
+    targets: AgentCoreGatewayTarget[] = [],
+  ) {
     return {
       name: "V3Demo",
       runtimes: [
@@ -419,34 +438,95 @@ describe("renderRuntimeBoxProfile", () => {
       ],
       memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
       projectType: "box",
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
     } as unknown as ProjectSpec;
   }
 
-  test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
-    const project = spec(["agentMemory"]);
-    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!);
+  const egressOf = (project: ProjectSpec) =>
+    (parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress ?? {}) as Record<
+      string,
+      unknown
+    >;
 
-    expect((parse(text).egress as Record<string, unknown>).agentcore).toEqual({
-      // No destination secret: the backend's own auth signs the call to the gateway.
-      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
-      backends: [
-        {
-          url: "@GATEWAY_BOX_URL@/agentcore",
-          auth: {
-            ref: "aws://default",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
-          },
-        },
-      ],
-    });
+  /** The route a passthrough target gets: its host, sent to the target, signed for the gateway. */
+  const gatewayRoute = (target: string, host: string) => ({
+    // No destination secret: the backend's own auth signs the call to the gateway.
+    destinations: [host],
+    backends: [
+      {
+        url: `@GATEWAY_BOX_URL@/${target}`,
+        auth: { ref: "aws://default", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+      },
+    ],
+  });
+
+  test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
+    const project = spec(["agentMemory"], {}, [getBoxGatewayAgentCoreTargetSpec()]);
+
+    expect(egressOf(project).agentcore).toEqual(
+      gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
+    );
   });
 
   test("routes no Memory calls when the project has only another Memory", () => {
-    const project = spec(["ordersMemory"]);
-    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress;
+    expect(egressOf(spec(["ordersMemory"]))).toEqual({ bedrock: RUNTIME_ROUTE });
+  });
 
-    expect(egress).toEqual({ bedrock: RUNTIME_ROUTE });
+  test("gives each passthrough target of the runtime's Box gateway one route to it", () => {
+    const project = spec([], {}, [getBoxGatewayAgentCoreTargetSpec(), GITHUB]);
+
+    expect(egressOf(project)).toEqual({
+      agentcore: gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
+      github: gatewayRoute("github", "api.github.com"),
+      // Bedrock stays direct, signed with the execution role.
+      bedrock: RUNTIME_ROUTE,
+    });
+  });
+
+  test("keeps the endpoint's port, and quotes a target name that is not a bare TOML key", () => {
+    const project = spec([], {}, [passthrough("tools.v2", "https://tools.example.com:8443/api")]);
+
+    expect(egressOf(project)["tools.v2"]).toEqual(
+      gatewayRoute("tools.v2", "tools.example.com:8443"),
+    );
+  });
+
+  test("gives a target that is not passthrough no route", () => {
+    const lambda = { name: "orders", targetType: "lambda" } as unknown as AgentCoreGatewayTarget;
+
+    expect(egressOf(spec([], {}, [lambda]))).toEqual({ bedrock: RUNTIME_ROUTE });
+  });
+
+  test("finds the runtime's Box gateway by boundRuntime, not by name", () => {
+    const project = spec([], {}, [GITHUB]);
+    project.agentCoreGateways[0] = { ...project.agentCoreGateways[0]!, name: "renamed" };
+
+    expect(egressOf(project).github).toEqual(gatewayRoute("github", "api.github.com"));
+    expect(renderRuntimeBoxProfile(project, project.runtimes[0]!)).toContain(
+      "through the 'renamed' gateway's 'github' target",
+    );
+  });
+
+  test("routes nothing through a gateway outside a Box project", () => {
+    const project = spec([], {}, [GITHUB]);
+    delete (project as { projectType?: string }).projectType;
+
+    expect(egressOf(project)).toEqual({ bedrock: RUNTIME_ROUTE });
+  });
+
+  test("refuses a target named bedrock while the agent calls Bedrock directly", () => {
+    const project = spec([], {}, [passthrough("bedrock", "https://bedrock.example.com")]);
+
+    expect(() => renderRuntimeBoxProfile(project, project.runtimes[0]!)).toThrow(
+      new InputValidationError(
+        "gateway 'agent-box-egress' has a passthrough target named 'bedrock', but runtime " +
+          "'agent' calls Bedrock directly, and its box profile already has the [egress.bedrock] " +
+          "route. Rename the target.",
+      ),
+    );
+    // An agent on another provider has no Bedrock route, so the target gets its route.
+    const openai = spec([], { modelProvider: "OpenAI" }, project.agentCoreGateways[0]!.targets);
+    expect(egressOf(openai).bedrock).toEqual(gatewayRoute("bedrock", "bedrock.example.com"));
   });
 
   test("renders the CodeZip form for start.py and the image form for a container", () => {
@@ -460,13 +540,11 @@ describe("renderRuntimeBoxProfile", () => {
   });
 
   test("signs no Bedrock route for an agent on another model provider", () => {
-    const project = spec(["agentMemory"], { modelProvider: "OpenAI" });
-    const egress = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).egress as Record<
-      string,
-      unknown
-    >;
+    const project = spec(["agentMemory"], { modelProvider: "OpenAI" }, [
+      getBoxGatewayAgentCoreTargetSpec(),
+    ]);
 
-    expect(Object.keys(egress)).toEqual(["agentcore"]);
+    expect(Object.keys(egressOf(project))).toEqual(["agentcore"]);
   });
 });
 
