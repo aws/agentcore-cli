@@ -5,10 +5,15 @@
  */
 import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
+import {
+  credentialEnvironmentVariableNames,
+  credentialEnvVarName,
+} from "../../../projectSchemas/credential";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName, boxEgressCredentials } from "../boxProfileCredentials";
+import { BOX_SECRETS_MANAGER_ENV, boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
@@ -21,7 +26,8 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
-import type { CloudWatchTelemetry } from "./telemetry";
+import type { ParsedProfile } from "./profileParser";
+import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import { MAX_GATEWAY_TARGETS, hostKey, type ConversionFailure, type FailureCode } from "./types";
 import type { SourceSpan } from "./dogwood";
@@ -123,6 +129,11 @@ export interface BoxNetwork {
   /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
   readonly telemetry?: readonly CloudWatchTelemetry[];
   /**
+   * The third-party targets of the profile's `[telemetry]` that the AgentCore Runtime profile
+   * carries; absent means none.
+   */
+  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
    */
@@ -140,12 +151,22 @@ export interface BoxNetworkProject {
   /** The region build builds for. */
   readonly region: string;
   /**
+   * The region of the deploy target, which build sets on each CloudWatch target that names no
+   * region; absent means `region`.
+   */
+  readonly deployRegion?: string;
+  /**
    * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
    * runtime's model and Memory calls (`addBoxGatewayTargets`).
    */
   readonly targets: readonly AgentCoreGatewayTarget[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant, except build's own. */
   readonly grantedActions: readonly string[];
+  /**
+   * Whether the AgentCore Runtime profile reads third-party telemetry keys from AWS Secrets
+   * Manager ({@link BOX_SECRETS_MANAGER_ENV}). Off, it carries no third-party target, as before.
+   */
+  readonly secretsManager?: boolean;
 }
 
 /**
@@ -186,6 +207,14 @@ export function buildBoxNetwork(
     project.spec.credentials,
     parsed.profile.mcp,
   );
+  const thirdParty = runtimeTelemetry(parsed.profile, project, credentials.needed);
+  const telemetry =
+    parsed.profile.telemetry &&
+    withDeployRegion(
+      parsed.profile.telemetry,
+      project.deployRegion ?? project.region,
+      parsed.profile.path,
+    );
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -193,10 +222,12 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     credentials: credentials.needed,
     policyFiles: parsed.profile.policyFiles,
-    ...(parsed.profile.telemetry && { telemetry: parsed.profile.telemetry }),
+    ...(telemetry && { telemetry: telemetry.telemetry }),
+    ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
     grantedActions: project.grantedActions,
     warnings: [
       ...credentials.skipped,
+      ...thirdParty.warnings,
       ...hostWarnings(targets.hosts),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);
@@ -205,9 +236,76 @@ export function buildBoxNetwork(
           "target for a WebSocket, so it skips this rule."
         );
       }),
+      ...(telemetry?.warnings ?? []),
     ],
     failures,
   };
+}
+
+/**
+ * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
+ * each one it leaves out. With {@link BoxNetworkProject.secretsManager} off it carries none, and
+ * warns for each target with a key. A CodeZip runtime carries no target with a key, because its
+ * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
+ * the variable deploy reads its key from is a variable that a credential reads, or that another
+ * target of the profile reads, so deploy never sends one key to the wrong destination.
+ */
+function runtimeTelemetry(
+  profile: ParsedProfile,
+  project: BoxNetworkProject,
+  credentials: readonly BoxEgressCredential[],
+): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
+  const leftOut = (name: string, reason: string) =>
+    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
+  const keyed = (profile.thirdPartyTelemetry ?? []).filter(({ secret }) => secret !== undefined);
+  if (!project.secretsManager) {
+    return {
+      targets: [],
+      warnings: keyed.map(({ name }) =>
+        leftOut(
+          name,
+          "on AgentCore Runtime, Box reads its key from AWS Secrets Manager, and no Box release " +
+            `for Linux can do that yet. To try a box build that can, set ${BOX_SECRETS_MANAGER_ENV}=1`,
+        ),
+      ),
+    };
+  }
+  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
+    leftOut(name, reason),
+  );
+  const taken = new Set([
+    ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
+    ...credentials.map(({ name }) => credentialEnvVarName(name)),
+  ]);
+  const targets: ThirdPartyTelemetry[] = [];
+  for (const target of profile.thirdPartyTelemetry ?? []) {
+    if (target.secret !== undefined && project.runtime.build === "CodeZip") {
+      warnings.push(
+        leftOut(
+          target.name,
+          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
+            "does not have. Use a container runtime",
+        ),
+      );
+      continue;
+    }
+    if (target.secret !== undefined) {
+      const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
+      if (taken.has(variable)) {
+        warnings.push(
+          leftOut(
+            target.name,
+            `deploy reads its key from ${variable}, and a credential or another target reads ` +
+              "that variable too. Rename the target",
+          ),
+        );
+        continue;
+      }
+      taken.add(variable);
+    }
+    targets.push(target);
+  }
+  return { targets, warnings };
 }
 
 /** Whether build manages `target`: it adds, changes, and removes each target with the prefix. */

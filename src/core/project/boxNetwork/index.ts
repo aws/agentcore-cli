@@ -19,5 +19,13 @@ export {
   profilePolicyFiles,
   type ParsedProfile,
 } from "./profileParser";
-export { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
+export {
+  cloudWatchTelemetry,
+  thirdPartyTelemetry,
+  withDeployRegion,
+  type CloudWatchTelemetry,
+  type LeftOutTelemetry,
+  type TelemetryValue,
+  type ThirdPartyTelemetry,
+} from "./telemetry";
 export { FAILURE_CODES, hostKey, type FailureCode } from "./types";

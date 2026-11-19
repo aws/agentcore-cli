@@ -442,6 +442,17 @@ describe("project dev selection and dispatch", () => {
     expect(subject.io.stderr()).not.toContain("Skipping runtime");
   });
 
+  test('tells the runner whether agentcore.json has "projectType": "box", as build reads it', async () => {
+    const plain = harness({ project: project(runtime("orders")) });
+    await plain.run({ agent: "orders", port: 4567 });
+    expect(plain.codeZip.inputs[0]).toMatchObject({ boxProject: false });
+
+    const boxed = project(runtime("orders"));
+    const box = harness({ project: { ...boxed, spec: { ...boxed.spec, projectType: "box" } } });
+    await box.run({ agent: "orders", port: 4567 });
+    expect(box.codeZip.inputs[0]).toMatchObject({ boxProject: true });
+  });
+
   test("announces an automatically selected port", async () => {
     const checked: number[] = [];
     const subject = harness({

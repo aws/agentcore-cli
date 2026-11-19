@@ -1,7 +1,7 @@
 /**
- * A stand-in for `box profile show --format json`, for the tests of the Box network, and the network
- * rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the real box
- * when one with `--format json` is on PATH.
+ * A stand-in for `box profile show --format json --full`, for the tests of the Box network, and the
+ * network rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the
+ * real box when one with `--format json --full` is on PATH.
  */
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
 
@@ -67,9 +67,9 @@ export function boxNetworkRules(
 }
 
 /**
- * What `box profile show --format json` prints for a profile whose routes resolve to `egress`: `box_toml`
- * holds each route with a secret, a backend, or a protocol, `open_routes` holds the others by name,
- * and `policy` holds the profile's own `policy`, then the rules Box adds.
+ * What `box profile show --format json --full` prints for a profile whose routes resolve to
+ * `egress`: `box_toml` holds each route with a secret, a backend, or a protocol, `open_routes`
+ * holds the others by name, and `policy` holds the profile's own `policy`, then the rules Box adds.
  */
 export function boxShowOf(input: {
   readonly egress?: Readonly<Record<string, unknown>>;
@@ -92,7 +92,7 @@ export function boxShowOf(input: {
     boxToml: { name: "test-preview", egress: kept, mcp },
     policy: `${input.policy ?? ""}\n${boxNetworkRules(egress, mcp)}`,
     openRoutes,
-    packs: [{ name: "box/base", version: "1" }],
+    packs: [{ name: "@box/base", version: "1" }],
     warnings: [],
   });
 }

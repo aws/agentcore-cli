@@ -6,9 +6,9 @@ import type { CloudWatchTelemetry } from "./boxNetwork";
 
 /**
  * The policy file, relative to the project root, that lets the execution role of the box runtime
- * `runtimeName` send the CloudWatch telemetry of its own box profile. On AgentCore Runtime, Box
- * signs each CloudWatch target with that role. The CLI rewrites it on build, and removes it when
- * the profile sends no telemetry to CloudWatch.
+ * `runtimeName` send the CloudWatch telemetry of its own box profile, and read the key of each of
+ * its third-party targets. On AgentCore Runtime, Box signs each CloudWatch target and each read of
+ * a key with that role. The CLI rewrites it on build, and removes it when the profile has neither.
  */
 export function boxTelemetryPolicyFile(runtimeName: string): string {
   return `agentcore/box-telemetry-policy-${runtimeName}.json`;
@@ -17,8 +17,8 @@ export function boxTelemetryPolicyFile(runtimeName: string): string {
 /**
  * The IAM policy document for {@link boxTelemetryPolicyFile}, or undefined when no target sends
  * to CloudWatch. Build has no account, so each log stream ARN matches any account. CloudWatch Logs
- * takes OTLP records only into a group and a stream that exist, and X-Ray's `PutSpans` has no
- * resource type.
+ * takes OTLP records only into a group and a stream that exist. X-Ray's OTLP traces endpoint is
+ * authorized as `PutTraceSegments`, beside `PutSpans`, and neither has a resource type.
  */
 export function boxTelemetryPolicy(
   telemetry: readonly CloudWatchTelemetry[],
@@ -48,7 +48,14 @@ export function boxTelemetryPolicy(
         ]
       : []),
     ...(traces
-      ? [{ Sid: "BoxTelemetryToXRay", Effect: "Allow", Action: ["xray:PutSpans"], Resource: "*" }]
+      ? [
+          {
+            Sid: "BoxTelemetryToXRay",
+            Effect: "Allow",
+            Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+            Resource: "*",
+          },
+        ]
       : []),
   ];
   return statements.length > 0 ? { Version: "2012-10-17", Statement: statements } : undefined;

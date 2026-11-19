@@ -7,10 +7,15 @@ import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { stageBoxContainers } from "./boxContainer";
+import {
+  AWS_CLI_RELEASE,
+  AWS_CLI_SIGNING_KEY,
+  keyringBase64,
+  stageBoxContainers,
+} from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
-/** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
+/** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
 
 const directories: string[] = [];
@@ -84,7 +89,7 @@ describe("stageBoxContainers", () => {
       `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
-    // The container also stages the box/agentcore pack, beside box's own packs in the image.
+    // The container also stages the @box/agentcore pack, beside box's own packs in the image.
     expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
@@ -120,6 +125,76 @@ describe("stageBoxContainers", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED, "resources"].sort());
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
+  });
+
+  test("names the AWS CLI for the image only when the Runtime profile reads a key from Secrets Manager", async () => {
+    const demo = await project(TEMPLATE_DOCKERFILE);
+    const env = () =>
+      readFile(join(demo.rootPath, "app", "agent", ".box-dist", "box-release.env"), "utf8");
+    const langsmith = {
+      name: "langsmith",
+      kind: "langsmith",
+      keys: [],
+      secret: { variable: "LANGSMITH_KEY", keys: [] },
+    } as const;
+    const open = {
+      name: "open",
+      kind: "otlp",
+      keys: [["destination", "https://o.example"]],
+    } as const;
+
+    await stageBoxContainers(
+      demo,
+      [{ ...model([]), thirdPartyTelemetry: [langsmith] }],
+      releaseOf().releaseFor,
+    );
+    expect(await env()).toEndWith(
+      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n` +
+        `AWS_CLI_PGP_FINGERPRINT=${AWS_CLI_SIGNING_KEY.fingerprint}\n` +
+        `AWS_CLI_PGP_KEYRING=${keyringBase64(AWS_CLI_SIGNING_KEY.armored)}\n`,
+    );
+
+    for (const networks of [
+      [],
+      [{ ...model([]), thirdPartyTelemetry: [open] }],
+    ] as BoxNetwork[][]) {
+      await stageBoxContainers(demo, networks, releaseOf().releaseFor);
+      expect(await env()).not.toContain("AWS_CLI");
+    }
+  });
+
+  test("the image installs the AWS CLI it is told to, checks its archive, and keeps it out of /app", () => {
+    // Read from box-release.env, which the CLI writes only with the switch on.
+    expect(TEMPLATE_DOCKERFILE).toContain('if [ -n "${AWS_CLI_URL:-}" ]; then');
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      'echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c -',
+    );
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      "--install-dir /usr/local/aws-cli --bin-dir /usr/local/bin",
+    );
+    // AWS's signature must be valid, and made by the key the CLI names, before the archive unzips.
+    const verify = TEMPLATE_DOCKERFILE.indexOf(
+      "gpgv --keyring /tmp/aws-cli.gpg --status-fd 1 /tmp/awscli.zip.sig /tmp/awscli.zip",
+    );
+    expect(verify).toBeGreaterThan(-1);
+    expect(TEMPLATE_DOCKERFILE).toContain('curl -fsSL -o /tmp/awscli.zip.sig "${AWS_CLI_URL}.sig"');
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      'grep -q "^\\[GNUPG:\\] VALIDSIG ${AWS_CLI_PGP_FINGERPRINT} "',
+    );
+    expect(verify).toBeLessThan(TEMPLATE_DOCKERFILE.indexOf("unzip -q /tmp/awscli.zip"));
+    expect(AWS_CLI_RELEASE.url).toBe(
+      `https://awscli.amazonaws.com/awscli-exe-linux-aarch64-${AWS_CLI_RELEASE.version}.zip`,
+    );
+  });
+
+  test("gives the image AWS's CLI signing key as one keyring line", () => {
+    const keyring = Buffer.from(keyringBase64(AWS_CLI_SIGNING_KEY.armored), "base64");
+    // An OpenPGP public key packet (old format, two-byte length), version 4, of AWS CLI Team.
+    expect([keyring[0], keyring[3]]).toEqual([0x99, 4]);
+    expect(keyring.toString("latin1")).toContain("AWS CLI Team <aws-cli@amazon.com>");
+    expect(keyringBase64(AWS_CLI_SIGNING_KEY.armored)).toMatch(/^[A-Za-z0-9+/]+=*$/);
+    expect(AWS_CLI_SIGNING_KEY.fingerprint).toMatch(/^[0-9A-F]{40}$/);
+    expect(AWS_CLI_SIGNING_KEY.armored).toStartWith("-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n");
   });
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {

@@ -22,6 +22,12 @@ import type { DeployBackendInput } from "./types";
 import type { ResolvedProjectResource } from "../../../handlers/project/types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
+import {
+  ResourceNotFoundException,
+  type SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
+import type { CredentialedClientConfig, CreateSecretsManagerClient } from "../../types";
+import type { BoxNetwork } from "../boxNetwork";
 
 const TARGET = {
   name: "default",
@@ -178,6 +184,8 @@ type HarnessOptions = {
   synthOutput?: string[];
   /** Lines the fake Toolkit reports through each operation's onOutput sink. */
   cdkOutput?: string[];
+  createSecretsManagerClient?: CreateSecretsManagerClient;
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -260,6 +268,10 @@ function harness(options: HarnessOptions = {}) {
     ...(options.removeCredentials && {
       removeCredentials: options.removeCredentials,
     }),
+    ...(options.createSecretsManagerClient && {
+      createSecretsManagerClient: options.createSecretsManagerClient,
+    }),
+    ...(options.processEnv && { processEnv: options.processEnv }),
     describeStack: async (region, provider, stackName) => {
       stackReads.push({ stackName, region, credentials: provider });
       if (options.describedStack === null) return undefined;
@@ -1718,6 +1730,191 @@ describe("CdkBackend.deploy and the Box gateway", () => {
     );
 
     expect(asked).toBe(false);
+    expect((await targetState(input)).resources).toEqual({ credentials: {} });
+  });
+});
+
+describe("CdkBackend.deploy and the box telemetry secrets", () => {
+  const NAME = "agentcore/example/agent/box";
+  const ARN = `arn:aws:secretsmanager:us-east-1:111122223333:secret:${NAME}-AbCdEf`;
+  const OLD =
+    "arn:aws:secretsmanager:us-east-1:111122223333:secret:agentcore/example/old/box-XyZaBc";
+  /** A stand-in key: no real secret goes into a test. */
+  const KEY = "dummy-langsmith-key";
+  const NETWORK: BoxNetwork = {
+    runtime: "agent",
+    gateway: "agent-box",
+    region: TARGET.region,
+    hosts: [],
+    credentials: [],
+    policyFiles: [],
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+    thirdPartyTelemetry: [
+      {
+        name: "langsmith",
+        kind: "langsmith",
+        keys: [],
+        secret: { variable: "LANGSMITH_KEY", keys: [] },
+      },
+    ],
+  };
+  const ENV = { AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH: KEY };
+
+  /** A stub Secrets Manager: it holds `existing` ARNs, and records each client and each command. */
+  function secretsManager(existing: readonly string[] = []) {
+    const configs: CredentialedClientConfig[] = [];
+    const sent: { command: string; input: Record<string, unknown> }[] = [];
+    const create: CreateSecretsManagerClient = (config) => {
+      configs.push(config);
+      return {
+        send: async (command: {
+          constructor: { name: string };
+          input: Record<string, unknown>;
+        }) => {
+          const name = command.constructor.name;
+          sent.push({ command: name, input: command.input });
+          if (name === "DescribeSecretCommand") {
+            const id = command.input.SecretId as string;
+            if (!existing.includes(id)) {
+              throw new ResourceNotFoundException({ message: "absent", $metadata: {} });
+            }
+            return { ARN: id };
+          }
+          if (name === "CreateSecretCommand") return { ARN };
+          return {};
+        },
+      } as unknown as SecretsManagerClient;
+    };
+    return { configs, sent, create };
+  }
+
+  async function recordSecrets(input: Project, targets: Record<string, Record<string, string>>) {
+    for (const [target, secrets] of Object.entries(targets)) {
+      await updateTargetState(json, input.rootPath, target, {
+        stackArn: STACK_ARN,
+        resources: {
+          boxTelemetrySecrets: Object.fromEntries(
+            Object.entries(secrets).map(([name, secretArn]) => [name, { secretArn }]),
+          ),
+        },
+      });
+    }
+  }
+
+  async function targetState(input: Project, target: string = TARGET.name) {
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    return JSON.parse(await Bun.file(statePath).text()).targets[target] as {
+      resources?: Record<string, unknown>;
+    };
+  }
+
+  test("stores the keys before synth, with the target's credentials, and records the secret", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const stub = secretsManager();
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(stub.configs).toEqual([{ region: TARGET.region, credentials: subject.credentials }]);
+    expect(stub.sent).toEqual([
+      { command: "DescribeSecretCommand", input: { SecretId: NAME } },
+      {
+        command: "CreateSecretCommand",
+        input: expect.objectContaining({
+          Name: NAME,
+          SecretString: JSON.stringify({ "telemetry.langsmith": KEY }),
+        }),
+      },
+    ]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN },
+    });
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf(
+        "preparing secret 'agentcore/example/agent/box' for the box telemetry of 'agent'",
+      ),
+    ).toBeLessThan(messages.indexOf("synthesizing CloudFormation templates"));
+  });
+
+  test("deletes a recorded secret that no runtime needs, after the stack update, and forgets it", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordSecrets(input, { [TARGET.name]: { "agentcore/example/old/box": OLD } });
+    const stub = secretsManager([OLD]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(stub.sent).toEqual([
+      { command: "DescribeSecretCommand", input: { SecretId: OLD } },
+      { command: "DeleteSecretCommand", input: { SecretId: OLD, RecoveryWindowInDays: 7 } },
+    ]);
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf("deleting secret 'agentcore/example/old/box'"));
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toBeUndefined();
+  });
+
+  test("keeps a secret that another deployment target records", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const old = { "agentcore/example/old/box": OLD };
+    await recordSecrets(input, { [TARGET.name]: old, staging: old });
+    const stub = secretsManager([OLD]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(stub.sent).toEqual([]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toBeUndefined();
+    expect((await targetState(input, "staging")).resources?.boxTelemetrySecrets).toEqual({
+      "agentcore/example/old/box": { secretArn: OLD },
+    });
+  });
+
+  test("teardown deletes every recorded secret after the stack", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    await recordSecrets(input, { [TARGET.name]: { [NAME]: ARN } });
+    const stub = secretsManager([ARN]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "DeleteSecretCommand",
+    ]);
+    const messages = stepMessages(deployed.events);
+    expect(messages.indexOf("removing stack AgentCore-example-default-0")).toBeLessThan(
+      messages.indexOf(`deleting secret '${NAME}'`),
+    );
+  });
+
+  test("sends nothing to Secrets Manager and records nothing for a project with no such target", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const stub = secretsManager();
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    await collectDeploy(
+      subject.backend.deploy(
+        input,
+        deployInput({ boxNetworks: [{ ...NETWORK, thirdPartyTelemetry: [] }] }),
+      ),
+    );
+
+    expect(stub.sent).toEqual([]);
     expect((await targetState(input)).resources).toEqual({ credentials: {} });
   });
 });

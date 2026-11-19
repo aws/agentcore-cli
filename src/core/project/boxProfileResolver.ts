@@ -1,13 +1,14 @@
 /**
- * Box's own resolution of a box profile. `box profile show <profile> --format json` prints the `box.toml`
- * and `policy.dw` that a run of the profile gets, with every pack, option, and rule Box adds
- * already in them, so build reads them rather than compiling the profile itself.
+ * Box's own resolution of a box profile. `box profile show <profile> --format json --full` prints
+ * the `box.toml` and `policy.dw` that a run of the profile gets, with every pack, option, and rule
+ * Box adds already in them, so build reads them rather than compiling the profile itself.
  */
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
+import { BOX_MINIMUM_VERSION, BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -36,17 +37,30 @@ export interface BoxProfileResolver {
   resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
 }
 
-/** Where to get box, which the error names when `box` is not on PATH. */
-const BOX_RELEASES_URL = "https://github.com/mquang-amazon/box-releases";
+/** What to install, which each error names when the `box` on PATH cannot resolve a profile. */
+const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry.`;
 
-/** The error of a box that has no `--format` option, as clap prints it. */
-const REFUSED_JSON = /(?:unexpected argument|Found argument) '--format'/;
+/** The refusal of an `@box/<name>` pack by a box older than {@link BOX_MINIMUM_VERSION}. */
+const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;
 
-/** The parts of the document of `box profile show --format json` that build reads. */
+/** The error of a box that has no `--format` or `--full` option, as clap prints it. */
+const REFUSED_JSON = /(?:unexpected argument|Found argument) '--(?:format|full)'/;
+
+/**
+ * The destinations of an open route, as a list: box 0.1.11-linux-preview.6 joins them into one
+ * string with ", ", and later boxes print a list.
+ */
+const OpenRouteDestinations = z
+  .union([z.string(), z.array(z.string())])
+  .transform((destinations) =>
+    typeof destinations === "string" ? destinations.split(", ") : destinations,
+  );
+
+/** The parts of the document of `box profile show --format json --full` that build reads. */
 const BoxProfileShowSchema = z.object({
   box_toml: z.record(z.string(), z.unknown()),
   policy: z.string(),
-  open_routes: z.array(z.object({ route: z.string(), destinations: z.string() })),
+  open_routes: z.array(z.object({ route: z.string(), destinations: OpenRouteDestinations })),
   packs: z.array(z.object({ name: z.string(), version: z.string() })).default([]),
   warnings: z.array(z.string()).default([]),
 });
@@ -64,8 +78,9 @@ const SHOWN_PARTS: Readonly<Record<keyof z.infer<typeof BoxProfileShowSchema>, s
 const LIST = new Intl.ListFormat("en", { type: "disjunction" });
 
 /**
- * The profile `profilePath` as Box resolves it, from the document that `box profile show --format json`
- * prints on `stdout`. Throws when `stdout` is not one JSON document, or lacks a part build reads.
+ * The profile `profilePath` as Box resolves it, from the document that
+ * `box profile show --format json --full` prints on `stdout`. Throws when `stdout` is not one JSON
+ * document, or lacks a part build reads.
  */
 export function parseBoxProfileShow(stdout: string, profilePath: string): ResolvedBoxProfile {
   let document: unknown;
@@ -74,7 +89,8 @@ export function parseBoxProfileShow(stdout: string, profilePath: string): Resolv
   } catch (error) {
     throw new InvalidEnvironmentError(
       `Build cannot read what Box printed for the profile ${profilePath}, as it is not one JSON ` +
-        `document. Run 'box profile show ${profilePath} --format json' in the project folder to see it.`,
+        `document. Run 'box profile show ${profilePath} --format json --full' in the project folder ` +
+        "to see it.",
       { cause: error },
     );
   }
@@ -87,20 +103,15 @@ export function parseBoxProfileShow(stdout: string, profilePath: string): Resolv
       wrong.length > 0 ? wrong.map(([, part]) => part) : [SHOWN_PARTS.box_toml, SHOWN_PARTS.policy];
     throw new InvalidEnvironmentError(
       `Box printed the profile ${profilePath} without ${LIST.format(parts)}, which build reads. ` +
-        `Install a newer Box (${BOX_RELEASES_URL}), then retry.`,
+        INSTALL_BOX,
       { cause: shown.error },
     );
   }
-  const { box_toml: boxToml, policy, open_routes: open, packs, warnings } = shown.data;
-  // Box joins the destinations of an open route with ", ".
-  const openRoutes = open.map(({ route, destinations }) => ({
-    route,
-    destinations: destinations.split(", "),
-  }));
+  const { box_toml: boxToml, policy, open_routes: openRoutes, packs, warnings } = shown.data;
   return { boxToml, policy, openRoutes, packs, warnings };
 }
 
-/** Runs `box profile show --format json` with the `box` on PATH. */
+/** Runs `box profile show --format json --full` with the `box` on PATH. */
 export class BoxCliProfileResolver implements BoxProfileResolver {
   private readonly env: NodeJS.ProcessEnv;
   private readonly streamProcess: ProcessStreamer;
@@ -111,7 +122,7 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
   }
 
   public async resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
-    const command = ["box", "profile", "show", profilePath, "--format", "json"];
+    const command = ["box", "profile", "show", profilePath, "--format", "json", "--full"];
     const stdout: string[] = [];
     const stderr: string[] = [];
     try {
@@ -125,15 +136,14 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     } catch (error) {
       if (!(error instanceof ProcessFailedError)) throw error;
       if (error.meta.exitCode === null && stderr.length === 0) {
-        throw new InvalidEnvironmentError(
-          `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
-          { cause: error },
-        );
+        throw new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL_BOX}`, {
+          cause: error,
+        });
       }
       if (stderr.some((line) => REFUSED_JSON.test(line))) {
         throw new InvalidEnvironmentError(
-          `This Box cannot print the profile ${profilePath} as JSON, which build reads. Install ` +
-            `a Box release with \`box profile show --format json\` (${BOX_RELEASES_URL}), then retry.`,
+          `This Box cannot print the profile ${profilePath} as JSON, which build reads. ` +
+            INSTALL_BOX,
           { cause: error },
         );
       }
@@ -147,13 +157,17 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
         );
       }
       const agent = venvAgentFolder(lines, projectRoot);
+      const oldBox = OLD_BOX_PACK_NAME.test(lines.join(" ").replace(/\s+/g, " "));
       throw new InvalidEnvironmentError(
         [
           `Box refused the profile ${profilePath}:`,
           ...lines.map((line) => `  ${line}`),
-          agent === undefined
-            ? "Fix what Box reports, then retry."
-            : `Run 'uv sync' in ${agent}, then retry.`,
+          oldBox
+            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first box that names its packs ` +
+              `@box/<name>. ${INSTALL_BOX}`
+            : agent === undefined
+              ? "Fix what Box reports, then retry."
+              : `Run 'uv sync' in ${agent}, then retry.`,
         ].join("\n"),
         { cause: error },
       );

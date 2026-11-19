@@ -7,8 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
+import { gte } from "semver";
 import {
+  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
+  BOX_RELEASE_PAGE,
   FFI_RELEASE,
   type BoxRelease,
   type FfiRelease,
@@ -86,10 +89,13 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     [ffiRelease.pythons.PYTHON_3_14!.asset]: ffi.archive,
   };
   const commands: string[][] = [];
-  // curl writes the asset its URL names to -o; tar runs for real.
+  // curl writes the asset its URL names to -o; tar runs for real. The tests pass an empty
+  // environment, which on Windows leaves no PATH to find tar by, so tar gets this process's.
   const runner: ProcessRunner = async (command, options) => {
     commands.push(command);
-    if (command[0] !== "curl") return runProcess(command, options);
+    if (command[0] !== "curl") {
+      return runProcess(command, { ...options, env: { ...process.env, ...options?.env } });
+    }
     const url = command.at(-1)!;
     const output = command[command.indexOf("-o") + 1]!;
     await writeFile(output, await readFile(assets[url.slice(url.lastIndexOf("/") + 1)]!));
@@ -113,8 +119,11 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     expect(build.binaries).toBe(root);
     expect(build.resources).toBe(join(root, "resources"));
     expect(build.ffi).toEqual({ PYTHON_3_14: shim });
-    for (const binary of BINARIES) {
-      expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
+    // Windows has no mode bits.
+    if (process.platform !== "win32") {
+      for (const binary of BINARIES) {
+        expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
+      }
     }
     expect(await readFile(join(shim, "libffi.so.8"), "utf8")).toBe("ffi");
     expect(downloads).toEqual(["box", "the box ffi shim for PYTHON_3_14"]);
@@ -249,6 +258,18 @@ describe("boxReleaseFor a runtime's box.version", () => {
 });
 
 describe("the pinned releases", () => {
+  test("box is at least the first release that reads the profiles the CLI writes", () => {
+    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
+    expect(gte(BOX_RELEASE.version, BOX_MINIMUM_VERSION)).toBe(true);
+    expect(BOX_RELEASE.linux.asset).toBe(
+      `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
+    );
+    expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(BOX_RELEASE_PAGE).toBe(
+      `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+    );
+  });
+
   test("box and the ffi shim are pinned on their own, with a shim for each Python box runs", () => {
     expect(BOX_RELEASE.linux.asset).toContain(BOX_RELEASE.version);
     expect(Object.keys(FFI_RELEASE.pythons)).toContain("PYTHON_3_14");

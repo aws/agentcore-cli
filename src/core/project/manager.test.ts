@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
   DeserializationError,
@@ -97,8 +97,13 @@ afterEach(async () => {
 });
 
 // A manager whose runner records commands instead of spawning them.
-/** A command the manager ran, with the UV_MANAGED_PYTHON it set, if any. */
-type Command = { command: string[]; cwd: string; UV_MANAGED_PYTHON?: string };
+/** A command the manager ran, with the uv Python settings it set, if any. */
+type Command = {
+  command: string[];
+  cwd: string;
+  UV_MANAGED_PYTHON?: string;
+  UV_PYTHON_INSTALL_DIR?: string;
+};
 
 function manager(processEnv?: NodeJS.ProcessEnv): {
   manager: FsProjectManager;
@@ -116,7 +121,13 @@ function manager(processEnv?: NodeJS.ProcessEnv): {
       enableTransactionSearch: async () => {},
       runner: async (command, { cwd, env }) => {
         const managedPython = env?.UV_MANAGED_PYTHON;
-        commands.push({ command, cwd, ...(managedPython && { UV_MANAGED_PYTHON: managedPython }) });
+        const installDir = env?.UV_PYTHON_INSTALL_DIR;
+        commands.push({
+          command,
+          cwd,
+          ...(managedPython && { UV_MANAGED_PYTHON: managedPython }),
+          ...(installDir && { UV_PYTHON_INSTALL_DIR: installDir }),
+        });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -155,6 +166,13 @@ async function runAdd(
     const next = await iterator.next();
     if (next.done) return next.value;
   }
+}
+
+/** Every event an operation yields, in order. */
+async function collectEvents(iterator: AsyncGenerator<ProjectEvent, unknown>) {
+  const events: ProjectEvent[] = [];
+  for await (const event of iterator) events.push(event);
+  return events;
 }
 
 async function projectManifest(projectRoot: string): Promise<string[]> {
@@ -581,6 +599,43 @@ describe("FsProjectManager.create", () => {
     expect(skipInstall.checkedTools).toEqual(["git"]);
   });
 
+  test("syncs a box template's venv on a uv-managed Python in the folder its profile grants", async () => {
+    const directory = await inTempDirectory();
+    // The user's own folder would put the venv's Python outside the profile's exec grant.
+    const userEnv = { UV_PYTHON_INSTALL_DIR: "/opt/pythons", XDG_DATA_HOME: "/xdg" };
+
+    const boxed = manager(userEnv);
+    await runCreate(boxed.manager, {
+      name: "boxed",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+    });
+    expect(boxed.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "boxed", "app", AGENT_PYTHON_STRANDS_BOX.runtimeName),
+      UV_MANAGED_PYTHON: "1",
+      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    });
+
+    // Another template keeps the user's uv settings.
+    const plain = manager(userEnv);
+    await runCreate(plain.manager, { name: "plain", scaffoldRuntimeInput: AGENT_PYTHON });
+    expect(plain.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "plain", "app", "agent_python_minimal"),
+    });
+
+    // A box container's image builds its own venv, so the host venv keeps the user's uv settings.
+    const container = manager(userEnv);
+    await runCreate(container.manager, {
+      name: "container",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX_CONTAINER,
+    });
+    expect(container.commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "container", "app", AGENT_PYTHON_STRANDS_BOX_CONTAINER.runtimeName),
+    });
+  });
+
   test("fails before writing files when box is not on PATH, with the install hint", async () => {
     const directory = await inTempDirectory();
     const subject = new FsProjectManager({
@@ -805,7 +860,7 @@ describe("FsProjectManager.create box profile", () => {
     });
 
     const appDir = join(directory, "example", "app", "agent_python_strands_box");
-    // start.py execs box run and exports the paths the box/agentcore-codezip pack reads; no start.sh.
+    // start.py execs box run and exports the paths the @box/agentcore-codezip pack reads; no start.sh.
     const startPy = await readFile(join(appDir, "start.py"), "utf8");
     expect(startPy).toContain("os.execve");
     expect(startPy).toContain("BOX_PYTHON");
@@ -3244,6 +3299,65 @@ describe("docs-only runtimes", () => {
     });
 
     expect(await readFile(join(appDir, "notes.txt"), "utf-8")).toBe("keep me\n");
+  });
+
+  test("a box runtime gets its own box profile, calling Bedrock in the region build uses", async () => {
+    const { manager: subject } = manager({ AWS_REGION: "ap-southeast-2" });
+    const project = await emptyProject(subject);
+
+    const events = await collectEvents(
+      subject.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+        },
+      }),
+    );
+
+    const path = join(project.rootPath, boxLocalProfileFile("agent"));
+    expect(await readFile(path, "utf-8")).toContain('bedrock.region = "ap-southeast-2"');
+    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("a box runtime keeps a box profile that is already there", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+    const path = join(project.rootPath, boxLocalProfileFile("agent"));
+    await mkdir(join(path, ".."), { recursive: true });
+    await writeFile(path, "# mine\n");
+
+    const events = await collectEvents(
+      subject.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "agent",
+          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+        },
+      }),
+    );
+
+    expect(await readFile(path, "utf-8")).toBe("# mine\n");
+    expect(events).toContainEqual({
+      type: "warning",
+      message: `box profile ${path} already exists; left unchanged`,
+    });
+  });
+
+  test("a box runtime that fails to commit leaves no box profile behind", async () => {
+    const { manager: subject } = manager();
+    const project = await emptyProject(subject);
+
+    await addFails(subject, project, {
+      resourceType: "runtime",
+      resourceConfig: {
+        name: "agent",
+        networkMode: "VPC",
+        scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
+      },
+    });
+
+    expect(existsSync(join(project.rootPath, ".box", "agent"))).toBe(false);
   });
 
   test("build writes what the code changed to agentcore.json, then hands off to the backend", async () => {

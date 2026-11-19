@@ -241,8 +241,9 @@ another version takes them from its release's `SHA256SUMS.txt`. `box.version` pi
 ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
-`build` and `deploy` read each agent's box profile as box resolves it, with `box profile show
-.box/<name>/local/profile.toml --format json`, so they need a `box` on your `PATH` that has it.
+`build` and `deploy` read each agent's box profile as box resolves it, with
+`box profile show .box/<name>/local/profile.toml --format json --full`, so they need a `box` on your
+`PATH` that has it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

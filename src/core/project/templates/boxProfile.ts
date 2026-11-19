@@ -7,11 +7,34 @@ import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../../project
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
-import type { BoxNetwork, BoxNetworkSource, CloudWatchTelemetry } from "../boxNetwork";
+import type {
+  BoxNetwork,
+  BoxNetworkSource,
+  CloudWatchTelemetry,
+  ThirdPartyTelemetry,
+} from "../boxNetwork";
+import {
+  BOX_SECRETS_MANAGER_PLUGIN,
+  boxTelemetrySecretField,
+  boxTelemetrySecretName,
+  boxTelemetrySecretRef,
+} from "../boxTelemetrySecrets";
 import { modelProviderCredentialName } from "./runtime";
 
-/** Where uv installs the Pythons it manages, as a boxy path. */
-const UV_PYTHON_INSTALL_DIR = "${{ home }}/.local/share/uv/python";
+/** Where a box template's venv gets its uv-managed Python, relative to the home folder. */
+const UV_PYTHON_HOME_DIR = ".local/share/uv/python";
+
+/** That folder as a boxy path. */
+const UV_PYTHON_INSTALL_DIR = "${{ home }}/" + UV_PYTHON_HOME_DIR;
+
+/**
+ * The environment `uv sync` builds a box template's venv with: a uv-managed Python, installed in
+ * the folder the profile grants, so a user's UV_PYTHON_INSTALL_DIR or XDG_DATA_HOME cannot move
+ * it out of the grant.
+ */
+export function boxUvSyncEnv(home: string): Record<string, string> {
+  return { UV_MANAGED_PYTHON: "1", UV_PYTHON_INSTALL_DIR: join(home, UV_PYTHON_HOME_DIR) };
+}
 
 /** The system libraries of the Linux arm64 image, such as libssl. */
 const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
@@ -35,12 +58,18 @@ const BOX_PYTHON_ENV = "BOX_PYTHON";
 const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
 const BOX_CODE_ENV = "BOX_CODE";
 
+/** The pack of box that each box profile imports. */
+export const BOX_BASE_PACK = "@box/base";
+
+/** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
+export const BOX_BEDROCK_PACK = "@box/bedrock";
+
 /** The generated pack both Runtime profiles import for the deployed resources: {@link renderAgentCorePack}. */
-export const AGENTCORE_PACK_NAME = "box/agentcore";
+export const AGENTCORE_PACK_NAME = "@box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
 
 /** The generated pack the CodeZip Runtime profile adds for the Runtime Python and code: {@link renderAgentCoreCodeZipPack}. */
-export const AGENTCORE_CODEZIP_PACK_NAME = "box/agentcore-codezip";
+export const AGENTCORE_CODEZIP_PACK_NAME = "@box/agentcore-codezip";
 export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
 
 /**
@@ -49,6 +78,12 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
  * host the profile expects. `[.]` matches a literal dot (a TOML basic string rejects `\.`).
  */
 const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
+
+/**
+ * Bounds the `aws.region` input, as @box/bedrock bounds `bedrock.region`: box requires a `pattern` or
+ * `values` on an input that reaches a backend's `auth.aws.region`.
+ */
+const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
 
 /**
  * Bounds an input that reaches the agent `command` (the Python path and the code dir): an absolute
@@ -61,6 +96,44 @@ const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
  * credential chain, which signs with the execution role and needs no credentials step.
  */
 const RUNTIME_AWS_SIGNER = "aws://";
+
+/**
+ * The variable in which AgentCore Runtime names the runtime's own log group and log stream, as
+ * `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
+ */
+const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
+/** The signal groups that the default CloudWatch Logs target of a Runtime profile receives. */
+const DEFAULT_TELEMETRY_INCLUDE = ["deny", "permit", "trace"] as const;
+
+/**
+ * The default CloudWatch Logs target of a Runtime profile: the runtime's own log group and log
+ * stream, in its own region. The runtime ID exists only after deploy, so box reads the three
+ * values through the inputs of {@link renderAgentCorePack} when the run starts.
+ */
+const DEFAULT_TELEMETRY_TARGET = {
+  kind: "cloudwatch_logs",
+  region: "${{ inputs.aws.region }}",
+  logGroup: "${{ inputs.runtime.log_group }}",
+  logStream: "${{ inputs.runtime.log_stream }}",
+  include: DEFAULT_TELEMETRY_INCLUDE,
+} as const;
+
+/**
+ * The CloudWatch targets of a Runtime profile: those of its box profile, and, when none of them is
+ * a `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET}, under a name that no CloudWatch
+ * target and no `thirdParty` target of the profile has.
+ */
+export function runtimeTelemetryTargets(
+  telemetry: readonly CloudWatchTelemetry[] = [],
+  thirdParty: readonly ThirdPartyTelemetry[] = [],
+): { readonly target: CloudWatchTelemetry; readonly isDefault: boolean }[] {
+  const own = telemetry.map((target) => ({ target, isDefault: false }));
+  if (telemetry.some(({ kind }) => kind === "cloudwatch_logs")) return own;
+  const names = new Set([...telemetry, ...thirdParty].map(({ name }) => name));
+  const name = names.has("agentcore") ? "agentcore_default" : "agentcore";
+  return [...own, { target: { name, ...DEFAULT_TELEMETRY_TARGET }, isDefault: true }];
+}
 
 /**
  * Stand-in AWS keys for the agent on AgentCore Runtime. They let boto3 in the box sign a request,
@@ -76,7 +149,7 @@ const RUNTIME_AWS_STAND_IN_LINES = [
 ].join("\n");
 
 /**
- * The tools of box/base that get the project's write grant: box gives each one its own grant, so
+ * The tools of @box/base that get the project's write grant: box gives each one its own grant, so
  * each lists the agent's `deny_write` folders as well.
  */
 const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
@@ -274,9 +347,15 @@ function serve(
   // The box starts the agent in the project folder, and boxy refuses a script path inside it,
   // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
+  // serve_a2a puts its listen port in the agent card's URL, but callers reach the agent only
+  // through box's ingress port, so the card names that port instead.
+  const cardUrl: Record<string, string> =
+    protocol === "A2A"
+      ? { AGENTCORE_RUNTIME_URL: `http://localhost:${boxIngressPort(protocol)}/` }
+      : {};
   return {
     command: [python, "-m", "main"],
-    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort) },
+    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...cardUrl },
   };
 }
 
@@ -300,13 +379,13 @@ type Runner = {
 /** A CodeZip agent: its code and venv are in the project's app/<runtime> folder. */
 function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number): Runner {
   const { command, env } = serve(protocol, appDir, workloadPort, true);
-  // Create runs `uv sync` with UV_MANAGED_PYTHON=1, so the venv links to a Python in this folder.
+  // Create runs `uv sync` with boxUvSyncEnv, so the venv links to a Python in this folder.
   // Optional, so a venv rebuilt on another Python still starts; that Python then needs its own grant.
   const uvPython = `{ path = ${str(UV_PYTHON_INSTALL_DIR)}, optional = true }`;
   return {
     command,
     env: { LOCAL_DEV: "1", ...env },
-    read: [str(appDir), str(`${appDir}/.venv`), uvPython],
+    read: [str(appDir), optional(`${appDir}/.venv`), uvPython],
     exec: [optional(`${appDir}/.venv`), uvPython],
     denyWrite: [optional(`${appDir}/.venv`)],
   };
@@ -339,7 +418,7 @@ function containerRunner(workloadPort: number, dev: boolean): Runner {
 /**
  * A Python agent on a CodeZip deploy: the Runtime unpacks the zip into a
  * read-only folder and runs its own Python, at paths only the microVM knows.
- * The box/agentcore-codezip pack reads them from the environment start.py
+ * The @box/agentcore-codezip pack reads them from the environment start.py
  * exports (`${{ inputs.code.dir }}`, `${{ inputs.python.path }}`,
  * `${{ inputs.python.prefix }}`), and the box starts in a writable folder
  * outside the code, so nothing the agent runs needs `deny_write`.
@@ -392,6 +471,7 @@ export function renderBoxProfile(
   runtimeRoutes = "",
   runtimePolicies: readonly string[] = [],
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  runtimePlugins: readonly string[] = [],
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
@@ -424,9 +504,9 @@ export function renderBoxProfile(
 
   // The optional sections, each empty or ending in a newline.
   const header = codeZipOnRuntime
-    ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore and box/agentcore-codezip packs carry the deployed resources, the Runtime Python, and the code directory."
+    ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The @box/agentcore and @box/agentcore-codezip packs carry the deployed resources, the Runtime Python, and the code directory."
     : onRuntime
-      ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
+      ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The @box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
         : `# Written by \`agentcore create\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
@@ -454,6 +534,11 @@ export function renderBoxProfile(
     onRuntime && runtimePolicies.length > 0
       ? `# The policy files of ${boxLocalProfileFile(runtime.runtimeName)}, copied unchanged beside this profile.\npolicies = ${list([...runtimePolicies])}\n`
       : "";
+  // Only the profile may list a plugin: box stops a run whose pack lists one.
+  const plugins =
+    onRuntime && runtimePlugins.length > 0
+      ? `# Box reads the telemetry keys from AWS Secrets Manager through this plugin.\nplugins = ${list([...runtimePlugins])}\n`
+      : "";
   const bedrockRoute = !bedrock
     ? ""
     : onRuntime
@@ -461,14 +546,14 @@ export function renderBoxProfile(
         ""
       : `
 # Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
-# rather than with the Bedrock API key that box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
+# rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
 secret.ref = "aws://default"
 `;
   const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";
   const packs = list([
-    "box/base",
-    ...(bedrock ? ["box/bedrock"] : []),
+    BOX_BASE_PACK,
+    ...(bedrock ? [BOX_BEDROCK_PACK] : []),
     // Both Runtime profiles read the deployed resources from the environment through this pack.
     ...(onRuntime ? [AGENTCORE_PACK_NAME] : []),
     // The CodeZip Runtime also reads its Python and code paths through this one.
@@ -484,7 +569,7 @@ secret.ref = "aws://default"
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
 packs = ${packs}
-${policies}
+${policies}${plugins}
 [profile]
 name = ${str(projectName)}
 
@@ -512,13 +597,13 @@ ${toolDenyWrite}${routes}${bedrockRoute}${keyedRoute}`;
  * with its own role. Every `[egress.<name>]` on the Runtime is one of these, so
  * every outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(target: string, host: string, region: string): string {
+function runtimeGatewayRouteSection(target: string, host: string): string {
   const key = tomlKey(target);
   return `
 # Calls to ${host}, through the runtime's Box gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
-${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+${runtimeGatewayBackend(`egress.${key}`, target)}`;
 }
 
 /** An HTTP MCP server of the box profile that a Box gateway target serves. */
@@ -533,12 +618,7 @@ type McpSource = Extract<BoxNetworkSource, { kind: "mcp" }>;
  * gateway sends the key. Box refuses a signed secret beside a backend, and
  * `inject` has no effect there, so neither stays. Starts with a blank line.
  */
-function runtimeMcpServerSection(
-  server: RuntimeMcpServer,
-  target: string,
-  host: string,
-  region: string,
-): string {
+function runtimeMcpServerSection(server: RuntimeMcpServer, target: string, host: string): string {
   const key = tomlKey(server.name);
   const secret = server.secret?.ref.startsWith("env://")
     ? Object.entries(server.secret)
@@ -551,22 +631,23 @@ function runtimeMcpServerSection(
 [mcp.${key}]
 type = "http"
 destinations = [${str(host)}]
-${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target)}`;
 }
 
 /**
  * The backend of a Runtime route or MCP server: the runtime's Box gateway
- * target. Both Runtime profiles read the gateway URL from the environment
- * through the agentcore pack's input, and sign with the execution role through
- * a bare `aws://`. Starts with a blank line.
+ * target. Both Runtime profiles read the gateway URL and the region from the
+ * environment through the agentcore pack's inputs, and sign with the execution
+ * role through a bare `aws://`, so the profile names no region. Starts with a
+ * blank line.
  */
-function runtimeGatewayBackend(table: string, target: string, region: string): string {
+function runtimeGatewayBackend(table: string, target: string): string {
   return `
 [[${table}.backends]]
 url = ${str(`\${{ inputs.gateway.url }}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
-auth.aws.region = ${str(region)}
+auth.aws.region = "\${{ inputs.aws.region }}"
 `;
 }
 
@@ -582,7 +663,6 @@ auth.aws.region = ${str(region)}
 function runtimeGatewayRoutes(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  region: string,
   servers: ReadonlyMap<string, RuntimeMcpServer>,
 ): string {
   if (!isBoxProject(spec)) return "";
@@ -594,8 +674,8 @@ function runtimeGatewayRoutes(
       const server = servers.get(target.name);
       return [
         server
-          ? runtimeMcpServerSection(server, target.name, host, region)
-          : runtimeGatewayRouteSection(target.name, host, region),
+          ? runtimeMcpServerSection(server, target.name, host)
+          : runtimeGatewayRouteSection(target.name, host),
       ];
     })
     .join("");
@@ -621,15 +701,24 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
  * through a bare `aws://`, whatever the box profile signs it with. Starts with a
  * blank line.
  */
-function runtimeTelemetrySection(target: CloudWatchTelemetry, profileFile: string): string {
+function runtimeTelemetrySection(
+  target: CloudWatchTelemetry,
+  profileFile: string,
+  isDefault = false,
+): string {
   const logs =
     target.kind === "cloudwatch_logs"
       ? `log_group = ${str(target.logGroup)}\nlog_stream = ${str(target.logStream)}\n`
       : "";
   const include = target.include ? `include = ${list([...target.include])}\n` : "";
   const key = tomlKey(target.name);
+  const comment = isDefault
+    ? "# The default CloudWatch Logs target: the runtime's own log group and log stream, which box\n" +
+      `# reads from ${RUNTIME_LOGS_HEADERS_ENV} when the run starts, signed with the execution role.\n` +
+      `# Add a cloudwatch_logs target to ${profileFile} to use another.`
+    : `# The [telemetry.${key}] target of ${profileFile}, signed with the execution role.`;
   return `
-# The [telemetry.${key}] target of ${profileFile}, signed with the execution role.
+${comment}
 [telemetry.${key}]
 kind = ${str(target.kind)}
 region = ${str(target.region)}
@@ -638,12 +727,47 @@ ${logs}${include}secret.ref = ${str(RUNTIME_AWS_SIGNER)}
 }
 
 /**
+ * A third-party target of the box profile `profileFile` on the Runtime: its `[telemetry.<name>]`
+ * table with the same keys. Its key, when it has one, comes from its field of the runtime's AWS
+ * Secrets Manager secret `secretName`, which deploy writes, and not from the variable the box
+ * profile names. Starts with a blank line.
+ */
+function runtimeThirdPartyTelemetrySection(
+  target: ThirdPartyTelemetry,
+  secretName: string,
+  profileFile: string,
+): string {
+  const key = tomlKey(target.name);
+  const value = (field: string, item: ThirdPartyTelemetry["keys"][number][1]) => {
+    if (typeof item === "string") return `${field} = ${str(item)}\n`;
+    if (Array.isArray(item)) return `${field} = ${list([...item])}\n`;
+    return Object.entries(item)
+      .map(([name, text]) => `${field}.${tomlKey(name)} = ${str(text)}\n`)
+      .join("");
+  };
+  const keys = target.keys.map(([field, item]) => value(field, item)).join("");
+  const ref = boxTelemetrySecretRef(secretName, boxTelemetrySecretField(target.name));
+  const secret = target.secret
+    ? `secret.ref = ${str(ref)}\n` +
+      target.secret.keys.map(([field, text]) => `secret.${field} = ${str(text)}\n`).join("")
+    : "";
+  const source = target.secret
+    ? ` The box reads its key from AWS Secrets Manager, not from ${target.secret.variable}.`
+    : "";
+  return `
+# The [telemetry.${key}] target of ${profileFile}.${source}
+[telemetry.${key}]
+kind = ${str(target.kind)}
+${keys}${secret}`;
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway; and,
  * from the runtime's Box network model, the box profile's policy files under
- * `policies`, the HTTP MCP server that a target serves, and each CloudWatch
- * `[telemetry]` target. agentcore.json does not record the framework, and the profile
+ * `policies`, the HTTP MCP server that a target serves, each CloudWatch
+ * `[telemetry]` target, and each third-party one. agentcore.json does not record the framework, and the profile
  * does not depend on it beyond the container case, so the input names Strands,
  * one of the frameworks that run in a box.
  */
@@ -651,7 +775,7 @@ export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
   network?: Pick<BoxNetwork, "policyFiles"> &
-    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry">>,
+    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry" | "thirdPartyTelemetry">>,
 ): string {
   const input = {
     runtimeName: runtime.name,
@@ -664,20 +788,30 @@ export function renderRuntimeBoxProfile(
     // Build and deploy render this only for a runtime that runs its agent in a box.
     box: true,
   } as ScaffoldRuntimeInput;
-  const region = network?.region ?? BOX_GATEWAY_BEDROCK_REGION;
+  const readsSecretsManager = (network?.thirdPartyTelemetry ?? []).some(({ secret }) => secret);
   const profile = renderBoxProfile(
     spec.name,
     input,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
+    runtimeGatewayRoutes(spec, runtime, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
     network?.region,
+    readsSecretsManager ? [BOX_SECRETS_MANAGER_PLUGIN] : [],
   )!;
   const profileFile = boxLocalProfileFile(runtime.name);
   return (
     profile +
-    (network?.telemetry ?? [])
-      .map((target) => runtimeTelemetrySection(target, profileFile))
+    runtimeTelemetryTargets(network?.telemetry, network?.thirdPartyTelemetry)
+      .map(({ target, isDefault }) => runtimeTelemetrySection(target, profileFile, isDefault))
+      .join("") +
+    (network?.thirdPartyTelemetry ?? [])
+      .map((target) =>
+        runtimeThirdPartyTelemetrySection(
+          target,
+          boxTelemetrySecretName(spec.name, runtime.name),
+          profileFile,
+        ),
+      )
       .join("")
   );
 }
@@ -709,11 +843,17 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
   const route = apiKeyRoute(runtime);
   if (route === undefined) {
     const modelId = runtime.modelId ?? DEFAULT_MODEL_IDS.LiteLLM;
-    const prefix = modelId.split("/")[0];
+    // With no provider prefix (`gpt-4o`), LiteLLM guesses the provider, so the section has no
+    // name to suggest; a prefix the profile knows gets its route without editing.
+    const [prefix, model] = modelId.split("/");
+    const section = model === undefined ? "[egress.<provider>]" : `[egress.${prefix}]`;
+    const prefixHint =
+      model === undefined ? " (or use an openai/, anthropic/ or gemini/ model ID)" : "";
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
-        `[egress.${prefix}] section with its provider's host to ${boxLocalProfileFile(runtime.runtimeName)}, or the box ` +
-        "blocks the agent's model calls",
+        `${section} section with its provider's host to ` +
+        `${boxLocalProfileFile(runtime.runtimeName)}${prefixHint}, or the box blocks the ` +
+        "agent's model calls",
     ];
   }
   if (runtime.apiKey !== undefined || route.providerVariable === undefined) return [];
@@ -725,11 +865,13 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
- * The `box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
+ * The `@box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
  * reads from the environment the Runtime sets after deploy. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
- * profile expects. One input per project memory carries its ID into the agent's environment. box
- * finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
+ * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
+ * {@link RUNTIME_LOGS_HEADERS_ENV}, for {@link DEFAULT_TELEMETRY_TARGET}. One input per project
+ * memory carries its ID into the agent's environment. box finds the pack beside its binary at
+ * {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
  */
 export function renderAgentCorePack(spec: ProjectSpec): string {
   const memories = spec.memories ?? [];
@@ -759,12 +901,30 @@ kind = "support"
 [inputs.gateway.url]
 description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
-pattern = ${str(GATEWAY_URL_PATTERN)}${memoryInputs}
+pattern = ${str(GATEWAY_URL_PATTERN)}
+
+# The Runtime's region, which box signs each Box gateway backend for. The Runtime sets AWS_REGION.
+[inputs.aws.region]
+description = "The AWS region the runtime runs in."
+from = "env:AWS_REGION"
+pattern = ${str(AWS_REGION_PATTERN)}
+
+# The runtime's own log group and log stream, for the default telemetry target. The runtime ID
+# exists only after deploy, and the Runtime names both in ${RUNTIME_LOGS_HEADERS_ENV}.
+[inputs.runtime.log_group]
+description = "The runtime's own CloudWatch Logs log group."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-group"
+
+[inputs.runtime.log_stream]
+description = "The runtime's own CloudWatch Logs log stream."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-stream"${memoryInputs}
 ${agentEnv}`;
 }
 
 /**
- * The `box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
+ * The `@box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
  * and base prefix, and the read-only code directory, which only the microVM knows. start.py exports
  * them ({@link BOX_PYTHON_ENV}, {@link BOX_PYTHON_PREFIX_ENV}, {@link BOX_CODE_ENV}) before it runs
  * box, and the profile reads them through these inputs, so no start script fills the profile in. box

@@ -31,6 +31,11 @@ import {
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 import {
+  boxTelemetrySecretEnvEntries,
+  boxTelemetrySecrets,
+  boxTelemetrySecretsStatement,
+} from "./boxTelemetrySecrets";
+import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
   boxLocalDir,
@@ -212,15 +217,21 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   return messages;
 }
 
-/** The API key credentials the box profile's `env://` routes need, and their `.env.local` keys. */
+/**
+ * The API key credentials the box profile's `env://` routes need, and their `.env.local` keys, and
+ * the `.env.local` key of each third-party telemetry target's secret.
+ */
 export const credentialsWriter: BoxNetworkWriter = {
   name: "credentials",
   writes: () => [{ kind: "credentials" }, { kind: "envLocal" }],
-  edits: (networks, { env }) => {
+  edits: (networks, { env, spec }) => {
     const needed = uniqueCredentials(networks);
     return {
-      spec: [(spec) => addBoxEgressCredentials(spec, needed)],
-      envLocal: boxProfileCredentialEnvEntries(needed, env),
+      spec: [(copy) => addBoxEgressCredentials(copy, needed)],
+      envLocal: [
+        ...boxProfileCredentialEnvEntries(needed, env),
+        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), env),
+      ],
     };
   },
 };
@@ -245,22 +256,26 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
     { kind: "file", path: BOX_MEMORY_POLICY_FILE },
   ],
-  edits: (networks, { spec, projectRoot }) => ({
+  edits: (networks, { spec, projectRoot }) => {
     // Every network of one build has the region build builds for.
-    spec: [(copy) => addBoxGatewayTargets(copy, projectRoot, networks[0]?.region)],
-    files: [
-      { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec, projectRoot) },
-      { path: BOX_MEMORY_POLICY_FILE, policy: boxMemoryPolicy(spec, projectRoot) },
-    ].flatMap(({ path, policy }) =>
-      policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
-    ),
-  }),
+    const region = networks[0]?.region;
+    return {
+      spec: [(copy) => addBoxGatewayTargets(copy, projectRoot, region)],
+      files: [
+        { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec, projectRoot) },
+        { path: BOX_MEMORY_POLICY_FILE, policy: boxMemoryPolicy(spec, projectRoot, region) },
+      ].flatMap(({ path, policy }) =>
+        policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
+      ),
+    };
+  },
 };
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its own box profile, and the entry in that runtime's `additionalPolicies`. A runtime with no
- * CloudWatch target gets neither, and loses the file and the entry it had.
+ * its own box profile and read the secrets of its third-party targets, and the entry in that
+ * runtime's `additionalPolicies`. A runtime with neither gets no policy, and loses the file and
+ * the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
@@ -278,7 +293,11 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
       const network = networks.find(({ runtime }) => runtime === name);
-      const policy = boxTelemetryPolicy(network?.telemetry ?? []);
+      const policy = withStatement(
+        boxTelemetryPolicy(network?.telemetry ?? []),
+        network &&
+          boxTelemetrySecretsStatement(boxTelemetrySecrets(spec.name, [network]), network.region),
+      );
       const path = boxTelemetryPolicyFile(name);
       if (policy) {
         boxed.push(name);
@@ -291,13 +310,23 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
   },
 };
 
+/** `policy` with `statement` after its own statements, or a policy of `statement` alone. */
+function withStatement(
+  policy: Record<string, unknown> | undefined,
+  statement: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (statement === undefined) return policy;
+  const statements = (policy?.Statement as unknown[] | undefined) ?? [];
+  return { Version: "2012-10-17", ...policy, Statement: [...statements, statement] };
+}
+
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
-  /** Whether the runtime is a container. Both runtimes stage the `box/agentcore` pack. */
+  /** Whether the runtime is a container. Both runtimes stage the `@box/agentcore` pack. */
   readonly container: boolean;
-  /** Whether the runtime is a CodeZip deploy, which also stages the `box/agentcore-codezip` pack. */
+  /** Whether the runtime is a CodeZip deploy, which also stages the `@box/agentcore-codezip` pack. */
   readonly codezip: boolean;
 }
 

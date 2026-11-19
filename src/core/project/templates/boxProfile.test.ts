@@ -9,7 +9,12 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import { cloudWatchTelemetry, type BoxNetworkHost } from "../boxNetwork";
+import {
+  cloudWatchTelemetry,
+  thirdPartyTelemetry,
+  withDeployRegion,
+  type BoxNetworkHost,
+} from "../boxNetwork";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -60,7 +65,7 @@ const STRANDS = template("agent-python-strands");
 const VENV_GRANTS = {
   read: [
     "${{ workspace }}/app/agent",
-    "${{ workspace }}/app/agent/.venv",
+    { path: "${{ workspace }}/app/agent/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
@@ -89,7 +94,7 @@ const UVICORN = [
 describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
-      packs: ["box/base", "box/bedrock"],
+      packs: ["@box/base", "@box/bedrock"],
       profile: { name: "V3Demo" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -118,7 +123,7 @@ describe("renderBoxProfile", () => {
     "runs %s with uvicorn on Bedrock, like the Strands agent",
     (name) => {
       const { packs, agent, egress } = profile(name);
-      expect(packs).toEqual(["box/base", "box/bedrock"]);
+      expect(packs).toEqual(["@box/base", "@box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
       expect(egress?.bedrock).toEqual({ secret: { ref: "aws://default" } });
@@ -140,9 +145,18 @@ describe("renderBoxProfile", () => {
     expect(agent.filesystem).toEqual(VENV_GRANTS);
   });
 
+  test("names box's ingress port, not the agent's, in the A2A agent card", () => {
+    const { agent } = profile("a2a-python-strands");
+    expect(agent.env).toMatchObject({
+      A2A_PORT: "9001",
+      AGENTCORE_RUNTIME_URL: "http://localhost:9000/",
+    });
+    expect(profile("agui-python-strands").agent.env).not.toHaveProperty("AGENTCORE_RUNTIME_URL");
+  });
+
   test("gives the MCP server no route, because it calls no model", () => {
     const mcp = profile("mcp-python-fastmcp");
-    expect(mcp.packs).toEqual(["box/base"]);
+    expect(mcp.packs).toEqual(["@box/base"]);
     expect(mcp.options).toBeUndefined();
     expect(mcp.egress).toBeUndefined();
   });
@@ -205,7 +219,7 @@ describe("renderBoxProfile", () => {
         apiKey: "sk-test",
         ...overrides,
       });
-      expect(packs).toEqual(["box/base"]);
+      expect(packs).toEqual(["@box/base"]);
       expect(options).toBeUndefined();
       expect(egress).toEqual({ [route]: expected });
     },
@@ -213,7 +227,7 @@ describe("renderBoxProfile", () => {
 
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
     const { packs, egress } = profile("agent-python-strands", { modelProvider: "LiteLLM" });
-    expect(packs).toEqual(["box/base", "box/bedrock"]);
+    expect(packs).toEqual(["@box/base", "@box/bedrock"]);
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
 
@@ -263,6 +277,19 @@ describe("renderBoxProfile", () => {
     ]);
   });
 
+  test("names the provider section generically for a LiteLLM model ID with no prefix", () => {
+    const runtime = template("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "gpt-4o",
+      apiKey: "sk-test",
+    });
+    expect(boxProfileWarnings(runtime)).toEqual([
+      "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
+        "section with its provider's host to .box/agent/local/profile.toml (or use an openai/, " +
+        "anthropic/ or gemini/ model ID), or the box blocks the agent's model calls",
+    ]);
+  });
+
   test("keeps the port of an OpenAI-compatible endpoint in its destination", () => {
     const { egress } = profile("agent-python-strands", {
       modelProvider: "OpenAICompatible",
@@ -275,7 +302,7 @@ describe("renderBoxProfile", () => {
 
   test("runs the Strands container image's agent from /app, where box starts in the image", () => {
     const container = profile("agent-python-strands-container");
-    expect(container.packs).toEqual(["box/base", "box/bedrock"]);
+    expect(container.packs).toEqual(["@box/base", "@box/bedrock"]);
     // The image's code and venv are in /app, the workspace, not in app/<runtime>.
     expect(container.agent.command.slice(0, 6)).toEqual([
       "${{ workspace }}/.venv/bin/python",
@@ -345,10 +372,10 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
   test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
     const text = renderBoxProfile("V3Demo", template("agent-python-strands"), "runtime")!;
     // No start.sh fills this profile in: the packs carry the deployed resources, Python, and code.
-    expect(text).toContain("box/agentcore-codezip packs carry");
+    expect(text).toContain("@box/agentcore-codezip packs carry");
     expect(text).not.toContain("# @AGENT_ENV@");
     expect(parse(text)).toEqual({
-      packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
+      packs: ["@box/base", "@box/bedrock", "@box/agentcore", "@box/agentcore-codezip"],
       profile: { name: "V3Demo" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -386,11 +413,11 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     (name) => {
       const text = renderBoxProfile("V3Demo", template(name), "runtime")!;
       // No start.sh fills this profile in: the agentcore pack carries the deployed resources.
-      expect(text).toContain("The box/agentcore pack carries the deployed resources' variables.");
+      expect(text).toContain("The @box/agentcore pack carries the deployed resources' variables.");
       expect(text).not.toContain("# @AGENT_ENV@");
       expect(runtimeProfile(name)).toEqual({
-        // The container reads the deployed resources from the environment through box/agentcore.
-        packs: ["box/base", "box/bedrock", "box/agentcore"],
+        // The container reads the deployed resources from the environment through @box/agentcore.
+        packs: ["@box/base", "@box/bedrock", "@box/agentcore"],
         profile: { name: "V3Demo" },
         project: { access: "read" },
         options: { bedrock: { region: "us-west-2" } },
@@ -427,7 +454,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
-    expect(openai.packs).toEqual(["box/base", "box/agentcore", "box/agentcore-codezip"]);
+    expect(openai.packs).toEqual(["@box/base", "@box/agentcore", "@box/agentcore-codezip"]);
     expect(openai.egress).toBeUndefined();
   });
 });
@@ -499,7 +526,7 @@ describe("renderRuntimeBoxProfile", () => {
           // A bare aws:// signs with the execution role via the default credential chain.
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -515,7 +542,7 @@ describe("renderRuntimeBoxProfile", () => {
           url: "${{ inputs.gateway.url }}/agentcore",
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -551,7 +578,10 @@ describe("renderRuntimeBoxProfile", () => {
     const BACKENDS = [
       {
         url: "${{ inputs.gateway.url }}/egress-tools",
-        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+        auth: {
+          ref: "aws://",
+          aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+        },
       },
     ];
     /** The model's host for the server `tools`, which the target `egress-tools` serves. */
@@ -611,7 +641,7 @@ describe("renderRuntimeBoxProfile", () => {
           'secret.phantom_prefix = "tk-"\n\n' +
           "[[mcp.tools.backends]]\n" +
           'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
-          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "${{ inputs.aws.region }}"\n',
       );
     });
 
@@ -641,13 +671,28 @@ describe("renderRuntimeBoxProfile", () => {
       },
       "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
     };
-    const rendered = (telemetry: Record<string, unknown>) => {
+    /** The Runtime profile for `region`, which the model also sets on a target with none. */
+    const rendered = (telemetry: Record<string, unknown>, region = "us-west-2") => {
       const project = spec([bedrock]);
       const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
         policyFiles: [],
-        telemetry: cloudWatchTelemetry({ telemetry }),
+        telemetry: withDeployRegion(cloudWatchTelemetry({ telemetry }), region, "profile.toml")
+          .telemetry,
+        region,
       });
       return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
+    };
+    /**
+     * The default target of the Runtime profile: the runtime's own log group and log stream, in its
+     * own region, which box reads through the inputs of the @box/agentcore pack.
+     */
+    const DEFAULT_TARGET = {
+      kind: "cloudwatch_logs",
+      region: "${{ inputs.aws.region }}",
+      log_group: "${{ inputs.runtime.log_group }}",
+      log_stream: "${{ inputs.runtime.log_stream }}",
+      include: ["deny", "permit", "trace"],
+      secret: { ref: "aws://" },
     };
 
     test("copies each CloudWatch target with its keys, signed with a bare aws://", () => {
@@ -675,18 +720,181 @@ describe("renderRuntimeBoxProfile", () => {
       expect(text).not.toContain("Admin-personal");
     });
 
-    test("copies no file, otlp, langfuse, or langsmith target", () => {
+    test("copies no file, otlp, langfuse, or langsmith target, and adds the default target", () => {
       const { records, collector, langfuse, langsmith } = TELEMETRY;
 
-      expect(rendered({ records, collector, langfuse, langsmith }).toml.telemetry).toBeUndefined();
+      expect(
+        rendered({ records, collector, langfuse, langsmith }, "eu-west-1").toml.telemetry,
+      ).toEqual({ agentcore: DEFAULT_TARGET });
     });
 
-    test("copies no CloudWatch target that Box refuses, as it grants it nothing", () => {
+    test("copies each third-party target, and names its key's secret in AWS Secrets Manager", () => {
+      const project = spec([bedrock]);
+      const collector = {
+        kind: "otlp",
+        destination: "https://collector.example.com/otlp",
+        include: ["trace", "logs"],
+        accepts: ["traces"],
+        headers: { "x-team": "box" },
+        secret: { ref: "secret://COLLECTOR_TOKEN", header: "x-api-key", prefix: "Key " },
+      };
+      const open = { kind: "otlp", destination: "https://open.example.com" };
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        region: "eu-west-1",
+        thirdPartyTelemetry: thirdPartyTelemetry({
+          telemetry: { ...TELEMETRY, collector, open },
+        }).targets,
+      });
+      const secret = (target: string) =>
+        `aws-secretsmanager://agentcore/${project.name}/agent/box#telemetry.${target}`;
+
+      expect((parse(text) as { telemetry?: unknown }).telemetry).toEqual({
+        // The profile has no cloudwatch_logs target, so the Runtime profile adds the default one.
+        agentcore: DEFAULT_TARGET,
+        langfuse: { kind: "langfuse", secret: { ref: secret("langfuse") } },
+        langsmith: { kind: "langsmith", secret: { ref: secret("langsmith") } },
+        collector: { ...collector, secret: { ...collector.secret, ref: secret("collector") } },
+        // A target with no key keeps none.
+        open,
+      });
+      expect(text).toContain(
+        "\n# The [telemetry.collector] target of .box/agent/local/profile.toml. The box reads " +
+          "its key from AWS Secrets Manager, not from COLLECTOR_TOKEN.\n" +
+          '[telemetry.collector]\nkind = "otlp"\n' +
+          'destination = "https://collector.example.com/otlp"\ninclude = ["trace", "logs"]\n' +
+          'accepts = ["traces"]\nheaders.x-team = "box"\n' +
+          `secret.ref = "${secret("collector")}"\n` +
+          'secret.header = "x-api-key"\nsecret.prefix = "Key "\n',
+      );
+      for (const variable of ["COLLECTOR_TOKEN", "LANGFUSE_AUTH", "LANGSMITH_KEY"]) {
+        expect(text).not.toContain(`env://${variable}`);
+        expect(text).not.toContain(`secret://${variable}`);
+      }
+      // The plugin that reads the scheme: one top-level line, above the first table.
+      const toml = parse(text) as { plugins?: unknown };
+      expect(toml.plugins).toEqual(["@box/aws-secrets-manager"]);
+      expect(text.indexOf('plugins = ["@box/aws-secrets-manager"]')).toBeLessThan(
+        text.indexOf("\n["),
+      );
+      expect(text.match(/^plugins = /gm)).toHaveLength(1);
+      expect(text).not.toContain("secret-source");
+      expect(text).not.toContain("experimental-features");
+    });
+
+    test("lists no plugin when no target reads a key from AWS Secrets Manager", () => {
+      const project = spec([bedrock]);
+      const open = { kind: "otlp", destination: "https://open.example.com" };
+      for (const thirdParty of [undefined, thirdPartyTelemetry({ telemetry: { open } }).targets]) {
+        const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+          policyFiles: [],
+          ...(thirdParty && { thirdPartyTelemetry: thirdParty }),
+        });
+
+        expect((parse(text) as { plugins?: unknown }).plugins).toBeUndefined();
+      }
+    });
+
+    test("copies no CloudWatch target that Box refuses, and adds the default target", () => {
       const logs = { ...TELEMETRY.logs, log_stream: "a:b" };
 
       expect(
-        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }).toml.telemetry,
-      ).toBeUndefined();
+        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }, "eu-west-1").toml
+          .telemetry,
+      ).toEqual({ agentcore: DEFAULT_TARGET });
+    });
+
+    test("sends to the runtime's own log group and stream, read when the run starts, when the profile has no [telemetry]", () => {
+      const { text, toml } = rendered({}, "ap-south-1");
+
+      expect(toml.telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+      expect(text).toContain(
+        "\n# The default CloudWatch Logs target: the runtime's own log group and log stream, " +
+          "which box\n# reads from OTEL_EXPORTER_OTLP_LOGS_HEADERS when the run starts, signed " +
+          "with the execution role.\n# Add a cloudwatch_logs target to " +
+          ".box/agent/local/profile.toml to use another.\n" +
+          '[telemetry.agentcore]\nkind = "cloudwatch_logs"\n' +
+          'region = "${{ inputs.aws.region }}"\n' +
+          'log_group = "${{ inputs.runtime.log_group }}"\n' +
+          'log_stream = "${{ inputs.runtime.log_stream }}"\n' +
+          'include = ["deny", "permit", "trace"]\nsecret.ref = "aws://"\n',
+      );
+      // The target holds neither the deploy region nor the old Box telemetry log group.
+      expect(text.slice(text.indexOf("[telemetry.agentcore]"))).not.toContain("ap-south-1");
+      expect(text).not.toContain("/aws/bedrock-agentcore/box/");
+    });
+
+    test("reads each value of the default target through an input that the @box/agentcore pack declares", () => {
+      const project = spec([bedrock]);
+      const { inputs } = parse(renderAgentCorePack(project)) as {
+        inputs: Record<string, Record<string, unknown>>;
+      };
+      const declared = (placeholder: string) => {
+        const [group, name] = /^\$\{\{ inputs\.([a-z]+)\.([a-z_]+) \}\}$/
+          .exec(placeholder)!
+          .slice(1);
+        return inputs[group!]?.[name!];
+      };
+
+      expect(declared(DEFAULT_TARGET.region)).toMatchObject({ from: "env:AWS_REGION" });
+      expect(declared(DEFAULT_TARGET.log_group)).toMatchObject({
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-group",
+      });
+      expect(declared(DEFAULT_TARGET.log_stream)).toMatchObject({
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-stream",
+      });
+    });
+
+    test("adds the default target beside a cloudwatch_traces target, as it sends no logs", () => {
+      expect(rendered({ "x-ray": TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry).toEqual({
+        "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+        agentcore: DEFAULT_TARGET,
+      });
+    });
+
+    test("names the default target agentcore_default when the profile has an agentcore target", () => {
+      const telemetry = rendered({ agentcore: TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry;
+
+      expect(Object.keys(telemetry ?? {})).toEqual(["agentcore", "agentcore_default"]);
+      expect(telemetry?.agentcore_default).toEqual(DEFAULT_TARGET);
+    });
+
+    test("names the default target agentcore_default when a third-party target is agentcore", () => {
+      const project = spec([bedrock]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        region: "eu-west-1",
+        thirdPartyTelemetry: thirdPartyTelemetry({ telemetry: { agentcore: TELEMETRY.langfuse } })
+          .targets,
+      });
+      const telemetry = (parse(text) as { telemetry?: Record<string, unknown> }).telemetry;
+
+      expect(text.match(/^\[telemetry\.agentcore\]$/gm)).toHaveLength(1);
+      expect(Object.keys(telemetry ?? {})).toEqual(["agentcore_default", "agentcore"]);
+      expect(telemetry?.agentcore_default).toEqual(DEFAULT_TARGET);
+      expect(telemetry?.agentcore).toEqual({
+        kind: "langfuse",
+        secret: {
+          ref: `aws-secretsmanager://agentcore/${project.name}/agent/box#telemetry.agentcore`,
+        },
+      });
+    });
+
+    test("adds no default target when the profile has its own cloudwatch_logs target", () => {
+      expect(Object.keys(rendered({ logs: TELEMETRY.logs }).toml.telemetry ?? {})).toEqual([
+        "logs",
+      ]);
+    });
+
+    test("writes the deploy region on a target with no region, keeps a target's own region, and adds no default target", () => {
+      const { region: _region, ...logs } = TELEMETRY.logs;
+
+      expect(rendered({ logs, "x-ray": TELEMETRY["x-ray"] }, "ap-south-1").toml.telemetry).toEqual({
+        logs: { ...TELEMETRY.logs, region: "ap-south-1", secret: { ref: "aws://" } },
+        "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+      });
     });
   });
 
@@ -736,9 +944,9 @@ describe("renderAgentCorePack", () => {
     ) as Record<string, any>;
   }
 
-  test("names itself box/agentcore and ships as a support pack", () => {
+  test("names itself @box/agentcore and ships as a support pack", () => {
     const toml = pack([]);
-    expect(toml.pack).toEqual({ name: "box/agentcore", version: 1, kind: "support" });
+    expect(toml.pack).toEqual({ name: "@box/agentcore", version: 1, kind: "support" });
   });
 
   test("declares the gateway URL input from the environment, bounded by a pattern", () => {
@@ -747,6 +955,32 @@ describe("renderAgentCorePack", () => {
     // The input reaches a backend url, so box needs a pattern or values on it.
     expect(typeof inputs.gateway.url.pattern).toBe("string");
     expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
+  });
+
+  test("declares the region input from AWS_REGION, bounded to region names", () => {
+    const { inputs } = pack([]);
+    expect(inputs.aws.region.from).toBe("env:AWS_REGION");
+    // The input reaches a backend's auth.aws.region, so box needs a pattern or values on it.
+    const pattern = new RegExp(`^(?:${inputs.aws.region.pattern})$`);
+    expect(pattern.test("us-west-2")).toBe(true);
+    expect(pattern.test("eu-central-1")).toBe(true);
+    expect(pattern.test("us-west-2.evil.com")).toBe(false);
+  });
+
+  test("declares the runtime's log group and log stream inputs as keys of OTEL_EXPORTER_OTLP_LOGS_HEADERS", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime).toEqual({
+      log_group: {
+        description: "The runtime's own CloudWatch Logs log group.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-group",
+      },
+      log_stream: {
+        description: "The runtime's own CloudWatch Logs log stream.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-stream",
+      },
+    });
   });
 
   test("declares one input per memory and carries each ID into the agent's environment", () => {
@@ -767,8 +1001,8 @@ describe("renderAgentCorePack", () => {
 describe("renderAgentCoreCodeZipPack", () => {
   const toml = () => parse(renderAgentCoreCodeZipPack()) as Record<string, any>;
 
-  test("names itself box/agentcore-codezip and ships as a support pack", () => {
-    expect(toml().pack).toEqual({ name: "box/agentcore-codezip", version: 1, kind: "support" });
+  test("names itself @box/agentcore-codezip and ships as a support pack", () => {
+    expect(toml().pack).toEqual({ name: "@box/agentcore-codezip", version: 1, kind: "support" });
   });
 
   test("declares the Runtime Python and code directory from the environment start.py exports", () => {

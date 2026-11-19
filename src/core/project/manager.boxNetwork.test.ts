@@ -10,10 +10,12 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { FsProjectManager } from "./manager";
+import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -28,7 +30,7 @@ const POLICY =
   `@id("httpbin_get") permit (principal, ${HR}, resource) when { context.input.host == "httpbin.org" && context.input.path == "/get" };\n`;
 const GITHUB_ROUTE =
   '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
-/** Box's resolution of the Bedrock route of the profile `create` writes, with box/bedrock. */
+/** Box's resolution of the Bedrock route of the profile `create` writes, with @box/bedrock. */
 const BEDROCK = {
   destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
   secret: { ref: "aws://default" },
@@ -38,7 +40,7 @@ const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_
 const shows = (routes: Record<string, unknown> = {}, policy?: string) =>
   boxShowOf({ egress: { bedrock: BEDROCK, ...routes }, policy });
 /**
- * A fake box that resolves box/bedrock for the Bedrock region of the profile it reads, as box does:
+ * A fake box that resolves @box/bedrock for the Bedrock region of the profile it reads, as box does:
  * its answer's Bedrock host moves from us-west-2 to that region. Records the text of each profile.
  */
 class RegionalBoxProfileResolver extends FakeBoxProfileResolver {
@@ -80,7 +82,10 @@ const GITHUB_KEY = {
 const GATEWAY_BACKEND = (target: string) => [
   {
     url: `\${{ inputs.gateway.url }}/${target}`,
-    auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+    auth: {
+      ref: "aws://",
+      aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+    },
   },
 ];
 
@@ -134,7 +139,11 @@ function countingJson() {
 
 /** A new Strands project, with the Box gateway entry and the box profile `create` writes. */
 async function strandsProject(
-  options: { backends?: { CDK: ProjectBackend }; env?: NodeJS.ProcessEnv } = {},
+  options: {
+    backends?: { CDK: ProjectBackend };
+    env?: NodeJS.ProcessEnv;
+    template?: "agent-python-strands-box" | "agent-python-strands-box-container";
+  } = {},
 ) {
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
@@ -158,9 +167,10 @@ async function strandsProject(
   const { value: created } = await drain(
     manager.create({
       name: "demo",
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
-        runtimeName: "agent_python_strands",
-      }),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(
+        options.template ?? "agent-python-strands-box",
+        { runtimeName: "agent_python_strands" },
+      ),
       skipInstall: true,
       skipGit: true,
     }),
@@ -559,9 +569,10 @@ describe("build reads the box profile as box resolves it", () => {
     const profile = await text(root, ".box/agent_python_strands/local/profile.toml");
     await writeFile(
       path(root, ".box/agent_python_strands/local/profile.toml"),
-      profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
+      profile.replace('"@box/bedrock"]', '"@box/bedrock", "@box/anthropic"]'),
     );
-    // `box profile show --format json` resolves box/anthropic to this route, with its secret.
+    // `box profile show --format json --full` resolves @box/anthropic to this route, with its
+    // secret.
     box.answer = shows({
       anthropic: {
         destinations: ["api.anthropic.com"],
@@ -590,7 +601,7 @@ describe("build reads the box profile as box resolves it", () => {
   test("stops with box's error when box refuses the profile, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = new InvalidEnvironmentError(
-      "`box profile show .box/agent_python_strands/local/profile.toml --format json` failed in the project (exit code 1)",
+      "`box profile show .box/agent_python_strands/local/profile.toml --format json --full` failed in the project (exit code 1)",
     );
     const spec = await text(root, SPEC);
 
@@ -625,7 +636,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   const TRACES_STATEMENT = {
     Sid: "BoxTelemetryToXRay",
     Effect: "Allow",
-    Action: ["xray:PutSpans"],
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
     Resource: "*",
   };
   const ADDED =
@@ -699,7 +710,10 @@ describe("build writes the telemetry policy of the box profile", () => {
 
   test("writes no file and lists nothing when the profile sends no telemetry to CloudWatch", async () => {
     const { manager, root, box } = await strandsProject();
-    box.answer = showsTelemetry({ langfuse: { kind: "langfuse", secret: { ref: "env://KEY" } } });
+    // A third-party target with no key needs no grant.
+    box.answer = showsTelemetry({
+      collector: { kind: "otlp", destination: "https://collector.example.com" },
+    });
 
     const { steps } = await build(manager, root);
 
@@ -723,6 +737,226 @@ describe("build writes the telemetry policy of the box profile", () => {
         "sends no telemetry to CloudWatch",
     );
     expect(steps).toContain(`removing ${TELEMETRY_POLICY}`);
+  });
+
+  describe("for a target with no region", () => {
+    const { region: _region, ...REGIONLESS_LOGS } = LOGS;
+    const logsIn = (region: string) => ({ ...LOGS, region, secret: { ref: "aws://" } });
+    const statementIn = (region: string) => ({
+      ...LOGS_STATEMENT,
+      Resource: [`arn:aws:logs:${region}:*:log-group:my-group:log-stream:my-stream`],
+    });
+    const DEFAULT_TARGET = [{ name: "default", account: "111122223333", region: "eu-west-1" }];
+
+    test("sets the region build builds for in the Runtime profile and the grant, adds no default target, and warns that dev needs a region", async () => {
+      const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+      box.answer = showsTelemetry({ logs: REGIONLESS_LOGS });
+
+      const { warnings } = await build(manager, root);
+
+      expect((await runtimeProfile(root)).telemetry).toEqual({ logs: logsIn("eu-central-1") });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("eu-central-1"),
+      ]);
+      expect(warnings).toContain(
+        ".box/agent_python_strands/local/profile.toml: [telemetry.logs] has no region, so build " +
+          "sets eu-central-1, the deploy region, in the AgentCore Runtime profile. Box refuses a " +
+          "CloudWatch target with no region, so `agentcore dev` cannot run this profile until " +
+          "you add region to it.",
+      );
+    });
+
+    test("on build, sets the region of the default deploy target, and keeps the Bedrock region and a target's own region", async () => {
+      const { manager, root, box } = await strandsProject();
+      box.answer = showsTelemetry({ logs: REGIONLESS_LOGS, traces: TRACES });
+      await writeFile(path(root, "agentcore/aws-targets.json"), JSON.stringify(DEFAULT_TARGET));
+
+      await build(manager, root);
+
+      const profile = await runtimeProfile(root);
+      expect(profile.telemetry).toEqual({
+        logs: logsIn("eu-west-1"),
+        traces: { ...TRACES, secret: { ref: "aws://" } },
+      });
+      expect(profile.options).toEqual({ bedrock: { region: "us-west-2" } });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("eu-west-1"),
+        TRACES_STATEMENT,
+      ]);
+    });
+
+    test("on deploy, sets the region of its target", async () => {
+      const calls: DeployBackendInput[] = [];
+      const backend: ProjectBackend = {
+        async *build() {},
+        async *deploy(_project, input) {
+          calls.push(input);
+          yield { type: "step", message: "deploying" };
+          return { outputs: {} };
+        },
+        async resolveDeployedResources() {
+          return [];
+        },
+        async resolveProjectResources() {
+          return [];
+        },
+      };
+      const { manager, root, box } = await strandsProject({ backends: { CDK: backend } });
+      box.answer = showsTelemetry({ logs: REGIONLESS_LOGS });
+      await writeFile(
+        path(root, "agentcore/aws-targets.json"),
+        JSON.stringify([
+          ...DEFAULT_TARGET,
+          { name: "primary", account: "111122223333", region: "ap-south-1" },
+        ]),
+      );
+
+      const project = (await manager.resolve({ filePath: root })) as Project;
+      await drain(
+        manager.deploy(project, {
+          target: "primary",
+          region: "us-west-2",
+          confirmTeardown: async () => false,
+        }),
+      );
+
+      const [network] = calls[0]!.boxNetworks;
+      const runtime = project.spec.runtimes[0]!;
+      expect(parse(renderRuntimeBoxProfile(project.spec, runtime, network)).telemetry).toEqual({
+        logs: logsIn("ap-south-1"),
+      });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("ap-south-1"),
+      ]);
+    });
+  });
+});
+
+describe("build moves the key of a third-party telemetry target to AWS Secrets Manager", () => {
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
+  const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
+  const SECRET = "agentcore/demo/agent_python_strands/box";
+  /** The switch that turns the move on, which is off by default. */
+  const ON = { AGENTCORE_BOX_SECRETS_MANAGER: "1" };
+  const VARIABLE = "AGENTCORE_CREDENTIAL_AGENT_PYTHON_STRANDS_TELEMETRY_LANGSMITH";
+  /** A stand-in key, which the test looks for in each file build writes. */
+  const KEY = "dummy-langsmith-key";
+  const LANGSMITH = {
+    kind: "langsmith",
+    project: "box",
+    include: ["trace"],
+    secret: { ref: "env://LANGSMITH_KEY" },
+  };
+  /**
+   * The default target of the Runtime profile, as the box profile has no cloudwatch_logs target:
+   * the runtime's own log group and log stream, which box reads when the run starts.
+   */
+  const DEFAULT_TARGET = {
+    kind: "cloudwatch_logs",
+    region: "${{ inputs.aws.region }}",
+    log_group: "${{ inputs.runtime.log_group }}",
+    log_stream: "${{ inputs.runtime.log_stream }}",
+    include: ["deny", "permit", "trace"],
+    secret: { ref: "aws://" },
+  };
+
+  const showsTelemetry = (telemetry: Record<string, unknown>) => {
+    const answer = shows();
+    return { ...answer, boxToml: { ...answer.boxToml, telemetry } };
+  };
+
+  test("names the secret in the Runtime profile, and lets the execution role read it alone", async () => {
+    const { manager, root, box } = await strandsProject({
+      env: { ...ON, LANGSMITH_KEY: KEY },
+      template: "agent-python-strands-box-container",
+    });
+    box.answer = showsTelemetry({ langsmith: LANGSMITH });
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toEqual({
+      agentcore: DEFAULT_TARGET,
+      langsmith: {
+        kind: "langsmith",
+        project: "box",
+        include: ["trace"],
+        secret: { ref: `aws-secretsmanager://${SECRET}#telemetry.langsmith` },
+      },
+    });
+    expect(profile.plugins).toEqual(["@box/aws-secrets-manager"]);
+    // The image installs the AWS CLI, which box runs to read the key.
+    expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).toContain(
+      "AWS_CLI_URL=https://awscli.amazonaws.com/awscli-exe-linux-aarch64-",
+    );
+    expect(JSON.parse(await text(root, TELEMETRY_POLICY))).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "BoxTelemetrySecrets",
+          Effect: "Allow",
+          Action: ["secretsmanager:GetSecretValue"],
+          Resource: [`arn:aws:secretsmanager:us-west-2:*:secret:${SECRET}-??????`],
+        },
+      ],
+    });
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.runtimes[0].additionalPolicies).toEqual([ENTRY]);
+    // Deploy reads the key from .env.local; build copies it there from the profile's variable.
+    expect(steps).toContain(`writing ${VARIABLE} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect(await text(root, "agentcore/.env.local")).toMatch(new RegExp(`^${VARIABLE}=.`, "m"));
+    const staged = [RUNTIME_PROFILE, ".box/agent_python_strands/aws/profile.toml"];
+    for (const file of [...staged, SPEC, TELEMETRY_POLICY]) {
+      expect(await text(root, file)).not.toContain(KEY);
+    }
+    // The target declares no credential: deploy writes a secret, not an Identity provider.
+    expect(spec.credentials).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  test("keeps today's Runtime profile with the switch off, and says why", async () => {
+    const { manager, root, box } = await strandsProject({
+      env: { LANGSMITH_KEY: KEY },
+      template: "agent-python-strands-box-container",
+    });
+    box.answer = showsTelemetry({ langsmith: LANGSMITH });
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+    expect(profile.plugins).toBeUndefined();
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect(steps.filter((step) => step.includes(VARIABLE))).toEqual([]);
+    expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).not.toContain(
+      "AWS_CLI",
+    );
+    expect(warnings).toContain(
+      ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
+        "[telemetry.langsmith]: on AgentCore Runtime, Box reads its key from AWS Secrets Manager, " +
+        "and no Box release for Linux can do that yet. To try a box build that can, set " +
+        "AGENTCORE_BOX_SECRETS_MANAGER=1.",
+    );
+  });
+
+  test("leaves out a target whose key the Runtime has no source for, and says so", async () => {
+    const { manager, root, box } = await strandsProject({ env: ON });
+    const collector = {
+      kind: "otlp",
+      destination: "https://collector.example.com",
+      secret: { ref: "aws://my-profile" },
+    };
+    box.answer = showsTelemetry({ collector });
+
+    const { warnings } = await build(manager, root);
+
+    expect((await runtimeProfile(root)).telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect(warnings).toContain(
+      ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
+        "[telemetry.collector]: its `secret.ref` names no `env://` or `secret://` variable, and " +
+        "build moves only such a key to AWS Secrets Manager.",
+    );
   });
 });
 
@@ -752,7 +986,10 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
     const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
     expect(egress.bedrock!.destinations).toEqual(["bedrock-runtime.eu-central-1.amazonaws.com"]);
-    expect(JSON.stringify(egress.bedrock!.backends)).toContain('"region":"eu-central-1"');
+    // The backend signs for the Runtime's own region, which box reads from AWS_REGION there.
+    expect(JSON.stringify(egress.bedrock!.backends)).toContain(
+      '"region":"${{ inputs.aws.region }}"',
+    );
   });
 
   /** Sets the profile's Bedrock region, as a user does to call Bedrock elsewhere under dev. */
@@ -770,7 +1007,7 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
     await build(manager, root);
 
-    // box/bedrock's route is for eu-central-1, so the bedrock target serves it, and no
+    // @box/bedrock's route is for eu-central-1, so the bedrock target serves it, and no
     // egress-bedrock target is added for the us-west-2 host that `agentcore dev` calls.
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     const [call] = box.calls;
@@ -898,5 +1135,56 @@ describe("deploy writes the Box network before the backend deploys", () => {
     });
     expect(calls[0]!.input.boxNetworks.map(({ gateway: name }) => name)).toEqual([GATEWAY]);
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
+  });
+
+  test("moves the Memory policy with the agentcore target to the region of its target", async () => {
+    const backend: ProjectBackend = {
+      async *build() {},
+      async *deploy() {
+        yield { type: "step", message: "deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const { manager, root } = await strandsProject({ backends: { CDK: backend } });
+    const memoryStatements = async () =>
+      JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
+    const agentcoreAuth = async () =>
+      (await boxGateway(root)).targets.find(({ name }) => name === "agentcore")?.outboundAuth;
+    const statementsFor = (region: string) => [
+      expect.objectContaining({
+        Resource: [
+          `arn:aws:bedrock-agentcore:${region}:*:memory/demo_*agent_python_strandsMemory-*`,
+        ],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ];
+    await build(manager, root);
+    expect(await agentcoreAuth()).toMatchObject({ region: "us-west-2" });
+    expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    await writeFile(
+      path(root, "agentcore/aws-targets.json"),
+      JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),
+    );
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    const { steps } = await drain(
+      manager.deploy(project, {
+        target: "primary",
+        region: "us-west-2",
+        confirmTeardown: async () => false,
+      }),
+    );
+
+    expect(steps).toContain(
+      `updating gateway target 'agentcore' of '${GATEWAY}' from us-west-2 to eu-west-1`,
+    );
+    expect(await agentcoreAuth()).toMatchObject({ region: "eu-west-1" });
+    expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
   });
 });

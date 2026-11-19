@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
@@ -57,10 +58,12 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
+import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
 import { createProjectTree } from "./templates/project";
 import {
   boxLocalProfilePath,
   boxProfileWarnings,
+  boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
   startsInBoxOnCodeZip,
@@ -906,12 +909,19 @@ export class FsProjectManager implements ProjectManager {
         // not left without one. Create writes the first runtime's profile on its own path.
         const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
         if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
+          const profilePath = boxLocalProfilePath(project.rootPath, addedRuntimeInput.runtimeName);
+          const agentBoxDir = dirname(dirname(profilePath));
+          const agentBoxDirExisted = existsSync(agentBoxDir);
+          const profileExisted = existsSync(profilePath);
           yield* this.writeBoxProfile(
             project.rootPath,
             projectSpec.name,
             addedRuntimeInput,
             await this.boxBuildRegion(),
           );
+          // Removed with the runtime's folder if the spec does not commit, so a retry writes it anew.
+          if (!agentBoxDirExisted) scaffoldedPaths.push(agentBoxDir);
+          else if (!profileExisted) scaffoldedPaths.push(profilePath);
         }
         break;
       }
@@ -1597,9 +1607,27 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
+    const region = await this.boxBuildRegion();
+    const boxed = await this.applyBoxNetwork(
+      synced.project,
+      "build",
+      region,
+      await this.boxDeployRegion(synced.project, region),
+    );
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
+  }
+
+  /**
+   * The region `agentcore build` sets on each CloudWatch target of a box profile that names no
+   * region: that of the `default` target of aws-targets.json, which `agentcore deploy` deploys to
+   * with no --target, else `buildRegion`, which the first deploy gives that target. Deploy uses its
+   * own target's region.
+   */
+  private async boxDeployRegion(project: Project, buildRegion: string): Promise<string> {
+    if (!isBoxProject(project.spec)) return buildRegion;
+    const targets = await this.listTargets(project);
+    return targets.find(({ name }) => name === DEFAULT_TARGET_NAME)?.region ?? buildRegion;
   }
 
   /**
@@ -1619,23 +1647,27 @@ export class FsProjectManager implements ProjectManager {
 
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --format json`), then writes what the Box network writers derive from it, before
+   * (`box profile show --format json --full`), then writes what the Box network writers derive from it, before
    * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
    * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
    * survive and checked against the schema first, then the files, then `.env.local`. The Bedrock
-   * and Memory targets, and Box's resolution of the profile, are for `region`. A failure of any
-   * model stops `command` before anything of the box profile is written.
+   * and Memory targets, and Box's resolution of the profile, are for `region`, and a CloudWatch
+   * target with no region gets `deployRegion`. A failure of any model stops `command` before
+   * anything of the box profile is written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
     region: string,
+    deployRegion: string = region,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
       this.boxProfileResolver,
       region,
+      boxSecretsManagerEnabled(this.processEnv),
+      deployRegion,
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
@@ -2120,10 +2152,14 @@ export class FsProjectManager implements ProjectManager {
     if (existsSync(join(appDir, "pyproject.toml"))) {
       await this.checkTool("uv", UV_INSTALL_HINT);
       yield { type: "step", message: "syncing Python dependencies with uv" };
-      // A boxed agent's profile grants exec only on the uv-managed Pythons, so its venv must link
-      // to one of them, not to a Homebrew or system Python that uv would otherwise pick.
+      // A boxed CodeZip agent's profile grants exec only on the uv-managed Pythons in uv's default
+      // folder, so its venv must link to one there, not to a Homebrew or system Python, or to a
+      // Python in the user's own UV_PYTHON_INSTALL_DIR. A box container's image builds its own
+      // venv, so its host venv may use any Python.
       const env =
-        input && hasBoxProfile(input) ? { ...this.processEnv, UV_MANAGED_PYTHON: "1" } : undefined;
+        input && startsInBoxOnCodeZip(input)
+          ? { ...this.processEnv, ...boxUvSyncEnv(homedir()) }
+          : undefined;
       yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
       await this.checkTool("npm", NODE_INSTALL_HINT);

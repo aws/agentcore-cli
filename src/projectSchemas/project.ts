@@ -170,11 +170,11 @@ export const ProjectSpecSchema = z
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     /**
-     * `"box"` for a Box project. `agentcore create` writes it into every new project, and the CDK
-     * library then adds one Box gateway for each runtime: logical name `<runtime>-box`, `AWS_IAM`
-     * auth, `protocolType: "None"`. A gateway entry with that name only adds targets to it. No default: the spec
-     * is written back to disk after each parse, so a default would add the field to every
-     * existing project.
+     * `"box"` for a Box project. `agentcore create` writes it only for a project made from a box
+     * template, and the CDK library then adds one Box gateway for each runtime: logical name
+     * `<runtime>-box`, `AWS_IAM` auth, `protocolType: "None"`. A gateway entry with that name only
+     * adds targets to it. No default: the spec is written back to disk after each parse, so a
+     * default would add the field to every existing project.
      */
     projectType: ProjectTypeSchema.optional(),
     secureVpc: SecureVpcSchema.optional(),

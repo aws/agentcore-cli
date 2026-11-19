@@ -135,10 +135,12 @@ function input(
   root: string,
   projectRuntime: ProjectRuntime,
   signal = new AbortController().signal,
+  boxProject = true,
 ): DevServerInput {
   return {
     runtime: projectRuntime,
     projectRoot: root,
+    boxProject,
     port: 3000,
     env: { API_KEY: "super-secret" },
     signal,
@@ -845,8 +847,12 @@ describe("ContainerDevRunner", () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { calls, runner } = harness({ processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
+      expect(events).toContainEqual({
+        type: "status",
+        message: `Staged box for the image in ${join(context, ".box-dist")}`,
+      });
       // Without build secrets the build is unchanged.
       expect(commandCall(calls, "build").command).toEqual([
         "docker",
@@ -937,6 +943,62 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(context, ".box-dev"))).toBe(false);
     });
 
+    test('refuses an image that installs box when agentcore.json has no "projectType": "box"', async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(
+        runner.run(input(root, projectRuntime, undefined, /* boxProject */ false)),
+      ).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toContain(
+        'runs its agent in a box (its Dockerfile installs box), but agentcore.json has no "projectType": "box"',
+      );
+      expect(calls.map(({ command }) => command[1])).not.toContain("build");
+      expect(calls.map(({ command }) => command[1])).not.toContain("run");
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+    });
+
+    test("hands box in the container the profile's env:// key from the shell, through the run's env file", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell", UNRELATED: "x" },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      const forwarded = parseEnv(run.envFile!.contents);
+      expect(forwarded.GITHUB_TOKEN).toBe("ghp_shell");
+      // Only the keys the profile names, not the rest of the shell.
+      expect(forwarded.UNRELATED).toBeUndefined();
+      // Passed through the env file, never on the command line, and written to no .env.local.
+      expect(run.command.join(" ")).not.toContain("ghp_shell");
+      expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
+    });
+
+    test("warns when the profile's env:// key is not set, before the container's box reports it", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message: expect.stringContaining(
+          "reads GITHUB_TOKEN for [egress.github], but it is not set",
+        ),
+      });
+      expect(commandCall(calls, "run")).toBeDefined();
+    });
+
     test("stages box of the runtime's box.version", async () => {
       const { projectRuntime, root } = await boxedScene();
       const { boxVersions, runner } = harness({ processEnv: credentials });
@@ -952,10 +1014,13 @@ describe("ContainerDevRunner", () => {
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
+      expect(
+        events.some((event) => event.type === "status" && event.message.startsWith("Staged box")),
+      ).toBe(false);
     });
 
     test.each([
@@ -1039,9 +1104,35 @@ describe("ContainerDevRunner", () => {
       await mkdir(awsDirectory);
       const { calls, runner } = harness({ awsDirectory, processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
       expect(commandCall(calls, "run").command).toContain(`${awsDirectory}:/aws-config:ro`);
+      expect(events).toContainEqual({
+        type: "status",
+        message: expect.stringContaining("No AWS credentials resolved for box"),
+      });
+    });
+
+    test("removes the credentials folder when the consumer stops at its status line", async () => {
+      const { projectRuntime, root } = await boxedScene();
+      const { calls, runner } = harness({
+        processEnv: credentials,
+        resolveAwsCredentials: async () => ({
+          accessKeyId: "AKIDEXAMPLE",
+          secretAccessKey: "secret-example",
+        }),
+      });
+      const iterator = runner.run(input(root, projectRuntime));
+      let next = await iterator.next();
+      while (!next.done && !("message" in next.value && next.value.message.startsWith("Passing"))) {
+        next = await iterator.next();
+      }
+      expect(next.done).toBe(false);
+      await iterator.return(undefined);
+
+      // The cleanup ran, which removes the credentials folder too, though the container never ran.
+      expect(commandCall(calls, "stop")).toBeDefined();
+      expect(calls.some(({ command }) => command[1] === "run")).toBe(false);
     });
 
     test("leaves an image without box on ~/.aws, without resolving credentials", async () => {

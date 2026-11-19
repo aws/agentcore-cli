@@ -13,7 +13,12 @@ import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors"
 import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
 import { BOX_GATEWAY_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
-import { boxLocalDir, boxLocalProfileFile, boxLocalProfilePath } from "./templates/boxProfile";
+import {
+  BOX_BEDROCK_PACK,
+  boxLocalDir,
+  boxLocalProfileFile,
+  boxLocalProfilePath,
+} from "./templates/boxProfile";
 import {
   buildBoxNetwork,
   parseResolvedPolicy,
@@ -36,14 +41,17 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
 
 /**
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
- * own local box profile as `resolver` resolves it for a build in `region`. A project with no box
- * runtime resolves nothing, and an agent with no local box profile resolves no profile.
+ * own local box profile as `resolver` resolves it for a build in `region`. A CloudWatch target with
+ * no region gets `deployRegion`, the region of the deploy target. A project with no box runtime
+ * resolves nothing, and an agent with no local box profile resolves no profile.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,
   projectRoot: string,
   resolver: BoxProfileResolver,
   region: string = BOX_GATEWAY_BEDROCK_REGION,
+  secretsManager = false,
+  deployRegion: string = region,
 ): Promise<BoxNetwork[]> {
   const runtimes = isBoxProject(spec)
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
@@ -70,8 +78,10 @@ export async function readBoxNetworks(
       runtime,
       gateway,
       region,
+      deployRegion,
       targets: entry?.targets ?? [],
       grantedActions: granted.actions,
+      secretsManager,
     });
     networks.push({ ...network, warnings: [...network.warnings, ...granted.warnings] });
   }
@@ -118,6 +128,7 @@ async function readResolvedPolicy(
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
   if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
+  refuseOldShippedNames(text, profileFile);
   const named = profilePolicyFiles(text, profileFile);
   const places = profilePlaces(text, profileFile);
   const files = readPolicyFiles(
@@ -127,7 +138,7 @@ async function readResolvedPolicy(
     places.policies,
   );
   // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so Box
-  // resolves box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
+  // resolves @box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
@@ -148,14 +159,43 @@ async function readResolvedPolicy(
   };
 }
 
+/** The old name of a pack or a plugin that box ships, before box named them `@box/<name>`. */
+const OLD_SHIPPED_NAME = /^box\/[^/]+$/;
+
+/**
+ * Throws when the `packs` or `plugins` of the box profile `text` at `profileFile` name a pack or a
+ * plugin that box ships by its old `box/<name>` name, which box refuses. The message names each old
+ * name and its `@box/<name>` name. Box reports a profile that is not TOML itself.
+ */
+function refuseOldShippedNames(text: string, profileFile: string): void {
+  let table: Record<string, unknown>;
+  try {
+    table = parseToml(text) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  const names = [table.packs, table.plugins].flatMap((list) => (Array.isArray(list) ? list : []));
+  const old = [
+    ...new Set(
+      names.filter(
+        (name): name is string => typeof name === "string" && OLD_SHIPPED_NAME.test(name),
+      ),
+    ),
+  ];
+  if (old.length === 0) return;
+  const changes = old.map((name) => `"${name}" to "@${name}"`);
+  throw new ProjectStateError(
+    `The box profile ${profileFile} names ${old.map((name) => `"${name}"`).join(", ")}. Box now ` +
+      'names each pack and plugin that it ships "@box/<name>", and it refuses the old "box/<name>" ' +
+      `name. In ${profileFile}, change ${changes.join(", ")}, then build again.`,
+  );
+}
+
 /** The text of the local box profile of `agentName`, or `undefined` when the agent has none. */
 function profileText(projectRoot: string, agentName: string): string | undefined {
   const path = boxLocalProfilePath(projectRoot, agentName);
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
-
-/** The pack whose `[options] bedrock.region` the AgentCore Runtime profile sets. */
-const BOX_BEDROCK_PACK = "box/bedrock";
 
 const isTable = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -170,7 +210,7 @@ function bedrockRegionOf(table: Record<string, unknown>): unknown {
 
 /**
  * The box profile `text` with `[options] bedrock.region` set to `region`, as the AgentCore Runtime
- * profile sets it, or `undefined` when the profile imports no box/bedrock or already has that
+ * profile sets it, or `undefined` when the profile imports no @box/bedrock or already has that
  * region. An edit of the line that sets the region keeps every other line where it is.
  */
 function profileForRegion(text: string, region: string): string | undefined {

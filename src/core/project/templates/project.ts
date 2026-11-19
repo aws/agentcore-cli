@@ -59,8 +59,8 @@ export async function createProjectTree(
           ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
           ...mergeSpecEntries([
             ...templates.map(({ spec }) => spec),
-            // The entry that adds the template's targets (a model endpoint) to the runtime's
-            // Box gateway. It sits in agentCoreGateways, not in the template's runtime files.
+            // The runtime's Box gateway entry, with no targets; build adds the model target. It
+            // sits in agentCoreGateways, not in the template's runtime files.
             ...(options?.runtime?.boxGatewayEntry
               ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
               : []),
@@ -88,7 +88,7 @@ export async function createProjectTree(
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
   // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
-  // Python and code paths the box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+  // Python and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
   template.tree.children.push(
     FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
       config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
