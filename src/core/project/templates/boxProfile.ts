@@ -91,50 +91,42 @@ const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
  */
 const RUNTIME_AWS_SIGNER = "aws://";
 
-/** The log stream of the Box telemetry log group that the CDK creates for each box runtime. */
-export const BOX_TELEMETRY_LOG_STREAM = "box";
+/**
+ * The variable in which AgentCore Runtime names the runtime's own log group and log stream, as
+ * `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
+ */
+const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
 /** The signal groups that the default CloudWatch Logs target of a Runtime profile receives. */
 const DEFAULT_TELEMETRY_INCLUDE = ["deny", "permit", "trace"] as const;
 
 /**
- * The Box telemetry log group that the CDK creates for runtime `runtimeName` of project
- * `projectName`. Box reads a telemetry target only as literal text, so build writes the name.
+ * The default CloudWatch Logs target of a Runtime profile: the runtime's own log group and log
+ * stream, in its own region. The runtime ID exists only after deploy, so box reads the three
+ * values through the inputs of {@link renderAgentCorePack} when the run starts.
  */
-export function boxTelemetryLogGroup(projectName: string, runtimeName: string): string {
-  return `/aws/bedrock-agentcore/box/${projectName}/${runtimeName}`;
-}
+const DEFAULT_TELEMETRY_TARGET = {
+  kind: "cloudwatch_logs",
+  region: "${{ inputs.aws.region }}",
+  logGroup: "${{ inputs.runtime.log_group }}",
+  logStream: "${{ inputs.runtime.log_stream }}",
+  include: DEFAULT_TELEMETRY_INCLUDE,
+} as const;
 
 /**
- * The CloudWatch targets of the Runtime profile of `runtime`: those of its box profile, and, when
- * none of them is a `cloudwatch_logs` target, the runtime's Box telemetry log group in `region`,
- * under a name that no CloudWatch target and no `thirdParty` target of the profile has.
+ * The CloudWatch targets of a Runtime profile: those of its box profile, and, when none of them is
+ * a `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET}, under a name that no CloudWatch
+ * target and no `thirdParty` target of the profile has.
  */
 export function runtimeTelemetryTargets(
-  spec: ProjectSpec,
-  runtime: ProjectRuntime,
   telemetry: readonly CloudWatchTelemetry[] = [],
-  region: string = BOX_GATEWAY_BEDROCK_REGION,
   thirdParty: readonly ThirdPartyTelemetry[] = [],
 ): { readonly target: CloudWatchTelemetry; readonly isDefault: boolean }[] {
   const own = telemetry.map((target) => ({ target, isDefault: false }));
   if (telemetry.some(({ kind }) => kind === "cloudwatch_logs")) return own;
   const names = new Set([...telemetry, ...thirdParty].map(({ name }) => name));
   const name = names.has("agentcore") ? "agentcore_default" : "agentcore";
-  return [
-    ...own,
-    {
-      target: {
-        name,
-        kind: "cloudwatch_logs",
-        region,
-        logGroup: boxTelemetryLogGroup(spec.name, runtime.name),
-        logStream: BOX_TELEMETRY_LOG_STREAM,
-        include: DEFAULT_TELEMETRY_INCLUDE,
-      },
-      isDefault: true,
-    },
-  ];
+  return [...own, { target: { name, ...DEFAULT_TELEMETRY_TARGET }, isDefault: true }];
 }
 
 /**
@@ -715,8 +707,9 @@ function runtimeTelemetrySection(
   const include = target.include ? `include = ${list([...target.include])}\n` : "";
   const key = tomlKey(target.name);
   const comment = isDefault
-    ? "# The default CloudWatch Logs target: the runtime's Box telemetry log group, which the CDK\n" +
-      `# creates, signed with the execution role. Add a cloudwatch_logs target to ${profileFile} to use another.`
+    ? "# The default CloudWatch Logs target: the runtime's own log group and log stream, which box\n" +
+      `# reads from ${RUNTIME_LOGS_HEADERS_ENV} when the run starts, signed with the execution role.\n` +
+      `# Add a cloudwatch_logs target to ${profileFile} to use another.`
     : `# The [telemetry.${key}] target of ${profileFile}, signed with the execution role.`;
   return `
 ${comment}
@@ -802,13 +795,7 @@ export function renderRuntimeBoxProfile(
   const profileFile = boxLocalProfileFile(runtime.name);
   return (
     profile +
-    runtimeTelemetryTargets(
-      spec,
-      runtime,
-      network?.telemetry,
-      network?.region,
-      network?.thirdPartyTelemetry,
-    )
+    runtimeTelemetryTargets(network?.telemetry, network?.thirdPartyTelemetry)
       .map(({ target, isDefault }) => runtimeTelemetrySection(target, profileFile, isDefault))
       .join("") +
     (network?.thirdPartyTelemetry ?? [])
@@ -875,8 +862,10 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
  * The `box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
  * reads from the environment the Runtime sets after deploy. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
- * profile expects. One input per project memory carries its ID into the agent's environment. box
- * finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
+ * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
+ * {@link RUNTIME_LOGS_HEADERS_ENV}, for {@link DEFAULT_TELEMETRY_TARGET}. One input per project
+ * memory carries its ID into the agent's environment. box finds the pack beside its binary at
+ * {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
  */
 export function renderAgentCorePack(spec: ProjectSpec): string {
   const memories = spec.memories ?? [];
@@ -912,7 +901,19 @@ pattern = ${str(GATEWAY_URL_PATTERN)}
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
-pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
+pattern = ${str(AWS_REGION_PATTERN)}
+
+# The runtime's own log group and log stream, for the default telemetry target. The runtime ID
+# exists only after deploy, and the Runtime names both in ${RUNTIME_LOGS_HEADERS_ENV}.
+[inputs.runtime.log_group]
+description = "The runtime's own CloudWatch Logs log group."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-group"
+
+[inputs.runtime.log_stream]
+description = "The runtime's own CloudWatch Logs log stream."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-stream"${memoryInputs}
 ${agentEnv}`;
 }
 

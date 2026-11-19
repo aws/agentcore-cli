@@ -847,12 +847,15 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     include: ["trace"],
     secret: { ref: "env://LANGSMITH_KEY" },
   };
-  /** The default target of the Runtime profile, as the box profile has no cloudwatch_logs target. */
+  /**
+   * The default target of the Runtime profile, as the box profile has no cloudwatch_logs target:
+   * the runtime's own log group and log stream, which box reads when the run starts.
+   */
   const DEFAULT_TARGET = {
     kind: "cloudwatch_logs",
-    region: "us-west-2",
-    log_group: "/aws/bedrock-agentcore/box/demo/agent_python_strands",
-    log_stream: "box",
+    region: "${{ inputs.aws.region }}",
+    log_group: "${{ inputs.runtime.log_group }}",
+    log_stream: "${{ inputs.runtime.log_stream }}",
     include: ["deny", "permit", "trace"],
     secret: { ref: "aws://" },
   };

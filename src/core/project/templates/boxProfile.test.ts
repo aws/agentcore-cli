@@ -18,8 +18,6 @@ import {
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
-  BOX_TELEMETRY_LOG_STREAM,
-  boxTelemetryLogGroup,
   boxProfileWarnings,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
@@ -684,17 +682,17 @@ describe("renderRuntimeBoxProfile", () => {
       });
       return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
     };
-    /** The default target of the Runtime profile: the runtime's Box telemetry log group. */
-    const defaultTarget = (region: string) => {
-      const project = spec([bedrock]);
-      return {
-        kind: "cloudwatch_logs",
-        region,
-        log_group: boxTelemetryLogGroup(project.name, project.runtimes[0]!.name),
-        log_stream: BOX_TELEMETRY_LOG_STREAM,
-        include: ["deny", "permit", "trace"],
-        secret: { ref: "aws://" },
-      };
+    /**
+     * The default target of the Runtime profile: the runtime's own log group and log stream, in its
+     * own region, which box reads through the inputs of the box/agentcore pack.
+     */
+    const DEFAULT_TARGET = {
+      kind: "cloudwatch_logs",
+      region: "${{ inputs.aws.region }}",
+      log_group: "${{ inputs.runtime.log_group }}",
+      log_stream: "${{ inputs.runtime.log_stream }}",
+      include: ["deny", "permit", "trace"],
+      secret: { ref: "aws://" },
     };
 
     test("copies each CloudWatch target with its keys, signed with a bare aws://", () => {
@@ -727,7 +725,7 @@ describe("renderRuntimeBoxProfile", () => {
 
       expect(
         rendered({ records, collector, langfuse, langsmith }, "eu-west-1").toml.telemetry,
-      ).toEqual({ agentcore: defaultTarget("eu-west-1") });
+      ).toEqual({ agentcore: DEFAULT_TARGET });
     });
 
     test("copies each third-party target, and names its key's secret in AWS Secrets Manager", () => {
@@ -753,7 +751,7 @@ describe("renderRuntimeBoxProfile", () => {
 
       expect((parse(text) as { telemetry?: unknown }).telemetry).toEqual({
         // The profile has no cloudwatch_logs target, so the Runtime profile adds the default one.
-        agentcore: defaultTarget("eu-west-1"),
+        agentcore: DEFAULT_TARGET,
         langfuse: { kind: "langfuse", secret: { ref: secret("langfuse") } },
         langsmith: { kind: "langsmith", secret: { ref: secret("langsmith") } },
         collector: { ...collector, secret: { ...collector.secret, ref: secret("collector") } },
@@ -803,20 +801,56 @@ describe("renderRuntimeBoxProfile", () => {
       expect(
         rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }, "eu-west-1").toml
           .telemetry,
-      ).toEqual({ agentcore: defaultTarget("eu-west-1") });
+      ).toEqual({ agentcore: DEFAULT_TARGET });
     });
 
-    test("sends to the runtime's Box telemetry log group when the profile has no [telemetry]", () => {
+    test("sends to the runtime's own log group and stream, read when the run starts, when the profile has no [telemetry]", () => {
       const { text, toml } = rendered({}, "ap-south-1");
 
-      expect(toml.telemetry).toEqual({ agentcore: defaultTarget("ap-south-1") });
-      expect(text).toContain("# The default CloudWatch Logs target: the runtime's Box telemetry");
+      expect(toml.telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+      expect(text).toContain(
+        "\n# The default CloudWatch Logs target: the runtime's own log group and log stream, " +
+          "which box\n# reads from OTEL_EXPORTER_OTLP_LOGS_HEADERS when the run starts, signed " +
+          "with the execution role.\n# Add a cloudwatch_logs target to " +
+          ".box/agent/local/profile.toml to use another.\n" +
+          '[telemetry.agentcore]\nkind = "cloudwatch_logs"\n' +
+          'region = "${{ inputs.aws.region }}"\n' +
+          'log_group = "${{ inputs.runtime.log_group }}"\n' +
+          'log_stream = "${{ inputs.runtime.log_stream }}"\n' +
+          'include = ["deny", "permit", "trace"]\nsecret.ref = "aws://"\n',
+      );
+      // The target holds neither the deploy region nor the old Box telemetry log group.
+      expect(text.slice(text.indexOf("[telemetry.agentcore]"))).not.toContain("ap-south-1");
+      expect(text).not.toContain("/aws/bedrock-agentcore/box/");
+    });
+
+    test("reads each value of the default target through an input that the box/agentcore pack declares", () => {
+      const project = spec([bedrock]);
+      const { inputs } = parse(renderAgentCorePack(project)) as {
+        inputs: Record<string, Record<string, unknown>>;
+      };
+      const declared = (placeholder: string) => {
+        const [group, name] = /^\$\{\{ inputs\.([a-z]+)\.([a-z_]+) \}\}$/
+          .exec(placeholder)!
+          .slice(1);
+        return inputs[group!]?.[name!];
+      };
+
+      expect(declared(DEFAULT_TARGET.region)).toMatchObject({ from: "env:AWS_REGION" });
+      expect(declared(DEFAULT_TARGET.log_group)).toMatchObject({
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-group",
+      });
+      expect(declared(DEFAULT_TARGET.log_stream)).toMatchObject({
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-stream",
+      });
     });
 
     test("adds the default target beside a cloudwatch_traces target, as it sends no logs", () => {
       expect(rendered({ "x-ray": TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry).toEqual({
         "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
-        agentcore: defaultTarget("eu-west-1"),
+        agentcore: DEFAULT_TARGET,
       });
     });
 
@@ -824,7 +858,7 @@ describe("renderRuntimeBoxProfile", () => {
       const telemetry = rendered({ agentcore: TELEMETRY["x-ray"] }, "eu-west-1").toml.telemetry;
 
       expect(Object.keys(telemetry ?? {})).toEqual(["agentcore", "agentcore_default"]);
-      expect(telemetry?.agentcore_default).toEqual(defaultTarget("eu-west-1"));
+      expect(telemetry?.agentcore_default).toEqual(DEFAULT_TARGET);
     });
 
     test("names the default target agentcore_default when a third-party target is agentcore", () => {
@@ -839,7 +873,7 @@ describe("renderRuntimeBoxProfile", () => {
 
       expect(text.match(/^\[telemetry\.agentcore\]$/gm)).toHaveLength(1);
       expect(Object.keys(telemetry ?? {})).toEqual(["agentcore_default", "agentcore"]);
-      expect(telemetry?.agentcore_default).toEqual(defaultTarget("eu-west-1"));
+      expect(telemetry?.agentcore_default).toEqual(DEFAULT_TARGET);
       expect(telemetry?.agentcore).toEqual({
         kind: "langfuse",
         secret: {
@@ -931,6 +965,22 @@ describe("renderAgentCorePack", () => {
     expect(pattern.test("us-west-2")).toBe(true);
     expect(pattern.test("eu-central-1")).toBe(true);
     expect(pattern.test("us-west-2.evil.com")).toBe(false);
+  });
+
+  test("declares the runtime's log group and log stream inputs as keys of OTEL_EXPORTER_OTLP_LOGS_HEADERS", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime).toEqual({
+      log_group: {
+        description: "The runtime's own CloudWatch Logs log group.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-group",
+      },
+      log_stream: {
+        description: "The runtime's own CloudWatch Logs log stream.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-stream",
+      },
+    });
   });
 
   test("declares one input per memory and carries each ID into the agent's environment", () => {
