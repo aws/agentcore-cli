@@ -398,7 +398,7 @@ function failureLines(failures: readonly BoxNetworkFailure[]): string[] {
   return unique(sorted.map(({ failure }) => failureLine(failure)));
 }
 
-/** `Build stopped: 2 problems in the Box profile. Nothing was changed.` */
+/** `Build stopped: 2 problems in the Box profile. Build wrote nothing from the Box profile.` */
 function stoppedHeader(
   command: BoxNetworkCommand,
   count: number,
@@ -411,7 +411,7 @@ function stoppedHeader(
   ].filter(Boolean);
   return (
     `${STOPPED[command]} stopped: ${count} ${count === 1 ? "problem" : "problems"} in ` +
-    `${where.join(" and ")}. Nothing was changed.`
+    `${where.join(" and ")}. ${STOPPED[command]} wrote nothing from the Box profile.`
   );
 }
 

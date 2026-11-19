@@ -230,7 +230,7 @@ describe("boxNetworkFailureMessage", () => {
     const networks = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
     expect(boxNetworkFailureMessage(networks, "deploy")).toBe(
-      "Deploy stopped: 1 problem in the Box profile. Nothing was changed.\n" +
+      "Deploy stopped: 1 problem in the Box profile. Deploy wrote nothing from the Box profile.\n" +
         ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
         "Create it, or remove it from `policies`.",
     );
@@ -263,7 +263,7 @@ describe("boxNetworkFailureMessage", () => {
     );
 
     expect(boxNetworkFailureMessage(networks, "build")).toBe(
-      "Build stopped: 2 problems in the Box profile and agentcore.json. Nothing was changed.\n" +
+      "Build stopped: 2 problems in the Box profile and agentcore.json. Build wrote nothing from the Box profile.\n" +
         ".box/profile.toml:1:1  `policies` names missing.dw, but .box/missing.dw does not exist. " +
         "Create it, or remove it from `policies`.\n" +
         "In runtime second:\n" +

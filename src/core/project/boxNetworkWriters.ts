@@ -1,7 +1,8 @@
 /**
- * The writers of the Box network model. Each writer declares the outputs it owns and returns pure
- * edits for exactly those: changes to agentcore.json, files, and `.env.local` entries. One output
- * belongs to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
+ * The writers of the Box network model. Each writer declares the outputs it owns and returns the
+ * edits for exactly those, which {@link boxNetworkEdits} applies in order to one copy of
+ * agentcore.json: changes to agentcore.json, files, and `.env.local` entries. One output belongs
+ * to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
  */
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

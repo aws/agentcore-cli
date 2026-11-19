@@ -5,11 +5,11 @@ export {
   buildBoxNetwork,
   isManagedTarget,
   type BoxEgressAuth,
+  type BoxHostSource,
   type BoxNetwork,
   type BoxNetworkFailure,
   type BoxNetworkHost,
   type BoxNetworkProject,
-  type BoxNetworkSource,
 } from "./network";
 export { parseResolvedPolicy, type ParsedPolicy, type PolicyFileText } from "./policyParser";
 export { gatewayTargetFor } from "./projectSpec";

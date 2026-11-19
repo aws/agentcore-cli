@@ -44,7 +44,7 @@ export type BoxEgressAuth =
     };
 
 /** What names a host: an `[egress]` entry with its destinations there, or a permit. */
-export type BoxNetworkSource =
+export type BoxHostSource =
   | {
       readonly kind: "entry";
       readonly egressEntry: string;
@@ -59,11 +59,14 @@ export interface BoxNetworkHost {
   readonly port?: number;
   /** `host`, or `host:port` for a port other than 443. */
   readonly authority: string;
-  readonly sources: readonly BoxNetworkSource[];
+  readonly sources: readonly BoxHostSource[];
   readonly outboundAuth: BoxEgressAuth;
   /** Whether Box allows at least one request to the host. */
   readonly reachable: boolean;
-  /** The gateway target that serves a reachable host. */
+  /**
+   * The gateway target of a reachable host, also of one whose API key has no credential in
+   * agentcore.json, which the gateway targets writer then skips.
+   */
   readonly target?: string;
   /** How many of the sample requests the analysis evaluated Box allows. */
   readonly allowed: number;

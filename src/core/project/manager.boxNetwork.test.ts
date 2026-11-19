@@ -499,7 +499,7 @@ describe("build writes the Box network of the box profile", () => {
     const spec = await text(root, SPEC);
 
     await expect(build(manager, root)).rejects.toThrow(
-      "Build stopped: 1 problem in agentcore.json. Nothing was changed.\n" +
+      "Build stopped: 1 problem in agentcore.json. Build wrote nothing from the Box profile.\n" +
         "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends no " +
         "credential, and [egress.github] sends the API key credential 'github' in the header " +
         "Authorization with the prefix Bearer. Make the two the same, in agentcore.json or in " +
