@@ -53,12 +53,12 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
-import { planBoxProfileCredentials } from "./boxProfileCredentials";
-import { readBoxEnvRoutes } from "./boxProfileEgress";
+import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
+import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
-  BOX_PROFILE_FILE,
   boxProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
@@ -420,6 +420,11 @@ type ProjectManagerConfig = {
    * egress secrets from; process.env by default.
    */
   processEnv?: NodeJS.ProcessEnv;
+  /**
+   * Resolves the box profile as Box does, for build and deploy to read its network; the `box` on
+   * PATH by default.
+   */
+  boxProfileResolver?: BoxProfileResolver;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -443,6 +448,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly boxProfileResolver: BoxProfileResolver;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -465,6 +471,8 @@ export class FsProjectManager implements ProjectManager {
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
     this.processEnv = config.processEnv ?? process.env;
+    this.boxProfileResolver =
+      config.boxProfileResolver ?? new BoxCliProfileResolver({ env: this.processEnv });
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1553,84 +1561,42 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const routed = await this.addBoxMemoryTarget(synced.project);
-    for (const message of routed.messages) yield { type: "step", message };
-    const credentialed = await this.reconcileBoxProfileCredentials(routed.project);
-    for (const message of credentialed.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(credentialed.project);
+    const boxed = await this.applyBoxNetwork(synced.project, "build");
+    yield* boxed.events;
+    yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
   }
 
   /**
-   * Adds the Box gateway's `agentcore` target, and the policy file that lets
-   * its role call Memory, to agentcore.json when a boxed agent has its default
-   * Memory, before synth reads the file. Patches the raw file, as
-   * syncRuntimeBuilds does, so unknown fields and key order survive. Rewrites
-   * the policy file each time, since the CLI owns it.
+   * Builds the Box network model of each box runtime from the box profile as Box resolves it
+   * (`box profile show --format json --full`), then writes what the Box network writers derive
+   * from it, before synth reads agentcore.json and staging renders each Runtime profile's routes
+   * from its Box gateway's targets: agentcore.json once, patched in the raw file so unknown fields
+   * and key order survive and checked against the schema first, then the files, then
+   * `.env.local`. A failure of any model stops `command` before anything is written.
    */
-  private async addBoxMemoryTarget(
+  private async applyBoxNetwork(
     project: Project,
-  ): Promise<{ project: Project; messages: string[] }> {
-    const spec = structuredClone(project.spec);
-    const messages = addBoxMemoryTarget(spec, project.rootPath);
-    const policy = boxMemoryPolicy(spec, project.rootPath);
-    if (policy) {
-      const policyPath = join(project.rootPath, BOX_MEMORY_POLICY_FILE);
-      if (!existsSync(policyPath)) messages.push(`writing ${BOX_MEMORY_POLICY_FILE}`);
-      await this.json.write(policyPath, policy);
+    command: "build" | "deploy",
+  ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
+    const networks = await readBoxNetworks(project.spec, project.rootPath, this.boxProfileResolver);
+    if (networks.some(({ failures }) => failures.length > 0)) {
+      throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
-    if (messages.length === 0) return { project, messages };
-    const specPath = this.getProjectSpecPath(project);
-    const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-    const updated = {
-      ...raw,
-      projectType: spec.projectType,
-      agentCoreGateways: spec.agentCoreGateways,
-    };
-    const parsed = ProjectSpecSchema.safeParse(updated);
-    if (!parsed.success) {
-      throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
-    }
-    await this.json.write(specPath, updated);
-    return { project: { ...project, spec: parsed.data }, messages };
-  }
-
-  /**
-   * For each `env://` route of the box profile, make sure agentcore.json declares an
-   * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
-   * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
-   * adds one. See {@link planBoxProfileCredentials} for the routes it skips.
-   *
-   * It seeds `.env.local` on every build, not only the build that first adds a credential: for each
-   * route a credential covers, it stores the key under the credential's reserved variable. So a
-   * variable the box already reads (for example `GITHUB_TOKEN`) also reaches deploy, with no second
-   * variable to set. `insertIfNew` never overwrites an existing value. A route whose key build
-   * cannot find gets no credential, so deploy never asks for a key it could not have.
-   */
-  private async reconcileBoxProfileCredentials(
-    project: Project,
-  ): Promise<{ project: Project; messages: string[] }> {
-    const profile = readBoxEnvRoutes(project.rootPath);
-    if (profile === undefined) return { project, messages: [] };
-    if (profile.error !== undefined) {
-      return {
-        project,
-        messages: [
-          `skipping box egress credentials: ${BOX_PROFILE_FILE} does not parse (${profile.error})`,
-        ],
-      };
-    }
-
     const envLocal = new EnvLocalFile(project.rootPath);
-    const spec = structuredClone(project.spec);
-    const { messages, added, entries } = planBoxProfileCredentials(spec, profile.routes, {
+    const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
+      spec: project.spec,
+      projectRoot: project.rootPath,
       env: this.processEnv,
-      envLocal: await envLocal.read(),
+      envLocal: networks.length > 0 ? await envLocal.read() : {},
     });
+    const messages = [...edits.messages];
     let result = project;
-    if (added.length > 0) {
+    if (edits.specChanged) {
+      // Only the fields a writer changed are set, so every other field keeps its value and place.
       const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-      const updated = { ...raw, credentials: spec.credentials };
+      const changes = edits.changedFields.map((field) => [field, edits.spec[field]]);
+      const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
         throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
@@ -1638,11 +1604,25 @@ export class FsProjectManager implements ProjectManager {
       await this.json.write(specPath, updated);
       result = { ...project, spec: parsed.data };
     }
-    if (entries.length > 0) {
-      const { written } = await envLocal.insertIfNew(entries);
+    for (const file of edits.files) {
+      if (!existsSync(join(project.rootPath, ...file.path.split("/")))) {
+        messages.push(`writing ${file.path}`);
+      }
+    }
+    writeBoxNetworkFiles(project.rootPath, edits.files);
+    if (edits.envLocal.length > 0) {
+      const { written } = await envLocal.insertIfNew([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    return { project: result, messages };
+    const warnings = networks.flatMap((network) => [
+      ...network.warnings,
+      ...boxGatewayIamWarnings(edits.spec, network),
+    ]);
+    const events: ProjectEvent[] = [
+      ...messages.map((message) => ({ type: "step" as const, message })),
+      ...warnings.map((message) => ({ type: "warning" as const, message })),
+    ];
+    return { project: result, networks, events };
   }
 
   public async syncRuntimeBuilds(
@@ -1743,9 +1723,9 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const routed = await this.addBoxMemoryTarget(synced.project);
-    for (const message of routed.messages) yield { type: "step", message };
-    project = routed.project;
+    const boxed = await this.applyBoxNetwork(synced.project, "deploy");
+    yield* boxed.events;
+    project = boxed.project;
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
@@ -1847,6 +1827,7 @@ export class FsProjectManager implements ProjectManager {
       confirmTeardown: input.confirmTeardown,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
+      boxNetworks: boxed.networks,
     });
   }
 

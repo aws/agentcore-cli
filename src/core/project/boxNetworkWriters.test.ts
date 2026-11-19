@@ -10,6 +10,7 @@ import {
   credentialsWriter,
   defaultTargetsWriter,
   gatewayTargetsWriter,
+  runtimeProfileWriter,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
 
@@ -283,5 +284,27 @@ describe("defaultTargetsWriter", () => {
 
     expect(targetNames(edits.spec)).toEqual(["mem"]);
     expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
+  });
+});
+
+describe("runtimeProfileWriter", () => {
+  test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
+    const writer = runtimeProfileWriter([{ runtime: "agent", dist: "app/agent/.box-dist" }]);
+    const models = [network({ policyFiles: ["policy.dw", "rules/extra.dw"] })];
+
+    const { files } = run([writer], models);
+
+    expect(writer.writes(models)).toEqual([
+      { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: "app/agent/.box-dist/policy.dw" },
+      { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
+    ]);
+    expect(files.slice(1)).toEqual([
+      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/policy.dw" },
+      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/rules/extra.dw" },
+    ]);
+    expect("text" in files[0]! && files[0].text).toContain(
+      'policies = ["policy.dw", "rules/extra.dw"]',
+    );
   });
 });

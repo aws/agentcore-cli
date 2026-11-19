@@ -6,7 +6,8 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
-import { runsAgentInBox } from "./backends/boxContainer";
+import { ProjectStateError } from "../../errors/errors";
+import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import { BOX_PROFILE_FILE, boxProfilePath } from "./templates/boxProfile";
 import {
@@ -65,6 +66,33 @@ export async function readBoxNetworks(
     });
     return [{ ...network, warnings: [...network.warnings, ...granted.warnings] }];
   });
+}
+
+/**
+ * Each policy file the box profile names, as an image's `.box-dist/` takes it under `agentcore
+ * dev`, which stages the profile itself and not the Runtime one, runs no box here, and builds no
+ * model. Throws, with every failure where it is, for a profile whose policy files cannot be read
+ * and for a policy file Box would refuse.
+ */
+export function boxPolicyFileCopies(projectRoot: string): PolicyFileCopy[] {
+  const text = profileText(projectRoot);
+  const named =
+    text === undefined
+      ? { ok: true as const, files: [] }
+      : profilePolicyFiles(text, BOX_PROFILE_FILE);
+  const policies = text === undefined ? undefined : profilePlaces(text, BOX_PROFILE_FILE).policies;
+  const files = readPolicyFiles(projectRoot, named.ok ? named.files : [], policies);
+  const failures = [...(named.ok ? [] : [named.failure]), ...files.failures];
+  if (failures.length > 0) {
+    const lines = failureLines(failures);
+    throw new ProjectStateError(
+      [stoppedHeader("dev", lines.length, failures), ...lines].join("\n"),
+    );
+  }
+  return (named.ok ? named.files : []).map((relative) => ({
+    from: join(projectRoot, BOX_PROFILE_DIR, ...relative.split("/")),
+    relative,
+  }));
 }
 
 /**
