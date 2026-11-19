@@ -12,11 +12,7 @@ import {
   type ProcessStreamer,
   type StreamProcessOptions,
 } from "../../io";
-import {
-  BOX_IMAGE_DIST,
-  imageCopiesBox,
-  stageBoxImage,
-} from "../project/backends/boxContainer";
+import { BOX_IMAGE_DIST, imageCopiesBox, stageBoxImage } from "../project/backends/boxContainer";
 import { boxProfilePath } from "../project/templates/boxProfile";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
@@ -266,7 +262,12 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    await stageBoxImage(context, readFileSync(profile, "utf8"), this.processEnv, input.runtime.name);
+    await stageBoxImage(
+      context,
+      readFileSync(profile, "utf8"),
+      this.processEnv,
+      input.runtime.name,
+    );
     return true;
   }
 

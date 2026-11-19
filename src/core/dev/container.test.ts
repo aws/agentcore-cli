@@ -797,8 +797,12 @@ describe("ContainerDevRunner", () => {
         processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
       });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
+      expect(events).toContainEqual({
+        type: "status",
+        message: `Staged box for the image in ${join(context, ".box-dist")}`,
+      });
       // The Dockerfile copies .box-dist/, so the build takes no extra build context.
       expect(commandCall(calls, "build").command).toEqual([
         "docker",
@@ -834,10 +838,13 @@ describe("ContainerDevRunner", () => {
         processEnv: { ...credentials, AGENTCORE_BOX_SOURCE: source },
       });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
       expect(await Bun.file(join(context, ".box-dist", "box")).exists()).toBe(false);
+      expect(
+        events.some((event) => event.type === "status" && event.message.startsWith("Staged box")),
+      ).toBe(false);
     });
 
     test("refuses a box image when the project has no box profile", async () => {
