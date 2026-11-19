@@ -11,7 +11,7 @@ import { createHandler, flag, ProjectKey } from "../../../../router";
 import { assertMutuallyExclusiveFlags, parseJsonFlagWithSchema } from "../../../utils";
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
-import { addProjectResource, addDescription } from "../shared";
+import { addProjectResource, addDescription, boundGatewayAddedNote } from "../shared";
 
 // HttpsEndpointSchema is what --endpoint and the wizard's endpoint step both
 // check an MCP server URL against, so they refuse the same values in the same
@@ -171,7 +171,7 @@ Use agentcore add gateway-connector for curated Connector shortcuts.`,
         config,
         project,
         input,
-        `added Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'`,
+        `added Target '${input.resourceConfig.name}' to Gateway '${flags.gateway}' in '${project.name}'${boundGatewayAddedNote(project, flags.gateway)}`,
       );
     },
   });

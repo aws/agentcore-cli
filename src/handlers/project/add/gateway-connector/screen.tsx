@@ -22,7 +22,7 @@ import type { Project } from "../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { toAddGatewayConnectorInput, type GatewayConnectorShortcutInput } from "./index";
 import { RegionKey } from "../../../keys";
-import { boundRuntimeNote, defaultGatewayChoice } from "../../../../projectSchemas/project";
+import { boundRuntimeNote, defaultGatewayChoice } from "../shared";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-connector"];
 const DESCRIPTION = "add a connector-backed Target to a project Gateway";

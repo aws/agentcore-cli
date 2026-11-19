@@ -28,7 +28,7 @@ import {
   type GatewayTargetShortcutInput,
 } from "./index";
 import { RegionKey } from "../../../keys";
-import { boundRuntimeNote, defaultGatewayChoice } from "../../../../projectSchemas/project";
+import { boundRuntimeNote, defaultGatewayChoice } from "../shared";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-target"];
 const DESCRIPTION = "add a Target to a project Gateway";
