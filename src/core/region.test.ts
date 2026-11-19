@@ -46,4 +46,22 @@ describe("regionFromConfigFile", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test.each(["HOME", "USERPROFILE"] as const)(
+    "reads ~/.aws/config under the %s of the environment it is given",
+    async (variable) => {
+      const { mkdir, mkdtemp, rm, writeFile } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const home = await mkdtemp(join(tmpdir(), "agentcore-region-home-"));
+      try {
+        await mkdir(join(home, ".aws"));
+        await writeFile(join(home, ".aws", "config"), "[default]\nregion = eu-west-2\n");
+        const { regionFromConfigFile } = await import("./region");
+        expect(await regionFromConfigFile({ [variable]: home })).toBe("eu-west-2");
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    },
+  );
 });
