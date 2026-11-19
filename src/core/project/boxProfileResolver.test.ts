@@ -14,8 +14,9 @@ const NC = 'action == Box::Action::"net:connect"';
 const HR = 'action == Box::Action::"http:request"';
 
 /**
- * `box profile show <profile> --format json` of the staging-boxy draft, for a profile with the route
- * `keyed` and the HTTP MCP server `docs`, trimmed, with this test's profile and paths in it.
+ * `box profile show <profile> --format json --full` of the staging-boxy draft, for a profile with
+ * the route `keyed` and the HTTP MCP server `docs`, trimmed, with this test's profile and paths in
+ * it.
  */
 const SHOWN = String.raw`{
   "profile": ".box/agent/local/profile.toml",
@@ -110,13 +111,20 @@ const OPEN_ROUTES_PROFILE =
   '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n';
 
 /**
- * `box profile show open --format json` of the staging-boxy draft for {@link OPEN_ROUTES_PROFILE}
- * and {@link POLICY}, as box prints it, with HOME at /tmp/acbox/home.
+ * `box profile show open --format json --full` for {@link OPEN_ROUTES_PROFILE} and {@link POLICY},
+ * as box prints it, with HOME at /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations
+ * of an open route into one string, and later boxes give a list.
  */
-const OPEN_ROUTES_SHOWN = readFileSync(
-  join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes.json"),
-  "utf8",
-);
+const OPEN_ROUTES_SHOWN = Object.entries({
+  "one string": readFileSync(
+    join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes.json"),
+    "utf8",
+  ),
+  "a list": readFileSync(
+    join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes-list.json"),
+    "utf8",
+  ),
+});
 
 describe("parseBoxProfileShow", () => {
   test("takes the box.toml as a table in the order of the file, the policy.dw, the packs, and the warnings", () => {
@@ -159,23 +167,26 @@ describe("parseBoxProfileShow", () => {
     ).toThrow(
       new InvalidEnvironmentError(
         "Build cannot read what Box printed for the profile .box/agent/local/profile.toml, as it is not one " +
-          "JSON document. Run 'box profile show .box/agent/local/profile.toml --format json' in the project folder " +
+          "JSON document. Run 'box profile show .box/agent/local/profile.toml --format json --full' in the project folder " +
           "to see it.",
       ),
     );
   });
 
-  test("takes each open route, with its destinations as a list, which box.toml leaves out", () => {
-    const resolved = parseBoxProfileShow(OPEN_ROUTES_SHOWN, ".box/agent/local/profile.toml");
+  test.each(OPEN_ROUTES_SHOWN)(
+    "takes each open route, which box.toml leaves out, and its destinations from %s",
+    (_, shown) => {
+      const resolved = parseBoxProfileShow(shown, ".box/agent/local/profile.toml");
 
-    expect(resolved.openRoutes).toEqual([
-      { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
-      { route: "github", destinations: ["api.github.com"] },
-    ]);
-    expect(resolved.boxToml.egress).toEqual({
-      keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
-    });
-  });
+      expect(resolved.openRoutes).toEqual([
+        { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
+        { route: "github", destinations: ["api.github.com"] },
+      ]);
+      expect(resolved.boxToml.egress).toEqual({
+        keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
+      });
+    },
+  );
 
   const document = JSON.parse(SHOWN) as Record<string, unknown>;
   const { box_toml: _boxToml, ...noBoxToml } = document;
@@ -190,6 +201,16 @@ describe("parseBoxProfileShow", () => {
       "a box.toml table or the policy.dw text",
     ],
     ["packs as text", { ...document, packs: "box/base 1" }, "a list of packs"],
+    [
+      "a destination that is not text",
+      { ...document, open_routes: [{ route: "auth", destinations: ["login.example.com", 443] }] },
+      "a list of open routes",
+    ],
+    [
+      "no box_toml and no policy, as box prints it without --full",
+      { ...noBoxToml, policy: undefined },
+      "a box.toml table or the policy.dw text",
+    ],
     ["a list, not an object", [], "a box.toml table or the policy.dw text"],
   ])("refuses a document with %s, and names what it lacks", (_, shown, lacks) => {
     expect(() =>
@@ -219,7 +240,7 @@ function streamer(lines: ProcessEvent[], failure?: ProcessFailedError) {
 const stdout = (text: string): ProcessEvent[] =>
   text.split("\n").map((line) => ({ type: "stdout", line }));
 
-/** What clap prints for `--format` in a box that has no such flag, as box releases to date do. */
+/** What clap prints for `--format` in a box that has no such flag. */
 const NO_JSON_FLAG = [
   "error: unexpected argument '--format' found",
   "",
@@ -230,8 +251,17 @@ const NO_JSON_FLAG = [
   "For more information, try '--help'.",
 ];
 
+/** What clap prints for `--full` in a box that has `--format` and no `--full`. */
+const NO_FULL_FLAG = [
+  "error: unexpected argument '--full' found",
+  "",
+  "Usage: box profile show [OPTIONS] <NAME>",
+  "",
+  "For more information, try '--help'.",
+];
+
 describe("BoxCliProfileResolver", () => {
-  test("runs `box profile show <profile> --format json` in the project folder, with no colour", async () => {
+  test("runs `box profile show <profile> --format json --full` in the project folder, with no colour", async () => {
     const fake = streamer(stdout(SHOWN));
     const resolver = new BoxCliProfileResolver({ env: { PATH: "/bin" }, ...fake });
 
@@ -240,13 +270,29 @@ describe("BoxCliProfileResolver", () => {
     expect(resolved).toEqual(parseBoxProfileShow(SHOWN, ".box/agent/local/profile.toml"));
     expect(fake.calls).toEqual([
       {
-        command: ["box", "profile", "show", ".box/agent/local/profile.toml", "--format", "json"],
+        command: [
+          "box",
+          "profile",
+          "show",
+          ".box/agent/local/profile.toml",
+          "--format",
+          "json",
+          "--full",
+        ],
         options: { cwd: "/work/demo", env: { PATH: "/bin", NO_COLOR: "1" } },
       },
     ]);
   });
 
-  const COMMAND = ["box", "profile", "show", ".box/agent/local/profile.toml", "--format", "json"];
+  const COMMAND = [
+    "box",
+    "profile",
+    "show",
+    ".box/agent/local/profile.toml",
+    "--format",
+    "json",
+    "--full",
+  ];
   const refusal = (lines: string[], exitCode: number | null = 1) =>
     streamer(
       lines.map((line) => ({ type: "stderr", line })),
@@ -313,15 +359,21 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
-  test("says to install a Box with --format json when the box on PATH has no such flag", async () => {
-    const error = await failure(refusal(NO_JSON_FLAG, 2));
+  test.each([
+    ["--format", NO_JSON_FLAG],
+    ["--full", NO_FULL_FLAG],
+  ])(
+    "says to install a Box with --format json --full when the box on PATH has no %s",
+    async (_, stderr) => {
+      const error = await failure(refusal(stderr, 2));
 
-    expect(error).toBeInstanceOf(InvalidEnvironmentError);
-    expect((error as Error).message).toBe(
-      "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. Install " +
-        `a Box release with \`box profile show --format json\` (${RELEASES}), then retry.`,
-    );
-  });
+      expect(error).toBeInstanceOf(InvalidEnvironmentError);
+      expect((error as Error).message).toBe(
+        "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. Install " +
+          `a Box release with \`box profile show --format json --full\` (${RELEASES}), then retry.`,
+      );
+    },
+  );
 
   test("refuses the output of a box that prints no JSON document", async () => {
     const fake = streamer(
@@ -389,7 +441,15 @@ describe("the copy of the profile for the build region", () => {
 
     expect(calls).toHaveLength(1);
     const [{ command, cwd, copy }] = calls as [(typeof calls)[number]];
-    expect(command).toEqual(["box", "profile", "show", expect.any(String), "--format", "json"]);
+    expect(command).toEqual([
+      "box",
+      "profile",
+      "show",
+      expect.any(String),
+      "--format",
+      "json",
+      "--full",
+    ]);
     expect(isAbsolute(command[3]!)).toBe(true);
     expect(existsSync(command[3]!)).toBe(false);
     expect(cwd).toBe(root);
@@ -413,7 +473,7 @@ describe("the copy of the profile for the build region", () => {
       "has no --format json",
       () => NO_JSON_FLAG,
       "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. Install " +
-        `a Box release with \`box profile show --format json\` (${RELEASES}), then retry.`,
+        `a Box release with \`box profile show --format json --full\` (${RELEASES}), then retry.`,
     ],
   ])("names the profile, not the copy, when box %s", async (_, stderr, message) => {
     const root = await regionalProject();
@@ -431,64 +491,67 @@ describe("the copy of the profile for the build region", () => {
 });
 
 describe("the open routes of the profile", () => {
-  test("gives one [egress] entry to an open route with two destinations, and names its targets after it", async () => {
-    const root = await mkdtemp(join(tmpdir(), "box-profile-open-routes-"));
-    directories.push(root);
-    await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
-    await writeFile(join(root, ".box", "agent", "local", "profile.toml"), OPEN_ROUTES_PROFILE);
-    await writeFile(join(root, ".box", "agent", "local", "policy.dw"), POLICY);
-    const resolver = new BoxCliProfileResolver(streamer(stdout(OPEN_ROUTES_SHOWN)));
+  test.each(OPEN_ROUTES_SHOWN)(
+    "gives one [egress] entry to an open route with two destinations in %s, and names its targets after it",
+    async (_, shown) => {
+      const root = await mkdtemp(join(tmpdir(), "box-profile-open-routes-"));
+      directories.push(root);
+      await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
+      await writeFile(join(root, ".box", "agent", "local", "profile.toml"), OPEN_ROUTES_PROFILE);
+      await writeFile(join(root, ".box", "agent", "local", "policy.dw"), POLICY);
+      const resolver = new BoxCliProfileResolver(streamer(stdout(shown)));
 
-    const [network] = await readBoxNetworks(SPEC, root, resolver);
+      const [network] = await readBoxNetworks(SPEC, root, resolver);
 
-    expect(network?.failures).toEqual([]);
-    const reachable = network?.hosts.filter((host) => host.reachable) ?? [];
-    expect(
-      reachable.map((h) => [
-        h.authority,
-        h.target,
-        h.outboundAuth.kind,
-        h.sources.filter(({ kind }) => kind === "entry"),
-      ]),
-    ).toEqual([
-      [
-        "k.example.com:8443",
-        "egress-keyed",
-        "apiKey",
-        [{ kind: "entry", egressEntry: "keyed", destinations: ["k.example.com:8443"] }],
-      ],
-      [
-        "login.example.com",
-        "egress-auth-login-example-com",
-        "none",
-        [{ kind: "entry", egressEntry: "auth", destinations: ["login.example.com"] }],
-      ],
-      [
-        "auth.example.com:8443",
-        "egress-auth-auth-example-com-8443",
-        "none",
-        [{ kind: "entry", egressEntry: "auth", destinations: ["auth.example.com:8443"] }],
-      ],
-      [
-        "api.github.com",
-        "egress-github",
-        "none",
-        [{ kind: "entry", egressEntry: "github", destinations: ["api.github.com"] }],
-      ],
-    ]);
-  });
+      expect(network?.failures).toEqual([]);
+      const reachable = network?.hosts.filter((host) => host.reachable) ?? [];
+      expect(
+        reachable.map((h) => [
+          h.authority,
+          h.target,
+          h.outboundAuth.kind,
+          h.sources.filter(({ kind }) => kind === "entry"),
+        ]),
+      ).toEqual([
+        [
+          "k.example.com:8443",
+          "egress-keyed",
+          "apiKey",
+          [{ kind: "entry", egressEntry: "keyed", destinations: ["k.example.com:8443"] }],
+        ],
+        [
+          "login.example.com",
+          "egress-auth-login-example-com",
+          "none",
+          [{ kind: "entry", egressEntry: "auth", destinations: ["login.example.com"] }],
+        ],
+        [
+          "auth.example.com:8443",
+          "egress-auth-auth-example-com-8443",
+          "none",
+          [{ kind: "entry", egressEntry: "auth", destinations: ["auth.example.com:8443"] }],
+        ],
+        [
+          "api.github.com",
+          "egress-github",
+          "none",
+          [{ kind: "entry", egressEntry: "github", destinations: ["api.github.com"] }],
+        ],
+      ]);
+    },
+  );
 });
 
-/** Whether the box on PATH has `box profile show --format json`, which no box release has yet. */
+/** Whether the box on PATH has `box profile show --format json --full`. */
 const boxPrintsJson = (() => {
   if (!Bun.which("box")) return false;
-  const help = Bun.spawnSync(["box", "profile", "show", "--help"], { stderr: "ignore" });
-  return help.stdout.toString().includes("--format");
+  const help = Bun.spawnSync(["box", "profile", "show", "--help"], { stderr: "ignore" }).stdout;
+  return ["--format", "--full"].every((flag) => help.toString().includes(flag));
 })();
 
 describe("the box on PATH", () => {
   test.skipIf(!boxPrintsJson)(
-    "resolves a profile into the model and the rules the tests fake (skipped when the box on PATH has no --format json)",
+    "resolves a profile into the model and the rules the tests fake (skipped when the box on PATH has no --format json --full)",
     async () => {
       const root = await mkdtemp(join(tmpdir(), "box-profile-resolver-"));
       directories.push(root);

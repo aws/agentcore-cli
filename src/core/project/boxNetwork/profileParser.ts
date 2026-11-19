@@ -1,7 +1,7 @@
 /**
  * Reads the network inputs of a box profile from Box's own resolution of it: the `[egress]` and
- * `[mcp]` tables of the `box.toml` that `box profile show --format json` prints, and its open
- * routes. The profile's own `policies` name the policy files that build stages beside the
+ * `[mcp]` tables of the `box.toml` that `box profile show --format json --full` prints, and its
+ * open routes. The profile's own `policies` name the policy files that build stages beside the
  * AgentCore Runtime profile, and its own text places each entry, `packs`, and `policies` for a
  * message.
  */

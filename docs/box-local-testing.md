@@ -29,8 +29,8 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- `box` `0.1.11-linux-preview.6` or later on your `PATH`. Build, deploy and dev run it to read
-  the box profile with `box profile show --format json`, and CodeZip dev runs the agent with it.
+- `box` `0.1.11-linux-preview.6` or later on your `PATH`. Build, deploy and dev run it to read the
+  box profile with `box profile show --format json --full`, and CodeZip dev runs the agent with it.
   See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
   Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
@@ -175,8 +175,8 @@ printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env:
 
 ### What build and deploy do with the box profile
 
-Build and deploy run `box profile show .box/<runtime>/local/profile.toml --format json` in the
-project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
+Build and deploy run `box profile show .box/<runtime>/local/profile.toml --format json --full` in
+the project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
 resolves the profile to into the runtime's Box network. Every pack, option, and rule Box adds is
 already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
 the Runtime profile and its resources under `.box/<runtime>/aws/`.
@@ -259,8 +259,8 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.1.11-linux-preview.6` or later. Dev and build read the profile
-  with `box profile show --format json`, and the AgentCore Runtime profile signs each Box gateway
+- `box --version` must print `0.1.11-linux-preview.6` or later. Dev and build read the profile with
+  `box profile show --format json --full`, and the AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`; older builds have neither.
 - The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
   After you refresh them, restart dev.

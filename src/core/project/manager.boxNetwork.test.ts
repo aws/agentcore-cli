@@ -564,7 +564,8 @@ describe("build reads the box profile as box resolves it", () => {
       path(root, ".box/agent_python_strands/local/profile.toml"),
       profile.replace('"box/bedrock"]', '"box/bedrock", "box/anthropic"]'),
     );
-    // `box profile show --format json` resolves box/anthropic to this route, with its secret.
+    // `box profile show --format json --full` resolves box/anthropic to this route, with its
+    // secret.
     box.answer = shows({
       anthropic: {
         destinations: ["api.anthropic.com"],
@@ -593,7 +594,7 @@ describe("build reads the box profile as box resolves it", () => {
   test("stops with box's error when box refuses the profile, and writes nothing", async () => {
     const { manager, root, counter, box } = await strandsProject();
     box.answer = new InvalidEnvironmentError(
-      "`box profile show .box/agent_python_strands/local/profile.toml --format json` failed in the project (exit code 1)",
+      "`box profile show .box/agent_python_strands/local/profile.toml --format json --full` failed in the project (exit code 1)",
     );
     const spec = await text(root, SPEC);
 
