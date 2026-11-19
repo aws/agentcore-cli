@@ -89,6 +89,18 @@ export interface MappedHost {
   readonly reachable: boolean;
 }
 
+/** The entry as a message names it: `[egress.github]` or `[mcp.docs]`. */
+export function entryLabel(entry: Pick<MappedEntry, "table" | "name">): string {
+  return `[${entry.table}.${entry.name}]`;
+}
+
+/** The field of a failure that names the entry. */
+export function entryRef(
+  entry: Pick<MappedEntry, "table" | "name">,
+): Pick<ConversionFailure, "egressEntry" | "mcpEntry"> {
+  return entry.table === "egress" ? { egressEntry: entry.name } : { mcpEntry: entry.name };
+}
+
 export interface HostMap {
   /**
    * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the

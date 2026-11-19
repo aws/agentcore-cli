@@ -460,6 +460,17 @@ describe("renderRuntimeBoxProfile", () => {
     ],
   });
 
+  test("names the model's policy files under policies, at the top of the profile", () => {
+    const project = spec([]);
+    const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+      policyFiles: ["policy.dw", "rules/extra.dw"],
+    });
+
+    expect(parse(text).policies).toEqual(["policy.dw", "rules/extra.dw"]);
+    expect(text).toContain('policies = ["policy.dw", "rules/extra.dw"]\n');
+    expect(parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)).policies).toBeUndefined();
+  });
+
   test("routes the default Memory's calls through the Box gateway's agentcore target", () => {
     const project = spec(["agentMemory"], {}, [getBoxGatewayAgentCoreTargetSpec()]);
 

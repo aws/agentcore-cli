@@ -7,13 +7,18 @@ import type { Project, ProjectEvent } from "../../handlers/project/types";
 import type { ProjectBackend } from "./backends/types";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { BOX_PROFILE_FILE } from "./templates/boxProfile";
+import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
 const GITHUB_PROFILE =
-  '[egress.github]\nhost = "api.github.com"\nsecret.ref = "env://GITHUB_TOKEN"\n';
+  '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
+/** What box resolves {@link GITHUB_PROFILE} to. */
+const GITHUB_SHOWN = boxShowOf({
+  egress: { github: { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_TOKEN" } } },
+});
 const RESERVED = credentialEnvVarName("github");
 
 const originalCwd = process.cwd();
@@ -50,6 +55,7 @@ function manager(processEnv: NodeJS.ProcessEnv): { subject: FsProjectManager; bu
     runner: async () => {},
     checkTool: async () => {},
     backends: { CDK: backend },
+    boxProfileResolver: new FakeBoxProfileResolver(GITHUB_SHOWN),
   });
   return { subject, built };
 }
@@ -96,9 +102,9 @@ describe("FsProjectManager.build: box env:// credentials", () => {
       ...((before.credentials as unknown[] | undefined) ?? []),
       { authorizerType: "ApiKeyCredentialProvider", name: "github" },
     ]);
-    // Only `credentials` changes: every other field keeps its value and its place.
+    // Only `credentials` and the Box gateway change: every other field keeps its value and place.
     const others = (spec: Record<string, unknown>) =>
-      Object.entries(spec).filter(([key]) => key !== "credentials");
+      Object.entries(spec).filter(([key]) => !["credentials", "agentCoreGateways"].includes(key));
     expect(others(after)).toEqual(others(before));
     const stored = await new EnvLocalFile(created.rootPath).read();
     expect(stored[RESERVED]).toBe("ghp_shell");
@@ -153,18 +159,14 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     );
   });
 
-  test("says that a box profile does not parse, and changes nothing", async () => {
+  test("stops on a box profile that does not parse, and changes nothing", async () => {
     const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });
     const created = await project(subject, "[egress.github\n");
     const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
 
-    const messages = await drain(subject.build(created));
-
-    expect(
-      messages.some((message) =>
-        message.startsWith(`skipping box egress credentials: ${BOX_PROFILE_FILE} does not parse`),
-      ),
-    ).toBe(true);
+    await expect(drain(subject.build(created))).rejects.toThrow(
+      `${BOX_PROFILE_FILE}:1:15  This is not valid TOML`,
+    );
     expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
       spec,
     );

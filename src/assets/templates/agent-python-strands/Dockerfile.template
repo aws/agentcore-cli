@@ -34,9 +34,10 @@ USER bedrock_agentcore
 
 # box, from the box release (Linux arm64): download the archive from its public GitHub release, check
 # its pinned SHA-256 and unpack box, its two helpers and its packs into /opt/box. The box profile
-# comes from .box-dist/, which dev, build and deploy stage: dev the project's .box/profile.toml,
-# build and deploy the AgentCore Runtime profile. start.sh runs box with the profile's path, outside
-# /app, the workspace.
+# and the policy files it names come from .box-dist/, which dev, build and deploy stage: dev the
+# project's .box/profile.toml, build and deploy the AgentCore Runtime profile. The folder is copied
+# whole, so each policy file stays beside the profile. start.sh runs box with the profile's path,
+# outside /app, the workspace.
 USER root
 ARG BOX_REPO={{box.repo}}
 ARG BOX_VERSION={{box.version}}
@@ -49,8 +50,8 @@ RUN set -eu; \
     tar -C /opt/box -xzf /tmp/box.tar.gz --no-same-owner; \
     rm /tmp/box.tar.gz; \
     /opt/box/box --version
+COPY .box-dist/ /opt/box/
 COPY start.sh /opt/box/
-COPY .box-dist/profile.toml /opt/box/profile.toml
 # box creates /app/.box at each run on Linux, so the agent's user owns /app itself. The staged copy in
 # /app/.box-dist is not the agent's, so it goes.
 RUN rm -rf /app/.box-dist \

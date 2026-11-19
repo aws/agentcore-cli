@@ -5,7 +5,12 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { InputValidationError, InvalidEnvironmentError, ResourceNotFoundError } from "../../errors";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  ProjectStateError,
+  ResourceNotFoundError,
+} from "../../errors";
 import type { DevEvent, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -759,6 +764,8 @@ describe("ContainerDevRunner", () => {
     async function boxedScene(
       options: {
         profile?: boolean;
+        /** The text of `.box/profile.toml`. */
+        profileText?: string;
         dockerfile?: string;
       } = {},
     ) {
@@ -770,7 +777,10 @@ describe("ContainerDevRunner", () => {
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
       if (options.profile ?? true) {
         await mkdir(join(root, ".box"));
-        await writeFile(join(root, ".box", "profile.toml"), "# local profile\n");
+        await writeFile(
+          join(root, ".box", "profile.toml"),
+          options.profileText ?? "# local profile\n",
+        );
       }
       return { projectRuntime, root, context };
     }
@@ -830,6 +840,58 @@ describe("ContainerDevRunner", () => {
       expect(
         events.some((event) => event.type === "status" && event.message.startsWith("Staged box")),
       ).toBe(false);
+    });
+
+    test("stages each policy file the profile names beside it in .box-dist/", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        profileText: 'policies = ["policy.dw", "rules/extra.dw"]\n',
+      });
+      await mkdir(join(root, ".box", "rules"));
+      await writeFile(join(root, ".box", "policy.dw"), "// rules\n");
+      await writeFile(join(root, ".box", "rules", "extra.dw"), "// extra\n");
+      const { runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "policy.dw"), "utf8")).toBe("// rules\n");
+      expect(await readFile(join(context, ".box-dist", "rules", "extra.dw"), "utf8")).toBe(
+        "// extra\n",
+      );
+    });
+
+    test.each([
+      [
+        "a TOML error",
+        'policies = ["policy.dw"]\n[agent\n',
+        ".box/profile.toml:2:7  This is not valid TOML (illegal character in key). Correct the " +
+          "syntax.",
+      ],
+      [
+        "the `policy` key",
+        '# one file\npolicy = "policy.dw"\n',
+        ".box/profile.toml:2:1  Box does not take the key `policy`. List your policy files under " +
+          '`policies` instead, such as policies = ["policy.dw"].',
+      ],
+      [
+        "a policy file outside .box/",
+        'policies = ["../../elsewhere.dw"]\n',
+        '.box/profile.toml:1:1  `policies` names "../../elsewhere.dw", which is outside .box/. ' +
+          "Move the file into .box/, and name it from there.",
+      ],
+    ])("stops, and stages nothing, for a profile with %s", async (_, profileText, line) => {
+      const { projectRuntime, root, context } = await boxedScene({ profileText });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(runner.run(input(root, projectRuntime))).catch(
+        (caught) => caught,
+      );
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toBe(
+        `Dev stopped: 1 problem in the Box profile. Nothing was changed.\n${line}`,
+      );
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
 
     test("refuses a box image when the project has no box profile", async () => {

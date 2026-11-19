@@ -3,6 +3,7 @@ import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
   getBoxGatewayAgentCoreTargetSpec,
 } from "../../handlers/project/shortcuts";
+import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { isBoundGateway, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
@@ -108,7 +109,7 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
       ({ boundRuntime }) => boundRuntime === runtime.name,
     );
     if (!gateway) continue;
-    if (!gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET)) {
+    if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
       gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
       messages.push(
         `adding target '${BOX_MEMORY_TARGET}' to gateway '${gateway.name}' in agentcore.json, ` +
@@ -128,4 +129,16 @@ export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): stri
     }
   }
   return messages;
+}
+
+/**
+ * Whether `targets` has `wanted`: a target of its name, or one for its endpoint, which then takes
+ * its calls, so one endpoint has one target.
+ */
+function servesTarget(targets: readonly AgentCoreGatewayTarget[], wanted: AgentCoreGatewayTarget) {
+  const endpoint = (target: AgentCoreGatewayTarget) =>
+    target.passthrough && new URL(target.passthrough.endpoint).host;
+  return targets.some(
+    (target) => target.name === wanted.name || endpoint(target) === endpoint(wanted),
+  );
 }

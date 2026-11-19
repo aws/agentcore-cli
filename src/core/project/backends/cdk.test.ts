@@ -64,8 +64,11 @@ function unusedIdentity(): CredentialProviderCalls {
   };
 }
 
+/** A build of a project that has no box runtime. */
+const NO_BOX_NETWORKS = { boxNetworks: [] };
+
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
-  return { target: TARGET, confirmTeardown: async () => false, ...overrides };
+  return { target: TARGET, confirmTeardown: async () => false, boxNetworks: [], ...overrides };
 }
 
 const tempDirectories: string[] = [];
@@ -318,7 +321,7 @@ describe("CdkBackend.build", () => {
     const input = await project();
     const subject = harness();
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
@@ -334,7 +337,7 @@ describe("CdkBackend.build", () => {
     );
     const subject = harness();
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       {
         type: "warning",
         message: expect.stringContaining("Update the CDK dependency, then rebuild or redeploy."),
@@ -350,7 +353,7 @@ describe("CdkBackend.build", () => {
     // the fragments "line t" / "wo".
     const subject = harness({ synthOutput: ["line one\nline t", "wo\ntrailing partial"] });
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       { type: "step", message: "synthesizing CloudFormation templates" },
       { type: "output", line: "line one" },
       { type: "output", line: "line two" },
@@ -362,7 +365,9 @@ describe("CdkBackend.build", () => {
     const input = await project(false);
     const subject = harness();
 
-    await expect(collect(subject.backend.build(input))).rejects.toThrow(/npm install/);
+    await expect(collect(subject.backend.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
+      /npm install/,
+    );
     expect(subject.commands).toEqual([]);
   });
 
@@ -378,7 +383,9 @@ describe("CdkBackend.build", () => {
       checkTool: async () => {},
     });
 
-    await expect(collect(subject.build(input))).rejects.toThrow("cdk synth exploded");
+    await expect(collect(subject.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
+      "cdk synth exploded",
+    );
   });
 
   test.each([
@@ -400,7 +407,7 @@ describe("CdkBackend.build", () => {
     const failure = new ProcessFailedError(synthCommand(input), cdkDirectory(input), 1, output);
     const subject = harness({ synthError: failure });
 
-    await expect(collect(subject.backend.build(input))).rejects.toThrow(
+    await expect(collect(subject.backend.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
       `Project build cannot resolve credential "${name}" before its first deployment. ` +
         `Run 'agentcore deploy' to provision the credential and build the project.`,
     );
