@@ -86,9 +86,11 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
+  test("names itself after the project, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
     expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
-    expect(renderBoxProfile("V3Demo", STRANDS)).toContain("Run `box run .box/profile.toml`");
+    expect(renderBoxProfile("V3Demo", STRANDS)).toContain(
+      "Run `box run .box/agent/local/profile.toml`",
+    );
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
@@ -242,7 +244,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(template("agent-python-strands", groq))).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
@@ -288,7 +290,7 @@ describe("renderBoxProfile", () => {
     });
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
-        "section with its provider's host to .box/profile.toml (or use an openai/, anthropic/ or " +
+        "section with its provider's host to .box/agent/local/profile.toml (or use an openai/, anthropic/ or " +
         "gemini/ model ID), or the box blocks the agent's model calls",
     ]);
   });
@@ -785,7 +787,8 @@ describe("renderRuntimeBoxProfile", () => {
         },
       });
       expect(text).toContain(
-        "\n# The [telemetry.logs] target of .box/profile.toml, signed with the execution role.\n" +
+        "\n# The [telemetry.logs] target of .box/agent/local/profile.toml, signed with the " +
+          "execution role.\n" +
           '[telemetry.logs]\nkind = "cloudwatch_logs"\nregion = "us-west-2"\n' +
           'log_group = "/aws/box"\nlog_stream = "agent"\ninclude = ["logs", "trace"]\n' +
           'secret.ref = "aws://"\n',

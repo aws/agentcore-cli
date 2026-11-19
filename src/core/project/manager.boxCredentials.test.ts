@@ -6,7 +6,7 @@ import { FsProjectManager } from "./manager";
 import type { Project, ProjectEvent } from "../../handlers/project/types";
 import type { ProjectBackend } from "./backends/types";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { BOX_PROFILE_FILE } from "./templates/boxProfile";
+import { boxLocalDir, boxLocalProfileFile } from "./templates/boxProfile";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
@@ -14,6 +14,8 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 
 // A box template: only it writes the box profile whose env:// secrets build provisions.
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-strands-box");
+/** The local box profile of the template's runtime, from the project root. */
+const BOX_PROFILE_FILE = boxLocalProfileFile(AGENT_PYTHON.runtimeName);
 const GITHUB_PROFILE =
   '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
 /** What box resolves {@link GITHUB_PROFILE} to. */
@@ -75,7 +77,7 @@ async function project(subject: FsProjectManager, profile: string): Promise<Proj
   let next = await iterator.next();
   while (!next.done) next = await iterator.next();
   const created = next.value;
-  await mkdir(join(created.rootPath, ".box"), { recursive: true });
+  await mkdir(join(created.rootPath, boxLocalDir(AGENT_PYTHON.runtimeName)), { recursive: true });
   await writeFile(join(created.rootPath, BOX_PROFILE_FILE), profile);
   return created;
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { ProjectStateError } from "../../../errors/errors";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -8,7 +8,7 @@ import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
 import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
-import { runtimeRunsInBox } from "../templates/boxProfile";
+import { boxAwsDir, runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
@@ -83,7 +83,7 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
 
 /**
  * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
- * policy file of `policies` at its path from `.box/`, and the box release the Dockerfile downloads.
+ * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
  */
 export async function stageBoxImage(
@@ -107,9 +107,11 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime that runs in a box
- * ({@link runtimeRunsInBox}): the box release its `box.version` names, and
- * what the runtime profile writer writes from the runtime's Box network model,
- * the Runtime profile and a byte copy of each policy file it names. Returns the names of the runtimes it staged.
+ * ({@link runtimeRunsInBox}). It generates the canonical AWS tree in `.box/<name>/aws/`: the box
+ * release its `box.version` names, and what the runtime profile writer writes from the runtime's
+ * Box network model (the Runtime profile and a byte copy of each policy file it names). It then
+ * copies that tree into the build context's `.box-dist/`, so the image copies it. Returns the names
+ * of the runtimes it staged.
  */
 export async function stageBoxContainers(
   project: Project,
@@ -122,7 +124,7 @@ export async function stageBoxContainers(
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
-    dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
+    dist: boxAwsDir(runtime.name),
     kind: "container" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
@@ -141,12 +143,17 @@ export async function stageBoxContainers(
     );
   }
   for (const [index, { dist }] of staged.entries()) {
+    const runtime = runtimes[index]!;
     const folder = join(project.rootPath, ...dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
-    const release = await releaseFor(runtimes[index]!.box?.version);
+    const release = await releaseFor(runtime.box?.version);
     await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
+    // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
+    const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);
+    await rm(contextDist, { recursive: true, force: true });
+    await cp(folder, contextDist, { recursive: true });
   }
   return runtimes.map((runtime) => runtime.name);
 }

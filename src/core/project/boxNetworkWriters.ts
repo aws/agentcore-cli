@@ -36,6 +36,7 @@ import {
 import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  boxLocalDir,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
@@ -308,8 +309,8 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime, and
- * a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
+ * its own box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime,
+ * and a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
@@ -321,6 +322,8 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     })),
   ],
   edits: (networks, { spec, projectRoot }) => {
+    // Each box runtime reads its own .box/<name>/local profile, so each one gets the policy of its
+    // own telemetry only.
     const files: BoxNetworkFile[] = [];
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
@@ -389,7 +392,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
-            copyOf: `.box/${file}`,
+            copyOf: `${boxLocalDir(runtime)}/${file}`,
           })),
         ];
       }),
