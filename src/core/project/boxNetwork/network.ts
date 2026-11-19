@@ -19,6 +19,7 @@ import {
   parseEndpoint,
   targetNameFor,
   type AwsEndpointApi,
+  type BoxEgressSecret,
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
@@ -50,12 +51,22 @@ export type BoxEgressAuth =
       readonly prefix?: string;
     };
 
-/** What names a host: an `[egress]` entry with its destinations there, or a permit. */
+/**
+ * What names a host: an `[egress]` entry with its destinations there, an HTTP `[mcp]` server, or a
+ * permit.
+ */
 export type BoxHostSource =
   | {
       readonly kind: "entry";
       readonly egressEntry: string;
       readonly destinations: readonly string[];
+    }
+  | {
+      readonly kind: "mcp";
+      readonly mcpEntry: string;
+      readonly destinations: readonly string[];
+      /** The server's own secret, which the AgentCore Runtime profile keeps for the agent. */
+      readonly secret?: BoxEgressSecret;
     }
   | { readonly kind: "rule"; readonly ruleId: string };
 
@@ -91,7 +102,10 @@ export interface BoxNetwork {
   readonly gateway: string;
   /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
   readonly region: string;
-  /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
+  /**
+   * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the
+   * hosts only the permits name.
+   */
   readonly hosts: readonly BoxNetworkHost[];
   /** The `env://` route of each target that sends an API key, for the credentials writer. */
   readonly envRoutes: readonly BoxEnvRoute[];
@@ -159,9 +173,7 @@ export function buildBoxNetwork(
     return { ...rest, reason: `${where.subject} ${reason}`, place: where.place };
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
-  const mcpHosts = map.hosts.filter(({ entry }) => entry?.table === "mcp");
-  const routed = map.hosts.filter(({ entry }) => entry?.table !== "mcp");
-  const targets = hostTargets(routed, project, located, parsed.profile.path);
+  const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
   failures.push(...targets.failures);
   return {
     runtime: project.runtime.name,
@@ -173,12 +185,6 @@ export function buildBoxNetwork(
     grantedActions: project.grantedActions,
     warnings: [
       ...hostWarnings(targets.hosts),
-      ...mcpHosts.map(
-        (host) =>
-          `${host.authority}: build does not send an HTTP MCP server through the Box gateway yet, ` +
-          `so ${entryLabel(host.entry!)} gets no gateway target, and the agent cannot reach it ` +
-          "on AgentCore Runtime.",
-      ),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);
         return (
@@ -191,14 +197,18 @@ export function buildBoxNetwork(
   };
 }
 
-/** The `env://` route of each host whose target sends an API key, once for each route. */
+/**
+ * The `env://` route of each host whose target sends an API key, once for each route. An HTTP MCP
+ * server's route has the server's name.
+ */
 function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];
   for (const { target, outboundAuth, sources } of hosts) {
-    const entry = sources.find((source) => source.kind === "entry");
-    if (target === undefined || outboundAuth.kind !== "apiKey" || entry?.kind !== "entry") continue;
-    if (routes.some(({ route }) => route === entry.egressEntry)) continue;
-    routes.push({ route: entry.egressEntry, variable: outboundAuth.variable });
+    const entry = sources.find((source): source is EntrySource => source.kind !== "rule");
+    if (target === undefined || outboundAuth.kind !== "apiKey" || !entry) continue;
+    const route = entry.kind === "entry" ? entry.egressEntry : entry.mcpEntry;
+    if (routes.some((other) => other.route === route)) continue;
+    routes.push({ route, variable: outboundAuth.variable });
   }
   return routes;
 }
@@ -364,9 +374,7 @@ function hostTargets(
       ...(host.port !== 443 && { port: host.port }),
       authority: host.authority,
       sources: [
-        ...(entry
-          ? [{ kind: "entry" as const, egressEntry: entry.name, destinations: entry.destinations }]
-          : []),
+        ...(entry ? [entrySource(entry)] : []),
         ...host.namedBy.map((ruleId) => ({ kind: "rule" as const, ruleId })),
       ],
       outboundAuth: auth,
@@ -419,6 +427,19 @@ function hostTargets(
     });
   }
   return { hosts, failures };
+}
+
+/** The source of the entry that names a host. */
+function entrySource(entry: NonNullable<MappedHost["entry"]>): BoxHostSource {
+  if (entry.table === "egress") {
+    return { kind: "entry", egressEntry: entry.name, destinations: entry.destinations };
+  }
+  return {
+    kind: "mcp",
+    mcpEntry: entry.name,
+    destinations: entry.destinations,
+    ...(entry.secret && { secret: entry.secret }),
+  };
 }
 
 /**
@@ -496,16 +517,16 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
     return `the ${quoted.length > 1 ? "rules" : "rule"} ${list}`;
   };
   for (const host of hosts) {
-    const entry = host.sources.find((source) => source.kind === "entry");
+    const entry = host.sources.find((source): source is EntrySource => source.kind !== "rule");
     if (!host.reachable) {
-      if (entry?.kind !== "entry") continue;
+      if (!entry) continue;
       const deny =
         host.forbiddenBy.length === 0
           ? ""
           : ` (${rules(host.forbiddenBy)} ${host.forbiddenBy.length > 1 ? "deny" : "denies"} it)`;
       warnings.push(
         `${host.authority}: your policy allows no request to this host${deny}, so ` +
-          `[egress.${entry.egressEntry}] gets no gateway target.`,
+          `${sourceLabel(entry)} gets no gateway target.`,
       );
       continue;
     }
@@ -520,6 +541,13 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
     );
   }
   return warnings;
+}
+
+type EntrySource = Exclude<BoxHostSource, { kind: "rule" }>;
+
+/** The entry of a source as a message names it: `[egress.github]` or `[mcp.docs]`. */
+function sourceLabel(source: EntrySource): string {
+  return source.kind === "entry" ? `[egress.${source.egressEntry}]` : `[mcp.${source.mcpEntry}]`;
 }
 
 /**

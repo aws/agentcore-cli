@@ -335,6 +335,46 @@ describe("build writes the Box network of the box profile", () => {
     expect(await text(root, RUNTIME_PROFILE)).toBe(profile);
   });
 
+  test("gives an HTTP MCP server a target and its API key credential, and keeps it an [mcp] server on the Runtime", async () => {
+    const { manager, root, box } = await strandsProject({ env: { TOOLS_TOKEN: "tools-123" } });
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps, warnings } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock", "agentcore"]);
+    const { targets } = await boxGateway(root);
+    // A CUSTOM passthrough target, so Box alone decides each mcp:call.
+    expect(targets[0]).toEqual(
+      userTarget("egress-tools", "https://tools.example.com", {
+        outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+      }),
+    );
+    expect(JSON.parse(await text(root, SPEC)).credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "tools",
+    });
+    expect(steps).toContain(
+      "adding API key credential 'tools' to agentcore.json for box egress 'env://TOOLS_TOKEN', " +
+        "so deploy provisions it in AgentCore Identity",
+    );
+    expect(warnings).toEqual([]);
+    const profile = await runtimeProfile(root);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(profile.mcp).toEqual({
+      tools: { ...tools, backends: gatewayRoute("egress-tools", "tools.example.com").backends },
+    });
+  });
+
   test("routes a host through the target the gateway holds for it, and keeps every user target", async () => {
     const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
     await editProfile(root, { tables: GITHUB_ROUTE });
