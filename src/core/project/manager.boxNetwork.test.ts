@@ -14,6 +14,7 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { FsProjectManager } from "./manager";
+import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -686,6 +687,85 @@ describe("build writes the telemetry policy of the box profile", () => {
         "sends no telemetry to CloudWatch",
     );
     expect(steps).toContain(`removing ${TELEMETRY_POLICY}`);
+  });
+
+  describe("for a target with no region", () => {
+    const { region: _region, ...REGIONLESS_LOGS } = LOGS;
+    const logsIn = (region: string) => ({ ...LOGS, region, secret: { ref: "aws://default" } });
+    const statementIn = (region: string) => ({
+      ...LOGS_STATEMENT,
+      Resource: [`arn:aws:logs:${region}:*:log-group:my-group:log-stream:my-stream`],
+    });
+
+    test("on build, sets the region build builds for, keeps a target's own region, and warns that dev needs a region", async () => {
+      const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+      box.answer = showsTelemetry({
+        logs: REGIONLESS_LOGS,
+        traces: { ...TRACES, region: "eu-west-1" },
+      });
+
+      const { warnings } = await build(manager, root);
+
+      expect((await runtimeProfile(root)).telemetry).toEqual({
+        logs: logsIn("eu-central-1"),
+        traces: { ...TRACES, region: "eu-west-1", secret: { ref: "aws://default" } },
+      });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("eu-central-1"),
+        TRACES_STATEMENT,
+      ]);
+      expect(warnings).toContain(
+        ".box/profile.toml: [telemetry.logs] has no region, so the AgentCore Runtime profile and " +
+          "the telemetry policy get eu-central-1. Deploy sets the region of its deploy target. " +
+          "Box refuses a CloudWatch target with no region, so `agentcore dev` cannot run this " +
+          "profile until you add region to it.",
+      );
+    });
+
+    test("on deploy, sets the region of its target", async () => {
+      const calls: DeployBackendInput[] = [];
+      const backend: ProjectBackend = {
+        async *build() {},
+        async *deploy(_project, input) {
+          calls.push(input);
+          yield { type: "step", message: "deploying" };
+          return { outputs: {} };
+        },
+        async resolveDeployedResources() {
+          return [];
+        },
+        async resolveProjectResources() {
+          return [];
+        },
+      };
+      const { manager, root, box } = await strandsProject({ backends: { CDK: backend } });
+      box.answer = showsTelemetry({ logs: REGIONLESS_LOGS });
+      await writeFile(
+        path(root, "agentcore/aws-targets.json"),
+        JSON.stringify([{ name: "primary", account: "111122223333", region: "ap-south-1" }]),
+      );
+
+      const project = (await manager.resolve({ filePath: root })) as Project;
+      const { warnings } = await drain(
+        manager.deploy(project, {
+          target: "primary",
+          region: "us-west-2",
+          confirmTeardown: async () => false,
+        }),
+      );
+
+      const [network] = calls[0]!.boxNetworks;
+      const runtime = project.spec.runtimes[0]!;
+      expect(parse(renderRuntimeBoxProfile(project.spec, runtime, network)).telemetry).toEqual({
+        logs: logsIn("ap-south-1"),
+      });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("ap-south-1"),
+      ]);
+      expect(warnings.filter((warning) => warning.includes("[telemetry.logs]"))).toEqual([
+        expect.stringContaining("get ap-south-1."),
+      ]);
+    });
   });
 });
 

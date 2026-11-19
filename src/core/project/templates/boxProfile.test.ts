@@ -9,7 +9,7 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import { cloudWatchTelemetry, type BoxNetworkHost } from "../boxNetwork";
+import { cloudWatchTelemetry, withDeployRegion, type BoxNetworkHost } from "../boxNetwork";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -689,11 +689,13 @@ describe("renderRuntimeBoxProfile", () => {
       },
       "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
     };
-    const rendered = (telemetry: Record<string, unknown>) => {
+    /** The Runtime profile when the model sets `region` on a target with none. */
+    const rendered = (telemetry: Record<string, unknown>, region = "us-west-2") => {
       const project = spec([]);
       const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
         policyFiles: [],
-        telemetry: cloudWatchTelemetry({ telemetry }),
+        telemetry: withDeployRegion(cloudWatchTelemetry({ telemetry }), region, "profile.toml")
+          .telemetry,
       });
       return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
     };
@@ -738,6 +740,19 @@ describe("renderRuntimeBoxProfile", () => {
       expect(
         rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }).toml.telemetry,
       ).toBeUndefined();
+    });
+
+    test("writes the deploy region on a target with no region, and keeps a target's own region", () => {
+      const { region: _region, ...logs } = TELEMETRY.logs;
+
+      expect(rendered({ logs, "x-ray": TELEMETRY["x-ray"] }, "ap-south-1").toml.telemetry).toEqual({
+        logs: { ...TELEMETRY.logs, region: "ap-south-1", secret: { ref: "aws://default" } },
+        "x-ray": {
+          kind: "cloudwatch_traces",
+          region: "eu-west-1",
+          secret: { ref: "aws://default" },
+        },
+      });
     });
   });
 

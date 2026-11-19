@@ -23,7 +23,7 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
-import type { CloudWatchTelemetry } from "./telemetry";
+import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import {
   MAX_GATEWAY_TARGETS,
@@ -178,6 +178,9 @@ export function buildBoxNetwork(
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
   const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
   failures.push(...targets.failures);
+  const telemetry =
+    parsed.profile.telemetry &&
+    withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -185,7 +188,7 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     envRoutes: envRoutesOf(targets.hosts),
     policyFiles: parsed.profile.policyFiles,
-    ...(parsed.profile.telemetry && { telemetry: parsed.profile.telemetry }),
+    ...(telemetry && { telemetry: telemetry.telemetry }),
     grantedActions: project.grantedActions,
     warnings: [
       ...hostWarnings(targets.hosts),
@@ -196,6 +199,7 @@ export function buildBoxNetwork(
           "target for a WebSocket, so it skips this rule."
         );
       }),
+      ...(telemetry?.warnings ?? []),
     ],
     failures,
   };

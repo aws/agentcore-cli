@@ -14,5 +14,5 @@ export {
 export { parseResolvedPolicy, type ParsedPolicy, type PolicyFileText } from "./policyParser";
 export { gatewayTargetFor } from "./projectSpec";
 export { parseResolvedProfile, profilePlaces, profilePolicyFiles } from "./profileParser";
-export { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
+export { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
 export { hostKey } from "./types";
