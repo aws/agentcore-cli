@@ -26,24 +26,29 @@ RUN useradd -m -u 1000 bedrock_agentcore
 # with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
 # as .box-dev/ and names it with BOX_DIST, so it never overwrites what build and deploy staged.
 # When the Runtime profile reads a key from AWS Secrets Manager, box-release.env also names the AWS
-# CLI and its SHA-256: box runs `aws` outside its sandbox to read the key, so the CLI goes in
-# /usr/local, which the agent cannot write.
+# CLI, its SHA-256, and the PGP key that signs it: box runs `aws` outside its sandbox to read the
+# key, so the archive must carry AWS's signature, and the CLI goes in /usr/local, which the agent
+# cannot write.
 # Before the app is copied, so a code change does not download box again.
 ARG BOX_DIST=.box-dist
 COPY ${BOX_DIST}/box-release.env /tmp/box-release.env
 RUN . /tmp/box-release.env \
     && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-       ${AWS_CLI_URL:+unzip} \
+       ${AWS_CLI_URL:+unzip gpgv} \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
     && echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c - \
     && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box && rm /tmp/box.tar.gz \
     && if [ -n "${AWS_CLI_URL:-}" ]; then \
          curl -fsSL -o /tmp/awscli.zip "${AWS_CLI_URL}" \
+         && curl -fsSL -o /tmp/awscli.zip.sig "${AWS_CLI_URL}.sig" \
          && echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c - \
+         && echo "${AWS_CLI_PGP_KEYRING}" | base64 -d > /tmp/aws-cli.gpg \
+         && gpgv --keyring /tmp/aws-cli.gpg --status-fd 1 /tmp/awscli.zip.sig /tmp/awscli.zip \
+            | grep -q "^\[GNUPG:\] VALIDSIG ${AWS_CLI_PGP_FINGERPRINT} " \
          && unzip -q /tmp/awscli.zip -d /tmp/awscli \
          && /tmp/awscli/aws/install --install-dir /usr/local/aws-cli --bin-dir /usr/local/bin \
-         && rm -rf /tmp/awscli /tmp/awscli.zip \
+         && rm -rf /tmp/awscli /tmp/awscli.zip /tmp/awscli.zip.sig /tmp/aws-cli.gpg \
          && /usr/local/bin/aws --version; \
        fi \
     && rm /tmp/box-release.env

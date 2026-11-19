@@ -7,7 +7,12 @@ import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { AWS_CLI_RELEASE, stageBoxContainers } from "./boxContainer";
+import {
+  AWS_CLI_RELEASE,
+  AWS_CLI_SIGNING_KEY,
+  keyringBase64,
+  stageBoxContainers,
+} from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 /** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
@@ -144,7 +149,9 @@ describe("stageBoxContainers", () => {
       releaseOf().releaseFor,
     );
     expect(await env()).toEndWith(
-      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n`,
+      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n` +
+        `AWS_CLI_PGP_FINGERPRINT=${AWS_CLI_SIGNING_KEY.fingerprint}\n` +
+        `AWS_CLI_PGP_KEYRING=${keyringBase64(AWS_CLI_SIGNING_KEY.armored)}\n`,
     );
 
     for (const networks of [
@@ -165,9 +172,29 @@ describe("stageBoxContainers", () => {
     expect(TEMPLATE_DOCKERFILE).toContain(
       "--install-dir /usr/local/aws-cli --bin-dir /usr/local/bin",
     );
+    // AWS's signature must be valid, and made by the key the CLI names, before the archive unzips.
+    const verify = TEMPLATE_DOCKERFILE.indexOf(
+      "gpgv --keyring /tmp/aws-cli.gpg --status-fd 1 /tmp/awscli.zip.sig /tmp/awscli.zip",
+    );
+    expect(verify).toBeGreaterThan(-1);
+    expect(TEMPLATE_DOCKERFILE).toContain('curl -fsSL -o /tmp/awscli.zip.sig "${AWS_CLI_URL}.sig"');
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      'grep -q "^\\[GNUPG:\\] VALIDSIG ${AWS_CLI_PGP_FINGERPRINT} "',
+    );
+    expect(verify).toBeLessThan(TEMPLATE_DOCKERFILE.indexOf("unzip -q /tmp/awscli.zip"));
     expect(AWS_CLI_RELEASE.url).toBe(
       `https://awscli.amazonaws.com/awscli-exe-linux-aarch64-${AWS_CLI_RELEASE.version}.zip`,
     );
+  });
+
+  test("gives the image AWS's CLI signing key as one keyring line", () => {
+    const keyring = Buffer.from(keyringBase64(AWS_CLI_SIGNING_KEY.armored), "base64");
+    // An OpenPGP public key packet (old format, two-byte length), version 4, of AWS CLI Team.
+    expect([keyring[0], keyring[3]]).toEqual([0x99, 4]);
+    expect(keyring.toString("latin1")).toContain("AWS CLI Team <aws-cli@amazon.com>");
+    expect(keyringBase64(AWS_CLI_SIGNING_KEY.armored)).toMatch(/^[A-Za-z0-9+/]+=*$/);
+    expect(AWS_CLI_SIGNING_KEY.fingerprint).toMatch(/^[0-9A-F]{40}$/);
+    expect(AWS_CLI_SIGNING_KEY.armored).toStartWith("-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n");
   });
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {
