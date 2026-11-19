@@ -70,7 +70,10 @@ export interface BoxNetworkWriteContext extends BoxKeySources {
 
 export interface BoxNetworkWriter {
   readonly name: string;
-  readonly writes: (networks: readonly BoxNetwork[]) => readonly BoxNetworkOutput[];
+  readonly writes: (
+    networks: readonly BoxNetwork[],
+    context: BoxNetworkWriteContext,
+  ) => readonly BoxNetworkOutput[];
   readonly edits: (
     networks: readonly BoxNetwork[],
     context: BoxNetworkWriteContext,
@@ -101,7 +104,7 @@ export function boxNetworkEdits(
 ): CollectedEdits {
   const owners = new Map<string, string>();
   for (const writer of writers) {
-    for (const output of writer.writes(networks)) {
+    for (const output of writer.writes(networks, context)) {
       const key = JSON.stringify(output);
       const owner = owners.get(key);
       if (owner !== undefined) {
@@ -299,16 +302,16 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its box profile, and the entry in that runtime's `additionalPolicies`. A runtime with no
- * CloudWatch target gets neither, and loses the file and the entry it had.
+ * its box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime, and
+ * a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
-  writes: (networks) => [
+  writes: (_networks, { spec }) => [
     { kind: "runtimePolicies" },
-    ...networks.map(({ runtime }) => ({
+    ...spec.runtimes.map(({ name }) => ({
       kind: "file" as const,
-      path: boxTelemetryPolicyFile(runtime),
+      path: boxTelemetryPolicyFile(name),
     })),
   ],
   edits: (networks, { spec, projectRoot }) => {

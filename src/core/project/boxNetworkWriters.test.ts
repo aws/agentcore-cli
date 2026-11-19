@@ -77,13 +77,16 @@ const passthrough = (name: string, endpoint: string): AgentCoreGatewayTarget => 
   passthrough: { endpoint, protocolType: "CUSTOM" },
 });
 
+/** What each writer reads besides the models, for `project`. */
+const contextFor = (project = spec()) => ({
+  spec: project,
+  projectRoot: "/nonexistent/project",
+  env: { GITHUB_TOKEN: "ghp_1" },
+  envLocal: {},
+});
+
 const run = (writers: readonly BoxNetworkWriter[], networks: BoxNetwork[], project = spec()) =>
-  boxNetworkEdits(writers, networks, {
-    spec: project,
-    projectRoot: "/nonexistent/project",
-    env: { GITHUB_TOKEN: "ghp_1" },
-    envLocal: {},
-  });
+  boxNetworkEdits(writers, networks, contextFor(project));
 
 const GITHUB_AUTH = {
   kind: "apiKey",
@@ -372,7 +375,7 @@ describe("telemetryPolicyWriter", () => {
 
     const edits = run([telemetryPolicyWriter], models, project);
 
-    expect(telemetryPolicyWriter.writes(models)).toEqual([
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
@@ -403,6 +406,31 @@ describe("telemetryPolicyWriter", () => {
         "box sends no telemetry to CloudWatch",
     ]);
   });
+
+  test("declares the policy file of every runtime, also one with no box, which it removes", () => {
+    const project = spec();
+    project.runtimes.push({
+      ...project.runtimes[0]!,
+      name: "plain",
+      codeLocation: "app/plain",
+    } as ProjectSpec["runtimes"][number]);
+    const models = [network({ telemetry: [logs("group-a")] })];
+    const plain = { kind: "file", path: "agentcore/box-telemetry-policy-plain.json" } as const;
+
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
+      { kind: "runtimePolicies" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
+      plain,
+    ]);
+    expect(run([telemetryPolicyWriter], models, project).files.at(-1)).toEqual({
+      path: plain.path,
+      remove: true,
+    });
+    const other: BoxNetworkWriter = { name: "other", writes: () => [plain], edits: () => ({}) };
+    expect(() => run([telemetryPolicyWriter, other], models, project)).toThrow(
+      `Box network writers 'telemetry policy' and 'other' both write ${JSON.stringify(plain)}`,
+    );
+  });
 });
 
 describe("runtimeProfileWriter", () => {
@@ -412,7 +440,7 @@ describe("runtimeProfileWriter", () => {
 
     const { files } = run([writer], models);
 
-    expect(writer.writes(models)).toEqual([
+    expect(writer.writes(models, contextFor())).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
       { kind: "file", path: "app/agent/.box-dist/policy.dw" },
       { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
