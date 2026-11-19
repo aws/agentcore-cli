@@ -2128,7 +2128,7 @@ export class FsProjectManager implements ProjectManager {
     runtime: ScaffoldRuntimeInput,
     region: string,
   ): AsyncGenerator<ProjectEvent, void> {
-    const text = renderBoxProfile(projectName, runtime, "local", "", [], region);
+    const text = renderBoxProfile(projectName, runtime, region);
     if (text === undefined) return;
     const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {

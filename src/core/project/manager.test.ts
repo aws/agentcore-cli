@@ -815,7 +815,7 @@ describe("FsProjectManager.create box profile", () => {
 
       const path = join(directory, "example", BOX_PROFILE_FILE);
       expect(await readFile(path, "utf8")).toBe(
-        renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "local", "", [], "eu-west-1")!,
+        renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
       );
       expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
     },

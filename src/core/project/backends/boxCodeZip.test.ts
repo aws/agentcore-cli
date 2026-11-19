@@ -2,10 +2,12 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse } from "smol-toml";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
-import { renderRuntimeBoxProfile } from "../templates/boxProfile";
+import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
+import type { TomlTable } from "../runtimeProfile/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import type { BoxLinuxBuild } from "./boxRelease";
 
@@ -68,7 +70,7 @@ describe("stageBoxCodeZip", () => {
     const build = await linuxBuild();
     const demo = await project("start.py");
 
-    expect(await stageBoxCodeZip(demo, [], async () => build)).toEqual(["agent"]);
+    expect(await stageBoxCodeZip(demo, [model([])], async () => build)).toEqual(["agent"]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     for (const binary of BINARIES) {
@@ -81,9 +83,10 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",
     );
-    // The Runtime profile is rendered from agentcore.json.
+    // The Runtime profile is the one build derived from the local profile.
+    const { runtimeProfile, runtimeProfileHeader } = model([]);
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
-      renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
+      serializeRuntimeProfile(runtimeProfile!, runtimeProfileHeader),
     );
   });
 
@@ -93,7 +96,7 @@ describe("stageBoxCodeZip", () => {
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
     const versions: (string | undefined)[] = [];
 
-    await stageBoxCodeZip(demo, [], async (version) => {
+    await stageBoxCodeZip(demo, [model([])], async (version) => {
       versions.push(version);
       return build;
     });
@@ -108,7 +111,7 @@ describe("stageBoxCodeZip", () => {
     await writeFile(join(dist, "ffi", "stale.so"), "old");
     const build = await linuxBuild();
 
-    await stageBoxCodeZip(demo, [], async () => build);
+    await stageBoxCodeZip(demo, [model([])], async () => build);
 
     expect(await Bun.file(join(dist, "ffi", "stale.so")).exists()).toBe(false);
     expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
@@ -120,7 +123,7 @@ describe("stageBoxCodeZip", () => {
       throw new Error("not asked");
     });
 
-    expect(await stageBoxCodeZip(demo, [], box)).toEqual([]);
+    expect(await stageBoxCodeZip(demo, [model([])], box)).toEqual([]);
     expect(box).not.toHaveBeenCalled();
     expect(await Bun.file(join(demo.rootPath, "app", "agent", ".box-dist", "box")).exists()).toBe(
       false,
@@ -141,9 +144,10 @@ describe("stageBoxCodeZip", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect(Buffer.compare(await readFile(join(dist, "policy.dw")), bytes)).toBe(0);
     expect(await readFile(join(dist, "rules", "extra.dw"), "utf8")).toBe("// extra\n");
-    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain(
-      'policies = ["policy.dw", "rules/extra.dw"]',
-    );
+    expect(parse(await readFile(join(dist, "profile.toml"), "utf8")).policies).toEqual([
+      "policy.dw",
+      "rules/extra.dw",
+    ]);
   });
 
   test("stages each runtime's own Runtime profile and policy files into its own code folder", async () => {
@@ -168,8 +172,7 @@ describe("stageBoxCodeZip", () => {
       expect(await readFile(join(dist, file), "utf8")).toBe(`// ${name}\n`);
       expect(await Bun.file(join(dist, other)).exists()).toBe(false);
       const profile = await readFile(join(dist, "profile.toml"), "utf8");
-      expect(profile).toContain(`policies = ["${file}"]`);
-      expect(profile).toContain(`# The policy files of .box/${name}/local/profile.toml,`);
+      expect(parse(profile) as TomlTable).toEqual(runtimeProfileOf([file], name));
       expect(await readFile(join(demo.rootPath, ".box", name, "aws", "profile.toml"), "utf8")).toBe(
         profile,
       );
@@ -187,7 +190,10 @@ describe("stageBoxCodeZip", () => {
   });
 });
 
-/** A model of the runtime `runtime` with the default Memory route and the policy files given. */
+/**
+ * A model of the runtime `runtime` with no host and the policy files given, with the Runtime
+ * profile build derived from its local profile.
+ */
 function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
   return {
     runtime,
@@ -196,8 +202,20 @@ function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
     hosts: [],
     credentials: [],
     policyFiles,
+    runtimeProfile: runtimeProfileOf(policyFiles, runtime),
+    runtimeProfileHeader: [`Derived from .box/${runtime}/local/profile.toml.`],
     grantedActions: [],
     warnings: [],
     failures: [],
+  };
+}
+
+/** A derived Runtime profile that names `policyFiles`. */
+function runtimeProfileOf(policyFiles: string[], runtime = "agent"): TomlTable {
+  return {
+    packs: ["@box/base", "@box/agentcore", "@box/agentcore-codezip"],
+    ...(policyFiles.length > 0 && { policies: policyFiles }),
+    profile: { name: "demo" },
+    agent: { command: [`\${{ inputs.code.dir }}/${runtime}`] },
   };
 }

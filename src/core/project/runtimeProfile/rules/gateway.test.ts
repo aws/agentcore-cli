@@ -24,7 +24,8 @@ import {
   gatewayTargetsWriter,
 } from "../../boxNetworkWriters";
 import { boxNetworkRules } from "../../boxProfileResolver-test-support";
-import { renderRuntimeBoxProfile } from "../../templates/boxProfile";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { profileKeyPlaces, runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
@@ -389,7 +390,21 @@ describe("the gateway rule for an HTTP [mcp] server", () => {
  * agentcore.json as build writes it, has the same `[egress]` and HTTP `[mcp]` tables as the
  * profile that build derives from the local profile.
  */
-describe("the gateway rule and renderRuntimeBoxProfile", () => {
+/**
+ * The `[egress]` and HTTP `[mcp]` tables that the Runtime renderer that the derivation replaced
+ * wrote for each case below, recorded before that renderer was deleted.
+ */
+const OLD_RENDERER = JSON.parse(
+  readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
+).gateway as Record<string, { egress: TomlTable | null; mcp: TomlTable }>;
+
+/** The tables of the old renderer for `label`, as parse gives them. */
+function rendered(label: string): TomlTable {
+  const { egress, mcp } = OLD_RENDERER[label]!;
+  return { ...(egress && { egress }), ...(Object.keys(mcp).length > 0 && { mcp }) };
+}
+
+describe("the gateway rule and the Runtime renderer it replaced", () => {
   const TEXT = [
     'packs = ["box/base", "box/bedrock"]',
     'policies = ["policy.dw"]',
@@ -511,12 +526,7 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
         places: profileKeyPlaces(text, PROFILE),
       }),
     );
-    return {
-      network,
-      written,
-      rendered: parse(renderRuntimeBoxProfile(written, RUNTIME, network)) as TomlTable,
-      derived,
-    };
+    return { network, written, derived };
   }
   const http = (mcp: unknown) =>
     Object.fromEntries(
@@ -526,11 +536,12 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
     );
 
   test("give the same [egress] and HTTP [mcp] tables on the first build", () => {
-    const { network, rendered, derived } = bothProfiles(project(TARGETS, ["agentMemory"]));
+    const { network, derived } = bothProfiles(project(TARGETS, ["agentMemory"]));
+    const old = rendered("first build");
 
     expect(network.failures).toEqual([]);
     expect(derived.problems).toEqual([]);
-    expect(Object.keys(rendered.egress as TomlTable).sort()).toEqual([
+    expect(Object.keys(old.egress as TomlTable).sort()).toEqual([
       "agentcore",
       "bedrock",
       "egress-github",
@@ -539,38 +550,38 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
       "egress-models-api-two-example-com",
       "orders",
     ]);
-    expect(Object.keys(http(rendered.mcp))).toEqual(["docs"]);
-    expect(derived.profile.egress).toEqual(rendered.egress);
-    expect(http(derived.profile.mcp)).toEqual(http(rendered.mcp));
+    expect(Object.keys(http(old.mcp))).toEqual(["docs"]);
+    expect(derived.profile.egress).toEqual(old.egress);
+    expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
     // The model that build keeps holds the same derived profile.
-    expect(network.runtimeProfile?.egress).toEqual(rendered.egress);
-    expect(http(network.runtimeProfile?.mcp)).toEqual(http(rendered.mcp));
+    expect(network.runtimeProfile?.egress).toEqual(old.egress);
+    expect(http(network.runtimeProfile?.mcp)).toEqual(http(old.mcp));
   });
 
   test("give the same tables on the next build, from the agentcore.json of the first build", () => {
     const first = bothProfiles(project(TARGETS, ["agentMemory"])).written;
-    const { network, rendered, derived } = bothProfiles(first);
+    const { network, derived } = bothProfiles(first);
+    const old = rendered("next build");
 
     expect(network.failures).toEqual([]);
     expect(first.agentCoreGateways[0]!.targets.map(({ name }) => name)).toContain("egress-github");
-    expect(derived.profile.egress).toEqual(rendered.egress);
-    expect(http(derived.profile.mcp)).toEqual(http(rendered.mcp));
+    expect(derived.profile.egress).toEqual(old.egress);
+    expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
   });
 
   test("give the same tables for a target name that TOML must quote, and a port", () => {
-    const { rendered, derived } = bothProfiles(
+    const { derived } = bothProfiles(
       project([passthrough("tools.v2", "https://tools.example.com:8443/api")]),
     );
+    const old = rendered("quoted target");
 
     const quoted = parse(
       '[egress."tools.v2"]\ndestinations = ["tools.example.com:8443"]\n' +
         backendText('egress."tools.v2"', "tools.v2"),
     ).egress as TomlTable;
-    expect((rendered.egress as TomlTable)["tools.v2"]).toEqual(quoted["tools.v2"]);
-    expect(derived.profile.egress).toEqual(rendered.egress);
-    expect(parse(serializeRuntimeProfile(derived.profile)).egress as unknown).toEqual(
-      rendered.egress,
-    );
+    expect((old.egress as TomlTable)["tools.v2"]).toEqual(quoted["tools.v2"]);
+    expect(derived.profile.egress).toEqual(old.egress);
+    expect(parse(serializeRuntimeProfile(derived.profile)).egress as unknown).toEqual(old.egress);
   });
 
   test("give no second problem for an entry that the Box network model rejects, and no route", () => {
@@ -580,7 +591,8 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
     const egress = { wide: { destinations: ["*.wide.example.com"] } };
     const mcp = { pathed: { type: "http", destinations: ["docs.example.com/mcp"] } };
 
-    const { network, rendered, derived } = bothProfiles(project(), {
+    const old = rendered("rejected entries");
+    const { network, derived } = bothProfiles(project(), {
       text,
       egress,
       mcp,
@@ -595,8 +607,8 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
       ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
     ]);
     expect(derived.problems).toEqual([]);
-    expect(derived.profile.egress).toEqual(rendered.egress);
+    expect(derived.profile.egress).toEqual(old.egress);
     expect(derived.profile.mcp).toBeUndefined();
-    expect(rendered.mcp).toBeUndefined();
+    expect(old.mcp).toBeUndefined();
   });
 });

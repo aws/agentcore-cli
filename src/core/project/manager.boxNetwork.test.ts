@@ -15,7 +15,6 @@ import { seedBoxCache } from "./backends/box-release-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { FsProjectManager } from "./manager";
-import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -278,11 +277,11 @@ describe("build writes the Box network of the box profile", () => {
     expect(profile.policies).toEqual(["policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
     const egress = profile.egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual([
+    expect(Object.keys(egress).sort()).toEqual([
+      "agentcore",
+      "bedrock",
       "egress-github",
       "egress-httpbin-org",
-      "bedrock",
-      "agentcore",
     ]);
     expect(egress["egress-github"]).toEqual({
       destinations: ["api.github.com"],
@@ -821,8 +820,7 @@ describe("build writes the telemetry policy of the box profile", () => {
       );
 
       const [network] = calls[0]!.boxNetworks;
-      const runtime = project.spec.runtimes[0]!;
-      expect(parse(renderRuntimeBoxProfile(project.spec, runtime, network)).telemetry).toEqual({
+      expect(network?.runtimeProfile?.telemetry).toEqual({
         logs: logsIn("ap-south-1"),
       });
       expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([

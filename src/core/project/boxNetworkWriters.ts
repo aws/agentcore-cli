@@ -39,10 +39,12 @@ import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
   boxLocalDir,
+  boxLocalProfileFile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
-  renderRuntimeBoxProfile,
 } from "./templates/boxProfile";
+import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+import { ProjectStateError } from "../../errors/errors";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
@@ -358,9 +360,8 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
     edits: (networks, { spec }) => ({
       files: staged.flatMap(({ runtime, dist, container, codezip }) => {
         const network = networkOf(networks, runtime);
-        const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
-          { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
+          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network) },
           ...(container || codezip
             ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
             : []),
@@ -380,6 +381,21 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
       }),
     }),
   };
+}
+
+/**
+ * The text of the AgentCore Runtime profile of `runtime`, which build derived from its local box
+ * profile into the Box network model (`BoxNetwork.runtimeProfile`).
+ */
+function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): string {
+  if (network?.runtimeProfile === undefined) {
+    throw new ProjectStateError(
+      `runtime "${runtime}" runs its agent in a box, but build has no AgentCore Runtime profile ` +
+        `for it: it derives that profile from ${boxLocalProfileFile(runtime)}, and found no ` +
+        "Box network for the runtime. Check that its Box gateway is in agentcore.json, then retry.",
+    );
+  }
+  return serializeRuntimeProfile(network.runtimeProfile, network.runtimeProfileHeader);
 }
 
 /** The writers that build and deploy run before synth, in order. */
