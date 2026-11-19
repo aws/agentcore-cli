@@ -414,7 +414,7 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
     "",
     "[mcp.notes]",
     'type = "stdio"',
-    'command = ["/usr/bin/notes"]',
+    'command = ["${{ workspace }}/app/agent/notes"]',
   ].join("\n");
   /** The `[egress]` and `[mcp]` tables that Box resolves the profile to, with box/bedrock. */
   const EGRESS = {
@@ -432,7 +432,7 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
       destinations: ["docs.example.com"],
       secret: { ref: "env://DOCS_TOKEN", header: "x-api-key" },
     },
-    notes: { type: "stdio", command: ["/usr/bin/notes"] },
+    notes: { type: "stdio", command: ["/project/app/agent/notes"] },
   };
   const HR = 'action == Box::Action::"http:request"';
   const NC = 'action == Box::Action::"net:connect"';
@@ -462,7 +462,7 @@ describe("the gateway rule and renderRuntimeBoxProfile", () => {
    */
   function bothProfiles(spec: ProjectSpec, { text, egress, mcp, policy }: Fixture = FIXTURE) {
     const withDefaults = structuredClone(spec);
-    addBoxGatewayTargets(withDefaults, "/project", "us-west-2");
+    addBoxGatewayTargets(withDefaults, "us-west-2");
     const targets = withDefaults.agentCoreGateways[0]!.targets;
     const { parsed, failures } = parseResolvedPolicy(
       {
