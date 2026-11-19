@@ -1,14 +1,12 @@
 import { join } from "node:path";
+import { InputValidationError } from "../../../errors/errors";
 import {
-  BOX_GATEWAY_AGENTCORE_HOST,
-  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
   DEFAULT_EGRESS_BEDROCK_REGION,
   callsBedrockModel,
 } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import { defaultMemoryName } from "../../../projectSchemas/memory";
-import { boxGatewaySpec, isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
+import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
@@ -388,7 +386,7 @@ export function renderBoxProfile(
   // In an image or the Runtime's microVM, the port is reached on the machine's own address.
   const listenHost = container || onRuntime ? "0.0.0.0" : "127.0.0.1";
   const callsModel = protocol !== "MCP";
-  const bedrock = callsModel && callsBedrockModel(runtime);
+  const bedrock = writesBedrockRoute(runtime);
   const keyed = callsModel ? apiKeyRoute(runtime) : undefined;
   const environment = { ...runner.env, ...PYTHON_ENV };
 
@@ -462,19 +460,23 @@ workload_port = ${workloadPort}
 ${routes}${bedrockRoute}${keyedRoute}`;
 }
 
-/**
- * The route the agent's AgentCore Memory calls take on the Runtime: the box
- * sends them to the Box gateway's AgentCore passthrough target, signed with
- * the execution role. Starts with a blank line.
- */
-function runtimeMemoryRouteSection(gatewayName: string): string {
-  const target = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
-  return `
-# AgentCore Memory, through the '${gatewayName}' gateway's '${target}' target.
-[egress.${target}]
-destinations = [${str(BOX_GATEWAY_AGENTCORE_HOST)}]
+/** The Box gateway target name whose route would collide with the direct `[egress.bedrock]` route. */
+const BEDROCK_ROUTE = "bedrock";
 
-[[egress.${target}.backends]]
+/**
+ * A route the agent's calls take on the Runtime: the box sends calls to `host`
+ * to the runtime's Box gateway target `target`, signing them for the gateway
+ * with the execution role; the gateway calls `host` with the target's own auth.
+ * Starts with a blank line.
+ */
+function runtimeGatewayRouteSection(gatewayName: string, target: string, host: string): string {
+  const key = tomlKey(target);
+  return `
+# Calls to ${host}, through the '${gatewayName}' gateway's '${target}' target.
+[egress.${key}]
+destinations = [${str(host)}]
+
+[[egress.${key}.backends]]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
@@ -483,18 +485,61 @@ auth.aws.region = ${str(DEFAULT_EGRESS_BEDROCK_REGION)}
 }
 
 /**
+ * The Runtime routes of a runtime: one for each passthrough target of its Box gateway (the
+ * gateway bound to it), named for the target and sent to it, so a target in agentcore.json is
+ * what gives the boxed agent a route. Build adds the targets it needs, such as Memory's
+ * `agentcore`, before it renders. Other target types get no route. None outside a Box project.
+ *
+ * The agent still calls Bedrock directly with the execution role, so a passthrough target named
+ * `bedrock` is refused when the agent calls Bedrock: its route would replace that one.
+ */
+function runtimeGatewayRoutes(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  callsBedrock: boolean,
+): string {
+  if (!isBoxProject(spec)) return "";
+  const gateway = spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === runtime.name);
+  if (!gateway) return "";
+  const targets = gateway.targets.filter(
+    (target) => target.targetType === "passthrough" && target.passthrough,
+  );
+  if (callsBedrock && targets.some(({ name }) => name === BEDROCK_ROUTE)) {
+    throw new InputValidationError(
+      `gateway '${gateway.name}' has a passthrough target named '${BEDROCK_ROUTE}', but runtime ` +
+        `'${runtime.name}' calls Bedrock directly, and its box profile already has the ` +
+        `[egress.${BEDROCK_ROUTE}] route. Rename the target.`,
+    );
+  }
+  const hostOf = (target: (typeof targets)[number]) => new URL(target.passthrough!.endpoint).host;
+  // Two routes with one destination would leave box to pick one, so a host has one target.
+  const byHost = new Map<string, string>();
+  for (const target of targets) {
+    const other = byHost.get(hostOf(target));
+    if (other !== undefined) {
+      throw new InputValidationError(
+        `gateway '${gateway.name}' has two passthrough targets for ${hostOf(target)}, '${other}' ` +
+          `and '${target.name}', so runtime '${runtime.name}' would get two routes to one host. ` +
+          "Remove one of them.",
+      );
+    }
+    byHost.set(hostOf(target), target.name);
+  }
+  return targets
+    .map((target) => runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target)))
+    .join("");
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
- * provider, and, when the project has the runtime's default Memory, the route
- * its Memory calls take through the Box gateway. agentcore.json does not
+ * provider, and a route for each passthrough target of its Box gateway (see
+ * `runtimeGatewayRoutes`). agentcore.json does not
  * record the framework, and the profile does not depend on it beyond the
  * container case, so the input names Strands, one of the frameworks that run
  * in a box.
  */
 export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRuntime): string {
-  const memory =
-    isBoxProject(spec) &&
-    spec.memories.some((entry) => entry.name === defaultMemoryName(runtime.name));
   const input = {
     runtimeName: runtime.name,
     build: runtime.build,
@@ -509,7 +554,7 @@ export function renderRuntimeBoxProfile(spec: ProjectSpec, runtime: ProjectRunti
     input,
     DEFAULT_EGRESS_BEDROCK_REGION,
     "runtime",
-    memory ? runtimeMemoryRouteSection(boxGatewaySpec(runtime.name).name) : "",
+    runtimeGatewayRoutes(spec, runtime, writesBedrockRoute(input)),
   )!;
 }
 
@@ -587,4 +632,20 @@ function optional(path: string): string {
 
 function list(values: string[]): string {
   return `[${values.map(str).join(", ")}]`;
+}
+
+/**
+ * A TOML key: bare when TOML allows it, else a quoted string. Defensive: AgentCore Gateway takes
+ * only target names of letters, digits and single dashes, which are bare keys already.
+ */
+function tomlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : str(key);
+}
+
+/**
+ * Whether the profile has the `[egress.bedrock]` route: the agent calls a Bedrock model, which an
+ * MCP server does not.
+ */
+function writesBedrockRoute(runtime: ScaffoldRuntimeInput): boolean {
+  return (runtime.protocol ?? "HTTP") !== "MCP" && callsBedrockModel(runtime);
 }
