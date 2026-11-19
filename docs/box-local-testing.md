@@ -407,11 +407,9 @@ bun run "$CLI" logs runtime --name agent --since 15m --query '"strands.box.polic
 Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`. To show
 only the deny decisions, use `--query '"deny"'`.
 
-Deploy sends the `APPLICATION_LOGS` of each Box gateway to
-`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. This is on by default
-for a Box gateway. Gateway traces to X-Ray are off by default, because X-Ray accepts them only when
-CloudWatch Transaction Search is on in the account. Read the gateway logs with the gateway ID from
-step 9:
+Deploy always sends the `APPLICATION_LOGS` of each Box gateway to
+`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. The gateway sends no
+traces to X-Ray. Read the gateway logs with the gateway ID from step 9:
 
 ```sh
 aws logs tail "/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/$GATEWAY_ID" --since 15m
@@ -441,9 +439,10 @@ To send box telemetry to a log group that you make:
    secret.ref = "aws://"
    ```
 
-   If the target has no `region`, build writes the build region into the Runtime profile, and
-   deploy writes the region of its deploy target. Box does not accept a CloudWatch target with no
-   region. Thus `agentcore dev` cannot run the profile until you add `region`.
+   If the target has no `region`, build writes the region of the `default` target in
+   `agentcore/aws-targets.json` into the Runtime profile, or the build region when there is no such
+   target, and deploy writes the region of its deploy target. Box does not accept a CloudWatch
+   target with no region. Thus `agentcore dev` cannot run the profile until you add `region`.
 
 3. Deploy the project:
 
