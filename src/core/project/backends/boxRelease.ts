@@ -210,12 +210,30 @@ async function installBox(
         `${build.asset} has no release.json for box ${release.version}, or no box packs.`,
       );
     }
-    rmSync(root, { recursive: true, force: true });
-    renameSync(payload, root);
+    publishInstall(payload, root, () => installedBox(release.version, root));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
   return root;
+}
+
+/**
+ * Moves the checked `payload` into the cache folder `root`, where another process may be
+ * installing the same release at the same time: several concurrent build or deploy commands each
+ * download into their own work folder. `root` only ever appears through a rename of a complete
+ * payload, so once `installed()` holds it is never removed; a process that loses the race keeps
+ * the winner's copy and drops its own.
+ */
+function publishInstall(payload: string, root: string, installed: () => boolean): void {
+  if (installed()) return;
+  // An incomplete folder from an interrupted install; a concurrent process may remove it too.
+  rmSync(root, { recursive: true, force: true });
+  try {
+    renameSync(payload, root);
+  } catch (error) {
+    // EEXIST or ENOTEMPTY: another process renamed its payload into `root` first.
+    if (!installed()) throw error;
+  }
 }
 
 async function download(
