@@ -31,9 +31,9 @@ COPY ${BOX_DIST}/box-release.env /tmp/box-release.env
 RUN . /tmp/box-release.env \
     && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
+    && curl -fsSL --retry 3 -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
     && echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c - \
-    && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box && rm /tmp/box.tar.gz /tmp/box-release.env
+    && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box --no-same-owner && rm /tmp/box.tar.gz /tmp/box-release.env
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

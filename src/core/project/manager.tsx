@@ -1580,7 +1580,7 @@ export class FsProjectManager implements ProjectManager {
     return (
       this.processEnv.AWS_REGION ||
       this.processEnv.AWS_DEFAULT_REGION ||
-      (await regionFromConfigFile()) ||
+      (await regionFromConfigFile(this.processEnv)) ||
       DEFAULT_REGION
     );
   }
@@ -1624,11 +1624,9 @@ export class FsProjectManager implements ProjectManager {
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const changes = edits.changedFields.map((field) => [
         field,
-        field === "agentCoreGateways"
-          ? patchNamedEntries(raw[field], project.spec[field], edits.spec[field])
-          : field === "credentials"
-            ? patchNamedEntries(raw[field], project.spec[field], edits.spec[field])
-            : edits.spec[field],
+        field === "agentCoreGateways" || field === "credentials"
+          ? patchNamedEntries<{ name: string }>(raw[field], project.spec[field], edits.spec[field])
+          : edits.spec[field],
       ]);
       const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);

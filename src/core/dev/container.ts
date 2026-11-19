@@ -185,9 +185,6 @@ export class ContainerDevRunner implements DevRunner {
     ]);
     const boxDist = await this.stageBox(input, context);
     const boxed = boxDist !== undefined;
-    if (boxed) {
-      yield { type: "status", message: `Staged box for the image in ${join(context, boxDist)}` };
-    }
     // The folder dev staged, for a Dockerfile that takes it as a build argument.
     const boxDistFlags =
       boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];

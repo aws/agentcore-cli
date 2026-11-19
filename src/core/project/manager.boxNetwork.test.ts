@@ -627,6 +627,19 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-southeast-2"));
   });
 
+  test("takes the region of the AWS config profile that its environment names", async () => {
+    const config = join(await temporary("agentcore-aws-config-"), "config");
+    await writeFile(config, "[default]\nregion = us-east-1\n[profile work]\nregion = eu-west-2\n");
+    const { manager, root } = await strandsProject({
+      env: { AWS_REGION: undefined, AWS_CONFIG_FILE: config, AWS_PROFILE: "work" },
+    });
+
+    await build(manager, root);
+
+    const { targets } = await boxGateway(root);
+    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("eu-west-2"));
+  });
+
   test("moves a target it wrote for another region, and keeps one the user changed", async () => {
     const { manager, root } = await strandsProject();
     await build(manager, root);

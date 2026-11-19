@@ -7,7 +7,8 @@ end to end before you publish.
 
 A "Box project" (`"projectType": "box"` in `agentcore.json`) runs its agent in a _box_:
 a sandbox that controls the agent's network egress and filesystem access. Each runtime
-gets its own Box gateway, named after the runtime: the runtime `agent` gets `agent-box`.
+gets its own Box gateway, bound to it by `boundRuntime` and named after it: the runtime `agent`
+gets `agent-box-egress`.
 
 ## Where box comes from
 
@@ -16,7 +17,8 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
-`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip or the image's `.box-dist/`.
+`~/.agentcore/box/`, check its SHA-256s, and stage it into the zip, for a CodeZip runtime. For a
+container they write the release and its checksum into `.box-dist/box-release.env` instead.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
 from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
@@ -111,7 +113,7 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
-  `<runtime>-box`. A host the gateway already has a target for keeps that target. Build owns
+  `<runtime>-box-egress`. A host the gateway already has a target for keeps that target. Build owns
   only the targets whose name starts with `egress-`: it adds them, changes them, and removes
   one when no host needs it. It never changes another target.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
@@ -123,7 +125,7 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
 - **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box`. Each policy
+  `[egress.<target>]` route through the gateway for each target of `<runtime>-box-egress`. Each policy
   file is copied beside it, byte for byte, and listed under `policies`.
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
@@ -178,7 +180,7 @@ The first deploy makes the `default` target from your account and region.
 Local checks, in `agentcore/agentcore.json`:
 
 - `"projectType": "box"`.
-- A gateway named `agent-box` with a `bedrock` passthrough target in the deploy region, and an
+- A gateway named `agent-box-egress` with a `bedrock` passthrough target in the deploy region, and an
   `egress-github` target for `https://api.github.com`.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 

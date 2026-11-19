@@ -8,11 +8,13 @@ export const DEFAULT_REGION = "us-east-1";
 /**
  * Reads the `region` setting for the active profile from the shared AWS config
  * file (~/.aws/config, or $AWS_CONFIG_FILE). The active profile is $AWS_PROFILE,
- * else "default". Returns undefined if the file, profile, or setting is absent —
- * never throws.
+ * else "default", both read from `env`. Returns undefined if the file, profile,
+ * or setting is absent — never throws.
  */
-export async function regionFromConfigFile(): Promise<string | undefined> {
-  const path = process.env.AWS_CONFIG_FILE || join(homedir(), ".aws", "config");
+export async function regionFromConfigFile(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+  const path = env.AWS_CONFIG_FILE || join(homedir(), ".aws", "config");
   let text: string;
   try {
     text = await readTextFile(path);
@@ -22,7 +24,7 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
 
   // In ~/.aws/config the default profile is "[default]" and named profiles are
   // "[profile name]".
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = env.AWS_PROFILE || "default";
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
