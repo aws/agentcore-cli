@@ -77,10 +77,13 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     [`box-v${VERSION}-aarch64-apple-darwin.tar.gz`]: mac.archive,
   };
   const commands: string[][] = [];
-  // curl writes the asset its URL names to -o; tar runs for real.
+  // curl writes the asset its URL names to -o; tar runs for real. The tests pass an empty
+  // environment, which on Windows leaves no PATH to find tar by, so tar gets this process's.
   const runner: ProcessRunner = async (command, options) => {
     commands.push(command);
-    if (command[0] !== "curl") return runProcess(command, options);
+    if (command[0] !== "curl") {
+      return runProcess(command, { ...options, env: { ...process.env, ...options?.env } });
+    }
     const url = command.at(-1)!;
     const output = command[command.indexOf("-o") + 1]!;
     await writeFile(output, await readFile(assets[url.slice(url.lastIndexOf("/") + 1)]!));
