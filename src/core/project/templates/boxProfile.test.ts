@@ -918,6 +918,22 @@ describe("renderAgentCorePack", () => {
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-west-2; rm")).toBe(false);
   });
 
+  test("declares the runtime's log group and log stream inputs as keys of OTEL_EXPORTER_OTLP_LOGS_HEADERS", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime).toEqual({
+      log_group: {
+        description: "The runtime's own CloudWatch Logs log group.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-group",
+      },
+      log_stream: {
+        description: "The runtime's own CloudWatch Logs log stream.",
+        from: "env:OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+        key: "x-aws-log-stream",
+      },
+    });
+  });
+
   test("declares one input per memory and carries each ID into the agent's environment", () => {
     const toml = pack([{ name: "agentMemory" }, { name: "notes" }]);
     expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");

@@ -48,6 +48,12 @@ const BOX_PYTHON_ENV = "BOX_PYTHON";
 const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
 const BOX_CODE_ENV = "BOX_CODE";
 
+/**
+ * The variable in which AgentCore Runtime names the runtime's own log group and log stream, as
+ * `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
+ */
+const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
 /** {@link renderAgentCorePack}. */
 export const AGENTCORE_PACK_NAME = "box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
@@ -843,8 +849,10 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
  * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
  * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
- * profile expects. One input per project memory carries its ID into the agent's environment. box
- * finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
+ * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
+ * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One
+ * input per project memory carries its ID into the agent's environment. box finds the pack beside
+ * its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
  */
 export function renderAgentCorePack(spec: ProjectSpec): string {
   const memories = spec.memories ?? [];
@@ -881,7 +889,19 @@ pattern = ${str(GATEWAY_URL_PATTERN)}
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
-pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
+pattern = ${str(AWS_REGION_PATTERN)}
+
+# The runtime's own log group and log stream, for the default telemetry target. The runtime ID
+# exists only after deploy, and the Runtime names both in ${RUNTIME_LOGS_HEADERS_ENV}.
+[inputs.runtime.log_group]
+description = "The runtime's own CloudWatch Logs log group."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-group"
+
+[inputs.runtime.log_stream]
+description = "The runtime's own CloudWatch Logs log stream."
+from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
+key = "x-aws-log-stream"${memoryInputs}
 ${agentEnv}`;
 }
 
