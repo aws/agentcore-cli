@@ -1,156 +1,196 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  addBoxProfileCredentials,
-  boxProfileCredentialEnvEntries,
-  boxProfileEnvCredentials,
-} from "./boxProfileCredentials";
+import { describe, expect, test } from "bun:test";
+import { boxCredentialSeedEntries, planBoxProfileCredentials } from "./boxProfileCredentials";
+import type { BoxEnvRoute } from "./boxProfileEgress";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
-
-const directories: string[] = [];
-afterEach(async () => {
-  await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })));
-});
-
-async function projectWithProfile(toml: string | undefined): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "box-profile-creds-"));
-  directories.push(root);
-  if (toml !== undefined) {
-    await mkdir(join(root, ".box"), { recursive: true });
-    await writeFile(join(root, ".box", "profile.toml"), toml);
-  }
-  return root;
-}
 
 function spec(credentials: ProjectSpec["credentials"] = []): ProjectSpec {
   return { credentials } as unknown as ProjectSpec;
 }
 
-describe("addBoxProfileCredentials", () => {
-  test("adds an ApiKeyCredentialProvider and records the source var for each env:// secret", async () => {
-    const root = await projectWithProfile(
-      '[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n\n' +
-        '[egress.stripe]\nsecret.ref = "env://STRIPE_KEY"\n',
-    );
+const route = (name: string, variable: string): BoxEnvRoute => ({ route: name, variable });
+
+describe("planBoxProfileCredentials", () => {
+  test("adds an ApiKeyCredentialProvider and a seed for each env:// route", () => {
     const s = spec();
 
-    const { messages, added } = addBoxProfileCredentials(s, root);
+    const plan = planBoxProfileCredentials(s, [
+      route("github", "GITHUB_TOKEN"),
+      route("stripe", "STRIPE_KEY"),
+    ]);
 
     expect(s.credentials).toEqual([
       { authorizerType: "ApiKeyCredentialProvider", name: "github" },
       { authorizerType: "ApiKeyCredentialProvider", name: "stripe" },
     ]);
-    expect(added).toEqual([
-      { name: "github", variable: "GITHUB_TOKEN" },
-      { name: "stripe", variable: "STRIPE_KEY" },
+    expect(plan.added).toEqual(s.credentials);
+    expect(plan.seeds).toEqual([
+      { route: "github", variable: "GITHUB_TOKEN", credential: "github" },
+      { route: "stripe", variable: "STRIPE_KEY", credential: "stripe" },
     ]);
-    expect(messages).toHaveLength(2);
+    expect(plan.messages).toHaveLength(2);
   });
 
-  test("skips aws:// and other non-env refs", async () => {
-    const root = await projectWithProfile('[egress.bedrock]\nsecret.ref = "aws://default"\n');
+  test("is idempotent: a second pass adds nothing, but still seeds the route", () => {
+    const s = spec();
+    planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
+
+    const again = planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
+
+    expect(again.added).toEqual([]);
+    expect(again.messages).toEqual([]);
+    expect(again.seeds).toEqual([
+      { route: "github", variable: "GITHUB_TOKEN", credential: "github" },
+    ]);
+    expect(s.credentials).toHaveLength(1);
+  });
+
+  test("skips the model-provider routes create writes, by name and by provider variable", () => {
     const s = spec();
 
-    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
+    const plan = planBoxProfileCredentials(s, [
+      route("openai", "OPENAI_API_KEY"),
+      route("anthropic", "SOMETHING_ELSE"),
+      route("my-llm", "GEMINI_API_KEY"),
+      route("openai-compatible", "LLM_KEY"),
+    ]);
+
+    expect(plan).toEqual({ messages: [], added: [], seeds: [] });
     expect(s.credentials).toEqual([]);
   });
 
-  test("skips a var an existing credential already covers (the model provider key)", async () => {
-    const covered = credentialEnvVarName("agentOpenAIApiKey");
-    const root = await projectWithProfile(`[egress.openai]\nsecret.ref = "env://${covered}"\n`);
+  test("skips, with no seed, a route whose variable an API key credential already reserves", () => {
     const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "agentOpenAIApiKey" }]);
 
-    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
+    const plan = planBoxProfileCredentials(s, [
+      route("llm", credentialEnvVarName("agentOpenAIApiKey")),
+    ]);
+
+    expect(plan).toEqual({ messages: [], added: [], seeds: [] });
+  });
+
+  test("reports, but does not add, a name that is not a valid credential name", () => {
+    const s = spec();
+
+    const plan = planBoxProfileCredentials(s, [route("bad name!", "SOME_KEY")]);
+
+    expect(plan.added).toEqual([]);
+    expect(plan.seeds).toEqual([]);
+    expect(plan.messages).toEqual([
+      "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
+    ]);
+  });
+
+  test("reports, but does not add, a name that ends in a credential field suffix", () => {
+    const s = spec();
+
+    const plan = planBoxProfileCredentials(s, [route("github_client_id", "GITHUB_ID")]);
+
+    expect(plan.added).toEqual([]);
+    expect(plan.messages).toHaveLength(1);
+    expect(plan.messages[0]).toContain("ends in '_CLIENT_ID'");
+  });
+
+  test("reports, but does not add, a name that derives an existing credential's variable", () => {
+    const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "git-hub" }]);
+
+    const plan = planBoxProfileCredentials(s, [route("git_hub", "GITHUB_TOKEN")]);
+
+    expect(plan.added).toEqual([]);
+    expect(plan.seeds).toEqual([]);
+    expect(plan.messages).toEqual([
+      "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
+        "same variable, AGENTCORE_CREDENTIAL_GIT_HUB, as credential 'git-hub'",
+    ]);
     expect(s.credentials).toHaveLength(1);
   });
 
-  test("is idempotent: a second pass adds nothing", async () => {
-    const root = await projectWithProfile('[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n');
+  test("reports two routes in one profile that derive the same variable, and adds the first", () => {
     const s = spec();
 
-    addBoxProfileCredentials(s, root);
-    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
-    expect(s.credentials).toHaveLength(1);
+    const plan = planBoxProfileCredentials(s, [
+      route("git-hub", "GITHUB_TOKEN"),
+      route("git_hub", "GITHUB_TOKEN"),
+    ]);
+
+    expect(plan.added.map(({ name }) => name)).toEqual(["git-hub"]);
+    expect(plan.messages[1]).toContain("as credential 'git-hub'");
   });
 
-  test("reports, but does not add, an egress name that is not a valid credential name", async () => {
-    const root = await projectWithProfile('[egress.ab]\nsecret.ref = "env://AB_KEY"\n');
-    const s = spec();
+  test("reports, but does not seed, a route named for a credential that is not an API key", () => {
+    const s = spec([
+      {
+        authorizerType: "OAuthCredentialProvider",
+        name: "github",
+        discoveryUrl: "https://example.com/.well-known/openid-configuration",
+      },
+    ] as unknown as ProjectSpec["credentials"]);
 
-    const { messages, added } = addBoxProfileCredentials(s, root);
+    const plan = planBoxProfileCredentials(s, [route("github", "GITHUB_TOKEN")]);
 
-    expect(s.credentials).toEqual([]);
-    expect(added).toEqual([]);
-    expect(messages[0]).toContain("not a valid credential name");
-  });
-
-  test("is a no-op when the project has no box profile", async () => {
-    const root = await projectWithProfile(undefined);
-    const s = spec();
-
-    expect(addBoxProfileCredentials(s, root)).toEqual({ messages: [], added: [] });
-    expect(s.credentials).toEqual([]);
+    expect(plan.added).toEqual([]);
+    expect(plan.seeds).toEqual([]);
+    expect(plan.messages).toEqual([
+      "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
+        "OAuthCredentialProvider credential, not an API key",
+    ]);
   });
 });
 
-describe("boxProfileCredentialEnvEntries", () => {
-  const added = [{ name: "github", variable: "GITHUB_TOKEN" }];
+describe("boxCredentialSeedEntries", () => {
+  const seed = { route: "github", variable: "GITHUB_TOKEN", credential: "github" };
+  const reserved = credentialEnvVarName("github");
 
-  test("carries a set var into .env.local under the credential's reserved name", () => {
-    const entries = boxProfileCredentialEnvEntries(added, { GITHUB_TOKEN: "ghp_123" });
+  test("carries the key from the environment under the credential's reserved variable", () => {
+    const { entries, missing } = boxCredentialSeedEntries([seed], { GITHUB_TOKEN: "ghp_x" }, {});
 
     expect(entries).toEqual([
       {
-        key: credentialEnvVarName("github"),
-        value: "ghp_123",
-        comment: expect.stringContaining("env://GITHUB_TOKEN"),
+        key: reserved,
+        value: "ghp_x",
+        comment:
+          "API key for box egress 'env://GITHUB_TOKEN', provisioned to AgentCore Identity on deploy",
       },
     ]);
+    expect(missing).toEqual([]);
   });
 
-  test("skips a var that is unset or empty, leaving it for the operator", () => {
-    expect(boxProfileCredentialEnvEntries(added, {})).toEqual([]);
-    expect(boxProfileCredentialEnvEntries(added, { GITHUB_TOKEN: "" })).toEqual([]);
-  });
-});
+  test("falls back to the key agentcore dev stored in .env.local under the box variable", () => {
+    const { entries } = boxCredentialSeedEntries([seed], {}, { GITHUB_TOKEN: "ghp_stored" });
 
-describe("boxProfileEnvCredentials", () => {
-  test("lists every env:// egress route, independent of declared credentials", async () => {
-    const root = await projectWithProfile(
-      '[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n\n' +
-        '[egress.stripe]\nsecret.ref = "env://STRIPE_KEY"\n',
+    expect(entries.map(({ key, value }) => [key, value])).toEqual([[reserved, "ghp_stored"]]);
+  });
+
+  test("prefers the environment over .env.local", () => {
+    const { entries } = boxCredentialSeedEntries(
+      [seed],
+      { GITHUB_TOKEN: "ghp_shell" },
+      { GITHUB_TOKEN: "ghp_stored" },
     );
 
-    expect(boxProfileEnvCredentials(root)).toEqual([
-      { name: "github", variable: "GITHUB_TOKEN" },
-      { name: "stripe", variable: "STRIPE_KEY" },
-    ]);
+    expect(entries[0]?.value).toBe("ghp_shell");
   });
 
-  test("lists a route even after agentcore.json already declares its credential", async () => {
-    const root = await projectWithProfile('[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n');
-    // addBoxProfileCredentials no longer reports it as 'added', but the route is still here, so
-    // build can re-seed its value on every run.
-    const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "github" }]);
-    expect(addBoxProfileCredentials(s, root).added).toEqual([]);
-
-    expect(boxProfileEnvCredentials(root)).toEqual([{ name: "github", variable: "GITHUB_TOKEN" }]);
+  test("writes nothing when the reserved variable is already set in either place", () => {
+    const env = { GITHUB_TOKEN: "ghp_x" };
+    expect(boxCredentialSeedEntries([seed], { ...env, [reserved]: "k" }, {})).toEqual({
+      entries: [],
+      missing: [],
+    });
+    expect(boxCredentialSeedEntries([seed], env, { [reserved]: "k" })).toEqual({
+      entries: [],
+      missing: [],
+    });
   });
 
-  test("skips aws:// refs and names that are not valid credential names", async () => {
-    const root = await projectWithProfile(
-      '[egress.bedrock]\nsecret.ref = "aws://default"\n\n' +
-        '[egress."not a name"]\nsecret.ref = "env://SOME_TOKEN"\n',
+  test("reports a seed whose key is unset or blank in both places", () => {
+    const { entries, missing } = boxCredentialSeedEntries(
+      [seed],
+      { GITHUB_TOKEN: "  " },
+      { GITHUB_TOKEN: "" },
     );
 
-    expect(boxProfileEnvCredentials(root)).toEqual([]);
-  });
-
-  test("is a no-op when the project has no box profile", async () => {
-    const root = await projectWithProfile(undefined);
-    expect(boxProfileEnvCredentials(root)).toEqual([]);
+    expect(entries).toEqual([]);
+    expect(missing).toEqual([seed]);
   });
 });

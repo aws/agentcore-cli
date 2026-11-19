@@ -54,13 +54,11 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
-import {
-  addBoxProfileCredentials,
-  boxProfileCredentialEnvEntries,
-  boxProfileEnvCredentials,
-} from "./boxProfileCredentials";
+import { boxCredentialSeedEntries, planBoxProfileCredentials } from "./boxProfileCredentials";
+import { readBoxEnvRoutes } from "./boxProfileEgress";
 import { createProjectTree } from "./templates/project";
 import {
+  BOX_PROFILE_FILE,
   boxProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
@@ -1597,22 +1595,34 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * For each `env://` secret in the box profile, make sure agentcore.json declares an
+   * For each `env://` route of the box profile, make sure agentcore.json declares an
    * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
    * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
-   * adds one.
+   * adds one. See {@link planBoxProfileCredentials} for the routes it skips.
    *
    * It then seeds `.env.local` on every build, not only the build that first adds a credential: for
-   * each `env://VAR` egress route it carries the value of `VAR` from the current environment into
-   * `.env.local` under the credential's reserved name. So a `VAR` the box already reads (for example
-   * `GITHUB_TOKEN`) also reaches deploy, with no second variable to set. `insertIfNew` never
-   * overwrites an existing value, so a secret already stored, or set by hand, is left alone.
+   * each route a credential covers, it stores the key under the credential's reserved variable. The
+   * key comes from the route's variable in the environment, else in `.env.local`, where
+   * `agentcore dev` keeps it. So a variable the box already reads (for example `GITHUB_TOKEN`) also
+   * reaches deploy, with no second variable to set. `insertIfNew` never overwrites an existing
+   * value. When neither place has the key, build says which variable to set before deploy.
    */
   private async reconcileBoxProfileCredentials(
     project: Project,
   ): Promise<{ project: Project; messages: string[] }> {
+    const profile = readBoxEnvRoutes(project.rootPath);
+    if (profile === undefined) return { project, messages: [] };
+    if (profile.error !== undefined) {
+      return {
+        project,
+        messages: [
+          `skipping box egress credentials: ${BOX_PROFILE_FILE} does not parse (${profile.error})`,
+        ],
+      };
+    }
+
     const spec = structuredClone(project.spec);
-    const { messages, added } = addBoxProfileCredentials(spec, project.rootPath);
+    const { messages, added, seeds } = planBoxProfileCredentials(spec, profile.routes);
     let result = project;
     if (added.length > 0) {
       const specPath = this.getProjectSpecPath(project);
@@ -1625,17 +1635,25 @@ export class FsProjectManager implements ProjectManager {
       await this.json.write(specPath, updated);
       result = { ...project, spec: parsed.data };
     }
-    // Carry each key from the box env var the profile names into .env.local, under the credential's
-    // reserved name, so deploy provisions it without a second variable. This runs every build, for
-    // every `env://` egress route, not only a credential added this run. insertIfNew never
-    // overwrites an existing value.
-    const seeds = boxProfileCredentialEnvEntries(
-      boxProfileEnvCredentials(project.rootPath),
-      this.processEnv,
-    );
+
     if (seeds.length > 0) {
-      const { written } = await new EnvLocalFile(project.rootPath).insertIfNew(seeds);
-      for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
+      const envLocal = new EnvLocalFile(project.rootPath);
+      const { entries, missing } = boxCredentialSeedEntries(
+        seeds,
+        this.processEnv,
+        await envLocal.read(),
+      );
+      if (entries.length > 0) {
+        const { written } = await envLocal.insertIfNew(entries);
+        for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
+      }
+      for (const { route, variable, credential } of missing) {
+        messages.push(
+          `box egress '${route}' reads env://${variable}, which is not set here or in ` +
+            `${ENV_LOCAL_RELATIVE_PATH}: set ${variable} and build again, or set ` +
+            `${credentialEnvVarName(credential)}, before deploy`,
+        );
+      }
     }
     return { project: result, messages };
   }
