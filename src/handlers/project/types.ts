@@ -4,6 +4,7 @@ import type { CredentialSchema } from "../../projectSchemas/credential";
 import type { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import type { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import { MemorySchema } from "../../projectSchemas/memory";
+import type { KnowledgeBaseSchema } from "../../projectSchemas/knowledge-base";
 import type { EvaluatorSchema, EvaluationLevel } from "../../projectSchemas/evaluator";
 import type { ProjectSpecSchema } from "../../projectSchemas/project";
 import z from "zod";
@@ -409,6 +410,10 @@ export type AddResourceInput =
       resourceConfig: z.input<typeof MemorySchema>;
     }
   | {
+      resourceType: "knowledge-base";
+      resourceConfig: z.input<typeof KnowledgeBaseSchema>;
+    }
+  | {
       resourceType: "evaluator";
       resourceConfig: z.input<typeof EvaluatorSchema>;
       scaffold?: undefined;
@@ -503,6 +508,7 @@ export type RemoveResourceInput =
         | "config-bundle"
         | "online-eval"
         | "memory"
+        | "knowledge-base"
         | "evaluator"
         | "gateway"
         | "policy-engine"

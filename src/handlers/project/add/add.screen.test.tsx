@@ -38,6 +38,7 @@ const ADD_COMMAND_KINDS: Record<string, ChinaAddKind> = {
   runtime: "runtime",
   "runtime-endpoint": "runtime-endpoint",
   memory: "memory",
+  "knowledge-base": "knowledge-base",
   gateway: "gateway",
   "gateway-target": "gateway-target",
   "gateway-connector": "gateway-connector",

@@ -73,6 +73,7 @@ describe("createRootHandler", () => {
       "policy",
       "credentials",
       "memory",
+      "knowledge-base",
       "evaluator",
       "online-eval",
       "config-bundle",
