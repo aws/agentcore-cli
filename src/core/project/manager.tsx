@@ -54,8 +54,11 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { addBoxMemoryTarget, BOX_MEMORY_POLICY_FILE, boxMemoryPolicy } from "./boxMemory";
+import { planBoxProfileCredentials } from "./boxProfileCredentials";
+import { readBoxEnvRoutes } from "./boxProfileEgress";
 import { createProjectTree } from "./templates/project";
 import {
+  BOX_PROFILE_FILE,
   boxProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
@@ -412,7 +415,10 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
-  /** The environment the CDK backend reads AGENTCORE_BOX_SOURCE from; process.env by default. */
+  /**
+   * The environment the CDK backend reads AGENTCORE_BOX_SOURCE from, and build reads box `env://`
+   * egress secrets from; process.env by default.
+   */
   processEnv?: NodeJS.ProcessEnv;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
@@ -436,6 +442,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly json: ReadWriteJson;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
+  private readonly processEnv: NodeJS.ProcessEnv;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -457,6 +464,7 @@ export class FsProjectManager implements ProjectManager {
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
     this.resolveAccount = config.resolveAccount ?? resolveAwsAccount;
+    this.processEnv = config.processEnv ?? process.env;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1547,7 +1555,9 @@ export class FsProjectManager implements ProjectManager {
     for (const message of synced.messages) yield { type: "step", message };
     const routed = await this.addBoxMemoryTarget(synced.project);
     for (const message of routed.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(routed.project);
+    const credentialed = await this.reconcileBoxProfileCredentials(routed.project);
+    for (const message of credentialed.messages) yield { type: "step", message };
+    yield* this.backendFor(project).build(credentialed.project);
   }
 
   /**
@@ -1582,6 +1592,57 @@ export class FsProjectManager implements ProjectManager {
     }
     await this.json.write(specPath, updated);
     return { project: { ...project, spec: parsed.data }, messages };
+  }
+
+  /**
+   * For each `env://` route of the box profile, make sure agentcore.json declares an
+   * `ApiKeyCredentialProvider`, so deploy provisions the key in AgentCore Identity and the runtime
+   * never holds it. Mirrors `addBoxMemoryTarget`: it commits only `credentials`, and only when it
+   * adds one. See {@link planBoxProfileCredentials} for the routes it skips.
+   *
+   * It seeds `.env.local` on every build, not only the build that first adds a credential: for each
+   * route a credential covers, it stores the key under the credential's reserved variable. So a
+   * variable the box already reads (for example `GITHUB_TOKEN`) also reaches deploy, with no second
+   * variable to set. `insertIfNew` never overwrites an existing value. A route whose key build
+   * cannot find gets no credential, so deploy never asks for a key it could not have.
+   */
+  private async reconcileBoxProfileCredentials(
+    project: Project,
+  ): Promise<{ project: Project; messages: string[] }> {
+    const profile = readBoxEnvRoutes(project.rootPath);
+    if (profile === undefined) return { project, messages: [] };
+    if (profile.error !== undefined) {
+      return {
+        project,
+        messages: [
+          `skipping box egress credentials: ${BOX_PROFILE_FILE} does not parse (${profile.error})`,
+        ],
+      };
+    }
+
+    const envLocal = new EnvLocalFile(project.rootPath);
+    const spec = structuredClone(project.spec);
+    const { messages, added, entries } = planBoxProfileCredentials(spec, profile.routes, {
+      env: this.processEnv,
+      envLocal: await envLocal.read(),
+    });
+    let result = project;
+    if (added.length > 0) {
+      const specPath = this.getProjectSpecPath(project);
+      const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
+      const updated = { ...raw, credentials: spec.credentials };
+      const parsed = ProjectSpecSchema.safeParse(updated);
+      if (!parsed.success) {
+        throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+      }
+      await this.json.write(specPath, updated);
+      result = { ...project, spec: parsed.data };
+    }
+    if (entries.length > 0) {
+      const { written } = await envLocal.insertIfNew(entries);
+      for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    }
+    return { project: result, messages };
   }
 
   public async syncRuntimeBuilds(
