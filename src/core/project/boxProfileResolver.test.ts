@@ -95,7 +95,9 @@ const SHOWN_POLICY =
   boxReachRules("route", "keyed", ["k.example.com:8443"]) +
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
-const RELEASES = "https://github.com/mquang-amazon/box-releases";
+const PINNED =
+  "box 0.1.11-linux-preview.6 or a later release " +
+  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6)";
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
@@ -204,7 +206,7 @@ describe("parseBoxProfileShow", () => {
     expect(() => parseBoxProfileShow(JSON.stringify(shown), ".box/profile.toml")).toThrow(
       new InvalidEnvironmentError(
         `Box printed the profile .box/profile.toml without ${lacks}, which build reads. Install ` +
-          `a newer Box (${RELEASES}), then retry.`,
+          `${PINNED}, then retry.`,
       ),
     );
   });
@@ -326,8 +328,9 @@ describe("BoxCliProfileResolver", () => {
       ),
     ).rejects.toThrow(
       new InvalidEnvironmentError(
-        "Box is not installed or not on PATH. Install it " +
-          "(https://github.com/mquang-amazon/box-releases), then retry.",
+        "Box is not installed or not on PATH. Install box 0.1.11-linux-preview.6 " +
+          "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6), " +
+          "then retry.",
       ),
     );
   });
@@ -364,7 +367,7 @@ describe("BoxCliProfileResolver", () => {
       expect(error).toBeInstanceOf(InvalidEnvironmentError);
       expect((error as Error).message).toBe(
         "This Box cannot print the profile .box/profile.toml as JSON, which build reads. Install " +
-          `a Box release with \`box profile show --format json --full\` (${RELEASES}), then retry.`,
+          `${PINNED}, then retry.`,
       );
     },
   );

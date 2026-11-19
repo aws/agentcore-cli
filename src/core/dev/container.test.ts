@@ -1061,7 +1061,7 @@ describe("ContainerDevRunner", () => {
 
       expect(error).toBeInstanceOf(ProjectStateError);
       expect((error as Error).message).toBe(
-        `Dev stopped: 1 problem in the Box profile. Nothing was changed.\n${line}`,
+        `Dev stopped: 1 problem in the Box profile. Dev wrote nothing from the Box profile.\n${line}`,
       );
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);

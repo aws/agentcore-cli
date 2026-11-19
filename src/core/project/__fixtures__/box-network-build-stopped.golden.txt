@@ -1,4 +1,4 @@
-Build stopped: 10 problems in the Box profile and agentcore.json. Nothing was changed.
+Build stopped: 10 problems in the Box profile and agentcore.json. Build wrote nothing from the Box profile.
 .box/policy.dw:2:1  The rule "wild" allows each host that matches "*.example.com", and each gateway target needs one fixed host. Name each host in the rule, for example context.input.host == "api.example.com".
 .box/policy.dw:4:1  The rule "dup" has the same @id as the rule at .box/policy.dw:3:1. Give each rule its own @id.
 .box/policy.dw:6:1  The rule "route_github_connect" is one Box adds itself for [egress.github]. Remove it from .box/policy.dw.

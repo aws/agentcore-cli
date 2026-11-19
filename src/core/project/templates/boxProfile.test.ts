@@ -9,6 +9,7 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
+import { cloudWatchTelemetry, withDeployRegion, type BoxNetworkHost } from "../boxNetwork";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -639,6 +640,179 @@ describe("renderRuntimeBoxProfile", () => {
     );
   });
 
+  describe("for an HTTP MCP server", () => {
+    const TOOLS = passthrough("egress-tools", "https://tools.example.com");
+    const BACKENDS = gatewayRoute("egress-tools", "tools.example.com").backends;
+    /** The model's host for the server `tools`, which the target `egress-tools` serves. */
+    const toolsHost = (secret?: Record<string, string>) =>
+      ({
+        host: "tools.example.com",
+        authority: "tools.example.com",
+        sources: [
+          {
+            kind: "mcp",
+            mcpEntry: "tools",
+            destinations: ["tools.example.com"],
+            ...(secret && { secret }),
+          },
+          { kind: "rule", ruleId: "mcp_tools_connect" },
+        ],
+        outboundAuth: { kind: "none" },
+        reachable: true,
+        target: "egress-tools",
+        allowed: 3,
+        samples: 3,
+        forbiddenBy: [],
+        enforcedByBox: [],
+      }) as BoxNetworkHost;
+    const rendered = (secret?: Record<string, string>) => {
+      const project = spec([], {}, [TOOLS]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        hosts: [toolsHost(secret)],
+      });
+      return {
+        text,
+        toml: parse(text) as { egress?: Record<string, unknown>; mcp?: Record<string, unknown> },
+      };
+    };
+
+    test("writes the server's target as the server, with its env:// secret, and no [egress] route", () => {
+      const { text, toml } = rendered({
+        ref: "env://TOOLS_TOKEN",
+        header: "x-api-key",
+        phantom_prefix: "tk-",
+        inject: "always",
+      });
+
+      expect(toml.egress?.["egress-tools"]).toBeUndefined();
+      expect(toml.mcp).toEqual({
+        tools: {
+          type: "http",
+          destinations: ["tools.example.com"],
+          // The agent keeps its stand-in; inject has no effect beside a backend, and Box refuses it.
+          secret: { ref: "env://TOOLS_TOKEN", header: "x-api-key", phantom_prefix: "tk-" },
+          backends: BACKENDS,
+        },
+      });
+      expect(text).toContain(
+        "\n# The MCP server 'tools' at tools.example.com, through the 'agent-box-egress' " +
+          "gateway's 'egress-tools' target.\n" +
+          '[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+          'secret.ref = "env://TOOLS_TOKEN"\nsecret.header = "x-api-key"\n' +
+          'secret.phantom_prefix = "tk-"\n\n' +
+          "[[mcp.tools.backends]]\n" +
+          'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+      );
+    });
+
+    test("keeps no secret of a server that signs, or has none, as Box refuses a signed one beside a backend", () => {
+      for (const secret of [{ ref: "aws://default" }, undefined]) {
+        expect(rendered(secret).toml.mcp).toEqual({
+          tools: { type: "http", destinations: ["tools.example.com"], backends: BACKENDS },
+        });
+      }
+    });
+
+    test("writes a target that serves no server of the model as an [egress] route", () => {
+      const project = spec([], {}, [TOOLS]);
+      const toml = parse(renderRuntimeBoxProfile(project, project.runtimes[0]!)) as {
+        egress: Record<string, unknown>;
+        mcp?: unknown;
+      };
+
+      expect(toml.egress["egress-tools"]).toEqual(
+        gatewayRoute("egress-tools", "tools.example.com"),
+      );
+      expect(toml.mcp).toBeUndefined();
+    });
+  });
+
+  describe("for the [telemetry] of the box profile", () => {
+    /** The resolved `[telemetry]` of a box profile with a target of each kind Box takes. */
+    const TELEMETRY = {
+      records: { kind: "file", destination: "/tmp/records.jsonl" },
+      collector: { kind: "otlp", destination: "https://collector.example.com" },
+      langfuse: { kind: "langfuse", secret: { ref: "env://LANGFUSE_AUTH" } },
+      langsmith: { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } },
+      logs: {
+        kind: "cloudwatch_logs",
+        region: "us-west-2",
+        log_group: "/aws/box",
+        log_stream: "agent",
+        include: ["logs", "trace"],
+        secret: { ref: "aws://Admin-personal" },
+      },
+      "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+    };
+    /** The Runtime profile when the model sets `region` on a target with none. */
+    const rendered = (telemetry: Record<string, unknown>, region = "us-west-2") => {
+      const project = spec([]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        telemetry: withDeployRegion(cloudWatchTelemetry({ telemetry }), region, "profile.toml")
+          .telemetry,
+      });
+      return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
+    };
+
+    test("copies each CloudWatch target with its keys, signed with the execution role", () => {
+      const { text, toml } = rendered(TELEMETRY);
+
+      expect(toml.telemetry).toEqual({
+        logs: {
+          kind: "cloudwatch_logs",
+          region: "us-west-2",
+          log_group: "/aws/box",
+          log_stream: "agent",
+          include: ["logs", "trace"],
+          // On the Runtime, a bare aws:// is the default credential chain: the execution role.
+          secret: { ref: "aws://" },
+        },
+        "x-ray": {
+          kind: "cloudwatch_traces",
+          region: "eu-west-1",
+          secret: { ref: "aws://" },
+        },
+      });
+      expect(text).toContain(
+        "\n# The [telemetry.logs] target of .box/profile.toml, signed with the execution role.\n" +
+          '[telemetry.logs]\nkind = "cloudwatch_logs"\nregion = "us-west-2"\n' +
+          'log_group = "/aws/box"\nlog_stream = "agent"\ninclude = ["logs", "trace"]\n' +
+          'secret.ref = "aws://"\n',
+      );
+      expect(text).not.toContain("Admin-personal");
+    });
+
+    test("copies no file, otlp, langfuse, or langsmith target", () => {
+      const { records, collector, langfuse, langsmith } = TELEMETRY;
+
+      expect(rendered({ records, collector, langfuse, langsmith }).toml.telemetry).toBeUndefined();
+    });
+
+    test("copies no CloudWatch target that Box refuses, as it grants it nothing", () => {
+      const logs = { ...TELEMETRY.logs, log_stream: "a:b" };
+
+      expect(
+        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }).toml.telemetry,
+      ).toBeUndefined();
+    });
+
+    test("writes the deploy region on a target with no region, and keeps a target's own region", () => {
+      const { region: _region, ...logs } = TELEMETRY.logs;
+
+      expect(rendered({ logs, "x-ray": TELEMETRY["x-ray"] }, "ap-south-1").toml.telemetry).toEqual({
+        logs: { ...TELEMETRY.logs, region: "ap-south-1", secret: { ref: "aws://" } },
+        "x-ray": {
+          kind: "cloudwatch_traces",
+          region: "eu-west-1",
+          secret: { ref: "aws://" },
+        },
+      });
+    });
+  });
+
   test("renders the CodeZip form for start.py and the image form for a container", () => {
     const codeZip = spec(["agentMemory"]);
     const container = spec(["agentMemory"], { build: "Container", entrypoint: "main.py" });
@@ -744,6 +918,13 @@ describe("renderAgentCoreCodeZipPack", () => {
       // Neither an empty value nor / may widen a grant to the whole filesystem.
       expect(pattern.test("")).toBe(false);
       expect(pattern.test("/")).toBe(false);
+      // No . or .. segment, which would resolve to / in a grant.
+      for (const path of ["/.", "/..", "/var/lang/../..", "/var/./lang", "/var/lang/"]) {
+        expect(pattern.test(path)).toBe(false);
+      }
+      for (const path of ["/opt/python3.12", "/var/task/.venv", "/tmp/..x"]) {
+        expect(pattern.test(path)).toBe(true);
+      }
       expect(pattern.test("/opt/x --reload")).toBe(false);
     }
   });

@@ -11,6 +11,7 @@ import {
   defaultTargetsWriter,
   gatewayTargetsWriter,
   runtimeProfileWriter,
+  telemetryPolicyWriter,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
 import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
@@ -77,13 +78,16 @@ const passthrough = (name: string, endpoint: string): AgentCoreGatewayTarget => 
   passthrough: { endpoint, protocolType: "CUSTOM" },
 });
 
+/** What each writer reads besides the models, for `project`. */
+const contextFor = (project = spec()) => ({
+  spec: project,
+  projectRoot: "/nonexistent/project",
+  env: { GITHUB_TOKEN: "ghp_1" },
+  envLocal: {},
+});
+
 const run = (writers: readonly BoxNetworkWriter[], networks: BoxNetwork[], project = spec()) =>
-  boxNetworkEdits(writers, networks, {
-    spec: project,
-    projectRoot: "/nonexistent/project",
-    env: { GITHUB_TOKEN: "ghp_1" },
-    envLocal: {},
-  });
+  boxNetworkEdits(writers, networks, contextFor(project));
 
 const GITHUB_AUTH = {
   kind: "apiKey",
@@ -277,6 +281,29 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
+  test("writes the Memory policy for the region of the agentcore target it writes", () => {
+    const project = spec();
+    project.memories.push({
+      name: "agentMemory",
+      eventExpiryDuration: 30,
+      strategies: [],
+    } as never);
+
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
+
+    const agentcore = edits.spec.agentCoreGateways[0]!.targets.find(
+      ({ name }) => name === "agentcore",
+    );
+    expect(agentcore?.outboundAuth?.region).toBe("eu-central-1");
+    const memory = edits.files.find(({ path }) => path === BOX_MEMORY_POLICY_FILE);
+    expect(JSON.parse((memory as { text: string }).text).Statement).toEqual([
+      expect.objectContaining({
+        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ]);
+  });
+
   test("writes the model and Memory targets for the region of the build", () => {
     const project = spec();
     project.memories.push({
@@ -314,6 +341,99 @@ describe("defaultTargetsWriter", () => {
   });
 });
 
+describe("telemetryPolicyWriter", () => {
+  const logs = (logGroup: string) =>
+    ({
+      name: "logs",
+      kind: "cloudwatch_logs",
+      region: "us-west-2",
+      logGroup,
+      logStream: "s",
+    }) as const;
+  const statementOf = (text: string) =>
+    (JSON.parse(text) as { Statement: { Resource: unknown }[] }).Statement.map(
+      ({ Resource }) => Resource,
+    );
+
+  test("writes for each box runtime the grant of its own telemetry, and none for one with none", () => {
+    const project = spec();
+    const runtime = (name: string, rest: Record<string, unknown> = {}) =>
+      ({
+        ...project.runtimes[0]!,
+        name,
+        codeLocation: `app/${name}`,
+        ...rest,
+      }) as ProjectSpec["runtimes"][number];
+    project.runtimes.push(
+      runtime("second"),
+      runtime("quiet", { additionalPolicies: ["../../agentcore/box-telemetry-policy-quiet.json"] }),
+    );
+    const models = [
+      network({ telemetry: [logs("group-a")] }),
+      network({ runtime: "second", gateway: "second-box-egress", telemetry: [logs("group-b")] }),
+      network({ runtime: "quiet", gateway: "quiet-box-egress" }),
+    ];
+
+    const edits = run([telemetryPolicyWriter], models, project);
+
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
+      { kind: "runtimePolicies" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-quiet.json" },
+    ]);
+    const [agent, second, quiet] = edits.files;
+    expect(agent?.path).toBe("agentcore/box-telemetry-policy-agent.json");
+    expect(statementOf("text" in agent! ? agent.text : "")).toEqual([
+      ["arn:aws:logs:us-west-2:*:log-group:group-a:log-stream:s"],
+    ]);
+    expect(second?.path).toBe("agentcore/box-telemetry-policy-second.json");
+    expect(statementOf("text" in second! ? second.text : "")).toEqual([
+      ["arn:aws:logs:us-west-2:*:log-group:group-b:log-stream:s"],
+    ]);
+    expect(quiet).toEqual({ path: "agentcore/box-telemetry-policy-quiet.json", remove: true });
+    expect(edits.spec.runtimes.map(({ additionalPolicies }) => additionalPolicies)).toEqual([
+      ["../../agentcore/box-telemetry-policy-agent.json"],
+      ["../../agentcore/box-telemetry-policy-second.json"],
+      undefined,
+    ]);
+    expect(edits.changedFields).toEqual(["runtimes"]);
+    expect(edits.messages).toEqual([
+      "adding agentcore/box-telemetry-policy-agent.json to additionalPolicies of 'agent', so its " +
+        "box can send telemetry to CloudWatch",
+      "adding agentcore/box-telemetry-policy-second.json to additionalPolicies of 'second', so " +
+        "its box can send telemetry to CloudWatch",
+      "removing agentcore/box-telemetry-policy-quiet.json from additionalPolicies of 'quiet': its " +
+        "box sends no telemetry to CloudWatch",
+    ]);
+  });
+
+  test("declares the policy file of every runtime, also one with no box, which it removes", () => {
+    const project = spec();
+    project.runtimes.push({
+      ...project.runtimes[0]!,
+      name: "plain",
+      codeLocation: "app/plain",
+    } as ProjectSpec["runtimes"][number]);
+    const models = [network({ telemetry: [logs("group-a")] })];
+    const plain = { kind: "file", path: "agentcore/box-telemetry-policy-plain.json" } as const;
+
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
+      { kind: "runtimePolicies" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
+      plain,
+    ]);
+    expect(run([telemetryPolicyWriter], models, project).files.at(-1)).toEqual({
+      path: plain.path,
+      remove: true,
+    });
+    const other: BoxNetworkWriter = { name: "other", writes: () => [plain], edits: () => ({}) };
+    expect(() => run([telemetryPolicyWriter, other], models, project)).toThrow(
+      `Box network writers 'telemetry policy' and 'other' both write ${JSON.stringify(plain)}`,
+    );
+  });
+});
+
 describe("runtimeProfileWriter", () => {
   test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
     const writer = runtimeProfileWriter([
@@ -323,7 +443,7 @@ describe("runtimeProfileWriter", () => {
 
     const { files } = run([writer], models);
 
-    expect(writer.writes(models)).toEqual([
+    expect(writer.writes(models, contextFor())).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
       { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
       { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_CODEZIP_PACK_PATH}` },
@@ -332,7 +452,7 @@ describe("runtimeProfileWriter", () => {
     ]);
     // The writer writes exactly the files it declares.
     expect(files.map(({ path }) => ({ kind: "file", path })) as unknown).toEqual(
-      writer.writes(models),
+      writer.writes(models, contextFor()),
     );
     expect(files.slice(3)).toEqual([
       { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/policy.dw" },
@@ -348,7 +468,7 @@ describe("runtimeProfileWriter", () => {
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
     ]);
 
-    expect(writer.writes([network()])).toEqual([
+    expect(writer.writes([network()], contextFor())).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
       { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
     ]);

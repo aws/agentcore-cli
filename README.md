@@ -200,7 +200,7 @@ declares, not the ones you add in the stack.
 Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
 `agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
 `agentcore create --template <name>` makes a Box project from either; every other template runs
-its agent without box. box comes from the public GitHub release `v0.1.11-linux-preview.3` of
+its agent without box. box comes from the public GitHub release `v0.1.11-linux-preview.6` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
@@ -252,7 +252,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.3`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.6`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.

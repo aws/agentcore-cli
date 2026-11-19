@@ -3,4 +3,3 @@ blocked.example.com: your policy allows no request to this host (the rule "no_bl
 httpbin.org: the gateway allows every request to this host; Box still applies the rule "httpbin_get". On AgentCore Runtime, Box applies only your forbid rules to this host, so write each limit as a forbid rule to keep it there.
 agentcore/extra-policy.json, in additionalPolicies of the gateway 'agent-python-strands-box-egress', is not a JSON object, so build cannot check the permissions it grants. Make it an IAM policy document.
 Target 'egress-fn' calls lambda with the gateway's role, which has no lambda permissions. Add an IAM policy file to additionalPolicies of the 'agent-python-strands-box-egress' gateway.
-Target 'bedrock' calls bedrock with the gateway's role, which has no bedrock permissions. Add an IAM policy file to additionalPolicies of the 'agent-python-strands-box-egress' gateway.
