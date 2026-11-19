@@ -121,8 +121,7 @@ export async function stageBoxContainers(
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
-    container: runtime.build === "Container",
-    codezip: false,
+    kind: "container" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,

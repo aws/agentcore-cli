@@ -29,7 +29,7 @@ import {
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   return {
     ...resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides }),
-    box: true,
+    boxTemplate: true,
   };
 }
 
@@ -318,6 +318,9 @@ const RUNTIME_AWS_STAND_INS = {
   AWS_SECRET_ACCESS_KEY: "box-stand-in",
 };
 
+/** The Runtime's region on a Bedrock agent: box/bedrock sets AWS_REGION, the profile the rest. */
+const RUNTIME_REGION_WITH_BEDROCK = { AWS_DEFAULT_REGION: "${{ inputs.aws.region }}" };
+
 const IMAGE_PYTHON_FILESYSTEM = {
   read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
   exec: [
@@ -342,6 +345,20 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     const text = renderRuntimeBoxProfile(spec, spec.runtimes[0]!);
     expect(text).not.toContain("api.openai.com");
     expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
+  });
+
+  test("passes the Runtime's region to an agent that imports no box/bedrock", () => {
+    const spec = {
+      name: "V3Demo",
+      runtimes: [{ name: "agent", build: "CodeZip", protocol: "HTTP", modelProvider: "OpenAI" }],
+      agentCoreGateways: [],
+    } as unknown as ProjectSpec;
+    const profile = parse(renderRuntimeBoxProfile(spec, spec.runtimes[0]!)) as Record<string, any>;
+
+    expect(profile.packs).not.toContain("box/bedrock");
+    // The Memory client in the box calls the deploy region that the profile routes.
+    expect(profile.agent.env.AWS_REGION).toBe("${{ inputs.aws.region }}");
+    expect(profile.agent.env.AWS_DEFAULT_REGION).toBe("${{ inputs.aws.region }}");
   });
 
   test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
@@ -377,6 +394,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
           PYTHONUNBUFFERED: "1",
           PYTHONUTF8: "1",
           ...RUNTIME_AWS_STAND_INS,
+          ...RUNTIME_REGION_WITH_BEDROCK,
         },
         filesystem: {
           read: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}", "/usr/lib64", "/lib64"],
@@ -417,6 +435,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
             PYTHONUNBUFFERED: "1",
             PYTHONUTF8: "1",
             ...RUNTIME_AWS_STAND_INS,
+            ...RUNTIME_REGION_WITH_BEDROCK,
           },
           filesystem: IMAGE_PYTHON_FILESYSTEM,
           ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
@@ -678,6 +697,14 @@ describe("renderAgentCorePack", () => {
     expect(inputs.gateway.url.pattern.length).toBeGreaterThan(0);
   });
 
+  test("declares the Runtime's region input from AWS_REGION, bounded by a pattern", () => {
+    const { inputs } = pack([]);
+    expect(inputs.aws.region.from).toBe("env:AWS_REGION");
+    expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("eu-central-1")).toBe(true);
+    expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-gov-west-1")).toBe(true);
+    expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-west-2; rm")).toBe(false);
+  });
+
   test("declares one input per memory and carries each ID into the agent's environment", () => {
     const toml = pack([{ name: "agentMemory" }, { name: "notes" }]);
     expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");
@@ -707,12 +734,17 @@ describe("renderAgentCoreCodeZipPack", () => {
     expect(inputs.code.dir.from).toBe("env:BOX_CODE");
   });
 
-  test("bounds the inputs that reach the agent command with a pattern", () => {
+  test("bounds the inputs that reach the agent command or a filesystem grant with a pattern", () => {
     const { inputs } = toml();
-    // The Python path (command element 0) and the code dir (--app-dir) reach `command`.
-    expect(typeof inputs.python.path.pattern).toBe("string");
-    expect(typeof inputs.code.dir.pattern).toBe("string");
-    // The prefix reaches only filesystem grants, which box does not require to be bounded.
-    expect(inputs.python.prefix.pattern).toBeUndefined();
+    // The Python path (command element 0) and the code dir (--app-dir) reach `command`; the prefix
+    // reaches the read and exec grants.
+    for (const input of [inputs.python.path, inputs.code.dir, inputs.python.prefix]) {
+      const pattern = new RegExp(`^${input.pattern}$`);
+      expect(pattern.test("/var/lang")).toBe(true);
+      // Neither an empty value nor / may widen a grant to the whole filesystem.
+      expect(pattern.test("")).toBe(false);
+      expect(pattern.test("/")).toBe(false);
+      expect(pattern.test("/opt/x --reload")).toBe(false);
+    }
   });
 });

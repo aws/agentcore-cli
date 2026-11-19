@@ -249,13 +249,21 @@ AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
 agentcore deploy --yes
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
-agentcore logs runtime --name agent --since 15m --query '"[box]"'
+agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
 The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.3`. The
-second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
-`FAILED`, `ERROR`, `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
-`--template agent-python-strands` and skip the container settings.
+second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
+`blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
+`--template agent-python-strands-box` and skip the container settings.
+
+A boxed agent gets the deployed Memory IDs and the Runtime's region inside the box. It does not get
+the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
+its Box gateway.
+
+A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
+and deploy now render profiles that those files cannot start. Create the project again, or copy
+`start.py` (CodeZip) or the `Dockerfile` (container) from a new `agentcore create` project.
 
 ### Troubleshooting
 
@@ -265,10 +273,10 @@ second answer should say teal, and the runtime log shows `running profile ...` w
   names the release URL: the pinned version is not published in `mquang-amazon/box-releases`.
 - `SHA-256 ... not the pinned` or `sha256sum: WARNING: 1 computed checksum did NOT match`: the
   release asset changed after it was pinned. Nothing was installed.
-- `FAILED (box run exited with 1)` (CodeZip) or `[box] ERROR: box run exited with 1 ...; not
-serving the agent outside box` (container) in the runtime log: box refused its profile. The line
-  above it names the reason. A CodeZip agent does not start without box unless the runtime sets
-  `BOX_START_FALLBACK=1`, and a container agent unless it sets `BOX_START_DISABLE=1`.
+- `box run` exits with an error in the runtime log: box refused its profile, and the agent does
+  not start. The error names the reason. The agent never runs outside box on AgentCore Runtime.
+- A CodeZip agent on `PYTHON_3_10` needs `tomli` in its dependencies, because `start.py` reads the
+  profile with it there. `agent-python-strands-box` lists it.
 
 ## Documentation
 

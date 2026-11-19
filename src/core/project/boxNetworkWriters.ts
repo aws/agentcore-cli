@@ -286,10 +286,11 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
-  /** Whether the runtime is a container. Both runtimes stage the `box/agentcore` pack. */
-  readonly container: boolean;
-  /** Whether the runtime is a CodeZip deploy, which also stages the `box/agentcore-codezip` pack. */
-  readonly codezip: boolean;
+  /**
+   * How the runtime deploys. Both kinds stage the `box/agentcore` pack; a CodeZip deploy also
+   * stages the `box/agentcore-codezip` pack.
+   */
+  readonly kind: "container" | "codezip";
 }
 
 /**
@@ -302,14 +303,12 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
   return {
     name: "runtime profile",
     writes: (networks) =>
-      staged.flatMap(({ runtime, dist, container, codezip }) => [
+      staged.flatMap(({ runtime, dist, kind }) => [
         { kind: "file" as const, path: `${dist}/profile.toml` },
         // Both Runtime profiles read the deployed resources through this pack.
-        ...(container || codezip
-          ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }]
-          : []),
+        { kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` },
         // The CodeZip Runtime also reads its Python and code paths through this one.
-        ...(codezip
+        ...(kind === "codezip"
           ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}` }]
           : []),
         ...(networkOf(networks, runtime)?.policyFiles ?? []).map((file) => ({
@@ -318,15 +317,13 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
         })),
       ]),
     edits: (networks, { spec }) => ({
-      files: staged.flatMap(({ runtime, dist, container, codezip }) => {
+      files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
         const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
           { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
-          ...(container || codezip
-            ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
-            : []),
-          ...(codezip
+          { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) },
+          ...(kind === "codezip"
             ? [
                 {
                   path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}`,

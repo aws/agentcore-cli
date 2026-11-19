@@ -47,6 +47,13 @@ export class BoxDevRunner implements DevRunner {
           notBoxProjectMessage(input.runtime.name, input.runtime.entrypoint),
         );
       }
+      // A box profile here was written for a Box project, so say why dev does not use it.
+      if (existsSync(boxProfilePath(input.projectRoot))) {
+        yield {
+          type: "status",
+          message: 'Running without a box: agentcore.json has no "projectType": "box"',
+        };
+      }
       yield* this.fallback.run(input);
       return;
     }

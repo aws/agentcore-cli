@@ -18,8 +18,8 @@ export function assertImageCopiesPolicyFiles(
   throw new ProjectStateError(
     `runtime "${runtimeName}" takes the policy files of ${BOX_PROFILE_FILE} to AgentCore Runtime ` +
       `(${policyFiles.join(", ")}), but ${dockerfile} does not copy .box-dist/ whole into the ` +
-      "image. Box would refuse its profile there. Copy it with " +
-      "`COPY ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/`, as the Dockerfile of a new " +
-      "`agentcore create` project does, then retry.",
+      "image. Box would refuse its profile there. Copy the box steps of the Dockerfile of a new " +
+      "`agentcore create --template agent-python-strands-box-container` project: they copy " +
+      "the whole folder beside the profile, and move its packs beside box. Then retry.",
   );
 }

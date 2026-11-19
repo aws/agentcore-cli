@@ -377,7 +377,7 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
-    ...(template.box && { box: true }),
+    ...(template.box && { boxTemplate: true }),
     runtimeVersion: template.runtimeVersion,
     templateProfile: template.supportsModelProviderOverride
       ? { ...template.profile, modelProviderOverride: true }

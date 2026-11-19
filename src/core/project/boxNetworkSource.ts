@@ -251,7 +251,6 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "resources",
   "ffi",
   "profile.toml",
-  "start.sh",
 ]);
 
 /**

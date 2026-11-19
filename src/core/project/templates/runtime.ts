@@ -291,7 +291,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       { assetSource },
       {
         // The box templates have their own folder: its Dockerfile runs the agent with `box run`.
-        assetDir: input.scaffoldRuntimeInput.box
+        assetDir: input.scaffoldRuntimeInput.boxTemplate
           ? "templates/agent-python-strands-box"
           : "templates/agent-python-strands",
       },

@@ -188,6 +188,23 @@ describe("BoxDevRunner", () => {
     expect(calls).toEqual([]);
     expect(checked).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
+    // The profile was written for a Box project, so dev says why it does not use it.
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: 'Running without a box: agentcore.json has no "projectType": "box"',
+      },
+      { type: "stdout", line: "fallback" },
+    ]);
+  });
+
+  test("says nothing about box outside a Box project with no box profile", async () => {
+    const { projectRoot, runner } = await scene(false);
+
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false)),
+    );
+
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 

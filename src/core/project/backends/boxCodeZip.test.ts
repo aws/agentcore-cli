@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
-import { renderRuntimeBoxProfile } from "../templates/boxProfile";
+import {
+  AGENTCORE_CODEZIP_PACK_PATH,
+  AGENTCORE_PACK_PATH,
+  renderAgentCoreCodeZipPack,
+  renderAgentCorePack,
+  renderRuntimeBoxProfile,
+} from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import type { BoxLinuxBuild } from "./boxRelease";
 
@@ -93,6 +99,14 @@ describe("stageBoxCodeZip", () => {
     // The Runtime profile is rendered from agentcore.json.
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
       renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
+    );
+    // The profile imports these generated packs, which box finds beside its binary. They are
+    // written after box's own resources are copied, so the copy does not remove them.
+    expect(await readFile(join(dist, AGENTCORE_PACK_PATH), "utf8")).toBe(
+      renderAgentCorePack(demo.spec),
+    );
+    expect(await readFile(join(dist, AGENTCORE_CODEZIP_PACK_PATH), "utf8")).toBe(
+      renderAgentCoreCodeZipPack(),
     );
   });
 

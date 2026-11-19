@@ -67,10 +67,28 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
 const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
 
 /**
- * Bounds an input that reaches the agent `command` (the Python path and the code dir): an absolute
- * path of safe characters, so a value from the environment cannot inject other arguments.
+ * Bounds the `aws.region` input, as box/bedrock bounds `bedrock.region`: an AWS region name, so a
+ * value from the environment cannot put anything else into the agent's environment.
  */
-const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
+const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
+
+/**
+ * Bounds an input that reaches the agent `command` or a filesystem grant (the Python path, its
+ * prefix and the code dir): an absolute path of safe characters below `/`, so a value from the
+ * environment cannot inject other arguments, and an empty value or `/` cannot widen a grant.
+ */
+const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+-][A-Za-z0-9_.+/-]*";
+
+/**
+ * The Runtime's region in the agent's environment, read through the box/agentcore pack's
+ * `aws.region` input. The AWS SDKs in the box, such as the Memory client, need it to call the
+ * deploy region whose hosts the profile routes. box/bedrock sets `AWS_REGION` itself, so the
+ * profile sets it only without that pack.
+ */
+function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
+  const region = "${{ inputs.aws.region }}";
+  return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
+}
 
 /**
  * The credential Box signs AWS routes with on AgentCore Runtime: a bare `aws://`, the AWS default
@@ -144,14 +162,18 @@ export function boxProfileIsFor(
 /** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (
-    runtime.box === true &&
+    runtime.boxTemplate === true &&
     runtime.build === "Container" &&
     runtime.language === "Python" &&
     runtime.framework === "strands"
   );
 }
 
-/** The frameworks whose Python CodeZip templates run their agent in a box on AgentCore Runtime. */
+/**
+ * The frameworks whose Python CodeZip agent can run in a box on AgentCore Runtime: the profile
+ * knows how to serve each. Only a box template sets `boxTemplate`, and today only Strands has one;
+ * the box templates for LangChain and for no framework follow in a later PR.
+ */
 const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = new Set([
   "strands",
   "langchain",
@@ -165,7 +187,7 @@ const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = n
  */
 export function startsInBoxOnCodeZip(runtime: ScaffoldRuntimeInput): boolean {
   return (
-    runtime.box === true &&
+    runtime.boxTemplate === true &&
     runtime.build === "CodeZip" &&
     runtime.language === "Python" &&
     CODEZIP_BOX_FRAMEWORKS.has(runtime.framework)
@@ -437,7 +459,11 @@ export function renderBoxProfile(
   // On the Runtime, each model route is a Box gateway target that build derives from the local
   // profile's [egress] sections, so only the local profile names the provider's host here.
   const keyed = callsModel && !onRuntime ? apiKeyRoute(runtime) : undefined;
-  const environment = { ...runner.env, ...PYTHON_ENV };
+  const environment = {
+    ...runner.env,
+    ...PYTHON_ENV,
+    ...(onRuntime && runtimeRegionEnv(bedrock)),
+  };
 
   // The optional sections, each empty or ending in a newline.
   const header = codeZipOnRuntime
@@ -600,7 +626,7 @@ export function renderRuntimeBoxProfile(
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
     // Build and deploy render this only for a runtime that runs its agent in a box.
-    box: true,
+    boxTemplate: true,
   } as ScaffoldRuntimeInput;
   return renderBoxProfile(
     spec.name,
@@ -660,8 +686,9 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
- * The `box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
- * reads from the environment the Runtime sets after deploy. The `gateway.url` input fills each
+ * The `box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
+ * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
+ * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. One input per project memory carries its ID into the agent's environment. box
  * finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
@@ -694,7 +721,13 @@ kind = "support"
 [inputs.gateway.url]
 description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
-pattern = ${str(GATEWAY_URL_PATTERN)}${memoryInputs}
+pattern = ${str(GATEWAY_URL_PATTERN)}
+
+# The Runtime's region. The Runtime sets AWS_REGION; the profile passes it to the agent.
+[inputs.aws.region]
+description = "The AWS region the runtime runs in."
+from = "env:AWS_REGION"
+pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
 ${agentEnv}`;
 }
 
@@ -722,6 +755,7 @@ pattern = ${str(ABSOLUTE_PATH_PATTERN)}
 [inputs.python.prefix]
 description = "The Python interpreter's base prefix, for its standard library."
 from = ${str(`env:${BOX_PYTHON_PREFIX_ENV}`)}
+pattern = ${str(ABSOLUTE_PATH_PATTERN)}
 
 [inputs.code.dir]
 description = "The unpacked zip directory the Runtime runs the agent from."
