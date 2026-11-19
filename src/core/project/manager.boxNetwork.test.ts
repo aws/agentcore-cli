@@ -10,6 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
@@ -899,7 +900,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     const spec = JSON.parse(await text(root, SPEC));
     expect(spec.runtimes[0].additionalPolicies).toEqual([ENTRY]);
     // Deploy reads the key from .env.local; build copies it there from the profile's variable.
-    expect(steps).toContain(`writing ${VARIABLE} to agentcore/.env.local`);
+    expect(steps).toContain(`writing ${VARIABLE} to ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(await text(root, "agentcore/.env.local")).toMatch(new RegExp(`^${VARIABLE}=.`, "m"));
     const staged = [RUNTIME_PROFILE, ".box/agent_python_strands/aws/profile.toml"];
     for (const file of [...staged, SPEC, TELEMETRY_POLICY]) {
