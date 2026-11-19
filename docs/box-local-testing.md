@@ -391,44 +391,85 @@ the Box gateway up by its ID as above.
 
 ## 10. Read box telemetry and gateway logs in CloudWatch
 
-On AgentCore Runtime, box sends each policy decision (permit, deny, trace) to CloudWatch Logs. When
-the agent's box profile names no `cloudwatch_logs` target, build adds one for the log group that
-deploy creates for the runtime, `/aws/bedrock-agentcore/box/<project>/<agent>`, stream `box`.
+On AgentCore Runtime, box sends each policy decision (permit, deny, trace) to the log group of the
+Runtime, `/aws/bedrock-agentcore/runtimes/<runtimeId>-DEFAULT`, stream `otel-rt-logs`. Box reads
+the log group, the stream, and the region from the environment of the Runtime when it starts
+(`OTEL_EXPORTER_OTLP_LOGS_HEADERS` and `AWS_REGION`). The CLI and the L3 constructs make no log
+group for box.
+
+The `logs runtime` command finds that log group from the runtime name:
 
 ```sh
-aws logs filter-log-events --log-group-name /aws/bedrock-agentcore/box/$PROJECT/agent --filter-pattern '"deny"'
+cd "$DEMO/$PROJECT"
+bun run "$CLI" logs runtime --name agent --since 15m --query '"strands.box.policy.verdict"'
 ```
 
-Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`.
+Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`. To show
+only the deny decisions, use `--query '"deny"'`.
 
-Deploy also delivers the logs of the agent's Box gateway to
-`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`.
+Deploy sends the `APPLICATION_LOGS` of each Box gateway to
+`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. This is on by default
+for a Box gateway. Gateway traces to X-Ray are off by default, because X-Ray accepts them only when
+CloudWatch Transaction Search is on in the account. Read the gateway logs with the gateway ID from
+step 9:
 
-To send box telemetry to your own log group instead:
+```sh
+aws logs tail "/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/$GATEWAY_ID" --since 15m
+```
 
-1. Create the log group and the log stream. Box does not create them.
+To send box telemetry to a log group that you make:
+
+1. Set the region of the log group, then make the log group and the log stream. Box does not make
+   them, and deploy does not make them.
 
    ```sh
-   aws logs create-log-group --log-group-name /aws/box/$PROJECT
-   aws logs create-log-stream --log-group-name /aws/box/$PROJECT --log-stream-name agent
+   REGION=us-west-2
+   aws logs create-log-group --region "$REGION" --log-group-name "/aws/box/$PROJECT"
+   aws logs create-log-stream --region "$REGION" --log-group-name "/aws/box/$PROJECT" --log-stream-name agent
    ```
 
-2. Add a target to the agent's box profile, `.box/agent/local/profile.toml`:
+2. Add a target to the box profile of the agent, `.box/agent/local/profile.toml`. Set `region` to
+   `$REGION`, the region of the log group:
 
    ```toml
    [telemetry.logs]
    kind = "cloudwatch_logs"
-   region = "us-west-2"
+   region = "us-west-2"             # your $REGION
    log_group = "/aws/box/cliDemo"   # your $PROJECT
    log_stream = "agent"
    include = ["deny", "permit", "trace"]
    secret.ref = "aws://"
    ```
 
-3. Run `agentcore deploy`. Build copies the table into the Runtime profile in place of the default,
-   so on AgentCore Runtime box signs with the execution role. It also grants that role
-   `logs:PutLogEvents` on the stream, in `agentcore/box-telemetry-policy-agent.json`, which it lists
-   in the runtime's `additionalPolicies`.
+   If the target has no `region`, build writes the build region into the Runtime profile, and
+   deploy writes the region of its deploy target. Box does not accept a CloudWatch target with no
+   region. Thus `agentcore dev` cannot run the profile until you add `region`.
+
+3. Deploy the project:
+
+   ```sh
+   cd "$DEMO/$PROJECT"
+   bun run "$CLI" deploy
+   ```
+
+   Build copies the table into the Runtime profile. On AgentCore Runtime, box signs this target with
+   the execution role. Build also writes one policy file for each box runtime,
+   `agentcore/box-telemetry-policy-<runtime>.json`, here `box-telemetry-policy-agent.json`. It adds
+   the file to the `additionalPolicies` of that runtime. The file gives the role `logs:PutLogEvents`
+   on the stream of each `cloudwatch_logs` target, and `xray:PutSpans` and `xray:PutTraceSegments`
+   for a `cloudwatch_traces` target. With `AGENTCORE_BOX_SECRETS_MANAGER=1`, deploy keeps the key of
+   each third-party target (`otlp`, `langfuse`, or `langsmith`) in the AWS Secrets Manager secret
+   `agentcore/<project>/<runtime>/box`. The file then also gives the role
+   `secretsmanager:GetSecretValue` on that secret.
+
+4. Invoke the agent, then read the records:
+
+   ```sh
+   bun run "$CLI" invoke --runtime agent --payload '{"prompt":"What is 17 times 23?"}'
+   aws logs tail "/aws/box/$PROJECT" --region "$REGION" --since 15m
+   ```
+
+   To show only the deny decisions, add `--filter-pattern '"deny"'`.
 
 ## 11. Tear down
 
@@ -449,10 +490,10 @@ Two things outlive the stack. Delete them too:
   bun run "$CLI" identity api-key-credential-provider delete --name "${PROJECT}_default_github"
   ```
 
-- The log group you created in step 10, if you sent box telemetry to your own log group:
+- The log group from step 10, if you made one:
 
   ```
-  aws logs delete-log-group --log-group-name "/aws/box/$PROJECT"
+  aws logs delete-log-group --region "$REGION" --log-group-name "/aws/box/$PROJECT"
   ```
 
 ## Troubleshooting
