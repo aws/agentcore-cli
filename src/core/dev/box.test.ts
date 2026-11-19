@@ -9,6 +9,7 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
 import { MissingToolError } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 import { BoxDevRunner } from "./box";
 
 /** The line of a CodeZip profile that names its runtime's folder. */
@@ -218,7 +219,7 @@ describe("BoxDevRunner", () => {
         message:
           "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], " +
           "but it is not set, and box does not start without it. Export it in this shell " +
-          "(export GITHUB_TOKEN=...) or put it in agentcore/.env.local, then restart dev.",
+          `(export GITHUB_TOKEN=...) or put it in ${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
       });
       // box run still starts, so its own error follows the warning.
       expect(calls).toHaveLength(1);

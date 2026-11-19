@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EnvLocalFile } from "../project/envLocal";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../project/envLocal";
 import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
 
 const GITHUB_ROUTE =
@@ -107,7 +107,7 @@ describe("missingBoxSecretWarning", () => {
     ).toBe(
       "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], but " +
         "it is not set, and box does not start without it. Export it in this shell " +
-        "(export GITHUB_TOKEN=...) or put it in agentcore/.env.local, then restart dev.",
+        `(export GITHUB_TOKEN=...) or put it in ${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
     );
   });
 });

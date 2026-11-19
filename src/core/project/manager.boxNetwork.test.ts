@@ -10,6 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
@@ -899,7 +900,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     const spec = JSON.parse(await text(root, SPEC));
     expect(spec.runtimes[0].additionalPolicies).toEqual([ENTRY]);
     // Deploy reads the key from .env.local; build copies it there from the profile's variable.
-    expect(steps).toContain(`writing ${VARIABLE} to agentcore/.env.local`);
+    expect(steps).toContain(`writing ${VARIABLE} to ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(await text(root, "agentcore/.env.local")).toMatch(new RegExp(`^${VARIABLE}=.`, "m"));
     const staged = [RUNTIME_PROFILE, ".box/agent_python_strands/aws/profile.toml"];
     for (const file of [...staged, SPEC, TELEMETRY_POLICY]) {
@@ -1131,5 +1132,56 @@ describe("deploy writes the Box network before the backend deploys", () => {
     });
     expect(calls[0]!.input.boxNetworks.map(({ gateway: name }) => name)).toEqual([GATEWAY]);
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
+  });
+
+  test("moves the Memory policy with the agentcore target to the region of its target", async () => {
+    const backend: ProjectBackend = {
+      async *build() {},
+      async *deploy() {
+        yield { type: "step", message: "deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const { manager, root } = await strandsProject({ backends: { CDK: backend } });
+    const memoryStatements = async () =>
+      JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
+    const agentcoreAuth = async () =>
+      (await boxGateway(root)).targets.find(({ name }) => name === "agentcore")?.outboundAuth;
+    const statementsFor = (region: string) => [
+      expect.objectContaining({
+        Resource: [
+          `arn:aws:bedrock-agentcore:${region}:*:memory/demo_*agent_python_strandsMemory-*`,
+        ],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ];
+    await build(manager, root);
+    expect(await agentcoreAuth()).toMatchObject({ region: "us-west-2" });
+    expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    await writeFile(
+      path(root, "agentcore/aws-targets.json"),
+      JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),
+    );
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    const { steps } = await drain(
+      manager.deploy(project, {
+        target: "primary",
+        region: "us-west-2",
+        confirmTeardown: async () => false,
+      }),
+    );
+
+    expect(steps).toContain(
+      `updating gateway target 'agentcore' of '${GATEWAY}' from us-west-2 to eu-west-1`,
+    );
+    expect(await agentcoreAuth()).toMatchObject({ region: "eu-west-1" });
+    expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
   });
 });
