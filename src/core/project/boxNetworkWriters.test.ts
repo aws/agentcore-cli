@@ -469,7 +469,7 @@ describe("runtimeProfileWriter", () => {
     );
   });
 
-  test("stages only the box/agentcore pack for a container", () => {
+  test("stages only the @box/agentcore pack for a container", () => {
     const writer = runtimeProfileWriter([
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
     ]);

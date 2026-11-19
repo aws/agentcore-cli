@@ -10,7 +10,7 @@ import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxPr
 import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
-/** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
+/** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
 
 const directories: string[] = [];
@@ -87,7 +87,7 @@ describe("stageBoxContainers", () => {
       `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
-    // The container also stages the box/agentcore pack, beside box's own packs in the image.
+    // The container also stages the @box/agentcore pack, beside box's own packs in the image.
     expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });

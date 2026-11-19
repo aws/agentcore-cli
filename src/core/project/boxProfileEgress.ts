@@ -15,7 +15,7 @@ export type BoxEnvRoutes = { routes: BoxEnvRoute[]; error?: string };
 
 /**
  * The profile's own `[egress]` routes whose `secret.ref` is an `env://` reference, in profile
- * order. A pack's routes, such as box/bedrock's, are not in the profile's own `[egress]` table, so
+ * order. A pack's routes, such as @box/bedrock's, are not in the profile's own `[egress]` table, so
  * they are not here. An `egress` that is not a table (an array of tables, or a scalar) has no
  * routes, and nor does a ref with no variable after `env://`.
  */

@@ -19,7 +19,7 @@ const SHOWN = String.raw`{
   "profile": ".box/profile.toml",
   "packs": [
     {
-      "name": "box/base",
+      "name": "@box/base",
       "version": "1"
     }
   ],
@@ -103,7 +103,8 @@ const PINNED =
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
  * with no secret, the route `keyed` with one, and {@link POLICY}, as box prints it, with HOME at
  * /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations of an open route into one
- * string, and later boxes give a list.
+ * string, and later boxes give a list. preview.6 printed the first for the same profile with its
+ * pack named box/base, the name it had before `@box/`.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(
@@ -133,7 +134,7 @@ describe("parseBoxProfileShow", () => {
       },
       policy: SHOWN_POLICY,
       openRoutes: [],
-      packs: [{ name: "box/base", version: "1" }],
+      packs: [{ name: "@box/base", version: "1" }],
       warnings: [],
     });
     expect(Object.keys(resolved.boxToml)).toEqual([
@@ -151,7 +152,7 @@ describe("parseBoxProfileShow", () => {
   test("refuses output that is not one JSON document, such as the text that `show` prints", () => {
     expect(() =>
       parseBoxProfileShow(
-        "profile .box/profile.toml resolves for this directory\n  packs    box/base 1\n",
+        "profile .box/profile.toml resolves for this directory\n  packs    @box/base 1\n",
         ".box/profile.toml",
       ),
     ).toThrow(
@@ -190,7 +191,7 @@ describe("parseBoxProfileShow", () => {
       { ...noBoxToml, box_toml: [], policy: undefined },
       "a box.toml table or the policy.dw text",
     ],
-    ["packs as text", { ...document, packs: "box/base 1" }, "a list of packs"],
+    ["packs as text", { ...document, packs: "@box/base 1" }, "a list of packs"],
     [
       "a destination that is not text",
       { ...document, open_routes: [{ route: "auth", destinations: ["login.example.com", 443] }] },
@@ -414,7 +415,7 @@ describe("the box on PATH", () => {
       await mkdir(join(root, ".box"), { recursive: true });
       await writeFile(
         join(root, ".box", "profile.toml"),
-        'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
+        'packs = ["@box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
           '[agent]\ncommand = ["/bin/sh"]\n\n[egress.github]\ndestinations = ["api.github.com"]\n\n' +
           '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n\n' +
           '[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',

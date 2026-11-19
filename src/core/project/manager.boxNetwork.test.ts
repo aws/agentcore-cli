@@ -30,7 +30,7 @@ const POLICY =
   `@id("httpbin_get") permit (principal, ${HR}, resource) when { context.input.host == "httpbin.org" && context.input.path == "/get" };\n`;
 const GITHUB_ROUTE =
   '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
-/** Box's resolution of the Bedrock route of the profile `create` writes, with box/bedrock. */
+/** Box's resolution of the Bedrock route of the profile `create` writes, with @box/bedrock. */
 const BEDROCK = {
   destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
   secret: { ref: "aws://default" },
@@ -40,7 +40,7 @@ const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_
 const shows = (routes: Record<string, unknown> = {}, policy?: string) =>
   boxShowOf({ egress: { bedrock: BEDROCK, ...routes }, policy });
 /**
- * A fake box that resolves box/bedrock for the Bedrock region of the profile it reads, as box does:
+ * A fake box that resolves @box/bedrock for the Bedrock region of the profile it reads, as box does:
  * its answer's Bedrock host moves from us-west-2 to that region. Records the text of each profile.
  */
 class RegionalBoxProfileResolver extends FakeBoxProfileResolver {
@@ -786,7 +786,7 @@ describe("build reads the box profile as box resolves it", () => {
     const profile = await text(root, PROFILE);
     await writeFile(
       path(root, PROFILE),
-      profile.replace('"box/bedrock"]', '"box/bedrock", "team/search"]'),
+      profile.replace('"@box/bedrock"]', '"@box/bedrock", "team/search"]'),
     );
     // `box profile show --format json --full` resolves team/search to this route, with its secret.
     box.answer = shows({
@@ -865,7 +865,7 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
     await build(manager, root);
 
-    // box/bedrock's route is for eu-central-1, so the bedrock target serves it, and no
+    // @box/bedrock's route is for eu-central-1, so the bedrock target serves it, and no
     // egress-bedrock target is added for the us-west-2 host that `agentcore dev` calls.
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     const [call] = box.calls;

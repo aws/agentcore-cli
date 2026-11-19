@@ -72,7 +72,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
   } as unknown as ProjectSpec;
   const mcp = options.mcp ?? {};
   const profile = [
-    'packs = ["box/base"]',
+    'packs = ["@box/base"]',
     ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");
@@ -918,7 +918,7 @@ describe("the default targets", () => {
     expect(r.failures()).toEqual([]);
   });
 
-  test("gives box/bedrock's model endpoint to the bedrock target build adds", () => {
+  test("gives @box/bedrock's model endpoint to the bedrock target build adds", () => {
     const signed = { secret: { ref: "aws://default" } };
     const r = model(
       "",
