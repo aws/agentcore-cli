@@ -459,6 +459,26 @@ describe("outbound auth", () => {
     ]);
   });
 
+  test("fails an entry named for a credential that another entry's variable takes", () => {
+    const shared = model(
+      "",
+      {
+        mirror: {
+          destinations: ["mirror.example.com"],
+          secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
+        },
+        github: GITHUB,
+      },
+      { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }] },
+    );
+    expect(shared.failures()).toEqual([["API_KEY_CREDENTIAL_SHARED", "github"]]);
+    expect(shared.lines()).toEqual([
+      ".box/profile.toml:3:1  [egress.github] needs the API key credential 'github' for " +
+        "env://GITHUB_TOKEN, and [egress.mirror] takes that credential for " +
+        "env://AGENTCORE_CREDENTIAL_GITHUB. One credential holds one key. Rename the entry.",
+    ]);
+  });
+
   test("leaves an env:// entry that cannot name an API key credential to the credentials writer", () => {
     const invalid = model("", {
       ab: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } },
@@ -738,19 +758,146 @@ describe("hosts the model cannot carry", () => {
   });
 });
 
-describe("the hosts the model gives no target", () => {
-  test("gives an HTTP MCP server no host, and says the agent cannot reach it on the Runtime", () => {
+describe("HTTP MCP servers", () => {
+  const server = (destinations: string[], rest: Record<string, unknown> = {}) => ({
+    type: "http",
+    destinations,
+    ...rest,
+  });
+
+  test("gives a server with no secret a target named after it, which sends no credential", () => {
+    const r = model("", {}, { mcp: { tools: server(["tools.example.com"]) } });
+    expect(r.failures()).toEqual([]);
+    expect(r.host("tools.example.com")).toMatchObject({
+      target: "egress-tools",
+      outboundAuth: { kind: "none" },
+      reachable: true,
+      sources: [
+        { kind: "mcp", mcpEntry: "tools", destinations: ["tools.example.com"] },
+        { kind: "rule", ruleId: "mcp_tools_connect" },
+        { kind: "rule", ruleId: "mcp_tools_request" },
+      ],
+    });
+    expect(r.network.warnings).toEqual([]);
+    expect(r.network.envRoutes).toEqual([]);
+  });
+
+  test("sends an env:// server's key from the API key credential named after it, and keeps its secret", () => {
+    const secret = { ref: "env://TOOLS_TOKEN", header: "x-api-key", phantom_prefix: "tk-" };
+    const r = model("", {}, { mcp: { tools: server(["tools.example.com"], { secret }) } });
+    expect(r.failures()).toEqual([]);
+    expect(r.host("tools.example.com")).toMatchObject({
+      target: "egress-tools",
+      outboundAuth: {
+        kind: "apiKey",
+        credentialName: "tools",
+        variable: "TOOLS_TOKEN",
+        header: "x-api-key",
+      },
+      sources: [
+        { kind: "mcp", mcpEntry: "tools", destinations: ["tools.example.com"], secret },
+        { kind: "rule", ruleId: "mcp_tools_connect" },
+        { kind: "rule", ruleId: "mcp_tools_request" },
+      ],
+    });
+    expect(r.network.envRoutes).toEqual([{ route: "tools", variable: "TOOLS_TOKEN" }]);
+  });
+
+  test("signs an aws:// server on an AWS host with the gateway's role, and refuses one on another host", () => {
+    const host = "abc123.lambda-url.us-west-2.on.aws";
+    const signed = model("", {}, { mcp: { fn: server([host], { secret: { ref: "aws://" } }) } });
+    expect(signed.failures()).toEqual([]);
+    expect(signed.host(host)).toMatchObject({
+      target: "egress-fn",
+      outboundAuth: { kind: "iam", service: "lambda", region: "us-west-2" },
+    });
+    const unsigned = model(
+      "",
+      {},
+      { mcp: { tools: server(["tools.example.com"], { secret: { ref: "aws://default" } }) } },
+    );
+    expect(unsigned.lines()).toEqual([
+      ".box/profile.toml:2:1  [mcp.tools] signs requests to tools.example.com with " +
+        "aws://default, and the gateway signs only for Bedrock, AgentCore, and Lambda function " +
+        "URL hosts. Use an env:// secret for this host, or remove the secret.",
+    ]);
+  });
+
+  test("stops on a server with two destinations, a path, or a wildcard, at its entry", () => {
     const r = model(
       "",
       {},
-      { mcp: { tools: { type: "http", destinations: ["tools.example.com"] } } },
+      {
+        mcp: {
+          two: server(["a.example.com", "b.example.com"]),
+          pathed: server(["c.example.com/mcp"]),
+          wild: server(["*.example.com"]),
+        },
+      },
     );
+    expect(r.failures()).toEqual([
+      ["MCP_DESTINATION_NOT_ONE_HOST", "two"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
+      ["MCP_DESTINATION_NOT_ONE_HOST", "wild"],
+    ]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml:2:1  [mcp.two] names 2 destinations, and the gateway route of " +
+        "an MCP server takes exactly one host. Declare one [mcp] server for each host.",
+      '.box/profile.toml:3:1  [mcp.pathed] has the destination "c.example.com/mcp", and ' +
+        "the gateway route of an MCP server takes a host with no path. Remove /mcp from the " +
+        "destination. The agent's MCP client keeps the path in its URL.",
+      '.box/profile.toml:4:1  [mcp.wild] has the wildcard destination "*.example.com", ' +
+        "and the gateway route of an MCP server takes one exact host. Name the server's host.",
+    ]);
     expect(r.network.hosts).toEqual([]);
-    expect(r.failures()).toEqual([]);
+  });
+
+  test("fails a server whose target name an [egress] entry's target has, with the collision failure", () => {
+    const r = model("", { github: GITHUB }, { mcp: { github: server(["api.githubcopilot.com"]) } });
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "github"]]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml:3:1  [mcp.github] would name the gateway target for " +
+        "api.githubcopilot.com 'egress-github', and [egress.github] for api.github.com has that " +
+        "name. Rename the entry.",
+    ]);
+  });
+
+  test("fails a server that takes the API key credential of an [egress] entry for another variable", () => {
+    const r = model(
+      "",
+      {
+        tools: {
+          destinations: ["a.example.com", "b.example.com"],
+          secret: { ref: "env://TOOLS_KEY" },
+        },
+      },
+      { mcp: { tools: server(["mcp.example.com"], { secret: { ref: "env://TOOLS_MCP_KEY" } }) } },
+    );
+    expect(r.targets()).toEqual([
+      "a.example.com -> egress-tools-a-example-com",
+      "b.example.com -> egress-tools-b-example-com",
+      "mcp.example.com -> egress-tools",
+    ]);
+    expect(r.failures()).toEqual([["API_KEY_CREDENTIAL_SHARED", "tools"]]);
+    expect(r.lines()).toEqual([
+      ".box/profile.toml:3:1  [mcp.tools] needs the API key credential 'tools' for " +
+        "env://TOOLS_MCP_KEY, and [egress.tools] takes that credential for env://TOOLS_KEY. One " +
+        "credential holds one key. Rename the entry.",
+    ]);
+  });
+
+  test("says that the policy allows no request to a server it forbids, and gives it no target", () => {
+    const r = model(
+      forbid("no_tools", on("tools.example.com")),
+      {},
+      {
+        mcp: { tools: server(["tools.example.com"]) },
+      },
+    );
+    expect(r.targets()).toEqual(["tools.example.com -> (none)"]);
     expect(r.network.warnings).toEqual([
-      "tools.example.com: build does not send an HTTP MCP server through the Box gateway yet, " +
-        "so [mcp.tools] gets no gateway target, and the agent cannot reach it on AgentCore " +
-        "Runtime.",
+      'tools.example.com: your policy allows no request to this host (the rule "no_tools" ' +
+        "denies it), so [mcp.tools] gets no gateway target.",
     ]);
   });
 });
@@ -872,7 +1019,7 @@ describe("warnings", () => {
     ]);
   });
 
-  test("names each target the gateway signs for a service that no policy of its role grants", () => {
+  test("names each target the gateway signs for an endpoint that no policy of its role allows", () => {
     const egress = {
       control: {
         destinations: ["bedrock.us-west-2.amazonaws.com"],
@@ -895,15 +1042,124 @@ describe("warnings", () => {
         "bedrock-agentcore permissions. Add an IAM policy file to additionalPolicies of the " +
         "'agent-box-egress' gateway.",
     ]);
+    // The model calls' grants allow the runtime host, not the control plane.
+    const controlWarning =
+      "Target 'egress-control' calls bedrock.us-west-2.amazonaws.com with the gateway's role, " +
+      "which has no bedrock permissions for that host. Add an IAM policy file to " +
+      "additionalPolicies of the 'agent-box-egress' gateway.";
     const granted = model("", egress, {
       targets: [control],
       grantedActions: ["bedrock:InvokeModel"],
     });
-    expect(boxGatewayIamWarnings(granted.spec, granted.network)).toEqual([]);
+    expect(boxGatewayIamWarnings(granted.spec, granted.network)).toEqual([controlWarning]);
+    const listed = model("", egress, { targets: [getBoxGatewayBedrockTargetSpec(), control] });
+    listed.spec.agentCoreGateways[0]!.additionalPolicies = ["agentcore/box-bedrock-policy.json"];
+    expect(boxGatewayIamWarnings(listed.spec, listed.network)).toEqual([controlWarning]);
     const imported = model("", egress, {
       targets: [control],
       executionRoleArn: "arn:aws:iam::123456789012:role/mine",
     });
     expect(boxGatewayIamWarnings(imported.spec, imported.network)).toEqual([]);
+  });
+
+  describe("the grant each endpoint of a target needs", () => {
+    const BEDROCK_FILE = "agentcore/box-bedrock-policy.json";
+    const MEMORY_FILE = "agentcore/box-memory-policy.json";
+    const signed = (name: string, host: string, service: string) =>
+      passthrough(name, `https://${host}`, {
+        outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "us-west-2" },
+      });
+    const RUNTIME_HOST = "bedrock-runtime.us-west-2.amazonaws.com";
+    const CONTROL_HOST = "bedrock.us-west-2.amazonaws.com";
+    const AGENTCORE_CONTROL_HOST = "bedrock-agentcore-control.us-west-2.amazonaws.com";
+    const URL_HOST = "abc123.lambda-url.us-west-2.on.aws";
+    const runtime = signed("egress-bedrock-runtime", RUNTIME_HOST, "bedrock");
+    const control = signed("egress-bedrock-control", CONTROL_HOST, "bedrock");
+    const agentcoreControl = signed(
+      "egress-agentcore-control",
+      AGENTCORE_CONTROL_HOST,
+      "bedrock-agentcore",
+    );
+    const functionUrl = signed("egress-fn", URL_HOST, "lambda");
+    /** The warnings for `target` when the listed files hold `granted`, and `listed` is listed. */
+    const warningsFor = (
+      target: AgentCoreGatewayTarget,
+      granted: string[] = [],
+      listed: string[] = [],
+    ) => {
+      const r = model("", {}, { targets: [target], grantedActions: granted });
+      r.spec.agentCoreGateways[0]!.additionalPolicies = listed;
+      return boxGatewayIamWarnings(r.spec, r.network);
+    };
+    const forHost = (target: string, host: string, service: string) =>
+      `Target '${target}' calls ${host} with the gateway's role, which has no ${service} ` +
+      "permissions for that host. Add an IAM policy file to additionalPolicies of the " +
+      "'agent-box-egress' gateway.";
+    const forService = (target: string, service: string) =>
+      `Target '${target}' calls ${service} with the gateway's role, which has no ${service} ` +
+      "permissions. Add an IAM policy file to additionalPolicies of the 'agent-box-egress' gateway.";
+
+    test("a Bedrock control-plane target needs a Bedrock action other than the model calls", () => {
+      const warned = [forHost("egress-bedrock-control", CONTROL_HOST, "bedrock")];
+      expect(warningsFor(control, [], [BEDROCK_FILE])).toEqual(warned);
+      expect(
+        warningsFor(
+          control,
+          [
+            "bedrock:InvokeModel",
+            "bedrock:InvokeModelWithResponseStream",
+            "bedrock:CountTokens",
+            "bedrock:InvokeModel*",
+            "lambda:*",
+          ],
+          [BEDROCK_FILE],
+        ),
+      ).toEqual(warned);
+      for (const granted of [
+        "bedrock:ListFoundationModels",
+        "BEDROCK:listfoundationmodels",
+        "bedrock:*",
+        "bedrock:Get*",
+        "*",
+      ]) {
+        expect(warningsFor(control, [granted], [BEDROCK_FILE])).toEqual([]);
+      }
+      expect(warningsFor(control)).toEqual([forService("egress-bedrock-control", "bedrock")]);
+    });
+
+    test("a Bedrock runtime target needs bedrock:InvokeModel, which the Bedrock file grants", () => {
+      expect(warningsFor(runtime, [], [BEDROCK_FILE])).toEqual([]);
+      expect(warningsFor(getBoxGatewayBedrockTargetSpec(), [], [BEDROCK_FILE])).toEqual([]);
+      for (const granted of ["BEDROCK:invokemodel", "bedrock:Invoke*", "bedrock:InvokeMode?"]) {
+        expect(warningsFor(runtime, [granted])).toEqual([]);
+      }
+      const warned = [forHost("egress-bedrock-runtime", RUNTIME_HOST, "bedrock")];
+      expect(warningsFor(runtime, ["bedrock:ListFoundationModels"])).toEqual(warned);
+      expect(warningsFor(runtime, ["bedrock:InvokeModelWithResponseStream"])).toEqual(warned);
+      expect(warningsFor(runtime)).toEqual([forService("egress-bedrock-runtime", "bedrock")]);
+    });
+
+    test("a Lambda function URL target needs lambda:InvokeFunctionUrl", () => {
+      expect(warningsFor(functionUrl, ["lambda:InvokeFunctionUrl"])).toEqual([]);
+      expect(warningsFor(functionUrl, ["lambda:Invoke*"])).toEqual([]);
+      expect(warningsFor(functionUrl, ["lambda:InvokeFunction"])).toEqual([
+        forHost("egress-fn", URL_HOST, "lambda"),
+      ]);
+      expect(warningsFor(functionUrl, ["bedrock:*"])).toEqual([forService("egress-fn", "lambda")]);
+    });
+
+    test("an AgentCore target needs an AgentCore grant, and the Memory file covers only Memory", () => {
+      expect(warningsFor(getBoxGatewayAgentCoreTargetSpec(), [], [MEMORY_FILE])).toEqual([]);
+      expect(warningsFor(agentcoreControl, [], [MEMORY_FILE])).toEqual([
+        forHost("egress-agentcore-control", AGENTCORE_CONTROL_HOST, "bedrock-agentcore"),
+      ]);
+      expect(warningsFor(agentcoreControl, ["bedrock-agentcore:*"], [MEMORY_FILE])).toEqual([]);
+      expect(warningsFor(getBoxGatewayAgentCoreTargetSpec("us-east-1"), [], [MEMORY_FILE])).toEqual(
+        [forHost("agentcore", "bedrock-agentcore.us-east-1.amazonaws.com", "bedrock-agentcore")],
+      );
+      expect(warningsFor(agentcoreControl)).toEqual([
+        forService("egress-agentcore-control", "bedrock-agentcore"),
+      ]);
+    });
   });
 });

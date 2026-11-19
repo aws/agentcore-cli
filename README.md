@@ -198,7 +198,7 @@ declares, not the ones you add in the stack.
 ## Running agents in Box (preview)
 
 The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.3` of
+Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.6` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
@@ -251,7 +251,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"[box]"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.3`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.6`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
 `FAILED`, `ERROR`, `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands` and skip the container settings.

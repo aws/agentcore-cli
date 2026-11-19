@@ -1618,13 +1618,13 @@ export class FsProjectManager implements ProjectManager {
     let result = project;
     if (edits.specChanged) {
       // Only the fields a writer changed are set, so every other field keeps its value and place.
-      // In the gateways and credentials, only the entries a writer changed, and only their
-      // changed fields, so schema defaults are not written into the user's other entries.
+      // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
+      // their changed fields, so schema defaults are not written into the user's other entries.
       const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const changes = edits.changedFields.map((field) => [
         field,
-        field === "agentCoreGateways" || field === "credentials"
+        field === "agentCoreGateways" || field === "credentials" || field === "runtimes"
           ? patchNamedEntries<{ name: string }>(raw[field], project.spec[field], edits.spec[field])
           : edits.spec[field],
       ]);
@@ -1637,7 +1637,10 @@ export class FsProjectManager implements ProjectManager {
       result = { ...project, spec: parsed.data };
     }
     for (const file of edits.files) {
-      if (!existsSync(join(project.rootPath, ...file.path.split("/")))) {
+      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
+      if ("remove" in file) {
+        if (exists) messages.push(`removing ${file.path}`);
+      } else if (!exists) {
         messages.push(`writing ${file.path}`);
       }
     }

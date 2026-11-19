@@ -9,6 +9,7 @@ import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
 import { resolveExecutable } from "../../io/exec";
+import { BOX_RELEASE } from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -37,8 +38,11 @@ export interface BoxProfileResolver {
   resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
 }
 
-/** Where to get box, which the error names when `box` is not on PATH. */
-const BOX_RELEASES_URL = "https://github.com/mquang-amazon/box-releases";
+/** The box release that `boxRelease.json` pins, which each error that asks for a box names. */
+const PINNED_BOX = `box ${BOX_RELEASE.version}`;
+
+/** Where to get the pinned box. */
+const BOX_RELEASE_URL = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
 
 /** The error of a box that has no `--format` or `--full` option, as clap prints it. */
 const REFUSED_JSON = /(?:unexpected argument|Found argument) '--(?:format|full)'/;
@@ -100,7 +104,7 @@ export function parseBoxProfileShow(stdout: string, profilePath: string): Resolv
       wrong.length > 0 ? wrong.map(([, part]) => part) : [SHOWN_PARTS.box_toml, SHOWN_PARTS.policy];
     throw new InvalidEnvironmentError(
       `Box printed the profile ${profilePath} without ${LIST.format(parts)}, which build reads. ` +
-        `Install a newer Box (${BOX_RELEASES_URL}), then retry.`,
+        `Install ${PINNED_BOX} or a later release (${BOX_RELEASE_URL}), then retry.`,
       { cause: shown.error },
     );
   }
@@ -139,15 +143,14 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
         resolveExecutable("box", { env: this.env }) === null
       ) {
         throw new InvalidEnvironmentError(
-          `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
+          `Box is not installed or not on PATH. Install ${PINNED_BOX} (${BOX_RELEASE_URL}), then retry.`,
           { cause: error },
         );
       }
       if (stderr.some((line) => REFUSED_JSON.test(line))) {
         throw new InvalidEnvironmentError(
           `This Box cannot print the profile ${profilePath} as JSON, which build reads. Install ` +
-            `a Box release with \`box profile show --format json --full\` (${BOX_RELEASES_URL}), ` +
-            "then retry.",
+            `${PINNED_BOX} or a later release (${BOX_RELEASE_URL}), then retry.`,
           { cause: error },
         );
       }

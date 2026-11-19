@@ -14,6 +14,7 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { FsProjectManager } from "./manager";
+import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -335,6 +336,46 @@ describe("build writes the Box network of the box profile", () => {
     expect(await text(root, RUNTIME_PROFILE)).toBe(profile);
   });
 
+  test("gives an HTTP MCP server a target and its API key credential, and keeps it an [mcp] server on the Runtime", async () => {
+    const { manager, root, box } = await strandsProject({ env: { TOOLS_TOKEN: "tools-123" } });
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps, warnings } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock", "agentcore"]);
+    const { targets } = await boxGateway(root);
+    // A CUSTOM passthrough target, so Box alone decides each mcp:call.
+    expect(targets[0]).toEqual(
+      userTarget("egress-tools", "https://tools.example.com", {
+        outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+      }),
+    );
+    expect(JSON.parse(await text(root, SPEC)).credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "tools",
+    });
+    expect(steps).toContain(
+      "adding API key credential 'tools' to agentcore.json for box egress 'env://TOOLS_TOKEN', " +
+        "so deploy provisions it in AgentCore Identity",
+    );
+    expect(warnings).toEqual([]);
+    const profile = await runtimeProfile(root);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(profile.mcp).toEqual({
+      tools: { ...tools, backends: gatewayRoute("egress-tools", "tools.example.com").backends },
+    });
+  });
+
   test("routes a host through the target the gateway holds for it, and keeps every user target", async () => {
     const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
     await editProfile(root, { tables: GITHUB_ROUTE });
@@ -499,13 +540,232 @@ describe("build writes the Box network of the box profile", () => {
     const spec = await text(root, SPEC);
 
     await expect(build(manager, root)).rejects.toThrow(
-      "Build stopped: 1 problem in agentcore.json. Nothing was changed.\n" +
+      "Build stopped: 1 problem in agentcore.json. Build wrote nothing from the Box profile.\n" +
         "agentcore/agentcore.json  The gateway target 'gh' for api.github.com sends no " +
         "credential, and [egress.github] sends the API key credential 'github' in the header " +
         "Authorization with the prefix Bearer. Make the two the same, in agentcore.json or in " +
         ".box/profile.toml.",
     );
     expect(await text(root, SPEC)).toBe(spec);
+  });
+});
+
+describe("build writes the telemetry policy of the box profile", () => {
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
+  const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
+  const LOGS = {
+    kind: "cloudwatch_logs",
+    region: "us-west-2",
+    log_group: "my-group",
+    log_stream: "my-stream",
+    secret: { ref: "aws://my-profile" },
+  };
+  const TRACES = {
+    kind: "cloudwatch_traces",
+    region: "us-west-2",
+    secret: { ref: "aws://my-profile" },
+  };
+  const LOGS_STATEMENT = {
+    Sid: "BoxTelemetryToCloudWatchLogs",
+    Effect: "Allow",
+    Action: ["logs:PutLogEvents"],
+    Resource: ["arn:aws:logs:us-west-2:*:log-group:my-group:log-stream:my-stream"],
+  };
+  const TRACES_STATEMENT = {
+    Sid: "BoxTelemetryToXRay",
+    Effect: "Allow",
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+    Resource: "*",
+  };
+  const ADDED =
+    `adding ${TELEMETRY_POLICY} to additionalPolicies of 'agent_python_strands', so its box can ` +
+    "send telemetry to CloudWatch";
+
+  /** What box resolves the created profile to, with `telemetry` as its [telemetry] tables. */
+  const showsTelemetry = (telemetry: Record<string, unknown>) => {
+    const answer = shows();
+    return { ...answer, boxToml: { ...answer.boxToml, telemetry } };
+  };
+
+  async function runtimeEntry(root: string) {
+    const spec = JSON.parse(await text(root, SPEC));
+    return spec.runtimes[0] as { codeLocation: string; additionalPolicies?: string[] };
+  }
+
+  test.each([
+    ["CloudWatch Logs", { logs: LOGS }, [LOGS_STATEMENT]],
+    ["X-Ray", { traces: TRACES }, [TRACES_STATEMENT]],
+    ["both", { logs: LOGS, traces: TRACES }, [LOGS_STATEMENT, TRACES_STATEMENT]],
+  ])(
+    "for %s, writes the grant and lists it on the box runtime",
+    async (_label, telemetry, statements) => {
+      const { manager, root, box } = await strandsProject();
+      box.answer = showsTelemetry(telemetry);
+
+      const { steps } = await build(manager, root);
+
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY))).toEqual({
+        Version: "2012-10-17",
+        Statement: statements,
+      });
+      const runtime = await runtimeEntry(root);
+      expect(runtime.additionalPolicies).toEqual([ENTRY]);
+      // The CDK library reads a runtime's policy files from its codeLocation.
+      expect(join(root, runtime.codeLocation, ENTRY)).toBe(path(root, TELEMETRY_POLICY));
+      expect(steps).toContain(ADDED);
+      expect(steps).toContain(`writing ${TELEMETRY_POLICY}`);
+    },
+  );
+
+  test("sets only additionalPolicies of the runtime, and keeps its other keys in their place", async () => {
+    const { manager, root, box } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.runtimes[0].myNote = "kept";
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const keys = Object.keys(spec.runtimes[0]);
+    box.answer = showsTelemetry({ logs: LOGS });
+
+    await build(manager, root);
+
+    const written = JSON.parse(await text(root, SPEC)).runtimes[0];
+    expect(Object.keys(written)).toEqual([...keys, "additionalPolicies"]);
+    expect(written.myNote).toBe("kept");
+  });
+
+  test("copies both CloudWatch targets into the Runtime profile, signed with the execution role", async () => {
+    const { manager, root, box } = await strandsProject();
+    const records = { kind: "file", destination: "/tmp/records.jsonl" };
+    box.answer = showsTelemetry({ logs: LOGS, traces: TRACES, records });
+
+    await build(manager, root);
+
+    // On the Runtime, the default AWS profile that start.sh writes is the execution role.
+    expect((await runtimeProfile(root)).telemetry).toEqual({
+      logs: { ...LOGS, secret: { ref: "aws://default" } },
+      traces: { ...TRACES, secret: { ref: "aws://default" } },
+    });
+    expect(await text(root, RUNTIME_PROFILE)).not.toContain("my-profile");
+  });
+
+  test("changes nothing on a second build", async () => {
+    const { manager, root, counter, box } = await strandsProject();
+    box.answer = showsTelemetry({ logs: LOGS, traces: TRACES });
+    await build(manager, root);
+    const policy = await text(root, TELEMETRY_POLICY);
+    counter.specWrites = 0;
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toEqual(["synthesizing CloudFormation templates"]);
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, TELEMETRY_POLICY)).toBe(policy);
+  });
+
+  test("writes no file and lists nothing when the profile sends no telemetry to CloudWatch", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = showsTelemetry({ langfuse: { kind: "langfuse", secret: { ref: "env://KEY" } } });
+
+    const { steps } = await build(manager, root);
+
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect((await runtimeEntry(root)).additionalPolicies).toBeUndefined();
+    expect(steps.filter((step) => step.includes(TELEMETRY_POLICY))).toEqual([]);
+  });
+
+  test("removes the file and the entry when the profile no longer sends telemetry to CloudWatch", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = showsTelemetry({ logs: LOGS });
+    await build(manager, root);
+    box.answer = shows();
+
+    const { steps } = await build(manager, root);
+
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect((await runtimeEntry(root)).additionalPolicies).toBeUndefined();
+    expect(steps).toContain(
+      `removing ${TELEMETRY_POLICY} from additionalPolicies of 'agent_python_strands': its box ` +
+        "sends no telemetry to CloudWatch",
+    );
+    expect(steps).toContain(`removing ${TELEMETRY_POLICY}`);
+  });
+
+  describe("for a target with no region", () => {
+    const { region: _region, ...REGIONLESS_LOGS } = LOGS;
+    const logsIn = (region: string) => ({ ...LOGS, region, secret: { ref: "aws://default" } });
+    const statementIn = (region: string) => ({
+      ...LOGS_STATEMENT,
+      Resource: [`arn:aws:logs:${region}:*:log-group:my-group:log-stream:my-stream`],
+    });
+
+    test("on build, sets the region build builds for, keeps a target's own region, and warns that dev needs a region", async () => {
+      const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+      box.answer = showsTelemetry({
+        logs: REGIONLESS_LOGS,
+        traces: { ...TRACES, region: "eu-west-1" },
+      });
+
+      const { warnings } = await build(manager, root);
+
+      expect((await runtimeProfile(root)).telemetry).toEqual({
+        logs: logsIn("eu-central-1"),
+        traces: { ...TRACES, region: "eu-west-1", secret: { ref: "aws://default" } },
+      });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("eu-central-1"),
+        TRACES_STATEMENT,
+      ]);
+      expect(warnings).toContain(
+        ".box/profile.toml: [telemetry.logs] has no region, so the AgentCore Runtime profile and " +
+          "the telemetry policy get eu-central-1. Deploy sets the region of its deploy target. " +
+          "Box refuses a CloudWatch target with no region, so `agentcore dev` cannot run this " +
+          "profile until you add region to it.",
+      );
+    });
+
+    test("on deploy, sets the region of its target", async () => {
+      const calls: DeployBackendInput[] = [];
+      const backend: ProjectBackend = {
+        async *build() {},
+        async *deploy(_project, input) {
+          calls.push(input);
+          yield { type: "step", message: "deploying" };
+          return { outputs: {} };
+        },
+        async resolveDeployedResources() {
+          return [];
+        },
+        async resolveProjectResources() {
+          return [];
+        },
+      };
+      const { manager, root, box } = await strandsProject({ backends: { CDK: backend } });
+      box.answer = showsTelemetry({ logs: REGIONLESS_LOGS });
+      await writeFile(
+        path(root, "agentcore/aws-targets.json"),
+        JSON.stringify([{ name: "primary", account: "111122223333", region: "ap-south-1" }]),
+      );
+
+      const project = (await manager.resolve({ filePath: root })) as Project;
+      const { warnings } = await drain(
+        manager.deploy(project, {
+          target: "primary",
+          region: "us-west-2",
+          confirmTeardown: async () => false,
+        }),
+      );
+
+      const [network] = calls[0]!.boxNetworks;
+      const runtime = project.spec.runtimes[0]!;
+      expect(parse(renderRuntimeBoxProfile(project.spec, runtime, network)).telemetry).toEqual({
+        logs: logsIn("ap-south-1"),
+      });
+      expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([
+        statementIn("ap-south-1"),
+      ]);
+      expect(warnings.filter((warning) => warning.includes("[telemetry.logs]"))).toEqual([
+        expect.stringContaining("get ap-south-1."),
+      ]);
+    });
   });
 });
 
@@ -731,5 +991,53 @@ describe("deploy writes the Box network before the backend deploys", () => {
     });
     expect(calls[0]!.input.boxNetworks.map(({ gateway: name }) => name)).toEqual([GATEWAY]);
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
+  });
+
+  test("moves the Memory policy with the agentcore target to the region of its target", async () => {
+    const backend: ProjectBackend = {
+      async *build() {},
+      async *deploy() {
+        yield { type: "step", message: "deploying" };
+        return { outputs: {} };
+      },
+      async resolveDeployedResources() {
+        return [];
+      },
+      async resolveProjectResources() {
+        return [];
+      },
+    };
+    const { manager, root } = await strandsProject({ backends: { CDK: backend } });
+    const memoryStatements = async () =>
+      JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
+    const agentcoreAuth = async () =>
+      (await boxGateway(root)).targets.find(({ name }) => name === "agentcore")?.outboundAuth;
+    const statementsFor = (region: string) => [
+      expect.objectContaining({
+        Resource: [
+          `arn:aws:bedrock-agentcore:${region}:*:memory/demo_*agent_python_strandsMemory-*`,
+        ],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ];
+    await build(manager, root);
+    expect(await agentcoreAuth()).toMatchObject({ region: "us-west-2" });
+    expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    await writeFile(
+      path(root, "agentcore/aws-targets.json"),
+      JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),
+    );
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await drain(
+      manager.deploy(project, {
+        target: "primary",
+        region: "us-west-2",
+        confirmTeardown: async () => false,
+      }),
+    );
+
+    expect(await agentcoreAuth()).toMatchObject({ region: "eu-west-1" });
+    expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
   });
 });

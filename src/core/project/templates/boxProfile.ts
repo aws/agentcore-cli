@@ -9,7 +9,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
-import type { BoxNetwork } from "../boxNetwork";
+import type { BoxHostSource, BoxNetwork, CloudWatchTelemetry } from "../boxNetwork";
 import { PYTHON_ENV } from "../../dev/codezip";
 import { modelProviderCredentialName } from "./runtime";
 
@@ -508,8 +508,51 @@ function runtimeGatewayRouteSection(
 # Calls to ${host}, through the '${gatewayName}' gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
+${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+}
 
-[[egress.${key}.backends]]
+/** An HTTP MCP server of the box profile that a Box gateway target serves. */
+type RuntimeMcpServer = { readonly name: string; readonly secret?: McpSource["secret"] };
+type McpSource = Extract<BoxHostSource, { kind: "mcp" }>;
+
+/**
+ * An HTTP MCP server on the Runtime: the box sends the server's calls to `host`
+ * to the runtime's Box gateway target, as {@link runtimeGatewayRouteSection}
+ * does, and still decides each `mcp:call`, as the server keeps its name. An
+ * `env://` secret stays, so the agent keeps its stand-in and box removes it; the
+ * gateway sends the key. Box refuses a signed secret beside a backend, and
+ * `inject` has no effect there, so neither stays. Starts with a blank line.
+ */
+function runtimeMcpServerSection(
+  gatewayName: string,
+  server: RuntimeMcpServer,
+  target: string,
+  host: string,
+  region: string,
+): string {
+  const key = tomlKey(server.name);
+  const secret = server.secret?.ref.startsWith("env://")
+    ? Object.entries(server.secret)
+        .filter(([field, value]) => field !== "inject" && value !== undefined)
+        .map(([field, value]) => `secret.${tomlKey(field)} = ${str(value as string)}\n`)
+        .join("")
+    : "";
+  return `
+# The MCP server '${server.name}' at ${host}, through the '${gatewayName}' gateway's '${target}' target.
+[mcp.${key}]
+type = "http"
+destinations = [${str(host)}]
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+}
+
+/**
+ * The backend of a Runtime route or MCP server: the runtime's Box gateway
+ * target, signed for the gateway in `region` with the execution role. Starts
+ * with a blank line.
+ */
+function runtimeGatewayBackend(table: string, target: string, region: string): string {
+  return `
+[[${table}.backends]]
 url = ${str(`${BOX_GATEWAY_URL_PLACEHOLDER}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
@@ -520,11 +563,17 @@ auth.aws.region = ${str(region)}
 /**
  * The Runtime routes of a runtime: one for each passthrough target of its Box gateway (the
  * gateway bound to it), named for the target and sent to it, so a target in agentcore.json is
- * what gives the boxed agent a route. Build adds the targets it needs, the model's `bedrock` and
- * Memory's `agentcore` (see `addBoxGatewayTargets`), before it renders. Other target types get no
- * route. None outside a Box project.
+ * what gives the boxed agent a route. A target that serves an HTTP MCP server of `servers` is
+ * that `[mcp.<server>]`, and every other target is an `[egress.<target>]`. Build adds the targets
+ * it needs, the model's `bedrock` and Memory's `agentcore` (see `addBoxGatewayTargets`), before it
+ * renders. Other target types get no route. None outside a Box project.
  */
-function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region: string): string {
+function runtimeGatewayRoutes(
+  spec: ProjectSpec,
+  runtime: ProjectRuntime,
+  region: string,
+  servers: ReadonlyMap<string, RuntimeMcpServer>,
+): string {
   if (!isBoxProject(spec)) return "";
   const gateway = spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === runtime.name);
   if (!gateway) return "";
@@ -546,8 +595,48 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region
     byHost.set(hostOf(target), target.name);
   }
   return targets
-    .map((target) => runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target), region))
+    .map((target) => {
+      const server = servers.get(target.name);
+      return server
+        ? runtimeMcpServerSection(gateway.name, server, target.name, hostOf(target), region)
+        : runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target), region);
+    })
     .join("");
+}
+
+/** The HTTP MCP server each Box gateway target of `hosts` serves, by the target's name. */
+function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpServer> {
+  const servers = new Map<string, RuntimeMcpServer>();
+  for (const host of hosts) {
+    const source = host.sources.find((s): s is McpSource => s.kind === "mcp");
+    if (source === undefined || host.target === undefined) continue;
+    servers.set(host.target, {
+      name: source.mcpEntry,
+      ...(source.secret && { secret: source.secret }),
+    });
+  }
+  return servers;
+}
+
+/**
+ * A CloudWatch target of the box profile on the Runtime: its `[telemetry.<name>]`
+ * table with the same keys, signed with the execution role, whatever the box
+ * profile signs it with. Starts with a blank line.
+ */
+function runtimeTelemetrySection(target: CloudWatchTelemetry): string {
+  const logs =
+    target.kind === "cloudwatch_logs"
+      ? `log_group = ${str(target.logGroup)}\nlog_stream = ${str(target.logStream)}\n`
+      : "";
+  const include = target.include ? `include = ${list([...target.include])}\n` : "";
+  const key = tomlKey(target.name);
+  return `
+# The [telemetry.${key}] target of ${BOX_PROFILE_FILE}, signed with the execution role.
+[telemetry.${key}]
+kind = ${str(target.kind)}
+region = ${str(target.region)}
+${logs}${include}secret.ref = ${str(RUNTIME_AWS_SIGNER)}
+`;
 }
 
 /**
@@ -555,15 +644,17 @@ function runtimeGatewayRoutes(spec: ProjectSpec, runtime: ProjectRuntime, region
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway (see
  * `runtimeGatewayRoutes`); and, from the runtime's Box network model, the box
- * profile's policy files under `policies` and the region build builds for.
- * agentcore.json does not record the framework, and the profile does not
+ * profile's policy files under `policies`, the region build builds for, the
+ * HTTP MCP server that a target serves, and each CloudWatch `[telemetry]`
+ * target. agentcore.json does not record the framework, and the profile does not
  * depend on it beyond the container case, so the input names Strands, one of
  * the frameworks that run in a box.
  */
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region">>,
+  network?: Pick<BoxNetwork, "policyFiles"> &
+    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry">>,
 ): string {
   const region = network?.region ?? DEFAULT_EGRESS_BEDROCK_REGION;
   const input = {
@@ -575,14 +666,15 @@ export function renderRuntimeBoxProfile(
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(
+  const profile = renderBoxProfile(
     spec.name,
     input,
     region,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region),
+    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
   )!;
+  return profile + (network?.telemetry ?? []).map(runtimeTelemetrySection).join("");
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cloudWatchTelemetry } from "./telemetry";
+import { cloudWatchTelemetry, withDeployRegion } from "./telemetry";
 
 const LOGS = {
   kind: "cloudwatch_logs",
@@ -67,11 +67,19 @@ describe("cloudWatchTelemetry", () => {
     ["no stream", { log_stream: undefined }],
     ["a group longer than 512", { log_group: "g".repeat(513) }],
     ["an upper-case region", { region: "US-WEST-2" }],
-    ["no region", { region: undefined }],
     ["an empty region", { region: " " }],
     ["a region that is not a string", { region: 2 }],
   ])("leaves out a cloudwatch_logs target that Box refuses: %s", (_label, change) => {
     expect(cloudWatchTelemetry({ telemetry: { logs: { ...LOGS, ...change } } })).toEqual([]);
+  });
+
+  test("reads a target with no region, with no region", () => {
+    const { region: _logs, ...logs } = LOGS;
+    const { region: _traces, ...traces } = TRACES;
+    expect(cloudWatchTelemetry({ telemetry: { logs, traces } })).toEqual([
+      { name: "logs", kind: "cloudwatch_logs", logGroup: "my-group", logStream: "my-stream" },
+      { name: "traces", kind: "cloudwatch_traces" },
+    ]);
   });
 
   test("reads the name of each table, and its include", () => {
@@ -95,5 +103,32 @@ describe("cloudWatchTelemetry", () => {
   test("reads nothing from a box.toml with no telemetry table", () => {
     expect(cloudWatchTelemetry({})).toEqual([]);
     expect(cloudWatchTelemetry({ telemetry: "logs" })).toEqual([]);
+  });
+});
+
+describe("withDeployRegion", () => {
+  const PROFILE = ".box/profile.toml";
+  const logs = { name: "logs", kind: "cloudwatch_logs", logGroup: "g", logStream: "s" } as const;
+  const traces = { name: "traces", kind: "cloudwatch_traces" } as const;
+
+  test("sets the region on each target with none, and keeps a target's own region", () => {
+    const own = { ...traces, name: "own", region: "eu-west-1" };
+    expect(withDeployRegion([logs, own], "ap-south-1", PROFILE).telemetry).toEqual([
+      { ...logs, region: "ap-south-1" },
+      own,
+    ]);
+  });
+
+  test("warns once that agentcore dev cannot run a profile with a target that has no region", () => {
+    expect(withDeployRegion([logs, traces], "ap-south-1", PROFILE).warnings).toEqual([
+      `${PROFILE}: [telemetry.logs] and [telemetry.traces] have no region, so the AgentCore ` +
+        "Runtime profile and the telemetry policy get ap-south-1. Deploy sets the region of its " +
+        "deploy target. Box refuses a CloudWatch target with no region, so `agentcore dev` " +
+        "cannot run this profile until you add region to it.",
+    ]);
+    expect(withDeployRegion([{ ...logs, region: "us-west-2" }], "ap-south-1", PROFILE)).toEqual({
+      telemetry: [{ ...logs, region: "us-west-2" }],
+      warnings: [],
+    });
   });
 });

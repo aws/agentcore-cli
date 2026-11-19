@@ -7,7 +7,7 @@
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
-import { cloudWatchTelemetry, type CloudWatchTelemetry } from "./telemetry";
+import { cloudWatchTelemetry, type ProfileCloudWatchTelemetry } from "./telemetry";
 
 /** Where the profile's own text sets a key, as `<profile path>:line:column`. */
 export interface ProfilePlaces {
@@ -26,7 +26,7 @@ export interface ParsedProfile {
   /** The profile's own policy files, relative to its folder, in the order it names them. */
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of `[telemetry]` as Box resolves it; absent means none. */
-  readonly telemetry?: readonly CloudWatchTelemetry[];
+  readonly telemetry?: readonly ProfileCloudWatchTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
 }
