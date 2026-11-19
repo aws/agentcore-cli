@@ -9,7 +9,12 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import { cloudWatchTelemetry, thirdPartyTelemetry, type BoxNetworkHost } from "../boxNetwork";
+import {
+  cloudWatchTelemetry,
+  thirdPartyTelemetry,
+  withDeployRegion,
+  type BoxNetworkHost,
+} from "../boxNetwork";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -668,12 +673,14 @@ describe("renderRuntimeBoxProfile", () => {
       },
       "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
     };
-    const rendered = (telemetry: Record<string, unknown>, region?: string) => {
+    /** The Runtime profile for `region`, which the model also sets on a target with none. */
+    const rendered = (telemetry: Record<string, unknown>, region = "us-west-2") => {
       const project = spec([bedrock]);
       const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
         policyFiles: [],
-        telemetry: cloudWatchTelemetry({ telemetry }),
-        ...(region && { region }),
+        telemetry: withDeployRegion(cloudWatchTelemetry({ telemetry }), region, "profile.toml")
+          .telemetry,
+        region,
       });
       return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
     };
@@ -845,6 +852,15 @@ describe("renderRuntimeBoxProfile", () => {
       expect(Object.keys(rendered({ logs: TELEMETRY.logs }).toml.telemetry ?? {})).toEqual([
         "logs",
       ]);
+    });
+
+    test("writes the deploy region on a target with no region, keeps a target's own region, and adds no default target", () => {
+      const { region: _region, ...logs } = TELEMETRY.logs;
+
+      expect(rendered({ logs, "x-ray": TELEMETRY["x-ray"] }, "ap-south-1").toml.telemetry).toEqual({
+        logs: { ...TELEMETRY.logs, region: "ap-south-1", secret: { ref: "aws://" } },
+        "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+      });
     });
   });
 

@@ -1607,9 +1607,27 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
+    const region = await this.boxBuildRegion();
+    const boxed = await this.applyBoxNetwork(
+      synced.project,
+      "build",
+      region,
+      await this.boxDeployRegion(synced.project, region),
+    );
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
+  }
+
+  /**
+   * The region `agentcore build` sets on each CloudWatch target of a box profile that names no
+   * region: that of the `default` target of aws-targets.json, which `agentcore deploy` deploys to
+   * with no --target, else `buildRegion`, which the first deploy gives that target. Deploy uses its
+   * own target's region.
+   */
+  private async boxDeployRegion(project: Project, buildRegion: string): Promise<string> {
+    if (!isBoxProject(project.spec)) return buildRegion;
+    const targets = await this.listTargets(project);
+    return targets.find(({ name }) => name === DEFAULT_TARGET_NAME)?.region ?? buildRegion;
   }
 
   /**
@@ -1633,13 +1651,15 @@ export class FsProjectManager implements ProjectManager {
    * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
    * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
    * survive and checked against the schema first, then the files, then `.env.local`. The Bedrock
-   * and Memory targets, and Box's resolution of the profile, are for `region`. A failure of any
-   * model stops `command` before anything of the box profile is written.
+   * and Memory targets, and Box's resolution of the profile, are for `region`, and a CloudWatch
+   * target with no region gets `deployRegion`. A failure of any model stops `command` before
+   * anything of the box profile is written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
     region: string,
+    deployRegion: string = region,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
     const networks = await readBoxNetworks(
       project.spec,
@@ -1647,6 +1667,7 @@ export class FsProjectManager implements ProjectManager {
       this.boxProfileResolver,
       region,
       boxSecretsManagerEnabled(this.processEnv),
+      deployRegion,
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));

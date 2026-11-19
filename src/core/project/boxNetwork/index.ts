@@ -22,6 +22,7 @@ export {
 export {
   cloudWatchTelemetry,
   thirdPartyTelemetry,
+  withDeployRegion,
   type CloudWatchTelemetry,
   type LeftOutTelemetry,
   type TelemetryValue,

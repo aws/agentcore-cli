@@ -7,23 +7,32 @@
  */
 
 /** A CloudWatch target of the box profile, as Box sends to it. */
-export type CloudWatchTelemetry = {
+export type CloudWatchTelemetry = CloudWatchTarget & {
+  /** The region of its OTLP endpoint. */
+  readonly region: string;
+};
+
+/**
+ * A CloudWatch target as the box profile names it. It has no `region` when the profile names none;
+ * build and deploy then write the region of the deploy target in the AgentCore Runtime profile.
+ */
+export type ProfileCloudWatchTelemetry = CloudWatchTarget & { readonly region?: string };
+
+type CloudWatchTarget = {
   /** The `<name>` of its `[telemetry.<name>]` table. */
   readonly name: string;
   /** The signal groups of its `include`; absent means the default of Box. */
   readonly include?: readonly string[];
 } & (
   | {
-      /** Log records, to CloudWatch Logs' OTLP endpoint in `region`. */
+      /** Log records, to CloudWatch Logs' OTLP endpoint. */
       readonly kind: "cloudwatch_logs";
-      readonly region: string;
       readonly logGroup: string;
       readonly logStream: string;
     }
   | {
-      /** Spans, to X-Ray's OTLP endpoint in `region`. */
+      /** Spans, to X-Ray's OTLP endpoint. */
       readonly kind: "cloudwatch_traces";
-      readonly region: string;
     }
 );
 
@@ -61,23 +70,25 @@ const isTable = (value: unknown): value is Record<string, unknown> =>
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : undefined);
 
 /**
- * The CloudWatch targets of the `[telemetry]` tables of `boxToml`, in profile order. A target that
- * Box would refuse (no region, a group or stream name CloudWatch does not take, or an `include`
- * that Box does not take) is left out, so it gets no grant and no copy in the AgentCore Runtime
- * profile: Box stops the run that declares it.
+ * The CloudWatch targets of the `[telemetry]` tables of `boxToml`, in profile order. A target with
+ * no `region` has none here. A target that Box would refuse (a malformed region, a group or stream
+ * name CloudWatch does not take, or an `include` that Box does not take) is left out, so it gets no
+ * grant and no copy in the AgentCore Runtime profile: Box stops the run that declares it.
  */
 export function cloudWatchTelemetry(
   boxToml: Readonly<Record<string, unknown>>,
-): CloudWatchTelemetry[] {
+): ProfileCloudWatchTelemetry[] {
   const tables = isTable(boxToml.telemetry) ? Object.entries(boxToml.telemetry) : [];
-  const targets: CloudWatchTelemetry[] = [];
+  const targets: ProfileCloudWatchTelemetry[] = [];
   for (const [name, entry] of tables) {
     if (!isTable(entry)) continue;
+    // Box's JSON has no `region` key for a target that names none.
     const region = text(entry.region);
-    if (region === undefined || !REGION.test(region)) continue;
+    const hasRegion = entry.region !== undefined;
+    if (hasRegion && (region === undefined || !REGION.test(region))) continue;
     const include = includeOf(entry.include);
     if (include === null) continue;
-    const common = { name, ...(include && { include }), region };
+    const common = { name, ...(include && { include }), ...(hasRegion && { region }) };
     if (entry.kind === "cloudwatch_traces") {
       targets.push({ ...common, kind: "cloudwatch_traces" });
       continue;
@@ -92,6 +103,34 @@ export function cloudWatchTelemetry(
     targets.push({ ...common, kind: "cloudwatch_logs", logGroup, logStream });
   }
   return targets;
+}
+
+/**
+ * `telemetry` with `region`, the region of the deploy target, on each target that names none, and
+ * a warning that names those targets: `agentcore dev` runs the box profile `profilePath` as it is,
+ * and Box refuses such a target there.
+ */
+export function withDeployRegion(
+  telemetry: readonly ProfileCloudWatchTelemetry[],
+  region: string,
+  profilePath: string,
+): { telemetry: CloudWatchTelemetry[]; warnings: string[] } {
+  const tables = telemetry
+    .filter((target) => target.region === undefined)
+    .map(({ name }) => `[telemetry.${name}]`);
+  const warnings =
+    tables.length === 0
+      ? []
+      : [
+          `${profilePath}: ${tables.join(" and ")} ${tables.length > 1 ? "have" : "has"} no ` +
+            `region, so build sets ${region}, the deploy region, in the AgentCore Runtime ` +
+            "profile. Box refuses a CloudWatch target with no region, so `agentcore dev` cannot " +
+            "run this profile until you add region to it.",
+        ];
+  return {
+    telemetry: telemetry.map((target) => ({ ...target, region: target.region ?? region })),
+    warnings,
+  };
 }
 
 /** The kinds of target that send to a third party's OTLP endpoint, and not to AWS. */

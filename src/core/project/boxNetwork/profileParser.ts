@@ -11,8 +11,8 @@ import type { ResolvedBoxProfile } from "../boxProfileResolver";
 import {
   cloudWatchTelemetry,
   thirdPartyTelemetry,
-  type CloudWatchTelemetry,
   type LeftOutTelemetry,
+  type ProfileCloudWatchTelemetry,
   type ThirdPartyTelemetry,
 } from "./telemetry";
 
@@ -33,7 +33,7 @@ export interface ParsedProfile {
   /** The profile's own policy files, relative to its folder, in the order it names them. */
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of `[telemetry]` as Box resolves it; absent means none. */
-  readonly telemetry?: readonly CloudWatchTelemetry[];
+  readonly telemetry?: readonly ProfileCloudWatchTelemetry[];
   /** The third-party targets of `[telemetry]` as Box resolves it; absent means none. */
   readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
   /** The third-party targets that the AgentCore Runtime profile leaves out; absent means none. */

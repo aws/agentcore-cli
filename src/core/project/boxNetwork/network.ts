@@ -27,7 +27,7 @@ import {
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
 import type { ParsedProfile } from "./profileParser";
-import type { CloudWatchTelemetry, ThirdPartyTelemetry } from "./telemetry";
+import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import { MAX_GATEWAY_TARGETS, hostKey, type ConversionFailure, type FailureCode } from "./types";
 import type { SourceSpan } from "./dogwood";
@@ -151,6 +151,11 @@ export interface BoxNetworkProject {
   /** The region build builds for. */
   readonly region: string;
   /**
+   * The region of the deploy target, which build sets on each CloudWatch target that names no
+   * region; absent means `region`.
+   */
+  readonly deployRegion?: string;
+  /**
    * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
    * runtime's model and Memory calls (`addBoxGatewayTargets`).
    */
@@ -203,6 +208,13 @@ export function buildBoxNetwork(
     parsed.profile.mcp,
   );
   const thirdParty = runtimeTelemetry(parsed.profile, project, credentials.needed);
+  const telemetry =
+    parsed.profile.telemetry &&
+    withDeployRegion(
+      parsed.profile.telemetry,
+      project.deployRegion ?? project.region,
+      parsed.profile.path,
+    );
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -210,7 +222,7 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     credentials: credentials.needed,
     policyFiles: parsed.profile.policyFiles,
-    ...(parsed.profile.telemetry && { telemetry: parsed.profile.telemetry }),
+    ...(telemetry && { telemetry: telemetry.telemetry }),
     ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
     grantedActions: project.grantedActions,
     warnings: [
@@ -224,6 +236,7 @@ export function buildBoxNetwork(
           "target for a WebSocket, so it skips this rule."
         );
       }),
+      ...(telemetry?.warnings ?? []),
     ],
     failures,
   };
