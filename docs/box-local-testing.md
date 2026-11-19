@@ -29,11 +29,11 @@ To try an unreleased box build, publish it as a pre-release with the same file n
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- The first `box` release with
-  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), or a
-  subsequent release, on your `PATH`. Build, deploy and dev run it to read the box profile with
-  `box profile show --format json --full`, and CodeZip dev runs the agent with it. See
-  [Install box](#install-box).
+- `box` `0.1.11-linux-preview.7` or later on your `PATH`. It is the first release with
+  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
+  the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
+  to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
+  agent with it. See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
   Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
   region.
@@ -52,21 +52,21 @@ Download the archive for your machine, check it, and unpack it into a versioned 
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-linux-preview.6 && cd ~/.local/share/box/0.1.11-linux-preview.6
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.6/box-v0.1.11-linux-preview.6-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.6/SHA256SUMS.txt
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.7 && cd ~/.local/share/box/0.1.11-linux-preview.7
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/box-v0.1.11-linux-preview.7-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/SHA256SUMS.txt
 grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-v0.1.11-linux-preview.6-aarch64-apple-darwin.tar.gz
+tar -xzf box-v0.1.11-linux-preview.7-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-linux-preview.6 && cd ~/.local/share/box/0.1.11-linux-preview.6
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.6/box-v0.1.11-linux-preview.6-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.6/SHA256SUMS.txt
+mkdir -p ~/.local/share/box/0.1.11-linux-preview.7 && cd ~/.local/share/box/0.1.11-linux-preview.7
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/box-v0.1.11-linux-preview.7-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/SHA256SUMS.txt
 grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-v0.1.11-linux-preview.6-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf box-v0.1.11-linux-preview.7-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
@@ -74,8 +74,8 @@ The check must print `OK`.
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
 
 ```
-export PATH="$HOME/.local/share/box/0.1.11-linux-preview.6:$PATH"
-grep -q 'share/box/0.1.11-linux-preview.6' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-linux-preview.6:$PATH"' >> ~/.zshrc
+export PATH="$HOME/.local/share/box/0.1.11-linux-preview.7:$PATH"
+grep -q 'share/box/0.1.11-linux-preview.7' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-linux-preview.7:$PATH"' >> ~/.zshrc
 ```
 
 The `grep -q ... ||` adds the line only once, so running it again does not repeat it. When you move
@@ -90,9 +90,9 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` must print `box 0.1.11-linux-preview.6` or later.
+- `box --version` must print `box 0.1.11-linux-preview.7` or later.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-linux-preview.6"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-linux-preview.7"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
 to that folder.
@@ -183,6 +183,10 @@ resolves the profile to into the runtime's Box network. Every pack, option, and 
 already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
 the Runtime profile and its resources under `.box/<runtime>/aws/`.
 
+Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
+For a profile that names a pack or a plugin `box/<name>`, build stops and gives each `@box/<name>`
+name.
+
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
   with `type = "http"`, or a policy permit names, and that the policy allows at least one
   request to, gets one passthrough target on `<runtime>-box`. The target of an MCP server is
@@ -261,12 +265,10 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print the version of the first box release with
-  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), or of a
-  subsequent release. Dev and build read the profile with
+- `box --version` must print `0.1.11-linux-preview.7` or later. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
-  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box build from before that release cannot do all of these.
+  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box release before it cannot do all of these.
 - The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
   After you refresh them, restart dev.
 
@@ -530,7 +532,7 @@ These outlive the stack. Delete them too:
 - **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
   box release, unpack it into a folder, add that folder to your `PATH`, then retry.
 - **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
-  older than `0.1.11-linux-preview.6`. Install that release or later.
+  older than `0.1.11-linux-preview.7`. Install that release or later.
 - **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
   set. Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
