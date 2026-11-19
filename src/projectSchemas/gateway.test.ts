@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   AgentCoreGatewaySchema,
   AgentCoreGatewayTargetSchema,
+  TARGET_TYPE_AUTH_CONFIG,
   ToolComputeConfigSchema,
 } from "./gateway";
 const toolDefinition = {
@@ -344,6 +345,29 @@ describe("gateway custom validation", () => {
     expect(
       targetIssues({ ...githubPassthrough, outboundAuth: { ...apiKeyAuth, ...placement } }),
     ).toEqual([{ path, message }]);
+  });
+  it.each([
+    ["no outbound auth", {}],
+    ["outbound auth NONE", { outboundAuth: { type: "NONE" } }],
+  ])("accepts a passthrough target with %s", (_case, fields) => {
+    expect(targetIssues({ ...githubPassthrough, ...fields })).toBeUndefined();
+  });
+  it("still rejects a passthrough target with NONE and a service", () => {
+    expect(
+      targetIssues({ ...githubPassthrough, outboundAuth: { type: "NONE", service: "bedrock" } }),
+    ).toEqual([
+      {
+        path: ["outboundAuth"],
+        message: "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
+      },
+    ]);
+  });
+  it("lists NONE for every target type that takes optional outbound auth", () => {
+    const missing = Object.entries(TARGET_TYPE_AUTH_CONFIG)
+      .filter(([, config]) => !config.authRequired && config.validAuthTypes.length > 0)
+      .filter(([, config]) => !config.validAuthTypes.includes("NONE"))
+      .map(([targetType]) => targetType);
+    expect(missing).toEqual([]);
   });
   it("rejects API key placement fields with non-API_KEY outbound auth", () => {
     expect(
