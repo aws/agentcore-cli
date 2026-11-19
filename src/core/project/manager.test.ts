@@ -48,6 +48,7 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -375,6 +376,27 @@ describe("FsProjectManager.create", () => {
     expect(await Bun.file(join(directory, "example", BOX_PROFILE_FILE)).exists()).toBe(true);
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     expect(spec.projectType).toBe("box");
+  });
+
+  test("scaffolds a container image that installs box from the pinned box release", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
+    });
+
+    const appDir = join(directory, "example", "app", "agent_python_strands_container");
+    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
+    const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
+    expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
+    expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
+    expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
+    expect(dockerfile).not.toContain("--mount=type=secret");
+    // The download is checked against the pinned SHA-256 before it is unpacked.
+    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
+    // The release is public, so the build needs no token.
+    const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
@@ -1957,14 +1979,19 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("refuses to build a boxed runtime when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the public box release when AGENTCORE_BOX_SOURCE is unset", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager({});
+    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
+    tempDirectories.push(home);
+    const { manager: subject, commands } = manager({ HOME: home });
     const project = await scaffolded(subject, directory);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/Set AGENTCORE_BOX_SOURCE/);
-    expect(commands).toEqual([]);
+    // The test runner downloads nothing, so build stops before synth and names the URL.
+    await expect(drain(subject.build(project))).rejects.toThrow(
+      /downloaded from https:\/\/github\.com\/mquang-amazon\/box-releases\//,
+    );
+    expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });
 
   test("fails actionably when the CDK dependencies are missing", async () => {

@@ -106,6 +106,7 @@ function withBoxStartScript(config: CreateProjectConfig, template: Template): vo
 /**
  * The container image's entry point, start.sh, which the Dockerfile copies
  * into /opt/box: it fills in the deployed resources and starts `box run`.
+ * The Dockerfile installs box from the public box release at build time.
  */
 function withBoxContainerStartScript(config: CreateProjectConfig, template: Template): void {
   template.tree.children.push(
