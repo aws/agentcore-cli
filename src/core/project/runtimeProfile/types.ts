@@ -82,6 +82,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_PROGRAM_NOT_FOUND",
   /** A process whose calls on the Runtime would not go through the Box gateway. */
   "RUNTIME_EGRESS_NOT_CONTAINED",
+  /** A telemetry target that is not CloudWatch, which the Runtime cannot send to yet. */
+  "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 
