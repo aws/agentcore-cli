@@ -9,7 +9,7 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import type { BoxNetworkHost } from "../boxNetwork";
+import { cloudWatchTelemetry, type BoxNetworkHost } from "../boxNetwork";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
@@ -669,6 +669,75 @@ describe("renderRuntimeBoxProfile", () => {
         gatewayRoute("egress-tools", "tools.example.com"),
       );
       expect(toml.mcp).toBeUndefined();
+    });
+  });
+
+  describe("for the [telemetry] of the box profile", () => {
+    /** The resolved `[telemetry]` of a box profile with a target of each kind Box takes. */
+    const TELEMETRY = {
+      records: { kind: "file", destination: "/tmp/records.jsonl" },
+      collector: { kind: "otlp", destination: "https://collector.example.com" },
+      langfuse: { kind: "langfuse", secret: { ref: "env://LANGFUSE_AUTH" } },
+      langsmith: { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } },
+      logs: {
+        kind: "cloudwatch_logs",
+        region: "us-west-2",
+        log_group: "/aws/box",
+        log_stream: "agent",
+        include: ["logs", "trace"],
+        secret: { ref: "aws://Admin-personal" },
+      },
+      "x-ray": { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } },
+    };
+    const rendered = (telemetry: Record<string, unknown>) => {
+      const project = spec([]);
+      const text = renderRuntimeBoxProfile(project, project.runtimes[0]!, {
+        policyFiles: [],
+        telemetry: cloudWatchTelemetry({ telemetry }),
+      });
+      return { text, toml: parse(text) as { telemetry?: Record<string, unknown> } };
+    };
+
+    test("copies each CloudWatch target with its keys, signed with the execution role", () => {
+      const { text, toml } = rendered(TELEMETRY);
+
+      expect(toml.telemetry).toEqual({
+        logs: {
+          kind: "cloudwatch_logs",
+          region: "us-west-2",
+          log_group: "/aws/box",
+          log_stream: "agent",
+          include: ["logs", "trace"],
+          // On the Runtime, the default AWS profile that start.sh writes is the execution role.
+          secret: { ref: "aws://default" },
+        },
+        "x-ray": {
+          kind: "cloudwatch_traces",
+          region: "eu-west-1",
+          secret: { ref: "aws://default" },
+        },
+      });
+      expect(text).toContain(
+        "\n# The [telemetry.logs] target of .box/profile.toml, signed with the execution role.\n" +
+          '[telemetry.logs]\nkind = "cloudwatch_logs"\nregion = "us-west-2"\n' +
+          'log_group = "/aws/box"\nlog_stream = "agent"\ninclude = ["logs", "trace"]\n' +
+          'secret.ref = "aws://default"\n',
+      );
+      expect(text).not.toContain("Admin-personal");
+    });
+
+    test("copies no file, otlp, langfuse, or langsmith target", () => {
+      const { records, collector, langfuse, langsmith } = TELEMETRY;
+
+      expect(rendered({ records, collector, langfuse, langsmith }).toml.telemetry).toBeUndefined();
+    });
+
+    test("copies no CloudWatch target that Box refuses, as it grants it nothing", () => {
+      const logs = { ...TELEMETRY.logs, log_stream: "a:b" };
+
+      expect(
+        rendered({ logs, traces: { ...TELEMETRY["x-ray"], include: [] } }).toml.telemetry,
+      ).toBeUndefined();
     });
   });
 

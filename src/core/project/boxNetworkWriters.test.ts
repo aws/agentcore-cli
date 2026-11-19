@@ -11,6 +11,7 @@ import {
   defaultTargetsWriter,
   gatewayTargetsWriter,
   runtimeProfileWriter,
+  telemetryPolicyWriter,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
 
@@ -309,6 +310,74 @@ describe("defaultTargetsWriter", () => {
     expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([
       BOX_BEDROCK_POLICY_FILE,
       BOX_MEMORY_POLICY_FILE,
+    ]);
+  });
+});
+
+describe("telemetryPolicyWriter", () => {
+  const logs = (logGroup: string) =>
+    ({
+      name: "logs",
+      kind: "cloudwatch_logs",
+      region: "us-west-2",
+      logGroup,
+      logStream: "s",
+    }) as const;
+  const statementOf = (text: string) =>
+    (JSON.parse(text) as { Statement: { Resource: unknown }[] }).Statement.map(
+      ({ Resource }) => Resource,
+    );
+
+  test("writes for each box runtime the grant of its own telemetry, and none for one with none", () => {
+    const project = spec();
+    const runtime = (name: string, rest: Record<string, unknown> = {}) =>
+      ({
+        ...project.runtimes[0]!,
+        name,
+        codeLocation: `app/${name}`,
+        ...rest,
+      }) as ProjectSpec["runtimes"][number];
+    project.runtimes.push(
+      runtime("second"),
+      runtime("quiet", { additionalPolicies: ["../../agentcore/box-telemetry-policy-quiet.json"] }),
+    );
+    const models = [
+      network({ telemetry: [logs("group-a")] }),
+      network({ runtime: "second", gateway: "second-box-egress", telemetry: [logs("group-b")] }),
+      network({ runtime: "quiet", gateway: "quiet-box-egress" }),
+    ];
+
+    const edits = run([telemetryPolicyWriter], models, project);
+
+    expect(telemetryPolicyWriter.writes(models)).toEqual([
+      { kind: "runtimePolicies" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-quiet.json" },
+    ]);
+    const [agent, second, quiet] = edits.files;
+    expect(agent?.path).toBe("agentcore/box-telemetry-policy-agent.json");
+    expect(statementOf("text" in agent! ? agent.text : "")).toEqual([
+      ["arn:aws:logs:us-west-2:*:log-group:group-a:log-stream:s"],
+    ]);
+    expect(second?.path).toBe("agentcore/box-telemetry-policy-second.json");
+    expect(statementOf("text" in second! ? second.text : "")).toEqual([
+      ["arn:aws:logs:us-west-2:*:log-group:group-b:log-stream:s"],
+    ]);
+    expect(quiet).toEqual({ path: "agentcore/box-telemetry-policy-quiet.json", remove: true });
+    expect(edits.spec.runtimes.map(({ additionalPolicies }) => additionalPolicies)).toEqual([
+      ["../../agentcore/box-telemetry-policy-agent.json"],
+      ["../../agentcore/box-telemetry-policy-second.json"],
+      undefined,
+    ]);
+    expect(edits.changedFields).toEqual(["runtimes"]);
+    expect(edits.messages).toEqual([
+      "adding agentcore/box-telemetry-policy-agent.json to additionalPolicies of 'agent', so its " +
+        "box can send telemetry to CloudWatch",
+      "adding agentcore/box-telemetry-policy-second.json to additionalPolicies of 'second', so " +
+        "its box can send telemetry to CloudWatch",
+      "removing agentcore/box-telemetry-policy-quiet.json from additionalPolicies of 'quiet': its " +
+        "box sends no telemetry to CloudWatch",
     ]);
   });
 });

@@ -9,7 +9,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
-import type { BoxHostSource, BoxNetwork } from "../boxNetwork";
+import type { BoxHostSource, BoxNetwork, CloudWatchTelemetry } from "../boxNetwork";
 import { PYTHON_ENV } from "../../dev/codezip";
 import { modelProviderCredentialName } from "./runtime";
 
@@ -619,19 +619,42 @@ function runtimeMcpServers(hosts: BoxNetwork["hosts"]): Map<string, RuntimeMcpSe
 }
 
 /**
+ * A CloudWatch target of the box profile on the Runtime: its `[telemetry.<name>]`
+ * table with the same keys, signed with the execution role, whatever the box
+ * profile signs it with. Starts with a blank line.
+ */
+function runtimeTelemetrySection(target: CloudWatchTelemetry): string {
+  const logs =
+    target.kind === "cloudwatch_logs"
+      ? `log_group = ${str(target.logGroup)}\nlog_stream = ${str(target.logStream)}\n`
+      : "";
+  const include = target.include ? `include = ${list([...target.include])}\n` : "";
+  const key = tomlKey(target.name);
+  return `
+# The [telemetry.${key}] target of ${BOX_PROFILE_FILE}, signed with the execution role.
+[telemetry.${key}]
+kind = ${str(target.kind)}
+region = ${str(target.region)}
+${logs}${include}secret.ref = ${str(RUNTIME_AWS_SIGNER)}
+`;
+}
+
+/**
  * The AgentCore Runtime box profile of a runtime that runs its agent in a box,
  * derived from agentcore.json: the runtime's build, protocol, and model
  * provider, and a route for each passthrough target of its Box gateway (see
  * `runtimeGatewayRoutes`); and, from the runtime's Box network model, the box
- * profile's policy files under `policies`, the region build builds for, and the
- * HTTP MCP server that a target serves. agentcore.json does not record the framework, and the profile does not
+ * profile's policy files under `policies`, the region build builds for, the
+ * HTTP MCP server that a target serves, and each CloudWatch `[telemetry]`
+ * target. agentcore.json does not record the framework, and the profile does not
  * depend on it beyond the container case, so the input names Strands, one of
  * the frameworks that run in a box.
  */
 export function renderRuntimeBoxProfile(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  network?: Pick<BoxNetwork, "policyFiles"> & Partial<Pick<BoxNetwork, "region" | "hosts">>,
+  network?: Pick<BoxNetwork, "policyFiles"> &
+    Partial<Pick<BoxNetwork, "region" | "hosts" | "telemetry">>,
 ): string {
   const region = network?.region ?? DEFAULT_EGRESS_BEDROCK_REGION;
   const input = {
@@ -643,7 +666,7 @@ export function renderRuntimeBoxProfile(
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
   } as ScaffoldRuntimeInput;
-  return renderBoxProfile(
+  const profile = renderBoxProfile(
     spec.name,
     input,
     region,
@@ -651,6 +674,7 @@ export function renderRuntimeBoxProfile(
     runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
   )!;
+  return profile + (network?.telemetry ?? []).map(runtimeTelemetrySection).join("");
 }
 
 /**
