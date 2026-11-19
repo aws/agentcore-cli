@@ -6,7 +6,7 @@ import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { renderBoxProfile } from "../templates/boxProfile";
+import { renderBoxProfile, runtimeAgentTemplate } from "../templates/boxProfile";
 import {
   RUNTIME_INPUTS,
   type RuntimePaths,
@@ -55,15 +55,15 @@ export function runtimePaths(
 }
 
 /**
- * The profile that `agentcore create` writes for `runtime`, `local`, and its Runtime form with no
- * route, `runtime`, as TOML tables. agentcore.json does not record the framework, and the profile
- * does not depend on it beyond the container case, as in renderRuntimeBoxProfile.
+ * The profile that `agentcore create` writes for `runtime`, `local`, and the `[agent]` of its
+ * Runtime form, `runtime` (runtimeAgentTemplate), as TOML tables: a rule tells the template's own
+ * values from the user's by them. agentcore.json does not record the framework, and the profile
+ * does not depend on it beyond the container case, so the input names Strands.
  */
 export function runtimeTemplate(
   projectName: string,
   runtime: ProjectRuntime,
   region: string,
-  policyFiles: readonly string[],
 ): { local: TomlTable; runtime: TomlTable } {
   const input = {
     runtimeName: runtime.name,
@@ -75,11 +75,11 @@ export function runtimeTemplate(
     modelId: runtime.modelId,
     boxTemplate: true,
   } as ScaffoldRuntimeInput;
-  const table = (target: "local" | "runtime") =>
-    parseToml(
-      renderBoxProfile(projectName, input, region, target, "", policyFiles) ?? "",
-    ) as TomlTable;
-  return { local: table("local"), runtime: table("runtime") };
+  const agent = runtimeAgentTemplate(input);
+  return {
+    local: parseToml(renderBoxProfile(projectName, input, region) ?? "") as TomlTable,
+    runtime: agent ? { agent } : {},
+  };
 }
 
 /**
@@ -126,7 +126,7 @@ export function runtimeProfileContext(
   return {
     ...rest,
     paths: runtimePaths(input.runtime),
-    template: runtimeTemplate(input.spec.name, input.runtime, input.region, input.policyFiles),
+    template: runtimeTemplate(input.spec.name, input.runtime, input.region),
     placeOf: (key) => {
       for (let depth = key.length; depth > 0; depth--) {
         const place = places.get(key.slice(0, depth).join("."));

@@ -132,10 +132,25 @@ it lists under `policies`, and turn them into that runtime's Box network. They c
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** The generated `.box/<runtime>/aws/profile.toml`, copied into
-  `.box-dist/`, has one `[egress.<target>]` route through the gateway for each target of
-  `<runtime>-box-egress`. Each policy file is copied beside it, byte for byte, and listed under
-  `policies`.
+- **The AgentCore Runtime profile.** Build derives `.box/<runtime>/aws/profile.toml`, copied into
+  `.box-dist/`, from the local profile. Each key of the local profile stays, and build changes
+  only what must differ on AgentCore Runtime:
+  - each `[egress]` host with a gateway target becomes one `[egress.<target>]` route to
+    `<runtime>-box-egress`, and an HTTP `[mcp.<name>]` server gets the same gateway backend;
+  - the agent command, env, filesystem and ingress get their Runtime values (no `--reload`, no
+    `LOCAL_DEV`, the deployed region, listen on `0.0.0.0`);
+  - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
+    the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
+    `[tool.<name>]`;
+  - the `box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
+    target signs with the execution role. With no `cloudwatch_logs` target, the box sends its
+    records to the runtime's own log group.
+
+  Build stops, and names the key and its line, for a value that cannot work on the Runtime: a path
+  of the project outside the code folder, a home path, a CodeZip program outside the code folder,
+  `network.contain_egress = false`, or a telemetry target that is not CloudWatch. Each policy file
+  is copied beside the profile, byte for byte.
+
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.

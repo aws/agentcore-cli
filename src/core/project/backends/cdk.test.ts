@@ -353,7 +353,24 @@ describe("CdkBackend.build", () => {
     await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
     await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
 
-    const events = await collect(harness().backend.build(input, NO_BOX_NETWORKS));
+    // Build stages box from the runtime's Box network model, with its derived Runtime profile.
+    const boxNetworks = projectType
+      ? [
+          {
+            runtime: "agent",
+            gateway: "agent-box-egress",
+            region: "us-west-2",
+            hosts: [],
+            envRoutes: [],
+            policyFiles: [],
+            runtimeProfile: { packs: ["box/base", "box/agentcore"] },
+            grantedActions: [],
+            warnings: [],
+            failures: [],
+          },
+        ]
+      : [];
+    const events = await collect(harness().backend.build(input, { boxNetworks }));
 
     const warning: ProjectEvent = {
       type: "warning",

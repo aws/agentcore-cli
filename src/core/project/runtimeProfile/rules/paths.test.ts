@@ -103,8 +103,8 @@ const LEAVES_ON_RUNTIME = {
 
 describe("the paths rule", () => {
   test("keeps each stdio [mcp] server and each [tool], with each key, in the Runtime profile", () => {
-    // Today renderRuntimeBoxProfile builds the Runtime profile from agentcore.json, and it has no
-    // [mcp.notes] and no [tool.lister]. The derived profile keeps both, as they work there.
+    // The renderer that the derivation replaced built the Runtime profile from agentcore.json, with
+    // no [mcp.notes] and no [tool.lister]. The derived profile keeps both, as they work there.
     const { profile, problems } = deriveRuntimeProfile(
       parse(LEAVES) as TomlTable,
       contextOf(LEAVES),

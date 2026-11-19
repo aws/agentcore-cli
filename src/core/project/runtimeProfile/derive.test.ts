@@ -102,12 +102,15 @@ describe("runtimePaths", () => {
 });
 
 describe("runtimeTemplate", () => {
-  test("gives the profile create writes and its Runtime form, as tables", () => {
-    const { local, runtime } = runtimeTemplate("demo", CODEZIP, "us-west-2", []);
+  test("gives the profile create writes, and the [agent] of its Runtime form in the local paths", () => {
+    const { local, runtime } = runtimeTemplate("demo", CODEZIP, "us-west-2");
 
     expect((local.agent as { command: string[] }).command).toContain("--reload");
-    expect((runtime.agent as { command: string[] }).command[0]).toBe("${{ inputs.python.path }}");
-    expect(runtime.packs).toContain("box/agentcore-codezip");
+    expect(Object.keys(runtime)).toEqual(["agent"]);
+    const agent = runtime.agent as { command: string[]; env: Record<string, string> };
+    expect(agent.command).not.toContain("--reload");
+    expect(agent.command[0]).toBe("${{ workspace }}/app/agent/.venv/bin/python");
+    expect(agent.env).not.toHaveProperty("LOCAL_DEV");
   });
 });
 
