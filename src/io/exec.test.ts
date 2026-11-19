@@ -281,6 +281,28 @@ describe("streamProcess", () => {
     }
   });
 
+  test("finishes when a detached process outside its group keeps the pipes open", async () => {
+    // Like `finch run`, which hands its stdout and stderr to a shared, longer-lived ssh connection:
+    // the child exits, but its pipes stay open in a process that killTree does not reach.
+    const holder = await script(
+      "pipe-holder.mjs",
+      `import { spawn } from "node:child_process";
+const keeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 4000)"], {
+  detached: true,
+  stdio: ["ignore", "inherit", "inherit"],
+});
+keeper.unref();
+console.log("done");
+process.exit(0);
+`,
+    );
+    const started = Date.now();
+    const events = await collect(streamProcess(["node", holder], { cwd: process.cwd() }));
+
+    expect(events).toContainEqual({ type: "stdout", line: "done" });
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
   test("kills descendants when the parent exits first", async () => {
     if (process.platform === "win32") return;
 

@@ -6,6 +6,7 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -23,6 +24,23 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
       }),
     })),
   };
+}
+
+/**
+ * The Bedrock region a boxed agent's model calls go to, fixed for now.
+ * `create` does not know the deploy region (deploy resolves it, per target).
+ */
+export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+
+/**
+ * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
+ * provider, or LiteLLM with a `bedrock/` model id (its default).
+ */
+export function callsBedrockModel(input: Pick<ScaffoldRuntimeInput, "modelProvider" | "modelId">) {
+  const provider = input.modelProvider ?? "Bedrock";
+  if (provider === "Bedrock") return true;
+  if (provider !== "LiteLLM") return false;
+  return (input.modelId ?? DEFAULT_MODEL_IDS.LiteLLM).startsWith("bedrock/");
 }
 
 type RuntimeTemplateShortcut = {

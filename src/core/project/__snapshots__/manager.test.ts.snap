@@ -2,6 +2,7 @@
 
 exports[`FsProjectManager.create scaffolds the expected file tree into a fresh directory 1`] = `
 [
+  ".box/profile.toml",
   ".gitignore",
   "agentcore/.env.local",
   "agentcore/agentcore.json",
@@ -22,6 +23,7 @@ exports[`FsProjectManager.create scaffolds the expected file tree into a fresh d
 exports[`FsProjectManager.create snapshots the Strands project manifest and runtime spec 1`] = `
 {
   "manifest": [
+    ".box/profile.toml",
     ".gitignore",
     "agentcore/.env.local",
     "agentcore/agentcore.json",
@@ -142,6 +144,7 @@ exports[`FsProjectManager.create snapshots the Strands TypeScript project manife
 exports[`FsProjectManager.create snapshots the Strands A2A project manifest and runtime spec 1`] = `
 {
   "manifest": [
+    ".box/profile.toml",
     ".gitignore",
     "agentcore/.env.local",
     "agentcore/agentcore.json",
@@ -202,6 +205,7 @@ exports[`FsProjectManager.create snapshots the Strands A2A project manifest and 
 exports[`FsProjectManager.create snapshots the LangChain project manifest and runtime spec 1`] = `
 {
   "manifest": [
+    ".box/profile.toml",
     ".gitignore",
     "agentcore/.env.local",
     "agentcore/agentcore.json",
