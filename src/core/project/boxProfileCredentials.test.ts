@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
 
@@ -51,7 +52,7 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.entries).toEqual([]);
     expect(plan.messages).toEqual([
       "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not set " +
-        `here or in agentcore/.env.local, so deploy could not provision it. Set GITHUB_TOKEN, or ${RESERVED}, ` +
+        `here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. Set GITHUB_TOKEN, or ${RESERVED}, ` +
         "and build again",
     ]);
   });
@@ -110,7 +111,7 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.added).toEqual([]);
     expect(plan.messages).toEqual([
       "box egress 'github' reads env://GITHUB_TOKEN, which is not set here or in " +
-        `agentcore/.env.local: set GITHUB_TOKEN, or ${RESERVED}, before deploy`,
+        `${ENV_LOCAL_RELATIVE_PATH}: set GITHUB_TOKEN, or ${RESERVED}, before deploy`,
     ]);
   });
 
