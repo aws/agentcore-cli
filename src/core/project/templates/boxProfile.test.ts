@@ -5,7 +5,7 @@ import {
   type RuntimeTemplateShortcutName,
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
-import { hasBoxProfile, renderBoxProfile } from "./boxProfile";
+import { boxProfileWarnings, hasBoxProfile, renderBoxProfile } from "./boxProfile";
 
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   return resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
@@ -20,7 +20,7 @@ const STRANDS = template("agent-python-strands");
 const VENV_GRANTS = {
   read: [
     "${{ workspace }}/app/agent",
-    "${{ workspace }}/app/agent/.venv",
+    { path: "${{ workspace }}/app/agent/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
@@ -97,6 +97,15 @@ describe("renderBoxProfile", () => {
     });
     expect(agent.ingress).toEqual([{ listen: `127.0.0.1:${devPort}`, workload_port: devPort + 1 }]);
     expect(agent.filesystem).toEqual(VENV_GRANTS);
+  });
+
+  test("names box's ingress port, not the agent's, in the A2A agent card", () => {
+    const { agent } = profile("a2a-python-strands");
+    expect(agent.env).toMatchObject({
+      A2A_PORT: "9001",
+      AGENTCORE_RUNTIME_URL: "http://localhost:9000/",
+    });
+    expect(profile("agui-python-strands").agent.env).not.toHaveProperty("AGENTCORE_RUNTIME_URL");
   });
 
   test("gives the MCP server no route, because it calls no model", () => {
@@ -176,42 +185,93 @@ describe("renderBoxProfile", () => {
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
 
-  test("runs the Strands container image's agent from /app, where box starts in the image", () => {
-    const container = profile("agent-python-strands-container");
-    expect(container.packs).toEqual(["box/base", "box/bedrock"]);
-    expect(container.agent).toEqual({
-      command: [
-        "${{ workspace }}/.venv/bin/python",
-        "-m",
-        "uvicorn",
-        "main:app",
-        "--app-dir",
-        "${{ workspace }}",
-        "--reload",
-        "--reload-dir",
-        "${{ workspace }}",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8081",
-      ],
-      env: { LOCAL_DEV: "1", PORT: "8081", PYTHONUNBUFFERED: "1", PYTHONUTF8: "1" },
-      filesystem: {
-        read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
-        exec: [
-          { path: "${{ workspace }}/.venv", optional: true },
-          "/usr/local/bin",
-          "/usr/local/lib",
-          "/usr/lib/aarch64-linux-gnu",
-        ],
-        deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
-      },
-      ingress: [{ listen: "0.0.0.0:8080", workload_port: 8081 }],
+  test.each([
+    ["openai/gpt-4o", "openai", "OPENAI_API_KEY"],
+    ["anthropic/claude-sonnet-4-5", "anthropic", "ANTHROPIC_API_KEY"],
+    ["gemini/gemini-2.5-flash", "gemini", "GEMINI_API_KEY"],
+  ] as const)(
+    "reads a LiteLLM %s key created without --api-key from LiteLLM's own variable",
+    (modelId, route, variable) => {
+      const runtime = template("agent-python-strands", { modelProvider: "LiteLLM", modelId });
+      const { egress } = parse(renderBoxProfile("V3Demo", runtime)!) as {
+        egress: Record<string, { secret: { ref: string } }>;
+      };
+      expect(egress[route]?.secret.ref).toBe(`env://${variable}`);
+      expect(boxProfileWarnings(runtime)).toEqual([
+        `the box profile reads the ${route} API key from ${variable}: set it in ` +
+          "agentcore/.env.local or your shell before `agentcore dev`, or the agent's model calls " +
+          "go out with no key",
+      ]);
+    },
+  );
+
+  test("does not warn when the LiteLLM agent has a key, or calls Bedrock", () => {
+    const keyed = { modelProvider: "LiteLLM", modelId: "openai/gpt-4o", apiKey: "sk-test" };
+    expect(boxProfileWarnings(template("agent-python-strands", keyed))).toEqual([]);
+    expect(
+      boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" })),
+    ).toEqual([]);
+  });
+
+  test("warns that a LiteLLM agent on a provider with no route gets no model route", () => {
+    const groq = { modelProvider: "LiteLLM", modelId: "groq/llama3", apiKey: "sk-test" };
+    expect(profile("agent-python-strands", groq).egress).toBeUndefined();
+    expect(boxProfileWarnings(template("agent-python-strands", groq))).toEqual([
+      "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
+        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "model calls",
+    ]);
+  });
+
+  test("calls Bedrock in the region create resolved", () => {
+    const text = renderBoxProfile("V3Demo", STRANDS, "eu-west-1")!;
+    expect((parse(text) as { options: unknown }).options).toEqual({
+      bedrock: { region: "eu-west-1" },
     });
-    expect(container.egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+  });
+
+  test("keeps the port of an OpenAI-compatible endpoint in its destination", () => {
+    const { egress } = profile("agent-python-strands", {
+      modelProvider: "OpenAICompatible",
+      modelId: "llama3",
+      apiKey: "sk-test",
+      apiBase: "http://localhost:11434/v1",
+    });
+    expect(egress["openai-compatible"].destinations).toEqual(["localhost:11434"]);
+  });
+
+  test("gives an OpenAI-compatible agent with no base URL no route, rather than OpenAI's", () => {
+    // The schema requires --api-base, so drop it from a valid input; the type still allows it.
+    const runtime = {
+      ...template("agent-python-strands", {
+        modelProvider: "OpenAICompatible",
+        modelId: "llama3",
+        apiKey: "sk-test",
+        apiBase: "http://localhost:11434/v1",
+      }),
+      apiBase: undefined,
+    };
+    const text = renderBoxProfile("V3Demo", runtime)!;
+    expect(text).not.toContain("api.openai.com");
+    expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
+  });
+
+  test("names the provider section generically for a LiteLLM model ID with no prefix", () => {
+    const runtime = template("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "gpt-4o",
+      apiKey: "sk-test",
+    });
+    expect(boxProfileWarnings(runtime)).toEqual([
+      "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
+        "section with its provider's host to .box/profile.toml (or use an openai/, anthropic/ or " +
+        "gemini/ model ID), or the box blocks the agent's model calls",
+    ]);
   });
 
   test.each([
+    // Its image does not run `box run` yet, and a profile written here would not reach the image.
+    "agent-python-strands-container",
     "environment-python-bma",
     "agent-typescript-strands",
     "agent-typescript-vercel",

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
   DeserializationError,
@@ -46,7 +46,7 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { BOX_PROFILE_FILE, renderBoxProfile } from "./templates/boxProfile";
+import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
@@ -87,21 +87,36 @@ afterEach(async () => {
   );
 });
 
+/** A command the manager ran, with the uv Python settings it set, if any. */
+type Command = {
+  command: string[];
+  cwd: string;
+  UV_MANAGED_PYTHON?: string;
+  UV_PYTHON_INSTALL_DIR?: string;
+};
+
 // A manager whose runner records commands instead of spawning them.
 function manager(): {
   manager: FsProjectManager;
-  commands: { command: string[]; cwd: string }[];
+  commands: Command[];
   checkedTools: string[];
 } {
-  const commands: { command: string[]; cwd: string }[] = [];
+  const commands: Command[] = [];
   const checkedTools: string[] = [];
   return {
     manager: new FsProjectManager({
       logger: createSilentLogger(),
       identity: new TestIdentityClient(),
       enableTransactionSearch: async () => {},
-      runner: async (command, { cwd }) => {
-        commands.push({ command, cwd });
+      runner: async (command, { cwd, env }) => {
+        const managedPython = env?.UV_MANAGED_PYTHON;
+        const installDir = env?.UV_PYTHON_INSTALL_DIR;
+        commands.push({
+          command,
+          cwd,
+          ...(managedPython && { UV_MANAGED_PYTHON: managedPython }),
+          ...(installDir && { UV_PYTHON_INSTALL_DIR: installDir }),
+        });
       },
       // CI hosts don't have uv installed.
       checkTool: async (tool) => {
@@ -339,7 +354,8 @@ describe("FsProjectManager.create", () => {
 
   test("scaffolds the container template with a Dockerfile and .dockerignore", async () => {
     const directory = await inTempDirectory();
-    await runCreate(manager().manager, {
+    const setup = manager();
+    await runCreate(setup.manager, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
     });
@@ -352,6 +368,9 @@ describe("FsProjectManager.create", () => {
 
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    // The image does not run box, so the host venv may use any Python and no profile is written.
+    expect(setup.commands).toContainEqual({ command: ["uv", "sync"], cwd: appDir });
+    expect(await Bun.file(join(directory, "example", BOX_PROFILE_FILE)).exists()).toBe(false);
   });
 
   test("scaffolds the Bedrock Managed Agents environment and runtime defaults", async () => {
@@ -450,7 +469,13 @@ describe("FsProjectManager.create", () => {
         command: ["npm", "install", "--loglevel=http"],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python_minimal") },
+      // The minimal template runs in a box, whose profile grants exec only on uv-managed Pythons.
+      {
+        command: ["uv", "sync"],
+        cwd: join(projectRoot, "app", "agent_python_minimal"),
+        UV_MANAGED_PYTHON: "1",
+        UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+      },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -507,6 +532,27 @@ describe("FsProjectManager.create", () => {
       },
     });
     expect(harness.checkedTools).toEqual(["npm", "git"]);
+  });
+
+  test("syncs a boxed agent's venv on a uv-managed Python in the folder its profile grants", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    // A user's own UV_PYTHON_INSTALL_DIR would put the Python outside the profile's exec grant.
+    const userDir = process.env.UV_PYTHON_INSTALL_DIR;
+    process.env.UV_PYTHON_INSTALL_DIR = "/opt/pythons";
+    try {
+      await runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON });
+    } finally {
+      if (userDir === undefined) delete process.env.UV_PYTHON_INSTALL_DIR;
+      else process.env.UV_PYTHON_INSTALL_DIR = userDir;
+    }
+
+    expect(commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "example", "app", "agent_python_minimal"),
+      UV_MANAGED_PYTHON: "1",
+      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    });
   });
 
   test("defers template-managed local dependency setup", async () => {
@@ -664,11 +710,30 @@ describe("FsProjectManager.create box profile", () => {
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
       skipInstall,
       skipGit: true,
+      region: "eu-west-1",
     });
 
     const path = join(directory, "example", BOX_PROFILE_FILE);
-    expect(await readFile(path, "utf8")).toBe(renderBoxProfile("example", AGENT_PYTHON_STRANDS)!);
+    expect(await readFile(path, "utf8")).toBe(
+      renderBoxProfile("example", AGENT_PYTHON_STRANDS, "eu-west-1")!,
+    );
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+  });
+
+  test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
+    await inTempDirectory();
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands", {
+      modelProvider: "LiteLLM",
+      modelId: "openai/gpt-4o",
+    });
+    const { events } = await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    expect(events).toContainEqual({ type: "warning", message: boxProfileWarnings(runtime)[0]! });
   });
 
   test("leaves an existing box profile unchanged", async () => {
