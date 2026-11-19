@@ -1,0 +1,8 @@
+{
+  "datasetArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:dataset/agentcore_cli_dataset_fixture_second-RJEqeXEc9E",
+  "datasetId": "agentcore_cli_dataset_fixture_second-RJEqeXEc9E",
+  "status": "CREATING",
+  "createdAt": {
+    "$date": "2026-11-18T23:10:08.308Z"
+  }
+}

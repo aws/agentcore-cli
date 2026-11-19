@@ -6,15 +6,18 @@ import type { Core } from "../types";
 import { createEvaluatorHandler } from "./evaluator";
 import { createOnlineEvalHandler } from "./online-eval";
 import { createDatasetHandler } from "./dataset";
+import { createDatasetGenerationHandler } from "./dataset-generation";
 import { createBatchEvaluationHandler } from "./batch-evaluation";
 import { createOnDemandHandler } from "./ondemand";
 import { createConfigBundleHandler } from "./config-bundle";
 import { createAbTestHandler } from "./ab-test";
 import { createRecommendationHandler } from "./recommendation";
+import { createInsightHandler } from "./insight";
+import { createInsightStoreHandler } from "./insight-store";
 
 export function createEvalHandler(core: Core, io: AppIO): Router {
   // Only the groups with an interactive screen are marked TUI-supported;
-  // ondemand is listed below the command-line-only divider.
+  // ondemand and dataset-generation are listed below the command-line-only divider.
   return new Router("eval", "evaluate and optimize agents with evaluators and A/B tests")
     .use(withTuiOnEmptyFlagsAndArgs(core, io))
     .default(renderTui(core, io))
@@ -30,11 +33,14 @@ export function createEvalHandler(core: Core, io: AppIO): Router {
     .handler(createEvaluatorHandler(core, io))
     .handler(createOnlineEvalHandler(core, io))
     .handler(createDatasetHandler(core, io))
+    .handler(createDatasetGenerationHandler(core, io))
     .handler(createBatchEvaluationHandler(core, io))
     .handler(createOnDemandHandler(core, io))
     .handler(createConfigBundleHandler(core, io))
     .handler(createAbTestHandler(core, io))
-    .handler(createRecommendationHandler(core, io));
+    .handler(createRecommendationHandler(core, io))
+    .handler(createInsightHandler(core, io))
+    .handler(createInsightStoreHandler(core, io));
 }
 
 export { EvalScreen } from "./screen.tsx";

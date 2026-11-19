@@ -34,7 +34,6 @@ import { parseArn, resourceNameFromArn, serviceIdFromArn } from "../../arn";
 type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
 
 export const EXPORT_NOTES_FILENAME = "EXPORT_NOTES.md";
-export const DEFAULT_EXPORT_SYSTEM_PROMPT = "You are a helpful assistant.";
 
 /** A manual follow-up item recorded while mapping, written to EXPORT_NOTES.md. */
 export interface ExportNote {
@@ -48,8 +47,11 @@ export interface HarnessExportInput {
   targetAgentName: string;
   /** The parsed harness spec (from app/<name>/harness.yaml or the service). */
   spec: HarnessSpec;
-  /** The resolved system prompt text (explicit prompt > conventional file > default). */
-  systemPrompt: string;
+  /**
+   * The resolved system prompt text (explicit prompt > conventional file). Undefined when the
+   * harness sets none, so the agent keeps the Strands Harness contract prompt default.
+   */
+  systemPrompt?: string;
   /** The current project spec, for memory lookups and credential dedup. */
   projectSpec: ProjectSpec;
   /** Notes collected while converting a service response into a local harness spec. */
@@ -97,9 +99,13 @@ export const AWS_SKILLS_NOTE_CATEGORY =
 export const MALFORMED_S3_SKILL_NOTE_CATEGORY =
   "S3 skill URI is malformed — no S3 read permission generated";
 export const MCP_HEADER_CREDS_NOTE_CATEGORY = "MCP tool header credentials";
+export const MCP_TOOL_NAME_NOTE_CATEGORY = "MCP tool names can collide with other tools";
 export const LITELLM_NO_API_KEY_NOTE_CATEGORY = "LiteLLM model may require an API key";
 export const MODEL_API_KEY_NOTE_CATEGORY = "Model API key credential referenced";
 export const CONTAINER_IMAGE_NOTE_CATEGORY = "Container image not carried over";
+
+/** Truncation used when a harness sets none: summarize, keeping recent turns. */
+const DEFAULT_TRUNCATION_CONFIG = { summary_ratio: 0.3, preserve_recent_messages: 10 };
 
 // ============================================================================
 // Public entry point
@@ -155,7 +161,27 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     envEntries,
     notes,
   );
+  const builtins = resolveBuiltins(allowedToolPatterns);
+  const isEnabled = (name: Builtin["name"]) => builtins.some((builtin) => builtin.name === name);
+  const namesOf = (kind: Builtin["kind"]) =>
+    builtins.filter((builtin) => builtin.kind === kind).map(({ name }) => name);
   const skills = resolveSkills(spec, credentials, notes);
+  const reservedToolNames = [
+    ...namesOf("plugin"),
+    ...(isEnabled("subagent") ? [SUBAGENT_TOOL] : []),
+    // Fetched skills register the AgentSkills tool at runtime.
+    ...(skills.hasFetchedSkills ? [SKILLS_TOOL] : []),
+  ];
+  const toolNames = allocateToolNames(
+    namesOf("tool"),
+    tools.inlineFunctionTools,
+    reservedToolNames,
+  );
+  noteMcpToolNameCollisions(
+    tools.remoteMcpTools,
+    [...toolNames.builtins, ...toolNames.inline, ...reservedToolNames],
+    notes,
+  );
   for (const [file, doc] of Object.entries(skills.policyFiles)) policyFiles[file] = doc;
   if (model.policyFile) policyFiles[model.policyFile.name] = model.policyFile.doc;
   additionalPolicies.push(...Object.keys(policyFiles));
@@ -180,6 +206,10 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     protocol: "HTTP",
     // Model
     ...model.context,
+    // web_fetch needs the SDK's web-fetch extra next to any provider extra.
+    strandsExtras: isEnabled("web_fetch")
+      ? [model.context.strandsExtras, "web-fetch"].filter(Boolean).join(",")
+      : model.context.strandsExtras,
     // System prompt (written verbatim into main.py)
     systemPromptText: input.systemPrompt,
     // Memory
@@ -195,12 +225,30 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     actorId: memory.actorId,
     // Tools. Empty collections become undefined: the template's custom `or`/
     // `some` helpers use JS truthiness, where [] is truthy, unlike `{{#if}}`.
-    inlineFunctionTools: undefinedIfEmpty(tools.inlineFunctionTools),
+    inlineFunctionTools: undefinedIfEmpty(
+      tools.inlineFunctionTools.map((tool, index) => ({
+        ...tool,
+        registeredName: toolNames.inline[index]!,
+      })),
+    ),
     remoteMcpTools: undefinedIfEmpty(tools.remoteMcpTools),
     gatewayTools: undefinedIfEmpty(tools.gatewayTools),
     gatewayAuthTypes: [...new Set(tools.gatewayTools.map(({ authType }) => authType))],
-    hasShell: tools.hasShell,
-    hasFileOperations: tools.hasFileOperations,
+    // Built-in tools and plugins. Plain arrays: {{#if}} treats an empty one as false, and
+    // safeJson renders it as []. builtinTools holds registered names; builtinToolRenames maps
+    // each renamed builtin to its registered name.
+    builtinTools: toolNames.builtins,
+    builtinToolRenames: toolNames.builtinRenames,
+    harnessFileTools: builtins
+      .filter((builtin) => "alias" in builtin && builtin.alias === "file_operations")
+      .map(({ name }) => name),
+    // A model that rejects media blocks gets a read tool that describes images and documents.
+    readWithoutMedia: isEnabled("read") && !supportsToolMedia(spec),
+    pluginToolNames: namesOf("plugin"),
+    hasShell: isEnabled("shell"),
+    hasWebFetch: isEnabled("web_fetch"),
+    hasContextOffloader: isEnabled("retrieve_context"),
+    hasSubagent: isEnabled("subagent"),
     // Skills
     hasSkillsFetcher: skills.hasSkillsFetcher,
     hasFetchedSkills: skills.hasFetchedSkills,
@@ -212,17 +260,7 @@ export function mapHarnessToExportPlan(input: HarnessExportInput): HarnessExport
     maxTokens: spec.maxTokens,
     timeoutSeconds: spec.timeoutSeconds,
     // Conversation truncation
-    truncationStrategy:
-      spec.truncation?.strategy === "none" ? undefined : spec.truncation?.strategy,
-    truncationConfig: resolveTruncationConfig(spec.truncation),
-    // Filesystem mounts (informational for the template; tools are harness builtins)
-    sessionStorageMountPath: spec.sessionStoragePath,
-    efsMounts: (spec.efsAccessPoints ?? []).map(({ mountPath }) => ({ mountPath })),
-    s3Mounts: (spec.s3AccessPoints ?? []).map(({ mountPath }) => ({ mountPath })),
-    needsOs:
-      !!spec.sessionStoragePath ||
-      (spec.efsAccessPoints?.length ?? 0) > 0 ||
-      (spec.s3AccessPoints?.length ?? 0) > 0,
+    ...resolveTruncationContext(spec.truncation),
   };
 
   const runtime: ProjectRuntime = {
@@ -279,6 +317,30 @@ function isBedrockMantleModel(spec: HarnessSpec): boolean {
   );
 }
 
+/** Inference-profile prefixes a Bedrock model id may carry before its model family. */
+const BEDROCK_REGION_PREFIXES = ["global.", "us.", "eu.", "apac.", "au.", "jp."];
+
+/**
+ * Whether the model accepts the image and document blocks the read tool returns. As in the hosted
+ * harness, only Bedrock Converse's OpenAI family is known to reject them. A Bedrock ARN is judged
+ * by its last path segment, so an application inference profile, whose id names no model, keeps
+ * media.
+ */
+function supportsToolMedia(spec: HarnessSpec): boolean {
+  if (spec.model.provider !== "bedrock" || isBedrockMantleModel(spec)) return true;
+  const modelId = spec.model.modelId;
+  let name: string;
+  if (modelId.startsWith("arn:") && modelId.includes(":bedrock:")) {
+    name = modelId.slice(modelId.lastIndexOf("/") + 1);
+  } else {
+    const separator = modelId.indexOf("/");
+    if (separator >= 0 && modelId.slice(0, separator) !== "bedrock") return true;
+    name = modelId.slice(separator + 1);
+  }
+  const region = BEDROCK_REGION_PREFIXES.find((prefix) => name.startsWith(prefix));
+  return !name.slice(region?.length ?? 0).startsWith("openai.");
+}
+
 /**
  * Proprietary OpenAI models (e.g. openai.gpt-5.x) are served on the Bedrock
  * Mantle `/openai/v1` path; open-source ones (openai.gpt-oss-*) use `/v1`.
@@ -318,6 +380,12 @@ function resolveModel(
   switch (model.provider) {
     case "bedrock": {
       context.modelProvider = "Bedrock";
+      // Bedrock Converse models cache the system prompt and tools unless the model rejects cache
+      // points or the parameters already place one.
+      context.bedrockPromptCaching =
+        !isBedrockMantleModel(spec) &&
+        !rejectsBedrockCachePoints(model.modelId) &&
+        !hasBedrockCachePoint(additionalParams);
       if (isBedrockMantleModel(spec)) {
         context.bedrockMantle = true;
         context.strandsExtras = "openai";
@@ -418,6 +486,47 @@ function resolveModel(
       return { context };
     }
   }
+}
+
+/**
+ * Bedrock Claude generations that reject cache points, though Strands caches any Claude model id.
+ * The same list the hosted harness uses.
+ */
+const BEDROCK_CLAUDE_WITHOUT_CACHING = [
+  "anthropic.claude-3-haiku-",
+  "anthropic.claude-3-sonnet-",
+  "anthropic.claude-3-5-sonnet-",
+  "anthropic.claude-3-opus-",
+  "anthropic.claude-instant-",
+  "anthropic.claude-v2",
+];
+
+/**
+ * Whether a Bedrock model rejects cache points. Matched anywhere in the id, case-insensitively, so
+ * regional inference-profile ids and model ARNs match too.
+ */
+function rejectsBedrockCachePoints(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  return BEDROCK_CLAUDE_WITHOUT_CACHING.some((family) => id.includes(family));
+}
+
+/**
+ * Whether Bedrock request parameters already place a cache point where Bedrock honors one: the
+ * system blocks, message content, or tool list. Other values may legitimately contain a
+ * "cachePoint" key (a tool schema property), so they are not searched.
+ */
+function hasBedrockCachePoint(params: Record<string, unknown> | undefined): boolean {
+  if (!params) return false;
+  const hasCachePoint = (blocks: unknown) =>
+    Array.isArray(blocks) &&
+    blocks.some((block) => typeof block === "object" && block !== null && "cachePoint" in block);
+  const messages = Array.isArray(params.messages) ? params.messages : [];
+  const toolConfig = params.toolConfig as { tools?: unknown } | undefined;
+  return (
+    hasCachePoint(params.system) ||
+    messages.some((message) => hasCachePoint((message as { content?: unknown })?.content)) ||
+    hasCachePoint(toolConfig?.tools)
+  );
 }
 
 /**
@@ -584,8 +693,6 @@ interface ToolsResolution {
   }[];
   /** Runtime connections that make deploy grant gateway access and set each tool's URL variable. */
   connections: Connection[];
-  hasShell: boolean;
-  hasFileOperations: boolean;
 }
 
 function resolveTools(
@@ -601,10 +708,6 @@ function resolveTools(
     remoteMcpTools: [],
     gatewayTools: [],
     connections: [],
-    // Builtin tools are always available in the harness runtime; include them
-    // unless the allowedTools filter excludes them.
-    hasShell: isBuiltinIncluded("shell", allowedPatterns),
-    hasFileOperations: isBuiltinIncluded("file_operations", allowedPatterns),
   };
 
   const connectionTokens = new Set((spec.connections ?? []).map(connectionTokenFor));
@@ -786,6 +889,178 @@ function gatewayUrl(gatewayArn: string): string {
   const { partition, region } = parseArn(gatewayArn)!;
   const suffix = partition === "aws-cn" ? "amazonaws.com.cn" : "amazonaws.com";
   return `https://${serviceIdFromArn(gatewayArn)}.gateway.bedrock-agentcore.${region}.${suffix}/mcp`;
+}
+
+/**
+ * The harness's built-in tools, the tools its built-in plugins vend, and the subagent tool. Each
+ * is enabled by an allowedTools selector naming it; `file_operations` still grants the
+ * read/write/edit tools that replaced it. The context offloader is enabled by its retrieval tool,
+ * `retrieve_context`, as in the harness runtime.
+ */
+const BUILTINS = [
+  { name: "shell", kind: "tool" },
+  { name: "read", kind: "tool", alias: "file_operations" },
+  { name: "write", kind: "tool", alias: "file_operations" },
+  { name: "edit", kind: "tool", alias: "file_operations" },
+  { name: "web_fetch", kind: "tool" },
+  { name: "todo_write", kind: "plugin" },
+  { name: "retrieve_context", kind: "plugin" },
+  { name: "subagent", kind: "subagent" },
+] as const;
+
+type Builtin = (typeof BUILTINS)[number];
+
+/** The builtins the allowedTools filter leaves enabled. */
+function resolveBuiltins(allowedPatterns: string[]): Builtin[] {
+  return BUILTINS.filter(
+    (builtin) =>
+      isBuiltinIncluded(builtin.name, allowedPatterns) ||
+      ("alias" in builtin && isBuiltinIncluded(builtin.alias, allowedPatterns)),
+  );
+}
+
+const SUBAGENT_TOOL = "subagent";
+const SKILLS_TOOL = "skills";
+/** Bedrock's tool-name limit. */
+const TOOL_NAME_LIMIT = 64;
+
+/**
+ * The model-facing names of the agent's builtin and inline function tools, allocated by the
+ * harness runtime's rules so that a customer tool sharing a builtin's name (read, web-fetch, ...)
+ * renames both instead of failing agent construction. `reserved` names (the plugin tools, the
+ * subagent tool and the skills tool) are never renamed; a tool sharing one is.
+ *
+ * Names are fixed at export time, which differs from the harness runtime in three corner cases.
+ * MCP and gateway tool names are only known at runtime and take no part: a server tool whose
+ * prefixed name equals one of these names still fails agent construction (export notes report the
+ * remote MCP servers that can, see {@link noteMcpToolNameCollisions}), and the MCP tools the
+ * runtime loads before an inline function shift the index hashed into a second-pass suffix. And
+ * `skills` is reserved whenever the harness fetches skills, even if none resolve at runtime.
+ */
+function allocateToolNames(
+  builtinTools: string[],
+  inlineFunctionTools: { name: string }[],
+  reserved: string[],
+): { builtins: string[]; inline: string[]; builtinRenames?: Record<string, string> } {
+  const names = allocateRootNames(
+    [
+      ...builtinTools.map((name) => ({ namespace: "builtin", name })),
+      ...inlineFunctionTools.map(({ name }) => ({ namespace: name, name })),
+    ],
+    new Set(reserved),
+  );
+  const builtins = names.slice(0, builtinTools.length);
+  const renamed = builtinTools.flatMap((name, index) =>
+    builtins[index] === name ? [] : [[name, builtins[index]!] as const],
+  );
+  return {
+    builtins,
+    inline: names.slice(builtinTools.length),
+    builtinRenames: renamed.length > 0 ? Object.fromEntries(renamed) : undefined,
+  };
+}
+
+/**
+ * Note each remote MCP server that could offer a tool under a name the agent already uses. A
+ * server's tools register as `<server>_<tool>` and are only known once it connects, so export
+ * cannot rename them as the harness runtime does, and Strands rejects the duplicate name when it
+ * builds the agent. A tool the server's allowedTools patterns leave out is not loaded, so it
+ * cannot collide.
+ */
+function noteMcpToolNameCollisions(
+  servers: ToolsResolution["remoteMcpTools"],
+  takenNames: string[],
+  notes: ExportNote[],
+): void {
+  for (const server of servers) {
+    const prefix = `${registryKey(server.name)}_`;
+    const collisions = takenNames.flatMap((name) => {
+      if (name.length <= prefix.length || !registryKey(name).startsWith(prefix)) return [];
+      const tool = name.slice(prefix.length);
+      const loaded =
+        server.toolPatterns === undefined ||
+        server.toolPatterns.some(
+          (pattern) => fnmatch(pattern, tool) || fnmatch(pattern, `${server.name}_${tool}`),
+        );
+      return loaded ? [{ name, tool }] : [];
+    });
+    if (collisions.length === 0) continue;
+    const list = (values: string[]) => values.map((value) => `"${value}"`).join(", ");
+    notes.push({
+      category: MCP_TOOL_NAME_NOTE_CATEGORY,
+      message:
+        `The remote MCP server "${server.name}" registers its tools as "${server.name}_<tool>", ` +
+        `so a tool it offers named ${list(collisions.map(({ tool }) => tool))} would share a name ` +
+        `with the agent's ${list(collisions.map(({ name }) => name))} tool. Strands rejects ` +
+        `duplicate tool names (treating "-" and "_" alike), so the agent could not be built and ` +
+        `every invocation would fail; the harness renamed such tools instead. If the server offers ` +
+        `such a tool, change the server's prefix or filter the tool out in mcp_client/client.py.`,
+    });
+  }
+}
+
+/** The identity Strands' tool registry compares: dashes and underscores are equal. */
+function registryKey(name: string): string {
+  return name.replaceAll("-", "_");
+}
+
+function withHashSuffix(name: string, identity: string): string {
+  const suffix = `_${createHash("sha256").update(identity).digest("hex").slice(0, 8)}`;
+  return `${name.slice(0, TOOL_NAME_LIMIT - suffix.length)}${suffix}`;
+}
+
+/**
+ * Allocate unique names, in order. A name shared with another tool or a reserved name becomes
+ * `<namespace>_<name>`, cut to 64 characters. A registry identity still shared after that gets a
+ * hash of `<namespace>/<original>/<index>`, and any remaining clash a hash of `.../<attempt>`.
+ */
+function allocateNames(tools: { namespace: string; name: string }[], reserved: Set<string>) {
+  const reservedKeys = [...reserved].map(registryKey);
+  const counts = (names: string[]) => {
+    const counted = new Map<string, number>();
+    for (const key of [...names.map(registryKey), ...reservedKeys]) {
+      counted.set(key, (counted.get(key) ?? 0) + 1);
+    }
+    return counted;
+  };
+  const originalCounts = counts(tools.map(({ name }) => name));
+  const candidates = tools.map(({ namespace, name }) =>
+    ((originalCounts.get(registryKey(name)) ?? 0) > 1 ? `${namespace}_${name}` : name).slice(
+      0,
+      TOOL_NAME_LIMIT,
+    ),
+  );
+  const candidateCounts = counts(candidates);
+  const used = new Set(reservedKeys);
+  return tools.map(({ namespace, name }, index) => {
+    let candidate = candidates[index]!;
+    if ((candidateCounts.get(registryKey(candidate)) ?? 0) > 1) {
+      candidate = withHashSuffix(candidate, `${namespace}/${name}/${index}`);
+    }
+    for (let attempt = 0; used.has(registryKey(candidate)); attempt++) {
+      candidate = withHashSuffix(candidate, `${namespace}/${name}/${index}/${attempt}`);
+    }
+    used.add(registryKey(candidate));
+    return candidate;
+  });
+}
+
+/**
+ * {@link allocateNames}, with the skills tool reserved the way the harness runtime reserves it:
+ * only a tool that would otherwise take the name `skills` is renamed, so no other name changes.
+ */
+function allocateRootNames(
+  tools: { namespace: string; name: string }[],
+  reserved: Set<string>,
+): string[] {
+  const previous = allocateNames(
+    tools,
+    new Set([...reserved].filter((name) => name !== SKILLS_TOOL)),
+  );
+  if (!reserved.has(SKILLS_TOOL) || !previous.includes(SKILLS_TOOL)) return previous;
+  const retained = previous.filter((name) => name !== SKILLS_TOOL);
+  const replacements = allocateNames(tools, new Set([...reserved, ...retained]));
+  return previous.map((name, index) => (name === SKILLS_TOOL ? replacements[index]! : name));
 }
 
 function undefinedIfEmpty<T>(values: T[]): T[] | undefined {
@@ -989,6 +1264,19 @@ function buildFilesystemConfigurations(
 // ============================================================================
 // Truncation
 // ============================================================================
+
+function resolveTruncationContext(truncation: HarnessTruncationConfig | undefined): {
+  truncationStrategy?: string;
+  truncationConfig?: Record<string, unknown>;
+} {
+  if (!truncation) {
+    return { truncationStrategy: "summarization", truncationConfig: DEFAULT_TRUNCATION_CONFIG };
+  }
+  return {
+    truncationStrategy: truncation.strategy === "none" ? undefined : truncation.strategy,
+    truncationConfig: resolveTruncationConfig(truncation),
+  };
+}
 
 function resolveTruncationConfig(
   truncation: HarnessTruncationConfig | undefined,

@@ -7,6 +7,7 @@ import type { AwsDeploymentTarget } from "../../../../projectSchemas/aws-targets
 import type { AddResourceInput, Project } from "../../types";
 import type { AddProjectResourceConfig } from "../types";
 import { addProjectResource, requireDeployedNameFits, addDescription } from "../shared";
+import { insightsAfterDeployNote } from "../../../eval/online-eval/insightsNote";
 
 export const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
@@ -148,12 +149,14 @@ export const createAddOnlineEvalHandler = (config: AddProjectResourceConfig) =>
         },
       );
 
+      const note = insightsAfterDeployNote(flags["evaluators"], flags["service-name"]);
       await addProjectResource(
         ctx,
         config,
         project,
         input,
         `added online-eval config '${flags["name"]}' to '${project.name}'`,
+        note === undefined ? {} : { notes: [note] },
       );
     },
   });

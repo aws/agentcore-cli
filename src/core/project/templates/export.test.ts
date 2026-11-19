@@ -18,6 +18,7 @@ import {
   LITELLM_NO_API_KEY_NOTE_CATEGORY,
   MALFORMED_S3_SKILL_NOTE_CATEGORY,
   MCP_HEADER_CREDS_NOTE_CATEGORY,
+  MCP_TOOL_NAME_NOTE_CATEGORY,
   MEMORY_ARN_NOTE_CATEGORY,
   MEMORY_MANAGED_NOTE_CATEGORY,
   MEMORY_MESSAGES_COUNT_NOTE_CATEGORY,
@@ -132,7 +133,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("OpenAI");
-    expect(result.context.strandsExtras).toBe("openai");
+    expect(result.context.strandsExtras).toBe("openai,web-fetch");
     expect(result.context.modelApiFormat).toBe("responses");
     expect(result.context.modelMaxTokens).toBe("768");
     expect(result.context.modelTemperature).toBe("0.2");
@@ -167,7 +168,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("Gemini");
-    expect(result.context.strandsExtras).toBe("gemini");
+    expect(result.context.strandsExtras).toBe("gemini,web-fetch");
     expect(result.credentials).toEqual([]);
   });
 
@@ -231,7 +232,7 @@ describe("mapHarnessToExportPlan model mapping", () => {
     });
 
     expect(result.context.modelProvider).toBe("LiteLLM");
-    expect(result.context.strandsExtras).toBe("litellm");
+    expect(result.context.strandsExtras).toBe("litellm,web-fetch");
     expect(result.context.litellmApiBase).toBe("https://litellm.example");
     expect(result.context.modelAdditionalParams).toEqual({ max_retries: 2 });
     expect(result.context.modelMaxTokens).toBe("300");
@@ -267,6 +268,95 @@ describe("mapHarnessToExportPlan model mapping", () => {
     expect(result.context.modelAdditionalParams).toEqual({
       performanceConfig: { latency: "optimized" },
     });
+  });
+
+  test("caches Bedrock Converse prompts unless the parameters already place a cache point", () => {
+    expect(plan({}).context.bedrockPromptCaching).toBe(true);
+    const mantle = plan({
+      spec: harness({
+        model: { provider: "bedrock", modelId: "openai.gpt-5.5", apiFormat: "responses" },
+      }),
+    });
+    expect(mantle.context.bedrockPromptCaching).toBe(false);
+    for (const params of [
+      { system: [{ cachePoint: { type: "default" } }] },
+      { messages: [{ role: "user", content: [{ cachePoint: { type: "default" } }] }] },
+      { toolConfig: { tools: [{ cachePoint: { type: "default" } }] } },
+    ]) {
+      expect(plan({ modelAdditionalParams: params }).context.bedrockPromptCaching).toBe(false);
+    }
+    // A cachePoint key elsewhere (e.g. a tool schema property) does not count.
+    expect(plan({ modelAdditionalParams: { cachePoint: true } }).context.bedrockPromptCaching).toBe(
+      true,
+    );
+  });
+
+  test("does not cache prompts for Bedrock Claude generations that reject cache points", () => {
+    const caches = (modelId: string) =>
+      plan({ spec: harness({ model: { provider: "bedrock", modelId } }) }).context
+        .bedrockPromptCaching;
+    for (const modelId of [
+      "anthropic.claude-3-haiku-20240307-v1:0",
+      "us.anthropic.claude-3-sonnet-20240229-v1:0",
+      "eu.anthropic.claude-3-5-sonnet-20240620-v1:0",
+      "anthropic.claude-3-opus-20240229-v1:0",
+      "anthropic.claude-instant-v1",
+      "anthropic.claude-v2:1",
+      // Matched anywhere and case-insensitively, so model and inference-profile ARNs match too.
+      "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+      "arn:aws:bedrock:us-west-2:111122223333:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "US.ANTHROPIC.CLAUDE-3-HAIKU-20240307-V1:0",
+    ]) {
+      expect(caches(modelId)).toBe(false);
+    }
+    for (const modelId of [
+      "global.anthropic.claude-sonnet-5-5",
+      "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      "anthropic.claude-3-5-haiku-20241022-v1:0",
+      "us.amazon.nova-lite-v1:0",
+    ]) {
+      expect(caches(modelId)).toBe(true);
+    }
+  });
+
+  test("gives the read tool no media for Bedrock Converse OpenAI models", () => {
+    const withoutMedia = (model: Record<string, unknown>, allowedTools?: string[]) =>
+      plan({ spec: harness({ model, ...(allowedTools && { allowedTools }) }) }).context
+        .readWithoutMedia;
+    for (const modelId of [
+      "openai.gpt-oss-120b-1:0",
+      "us.openai.gpt-oss-20b-1:0",
+      "global.openai.gpt-oss-120b-1:0",
+      "bedrock/openai.gpt-oss-120b-1:0",
+      "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-oss-120b-1:0",
+      "arn:aws:bedrock:us-west-2:111122223333:inference-profile/us.openai.gpt-oss-120b-1:0",
+    ]) {
+      expect(withoutMedia({ provider: "bedrock", modelId })).toBe(true);
+    }
+    for (const model of [
+      { provider: "bedrock", modelId: "global.anthropic.claude-sonnet-5-5" },
+      // Mantle serves OpenAI models through the OpenAI APIs, not Converse.
+      { provider: "bedrock", modelId: "openai.gpt-oss-120b", apiFormat: "chat_completions" },
+      // An application inference profile's id names no model.
+      {
+        provider: "bedrock",
+        modelId: "arn:aws:bedrock:us-east-1:111122223333:application-inference-profile/a1b2c3",
+      },
+      { provider: "lite_llm", modelId: "bedrock/openai.gpt-oss-120b-1:0" },
+    ]) {
+      expect(withoutMedia(model)).toBe(false);
+    }
+    // Without the read tool there is nothing to change.
+    const oss = { provider: "bedrock", modelId: "openai.gpt-oss-120b-1:0" };
+    expect(withoutMedia(oss, ["shell"])).toBe(false);
+    expect(withoutMedia(oss, ["file_operations"])).toBe(true);
+  });
+
+  test("adds the web-fetch extra only when web_fetch is allowed", () => {
+    expect(plan({}).context.strandsExtras).toBe("web-fetch");
+    expect(
+      plan({ spec: harness({ allowedTools: ["shell"] }) }).context.strandsExtras,
+    ).toBeUndefined();
   });
 
   test("warns when a keyless LiteLLM model is not Bedrock-backed", () => {
@@ -312,6 +402,7 @@ describe("mapHarnessToExportPlan tools", () => {
     expect(result.context.inlineFunctionTools).toEqual([
       {
         name: "get_weather",
+        registeredName: "get_weather",
         description: "Get the weather",
         inputSchema: { type: "object", properties: { city: { type: "string" } } },
       },
@@ -415,8 +506,12 @@ describe("mapHarnessToExportPlan tools", () => {
 
   test("includes the harness builtins unless allowedTools filters them out", () => {
     const unrestricted = plan({});
-    expect(unrestricted.context.hasShell).toBe(true);
-    expect(unrestricted.context.hasFileOperations).toBe(true);
+    expect(unrestricted.context).toMatchObject({
+      builtinTools: ["shell", "read", "write", "edit", "web_fetch"],
+      pluginToolNames: ["todo_write", "retrieve_context"],
+      hasContextOffloader: true,
+      hasSubagent: true,
+    });
 
     const restricted = plan({
       spec: harness({
@@ -435,8 +530,7 @@ describe("mapHarnessToExportPlan tools", () => {
         ],
       }),
     });
-    expect(restricted.context.hasShell).toBe(true);
-    expect(restricted.context.hasFileOperations).toBe(false);
+    expect(restricted.context.builtinTools).toEqual(["shell"]);
     expect(restricted.context.remoteMcpTools).toEqual([
       {
         name: "exa",
@@ -587,13 +681,32 @@ describe("mapHarnessToExportPlan gateway tools", () => {
 
 describe("mapHarnessToExportPlan allowedTools selection", () => {
   test("a bare name or glob selects builtins only", () => {
-    const shellOnly = plan({ spec: harness({ allowedTools: ["shell"] }) });
-    expect(shellOnly.context.hasShell).toBe(true);
-    expect(shellOnly.context.hasFileOperations).toBe(false);
+    const tools = (allowedTools: string[]) =>
+      plan({ spec: harness({ allowedTools }) }).context.builtinTools;
+    expect(tools(["shell"])).toEqual(["shell"]);
+    // file_operations, and globs matching it, still grant read, write, and edit.
+    expect(tools(["file_*"])).toEqual(["read", "write", "edit"]);
+    expect(tools(["web_*"])).toEqual(["web_fetch"]);
+  });
 
-    const fileGlob = plan({ spec: harness({ allowedTools: ["file_*"] }) });
-    expect(fileGlob.context.hasShell).toBe(false);
-    expect(fileGlob.context.hasFileOperations).toBe(true);
+  test("selects plugins and the subagent by the tool names they vend", () => {
+    const { context } = plan({
+      spec: harness({
+        allowedTools: ["todo_write", "retrieve_context", "@builtin/subagent"],
+      }),
+    });
+    expect(context.builtinTools).toEqual([]);
+    expect(context.pluginToolNames).toEqual(["todo_write", "retrieve_context"]);
+    expect(context.hasContextOffloader).toBe(true);
+    expect(context.hasSubagent).toBe(true);
+  });
+
+  test("selects the context offloader by retrieve_context only", () => {
+    const offloads = (allowedTools: string[]) =>
+      plan({ spec: harness({ allowedTools }) }).context.hasContextOffloader;
+    expect(offloads(["retrieve_*"])).toBe(true);
+    // The hosted harness renamed the tool from retrieve_offloaded_content without an alias.
+    expect(offloads(["retrieve_offloaded_content"])).toBe(false);
   });
 
   test("keeps an MCP server that @server or * allows and drops it otherwise", () => {
@@ -644,6 +757,141 @@ describe("mapHarnessToExportPlan allowedTools selection", () => {
       )?.map((tool) => tool.name);
     expect(names(["@lookup"])).toEqual(["lookup"]);
     expect(names(["lookup"])).toBeUndefined();
+  });
+});
+
+describe("mapHarnessToExportPlan tool names", () => {
+  const inline = (name: string) => ({
+    type: "inline_function",
+    name,
+    config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+  });
+  const names = (spec: Record<string, unknown>) => {
+    const { context } = plan({ spec: harness(spec) });
+    return {
+      builtinTools: context.builtinTools,
+      builtinToolRenames: context.builtinToolRenames,
+      inline: (context.inlineFunctionTools as { name: string; registeredName: string }[]).map(
+        ({ name, registeredName }) => [name, registeredName],
+      ),
+    };
+  };
+
+  test.each([
+    ["shell", "shell", "builtin_shell", "shell_shell"],
+    ["read", "read", "builtin_read", "read_read"],
+    ["write", "write", "builtin_write", "write_write"],
+    ["edit", "edit", "builtin_edit", "edit_edit"],
+    ["web_fetch", "web_fetch", "builtin_web_fetch", "web_fetch_web_fetch"],
+    // The tool registry treats "-" and "_" alike.
+    ["web-fetch", "web_fetch", "builtin_web_fetch", "web-fetch_web-fetch"],
+  ])(
+    "renames both the builtin and a customer tool named %p",
+    (name, builtin, builtinName, customerName) => {
+      const result = names({ tools: [inline(name)] });
+      expect(result.builtinToolRenames).toEqual({ [builtin]: builtinName });
+      expect(result.builtinTools).toContain(builtinName);
+      expect(result.builtinTools).not.toContain(builtin);
+      expect(result.inline).toEqual([[name, customerName]]);
+    },
+  );
+
+  test.each([
+    ["todo_write", "todo_write_todo_write"],
+    ["retrieve_context", "retrieve_context_retrieve_context"],
+    ["subagent", "subagent_subagent"],
+  ])("renames only a customer tool named after the %p tool", (name, customerName) => {
+    const result = names({ tools: [inline(name)] });
+    expect(result.builtinToolRenames).toBeUndefined();
+    expect(result.builtinTools).toEqual(["shell", "read", "write", "edit", "web_fetch"]);
+    expect(result.inline).toEqual([[name, customerName]]);
+  });
+
+  test("renames a customer tool named skills only when the agent fetches skills", () => {
+    const skills = [{ s3Uri: "s3://skills-bucket/team/" }];
+    expect(names({ tools: [inline("skills")], skills }).inline).toEqual([
+      ["skills", "skills_skills"],
+    ]);
+    expect(names({ tools: [inline("skills")] }).inline).toEqual([["skills", "skills"]]);
+  });
+
+  test("keeps a customer tool's name when allowedTools leaves out the builtin it matches", () => {
+    expect(names({ tools: [inline("shell")], allowedTools: ["read", "@shell"] })).toEqual({
+      builtinTools: ["read"],
+      builtinToolRenames: undefined,
+      inline: [["shell", "shell"]],
+    });
+  });
+
+  test("hashes names that still collide after the namespace prefix, as the harness runtime does", () => {
+    expect(
+      names({ tools: [inline("read"), inline("builtin_read"), inline("read_read")] }),
+    ).toMatchObject({
+      builtinToolRenames: { read: "builtin_read_918eaa31" },
+      inline: [
+        ["read", "read_read_4d363eb0"],
+        ["builtin_read", "builtin_read_dba9b9de"],
+        ["read_read", "read_read_e2616851"],
+      ],
+    });
+  });
+});
+
+describe("mapHarnessToExportPlan MCP tool name notes", () => {
+  const server = (name: string) => ({
+    type: "remote_mcp",
+    name,
+    config: { remoteMcp: { url: "https://mcp.example.com/mcp" } },
+  });
+  const collisionNotes = (spec: Record<string, unknown>) =>
+    plan({ spec: harness(spec) }).notes.filter(
+      (note) => note.category === MCP_TOOL_NAME_NOTE_CATEGORY,
+    );
+
+  test.each([
+    ["web", "fetch", "web_fetch"],
+    ["todo", "write", "todo_write"],
+    ["retrieve", "context", "retrieve_context"],
+  ])("notes that server %p's tool %p would share the %p tool's name", (serverName, tool, taken) => {
+    const notes = collisionNotes({ tools: [server(serverName)] });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.message).toContain(`The remote MCP server "${serverName}"`);
+    expect(notes[0]!.message).toContain(`named "${tool}" would share a name`);
+    expect(notes[0]!.message).toContain(`agent's "${taken}" tool`);
+  });
+
+  test("counts inline function names and treats dashes and underscores alike", () => {
+    const inline = {
+      type: "inline_function",
+      name: "orders_lookup",
+      config: { inlineFunction: { description: "d", inputSchema: { type: "object" } } },
+    };
+    const notes = collisionNotes({ tools: [inline, server("orders")] });
+    expect(notes.map((note) => note.message)).toEqual([
+      expect.stringContaining(`named "lookup" would share a name with the agent's "orders_lookup"`),
+    ]);
+    expect(collisionNotes({ tools: [server("web-fetch")] })).toEqual([]);
+    expect(collisionNotes({ tools: [server("retrieve-context")] })).toEqual([]);
+    expect(collisionNotes({ tools: [server("todo-x")] })).toEqual([]);
+    expect(
+      collisionNotes({ tools: [{ ...inline, name: "orders-lookup" }, server("orders")] }),
+    ).toHaveLength(1);
+  });
+
+  test("leaves out tools and servers that cannot collide", () => {
+    expect(collisionNotes({ tools: [server("exa")] })).toEqual([]);
+    // The builtin is not enabled.
+    expect(collisionNotes({ tools: [server("web")], allowedTools: ["@web"] })).toEqual([]);
+    // allowedTools loads no tool of the server that could collide.
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/search"] }),
+    ).toEqual([]);
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/fetch"] }),
+    ).toHaveLength(1);
+    expect(
+      collisionNotes({ tools: [server("web")], allowedTools: ["web_fetch", "@web/web_f*"] }),
+    ).toHaveLength(1);
   });
 });
 
@@ -832,6 +1080,15 @@ describe("mapHarnessToExportPlan truncation", () => {
     expect(result.context.truncationConfig).toEqual({
       summary_ratio: 0.4,
       preserve_recent_messages: 6,
+    });
+  });
+
+  test("summarizes the conversation when the harness sets no truncation", () => {
+    const result = plan({});
+    expect(result.context.truncationStrategy).toBe("summarization");
+    expect(result.context.truncationConfig).toEqual({
+      summary_ratio: 0.3,
+      preserve_recent_messages: 10,
     });
   });
 

@@ -6,7 +6,13 @@ import json
 from strands.tools.tools import PythonAgentTool
 from strands.types.tools import ToolResult, ToolUse
 {{/if}}
-from strands import Agent, tool
+from strands.types.exceptions import EventLoopException
+{{#if hasWebFetch}}
+from strands.vended_tools import make_web_fetch
+{{/if}}
+{{#if harnessFileTools}}
+from strands_harness.tools import {{#each harnessFileTools}}{{#if (eq this "read")}}{{#if ../readWithoutMedia}}make_read{{else}}read{{/if}}{{else}}{{this}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}
 {{#if hasSkillsFetcher}}
 from strands import AgentSkills
 {{#if hasFetchedSkills}}
@@ -20,12 +26,6 @@ import asyncio
 {{#if timeoutSeconds}}
 import threading
 {{/if}}
-{{#if hasShell}}
-import subprocess
-{{/if}}
-{{#if hasFileOperations}}
-import os
-{{/if}}
 {{#if truncationStrategy}}
 {{#if (eq truncationStrategy "sliding_window")}}
 from strands.agent.conversation_manager import SlidingWindowConversationManager
@@ -37,22 +37,17 @@ from strands.agent.conversation_manager.summarizing_conversation_manager import 
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 {{/if}}
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from model.load import load_model
+from harness_runtime import InvocationBudget, LimitExceeded{{#if builtinToolRenames}}, RenamedTool{{/if}}, build_session_agent{{#if hasShell}}, make_managed_shell{{/if}}
+from model.load import load_model{{#if bedrockPromptCaching}}, load_aux_model{{/if}}
 {{#if (or gatewayTools remoteMcpTools)}}
 from mcp_client.client import get_all_mcp_clients
-{{else}}
-{{#unless isExportHarness}}
-from mcp_client.client import get_streamable_http_mcp_client
-{{/unless}}
 {{/if}}
 {{#if hasMemory}}
 from memory.session import get_memory_session_manager
 {{/if}}
-{{#unless hasFileOperations}}
-{{#if (or needsOs (some gitSkills "credentialArn"))}}
+{{#if (some gitSkills "credentialArn")}}
 import os
 {{/if}}
-{{/unless}}
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -60,25 +55,12 @@ log = app.logger
 {{#if (or gatewayTools remoteMcpTools)}}
 # Define MCP clients for all configured MCP servers (gateways and/or remote MCP)
 mcp_clients = get_all_mcp_clients()
-{{else}}
-{{#unless isExportHarness}}
-# Define a Streamable HTTP MCP Client
-mcp_clients = [get_streamable_http_mcp_client()]
-{{/unless}}
 {{/if}}
 
 {{#if systemPromptText}}
 DEFAULT_SYSTEM_PROMPT = """{{escapePyStr systemPromptText}}"""
 {{else}}
-DEFAULT_SYSTEM_PROMPT = """
-You are a helpful assistant. Use tools when appropriate.
-{{#if needsOs}}{{#unless isExportHarness}}
-You have access to the following mounted filesystems. Use file_read, file_write, and list_files with full absolute paths:
-{{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
-{{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
-{{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
-{{/each}}{{/unless}}{{/if}}
-"""
+# No system prompt is set, so create_harness() applies the Strands Harness contract prompt.
 {{/if}}
 
 
@@ -96,197 +78,45 @@ def _make_inline_tool(name: str, spec: dict) -> PythonAgentTool:
 
 {{#each inlineFunctionTools}}
 _INLINE_SPEC_{{snakeCase name}} = {
-    "name": "{{name}}",
+    "name": "{{registeredName}}",
     "description": {{safeJson description}},
     "inputSchema": {"json": json.loads({{pyJsonStr inputSchema}}) },
 }
-tools.append(_make_inline_tool("{{name}}", _INLINE_SPEC_{{snakeCase name}}))
+tools.append(_make_inline_tool("{{registeredName}}", _INLINE_SPEC_{{snakeCase name}}))
 {{/each}}
 
-_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{name}}"{{#unless @last}}, {{/unless}}{{/each}} }
+_INLINE_FUNCTION_NAMES = { {{#each inlineFunctionTools}}"{{registeredName}}"{{#unless @last}}, {{/unless}}{{/each}} }
 
 {{else}}
 _INLINE_FUNCTION_NAMES = set()
 
-{{#unless isExportHarness}}
-# Define a simple function tool
-@tool
-def add_numbers(a: int, b: int) -> int:
-    """Return the sum of two numbers"""
-    return a+b
-tools.append(add_numbers)
-
-{{/unless}}
+{{/if}}
+{{#if builtinTools}}
+# Built-in tools selected by allowedTools.
+{{#if builtinToolRenames}}
+# As in the harness runtime, a built-in tool that shares its name with another tool is
+# registered as builtin_<name>.
+{{/if}}
+{{#if readWithoutMedia}}
+# This model rejects image and document blocks, so read describes those files in text instead.
+read = make_read(media=False)
 {{/if}}
 {{#if hasShell}}
-@tool
-def shell(command: str, timeout: int = 300) -> dict:
-    """Execute a bash command and return the results.
-
-    Args:
-        command: The bash command to execute
-        timeout: Timeout in seconds (default: 300)
-
-    Returns:
-        Dict with stdout, stderr, and exit_code
-    """
-    result = subprocess.run(
-        command, shell=True, capture_output=True, text=True, timeout=timeout
-    )
-    return {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.returncode}
-
-tools.append(shell)
+tools.append({{#if builtinToolRenames.shell}}RenamedTool(make_managed_shell(), "{{builtinToolRenames.shell}}"){{else}}make_managed_shell(){{/if}})
 {{/if}}
-{{#if hasFileOperations}}
-@tool
-def file_operations(
-    command: str,
-    path: str,
-    old_str: str = None,
-    new_str: str = None,
-    file_text: str = None,
-    insert_line: int = None,
-    view_range: list = None,
-) -> str:
-    """Text editor tool for viewing and modifying files.
-
-    Args:
-        command: The command to execute ("view", "str_replace", "create", "insert")
-        path: Path to the file or directory
-        old_str: Text to replace (for str_replace command)
-        new_str: Replacement text (for str_replace and insert commands)
-        file_text: Content for new file (for create command)
-        insert_line: Line number to insert after (for insert command)
-        view_range: [start_line, end_line] for viewing specific lines (for view command)
-
-    Returns:
-        Result of the operation
-    """
-    try:
-        if command == "view":
-            if not os.path.exists(path):
-                return f"Error: Path '{path}' does not exist"
-            if os.path.isdir(path):
-                return "\n".join(os.listdir(path))
-            with open(path) as f:
-                lines = f.read().splitlines()
-            if view_range:
-                start, end = view_range
-                start_idx = max(0, start - 1)
-                end_idx = len(lines) if end == -1 else min(len(lines), end)
-                lines = lines[start_idx:end_idx]
-                start_num = start_idx + 1
-            else:
-                start_num = 1
-            return "\n".join(f"{start_num + i}: {line}" for i, line in enumerate(lines))
-        elif command == "str_replace":
-            if old_str is None or new_str is None:
-                return "Error: str_replace requires both old_str and new_str parameters"
-            if not os.path.exists(path):
-                return f"Error: File '{path}' does not exist"
-            content = open(path).read()
-            if old_str not in content:
-                return "Error: Text not found in file"
-            count = content.count(old_str)
-            if count > 1:
-                return f"Error: Text appears {count} times in file. Please be more specific."
-            open(path, "w").write(content.replace(old_str, new_str, 1))
-            return f"Successfully replaced text in '{path}'"
-        elif command == "create":
-            if file_text is None:
-                return "Error: create requires file_text parameter"
-            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-            open(path, "w").write(file_text)
-            return f"Successfully created file '{path}'"
-        elif command == "insert":
-            if new_str is None or insert_line is None:
-                return "Error: insert requires both new_str and insert_line parameters"
-            if not os.path.exists(path):
-                return f"Error: File '{path}' does not exist"
-            lines = open(path).read().splitlines(True)
-            if insert_line == 0:
-                lines.insert(0, new_str + "\n")
-            elif insert_line >= len(lines):
-                lines.append(new_str + "\n")
-            else:
-                lines.insert(insert_line, new_str + "\n")
-            open(path, "w").write("".join(lines))
-            return f"Successfully inserted text in '{path}' at line {insert_line + 1}"
-        else:
-            return f"Error: Unknown command '{command}'"
-    except Exception as e:
-        return f"Error: {e}"
-
-tools.append(file_operations)
+{{#each harnessFileTools}}
+tools.append({{#if (lookup ../builtinToolRenames this)}}RenamedTool({{this}}, "{{lookup ../builtinToolRenames this}}"){{else}}{{this}}{{/if}})
+{{/each}}
+{{#if hasWebFetch}}
+tools.append({{#if builtinToolRenames.web_fetch}}RenamedTool(make_web_fetch(mode="markdown"), "{{builtinToolRenames.web_fetch}}"){{else}}make_web_fetch(mode="markdown"){{/if}})
 {{/if}}
-{{#if needsOs}}{{#unless isExportHarness}}
-_MOUNT_PATHS = [
-    {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
-    {{#each efsMounts}}"{{mountPath}}",{{/each}}
-    {{#each s3Mounts}}"{{mountPath}}",{{/each}}
-]
-
-def _safe_resolve(path: str) -> str:
-    resolved = os.path.realpath(path)
-    if not any(resolved == os.path.realpath(m) or resolved.startswith(os.path.realpath(m) + os.sep) for m in _MOUNT_PATHS):
-        raise ValueError(f"Path '{path}' is not within any configured mount ({', '.join(_MOUNT_PATHS)})")
-    return resolved
-
-@tool
-def file_read(path: str) -> str:
-    """Read a file from a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
-    try:
-        full_path = _safe_resolve(path)
-        with open(full_path) as f:
-            return f.read()
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error reading '{path}': {e.strerror}"
-
-@tool
-def file_write(path: str, content: str) -> str:
-    """Write a file to a mounted filesystem. Use the absolute path (e.g. /mnt/tools/data.txt)."""
-    try:
-        full_path = _safe_resolve(path)
-        parent = os.path.dirname(full_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(full_path, "w") as f:
-            f.write(content)
-        return f"Written to {path}"
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error writing '{path}': {e.strerror}"
-
-@tool
-def list_files(path: str) -> str:
-    """List files in a mounted filesystem directory. Use the absolute path (e.g. /mnt/tools)."""
-    try:
-        full_path = _safe_resolve(path)
-        entries = os.listdir(full_path)
-        return "\n".join(entries) if entries else "(empty directory)"
-    except ValueError as e:
-        return str(e)
-    except OSError as e:
-        return f"Error listing '{path}': {e.strerror}"
-
-tools.extend([file_read, file_write, list_files])
-{{/unless}}{{/if}}
-
+{{/if}}
 {{#if (or gatewayTools remoteMcpTools)}}
+
 # Add MCP clients to tools
 for mcp_client in mcp_clients:
     if mcp_client:
         tools.append(mcp_client)
-{{else}}
-{{#unless isExportHarness}}
-# Add MCP client to tools if available
-for mcp_client in mcp_clients:
-    if mcp_client:
-        tools.append(mcp_client)
-{{/unless}}
 {{/if}}
 
 
@@ -320,17 +150,21 @@ def agent_factory():
         {{/if}}
         key = f"{session_id}/{_actor_id}"
         if key not in cache:
-            cache[key] = Agent(
+            cache[key] = build_session_agent(
+                session_id=session_id,
+                make_conversation_manager=_make_conversation_manager,
                 model=load_model(),
+                {{#if bedrockPromptCaching}}
+                aux_model=load_aux_model(),
+                {{/if}}
                 session_manager=get_memory_session_manager(session_id, _actor_id),
-                conversation_manager=_make_conversation_manager(),
+                {{#if systemPromptText}}
                 system_prompt=DEFAULT_SYSTEM_PROMPT,
+                {{/if}}
                 tools=tools,
                 {{#if hasSkillsFetcher}}
-                plugins=skill_plugins or None,
+                skill_plugins=skill_plugins,
                 {{/if}}
-                hooks=[
-                ],
             )
         return cache[key]
     return get_or_create_agent
@@ -349,16 +183,20 @@ def agent_factory():
             return cache[session_id]
         if len(cache) >= 128:
             cache.popitem(last=False)
-        cache[session_id] = Agent(
+        cache[session_id] = build_session_agent(
+            session_id=session_id,
+            make_conversation_manager=_make_conversation_manager,
             model=load_model(),
-            system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools,
-            conversation_manager=_make_conversation_manager(),
-            {{#if hasSkillsFetcher}}
-            plugins=skill_plugins or None,
+            {{#if bedrockPromptCaching}}
+            aux_model=load_aux_model(),
             {{/if}}
-            hooks=[
-            ],
+            {{#if systemPromptText}}
+            system_prompt=DEFAULT_SYSTEM_PROMPT,
+            {{/if}}
+            tools=tools,
+            {{#if hasSkillsFetcher}}
+            skill_plugins=skill_plugins,
+            {{/if}}
         )
         return cache[session_id]
     return get_or_create_agent
@@ -465,15 +303,15 @@ async def invoke(payload, context):
 {{/if}}
 
 {{#if hasMemory}}
-    session_id = getattr(context, 'session_id', 'default-session')
+    session_id = getattr(context, "session_id", None) or "default-session"
     {{#if actorId}}
     user_id = "{{actorId}}"
     {{else}}
-    user_id = getattr(context, 'user_id', 'default-user')
+    user_id = getattr(context, "user_id", None) or "default-user"
     {{/if}}
     agent = get_or_create_agent(session_id, user_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{else}}
-    session_id = getattr(context, 'session_id', 'default-session')
+    session_id = getattr(context, "session_id", None) or "default-session"
     agent = get_or_create_agent(session_id{{#if hasSkillsFetcher}}, _skill_plugins{{/if}})
 {{/if}}
 
@@ -489,62 +327,83 @@ async def invoke(payload, context):
             del msgs[-2:]
     {{/if}}
 
-    {{#if hasExecutionLimits}}
-    limits = {
-        {{#if maxIterations}}"turns": {{maxIterations}},{{/if}}
-        {{#if maxTokens}}"output_tokens": {{maxTokens}},{{/if}}
-    } or None
+    budget = InvocationBudget()
     cancel_signal = {{#if timeoutSeconds}}threading.Event(){{else}}None{{/if}}
     timeout_fired = False
     watchdog_task = None
     {{#if timeoutSeconds}}
-    if cancel_signal is not None:
-        async def _timeout_watchdog():
-            nonlocal timeout_fired
-            await asyncio.sleep({{timeoutSeconds}})
-            timeout_fired = True
-            cancel_signal.set()
-        watchdog_task = asyncio.create_task(_timeout_watchdog())
+    async def _timeout_watchdog():
+        nonlocal timeout_fired
+        await asyncio.sleep({{timeoutSeconds}})
+        timeout_fired = True
+        cancel_signal.set()
+    watchdog_task = asyncio.create_task(_timeout_watchdog())
     {{/if}}
 
     try:
-        stop_reason = None
         {{#if inlineFunctionTools}}
         hit_inline_function = False
+        inline_handoff = False
         {{/if}}
-        async for event in agent.stream_async(
-            prompt,
-            limits=limits,
-            cancel_signal=cancel_signal,
-        ):
-            if isinstance(event, dict) and "result" in event:
-                stop_reason = getattr(event["result"], "stop_reason", None)
-                continue
-            if not isinstance(event, dict) or "event" not in event:
-                continue
-            cbs = event["event"].get("contentBlockStart")
-            if cbs is not None and not cbs.get("start"):
-                continue
-            {{#if inlineFunctionTools}}
-            if not hit_inline_function:
-                hit_inline_function = _is_inline_function_call(event["event"])
-            {{/if}}
-            yield event
-            {{#if inlineFunctionTools}}
-            if hit_inline_function and "messageStop" in event["event"]:
-                return
-            {{/if}}
-
-        if timeout_fired:
-            yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
-        {{#if maxIterations}}
-        elif stop_reason == "limit_turns":
-            yield {"event": {"messageStop": {"stopReason": "Max iterations exceeded: {{maxIterations}}"}}}
-        {{/if}}
-        {{#if maxTokens}}
-        elif stop_reason == "limit_output_tokens":
-            yield {"event": {"messageStop": {"stopReason": "Max output tokens exceeded: {{maxTokens}}"}}}
-        {{/if}}
+        try:
+            async for event in agent.stream_async(
+                prompt, cancel_signal=cancel_signal, invocation_state={"budget": budget}
+            ):
+                {{#if inlineFunctionTools}}
+                if inline_handoff and "metadata" not in (event.get("event") or {}):
+                    break
+                {{/if}}
+                if not isinstance(event, dict) or "event" not in event:
+                    continue
+                if "metadata" in event["event"]:
+                    {{#if inlineFunctionTools}}
+                    if inline_handoff:
+                        # The loop stops before the model-call hook records this turn's usage.
+                        budget.after_model_call(event["event"]["metadata"])
+                    {{/if}}
+                    {{#if hasSubagent}}
+                    # Subagent model calls stream no frames here; their usage follows at the end.
+                    budget.streamed(event["event"]["metadata"])
+                    {{/if}}
+                    yield event
+                    {{#if inlineFunctionTools}}
+                    if inline_handoff:
+                        break
+                    {{/if}}
+                    continue
+                cbs = event["event"].get("contentBlockStart")
+                if cbs is not None and not cbs.get("start"):
+                    continue
+                {{#if inlineFunctionTools}}
+                if not hit_inline_function:
+                    hit_inline_function = _is_inline_function_call(event["event"])
+                {{/if}}
+                yield event
+                {{#if inlineFunctionTools}}
+                if hit_inline_function and "messageStop" in event["event"]:
+                    # Hand the inline tool call to the caller before the agent runs it. Stop once
+                    # this turn's usage arrives, which precedes the tool running.
+                    inline_handoff = True
+                {{/if}}
+        except EventLoopException as e:
+            if not isinstance(e.original_exception, LimitExceeded):
+                raise
+            yield {"event": {"messageStop": {"stopReason": e.original_exception.stop_reason}}}
+        else:
+            if timeout_fired:
+                yield {"event": {"messageStop": {"stopReason": "timeout_exceeded"}}}
+    {{#if hasSubagent}}
+    except Exception:
+        # A failed invocation still reports the usage its streamed frames did not carry.
+        metadata = budget.unstreamed_metadata_event()
+        if metadata is not None:
+            yield metadata
+        raise
+    else:
+        metadata = budget.unstreamed_metadata_event()
+        if metadata is not None:
+            yield metadata
+    {{/if}}
     finally:
         if watchdog_task is not None:
             watchdog_task.cancel()
@@ -552,29 +411,6 @@ async def invoke(payload, context):
                 await watchdog_task
             except asyncio.CancelledError:
                 pass
-    {{else}}
-    {{#if inlineFunctionTools}}
-    hit_inline_function = False
-    {{/if}}
-    async for event in agent.stream_async(
-        prompt,
-    ):
-        if not isinstance(event, dict) or "event" not in event:
-            continue
-        cbs = event["event"].get("contentBlockStart")
-        if cbs is not None and not cbs.get("start"):
-            continue
-        {{#if inlineFunctionTools}}
-        if not hit_inline_function:
-            hit_inline_function = _is_inline_function_call(event["event"])
-        {{/if}}
-        yield event
-        {{#if inlineFunctionTools}}
-        if hit_inline_function and "messageStop" in event["event"]:
-            return
-        {{/if}}
-    {{/if}}
-
 
 if __name__ == "__main__":
     app.run()
