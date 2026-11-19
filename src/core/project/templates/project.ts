@@ -87,11 +87,17 @@ export async function createProjectTree(
  * Starts the runtime's agent in a box on a CodeZip deploy: start.py, the
  * entry point, runs start.sh, which runs `box run` with what deploy stages.
  * Create alone writes them, because only create writes the box profiles.
+ * start.sh is kept as box-start.sh in the assets: the standalone binary embeds
+ * each asset under its folder and stem, and start.py already has that stem.
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  for (const name of [BOX_CODEZIP_ENTRYPOINT, "start.sh"]) {
+  const files = [
+    [BOX_CODEZIP_ENTRYPOINT, BOX_CODEZIP_ENTRYPOINT],
+    ["start.sh", "box-start.sh"],
+  ] as const;
+  for (const [name, asset] of files) {
     template.tree.children.push(
-      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${name}`)),
+      FsTreeNode.createFile(name, () => config.assetSource.read(`templates/box-codezip/${asset}`)),
     );
   }
   for (const runtime of template.spec.runtimes ?? []) runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
