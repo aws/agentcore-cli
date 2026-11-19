@@ -520,6 +520,19 @@ export const AgentCoreGatewaySchema = z
      * files relative to the project root.
      */
     additionalPolicies: z.array(z.string().min(1)).optional(),
+    /**
+     * Deliver the gateway's `APPLICATION_LOGS` to the CloudWatch Logs group
+     * `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. Defaults to true
+     * for a gateway with `boundRuntime` and to false for every other gateway. It has no schema
+     * default, because the default depends on `boundRuntime` and the CLI writes the parsed spec
+     * back to agentcore.json.
+     */
+    enableApplicationLogs: z.boolean().optional(),
+    /**
+     * Deliver the gateway's `TRACES` to X-Ray. Defaults to false for every gateway, because the
+     * deploy fails in an account and Region without CloudWatch Transaction Search.
+     */
+    enableTraces: z.boolean().optional(),
     tags: TagsSchema.optional(),
   })
   .strict()
