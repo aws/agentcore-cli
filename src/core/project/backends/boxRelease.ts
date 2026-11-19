@@ -56,6 +56,15 @@ const PINNED = z.object({ box: BoxReleaseSchema, ffi: FfiReleaseSchema }).parse(
 export const BOX_RELEASE: BoxRelease = PINNED.box;
 export const FFI_RELEASE: FfiRelease = PINNED.ffi;
 
+/**
+ * The first box release that reads the profiles that the CLI writes: their `@box/<name>` packs, and
+ * the `key` of an input of the `@box/agentcore` pack.
+ */
+export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
+
+/** The GitHub release page of the pinned box, with a build for each machine it supports. */
+export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
+
 /** Where a release's asset downloads from: the public GitHub release, no token needed. */
 export function boxReleaseAssetUrl(
   release: Pick<BoxRelease, "repo" | "version">,
@@ -76,8 +85,7 @@ export const BOX_BINARIES = [
  * dev ask for when it is not on PATH. The release has a build for each machine it supports.
  */
 export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ` +
-  `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}, unpack it into ` +
+  `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
   "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
 
 /** A Linux arm64 box for AgentCore Runtime, and the Python ffi shims, by runtimeVersion. */
