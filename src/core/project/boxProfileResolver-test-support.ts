@@ -1,8 +1,9 @@
 /**
- * The network rules that box 0.1.11 prints, for the tests of the Box network.
- * `boxProfileResolver.test.ts` compares the rules with the real box when one with
- * `--format json --full` is on PATH.
+ * A stand-in for `box profile show --format json --full`, for the tests of the Box network, and the
+ * network rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the
+ * real box when one with `--format json --full` is on PATH.
  */
+import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
 
 const NC = 'action == Box::Action::"net:connect"';
 const HR = 'action == Box::Action::"http:request"';
@@ -63,4 +64,52 @@ export function boxNetworkRules(
     .filter(([, entry]) => (entry as { type?: unknown }).type === "http")
     .map(([name, entry]) => boxReachRules("mcp", name, destinations(entry)));
   return BOX_METADATA_RULES + [...routes, ...servers].join("");
+}
+
+/**
+ * What `box profile show --format json --full` prints for a profile whose routes resolve to
+ * `egress`: `box_toml` holds each route with a secret, a backend, or a protocol, `open_routes`
+ * holds the others by name, and `policy` holds the profile's own `policy`, then the rules Box adds.
+ */
+export function boxShowOf(input: {
+  readonly egress?: Readonly<Record<string, unknown>>;
+  readonly mcp?: Readonly<Record<string, unknown>>;
+  readonly policy?: string;
+}): ResolvedBoxProfile {
+  const egress = input.egress ?? {};
+  const mcp = input.mcp ?? {};
+  const isKept = (entry: unknown) =>
+    ["secret", "backends", "protocol"].some((key) => key in (entry as object));
+  const kept = Object.fromEntries(Object.entries(egress).filter(([, entry]) => isKept(entry)));
+  const openRoutes = Object.entries(egress)
+    .filter(([, entry]) => !isKept(entry))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([route, entry]) => ({
+      route,
+      destinations: (entry as { destinations: string[] }).destinations,
+    }));
+  return structuredClone({
+    boxToml: { name: "test-preview", egress: kept, mcp },
+    policy: `${input.policy ?? ""}\n${boxNetworkRules(egress, mcp)}`,
+    openRoutes,
+    packs: [{ name: "box/base", version: "1" }],
+    warnings: [],
+  });
+}
+
+/**
+ * Answers each `resolve` with a copy of `answer`, as box prints a new document for each call, and
+ * records each call. A test may change `answer`.
+ */
+export class FakeBoxProfileResolver implements BoxProfileResolver {
+  public readonly calls: { projectRoot: string; profilePath: string }[] = [];
+
+  constructor(public answer: ResolvedBoxProfile | Error = boxShowOf({})) {}
+
+  public resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
+    this.calls.push({ projectRoot, profilePath });
+    return this.answer instanceof Error
+      ? Promise.reject(this.answer)
+      : Promise.resolve(structuredClone(this.answer));
+  }
 }

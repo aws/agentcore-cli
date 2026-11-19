@@ -31,6 +31,22 @@ export type BoxCredentialPlan = {
 };
 
 /**
+ * The credential that holds the key of the box egress `route` with `env://<variable>`, as
+ * {@link planBoxProfileCredentials} names it: the credential that reserves `variable`, else the
+ * one named `route`.
+ */
+export function boxEgressCredentialName(
+  credentials: readonly Credential[],
+  route: string,
+  variable: string,
+): string {
+  const holder = credentials.find((credential) =>
+    credentialEnvironmentVariableNames(credential).includes(variable),
+  );
+  return holder?.name ?? route;
+}
+
+/**
  * For each `[egress.<route>] secret.ref = "env://VAR"` route of the box profile, make sure the
  * project declares an `ApiKeyCredentialProvider` named `<route>`, and that `.env.local` holds its
  * key under the credential's reserved variable. A later `agentcore deploy` then provisions the

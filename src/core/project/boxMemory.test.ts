@@ -74,6 +74,16 @@ describe("addBoxMemoryTarget", () => {
     expect(project.projectType).toBeUndefined();
   });
 
+  test("adds no agentcore target where another target serves its endpoint", () => {
+    const project = spec();
+    gateway(project).targets = [{ ...getBoxGatewayAgentCoreTargetSpec(), name: "mem" }];
+
+    addBoxMemoryTarget(project, ROOT);
+
+    expect(targets(project)).toEqual(["mem"]);
+    expect(gateway(project).additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
+  });
+
   test("refuses the target name on a gateway that is not a Box gateway", () => {
     const project = spec();
     project.agentCoreGateways.push({

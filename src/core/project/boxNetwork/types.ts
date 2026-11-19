@@ -1,5 +1,8 @@
 import type { SourceSpan } from "./dogwood";
 
+/** AgentCore's limit on the targets of one gateway. */
+export const MAX_GATEWAY_TARGETS = 100;
+
 /**
  * The methods a gateway routes to a passthrough target. Every other method (PUT, PATCH, HEAD,
  * OPTIONS, …) is not routed.
@@ -7,10 +10,11 @@ import type { SourceSpan } from "./dogwood";
 export const ROUTABLE_METHODS = ["GET", "POST", "DELETE"] as const;
 export type RoutableMethod = (typeof ROUTABLE_METHODS)[number];
 
-/** Why the box profile, a policy file, a rule, or an entry cannot convert. */
+/** Why the box profile, a policy file, a rule, an entry, or a target cannot convert. */
 export const FAILURE_CODES = [
   "INVALID_PROFILE",
   "UNSUPPORTED_POLICY_KEY",
+  "INVALID_POLICY_FILE",
   "PARSE_ERROR",
   "DUPLICATE_RULE_ID",
   "INVALID_INPUT",
@@ -31,6 +35,15 @@ export const FAILURE_CODES = [
   "EGRESS_HAS_BACKEND",
   "EGRESS_ENTRY_FAILED",
   "PATH_SCOPED_SECRET",
+  "UNSIGNABLE_HOST",
+  "UNSUPPORTED_SECRET",
+  "UNSUPPORTED_SECRET_PLACEMENT",
+  "API_KEY_CREDENTIAL_SHARED",
+  "EXISTING_TARGET_CONFLICT",
+  "MANAGED_TARGET_CHANGED",
+  "TARGET_NAME_INVALID",
+  "TARGET_NAME_COLLISION",
+  "TOO_MANY_TARGETS",
 ] as const;
 export type FailureCode = (typeof FAILURE_CODES)[number];
 
@@ -44,7 +57,7 @@ export interface ConversionFailure {
   readonly mcpEntry?: string;
   /**
    * What the rule or entry does wrong, and how to fix it, written to follow its name: `allows
-   * every host. Name each host.` The caller puts the name and the place before it.
+   * every host. Name each host.` The model puts the name and the place before it.
    */
   readonly reason: string;
   readonly span?: SourceSpan;
@@ -58,7 +71,8 @@ export interface BoxNetworkFailure {
   readonly ruleId?: string;
   readonly egressEntry?: string;
   readonly mcpEntry?: string;
-  /** The problem and how to fix it, in whole sentences that name its rule or entry. */
+  readonly target?: string;
+  /** The problem and how to fix it, in whole sentences that name its rule, entry, or target. */
   readonly reason: string;
   /**
    * The user's own file, as `file:line:column` or the file alone: a rule Box adds is at the part
