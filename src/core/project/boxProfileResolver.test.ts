@@ -6,6 +6,7 @@ import { isAbsolute, join } from "node:path";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, type ProcessEvent, type StreamProcessOptions } from "../../io";
 import type { ProjectSpec } from "../../projectSchemas/project";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { readBoxNetworks } from "./boxNetworkSource";
 import { BoxCliProfileResolver, parseBoxProfileShow } from "./boxProfileResolver";
 import { boxNetworkRules, boxReachRules } from "./boxProfileResolver-test-support";
@@ -98,7 +99,8 @@ const SHOWN_POLICY =
   boxReachRules("route", "keyed", ["k.example.com:8443"]) +
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
-const RELEASES = "https://github.com/mquang-amazon/box-releases";
+/** The last sentence of each error that says to install another box: the pinned release. */
+const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry.`;
 
 /**
  * The profile of {@link OPEN_ROUTES_SHOWN}: the routes `auth` and `github` with no secret, and the
@@ -113,8 +115,9 @@ const OPEN_ROUTES_PROFILE =
 /**
  * `box profile show open --format json --full` for {@link OPEN_ROUTES_PROFILE} and {@link POLICY},
  * as box prints it, with HOME at /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations
- * of an open route into one string, and later boxes give a list. preview.6 printed the first for
- * the same profile with its pack named box/base, the name it had before `@box/`.
+ * of an open route into one string, and 0.1.11-linux-preview.7 prints the second, a list.
+ * preview.6 printed the first for the same profile with its pack named box/base, the name it had
+ * before `@box/`.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(
@@ -218,8 +221,8 @@ describe("parseBoxProfileShow", () => {
       parseBoxProfileShow(JSON.stringify(shown), ".box/agent/local/profile.toml"),
     ).toThrow(
       new InvalidEnvironmentError(
-        `Box printed the profile .box/agent/local/profile.toml without ${lacks}, which build reads. Install ` +
-          `a newer Box (${RELEASES}), then retry.`,
+        `Box printed the profile .box/agent/local/profile.toml without ${lacks}, which build reads. ` +
+          INSTALL,
       ),
     );
   });
@@ -322,6 +325,25 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
+  test("says to install the pinned box when a box older than preview.7 refuses an @box/ pack", async () => {
+    // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
+    const error = await failure(
+      refusal([
+        'box: error: /work/demo/.box/agent/local/profile.toml: "@box/base" is',
+        "            not a pack name",
+        "Usage: box profile show [OPTIONS] <NAME>",
+      ]),
+    );
+
+    expect((error as Error).message).toBe(
+      "Box refused the profile .box/agent/local/profile.toml:\n" +
+        '  box: error: /work/demo/.box/agent/local/profile.toml: "@box/base" is\n' +
+        "              not a pack name\n" +
+        "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
+        `@box/<name>. ${INSTALL}`,
+    );
+  });
+
   test("says to run uv sync in the agent's folder when Box refuses its missing .venv", async () => {
     const error = await failure(
       refusal([
@@ -353,10 +375,7 @@ describe("BoxCliProfileResolver", () => {
     await expect(
       new BoxCliProfileResolver(fake).resolve("/work/demo", ".box/agent/local/profile.toml"),
     ).rejects.toThrow(
-      new InvalidEnvironmentError(
-        "Box is not installed or not on PATH. Install it " +
-          "(https://github.com/mquang-amazon/box-releases), then retry.",
-      ),
+      new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL}`),
     );
   });
 
@@ -370,8 +389,8 @@ describe("BoxCliProfileResolver", () => {
 
       expect(error).toBeInstanceOf(InvalidEnvironmentError);
       expect((error as Error).message).toBe(
-        "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. Install " +
-          `a Box release with \`box profile show --format json --full\` (${RELEASES}), then retry.`,
+        "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. " +
+          INSTALL,
       );
     },
   );
@@ -473,8 +492,8 @@ describe("the copy of the profile for the build region", () => {
     [
       "has no --format json",
       () => NO_JSON_FLAG,
-      "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. Install " +
-        `a Box release with \`box profile show --format json --full\` (${RELEASES}), then retry.`,
+      "This Box cannot print the profile .box/agent/local/profile.toml as JSON, which build reads. " +
+        INSTALL,
     ],
   ])("names the profile, not the copy, when box %s", async (_, stderr, message) => {
     const root = await regionalProject();

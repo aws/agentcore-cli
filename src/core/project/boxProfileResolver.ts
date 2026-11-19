@@ -8,6 +8,7 @@ import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
+import { BOX_MINIMUM_VERSION, BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -36,8 +37,11 @@ export interface BoxProfileResolver {
   resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
 }
 
-/** Where to get box, which the error names when `box` is not on PATH. */
-const BOX_RELEASES_URL = "https://github.com/mquang-amazon/box-releases";
+/** What to install, which each error names when the `box` on PATH cannot resolve a profile. */
+const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry.`;
+
+/** The refusal of an `@box/<name>` pack by a box older than {@link BOX_MINIMUM_VERSION}. */
+const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;
 
 /** The error of a box that has no `--format` or `--full` option, as clap prints it. */
 const REFUSED_JSON = /(?:unexpected argument|Found argument) '--(?:format|full)'/;
@@ -99,7 +103,7 @@ export function parseBoxProfileShow(stdout: string, profilePath: string): Resolv
       wrong.length > 0 ? wrong.map(([, part]) => part) : [SHOWN_PARTS.box_toml, SHOWN_PARTS.policy];
     throw new InvalidEnvironmentError(
       `Box printed the profile ${profilePath} without ${LIST.format(parts)}, which build reads. ` +
-        `Install a newer Box (${BOX_RELEASES_URL}), then retry.`,
+        INSTALL_BOX,
       { cause: shown.error },
     );
   }
@@ -132,16 +136,14 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     } catch (error) {
       if (!(error instanceof ProcessFailedError)) throw error;
       if (error.meta.exitCode === null && stderr.length === 0) {
-        throw new InvalidEnvironmentError(
-          `Box is not installed or not on PATH. Install it (${BOX_RELEASES_URL}), then retry.`,
-          { cause: error },
-        );
+        throw new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL_BOX}`, {
+          cause: error,
+        });
       }
       if (stderr.some((line) => REFUSED_JSON.test(line))) {
         throw new InvalidEnvironmentError(
-          `This Box cannot print the profile ${profilePath} as JSON, which build reads. Install ` +
-            `a Box release with \`box profile show --format json --full\` (${BOX_RELEASES_URL}), ` +
-            "then retry.",
+          `This Box cannot print the profile ${profilePath} as JSON, which build reads. ` +
+            INSTALL_BOX,
           { cause: error },
         );
       }
@@ -155,13 +157,17 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
         );
       }
       const agent = venvAgentFolder(lines, projectRoot);
+      const oldBox = OLD_BOX_PACK_NAME.test(lines.join(" ").replace(/\s+/g, " "));
       throw new InvalidEnvironmentError(
         [
           `Box refused the profile ${profilePath}:`,
           ...lines.map((line) => `  ${line}`),
-          agent === undefined
-            ? "Fix what Box reports, then retry."
-            : `Run 'uv sync' in ${agent}, then retry.`,
+          oldBox
+            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first box that names its packs ` +
+              `@box/<name>. ${INSTALL_BOX}`
+            : agent === undefined
+              ? "Fix what Box reports, then retry."
+              : `Run 'uv sync' in ${agent}, then retry.`,
         ].join("\n"),
         { cause: error },
       );

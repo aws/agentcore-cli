@@ -7,8 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
+import { gte } from "semver";
 import {
+  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
+  BOX_RELEASE_PAGE,
   FFI_RELEASE,
   type BoxRelease,
   type FfiRelease,
@@ -255,6 +258,18 @@ describe("boxReleaseFor a runtime's box.version", () => {
 });
 
 describe("the pinned releases", () => {
+  test("box is at least the first release that reads the profiles the CLI writes", () => {
+    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
+    expect(gte(BOX_RELEASE.version, BOX_MINIMUM_VERSION)).toBe(true);
+    expect(BOX_RELEASE.linux.asset).toBe(
+      `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
+    );
+    expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(BOX_RELEASE_PAGE).toBe(
+      `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+    );
+  });
+
   test("box and the ffi shim are pinned on their own, with a shim for each Python box runs", () => {
     expect(BOX_RELEASE.linux.asset).toContain(BOX_RELEASE.version);
     expect(Object.keys(FFI_RELEASE.pythons)).toContain("PYTHON_3_14");
