@@ -11,6 +11,15 @@ const requestSchema = z.object({
 
 const HISTORY_LIMIT = 128;
 
+// Emit OpenTelemetry spans for model calls (token usage, latency, GenAI
+// attributes) when observability is enabled. ADOT registers a global tracer at
+// startup that these spans flow to. Set here rather than relying on the ADOT
+// Vercel-AI auto-instrumentation, which patches the `ai` module at import time:
+// that never fires under CodeZip, where esbuild inlines `ai` into the bundle so
+// there is no import to intercept. Toggling the SDK's own telemetry works
+// regardless of bundling. Enabled whenever the runtime turns on observability.
+const AI_TELEMETRY = { isEnabled: process.env.AGENT_OBSERVABILITY_ENABLED === 'true' };
+
 // Keeps one message history per sessionId so each session remembers its own
 // turns (best-effort; resets on cold start). A Map preserves insertion order,
 // so it doubles as an LRU bounded to 128 sessions — a local dev process serving
@@ -48,6 +57,7 @@ const app = new BedrockAgentCoreApp({
         model,
         system: SYSTEM_PROMPT,
         messages: [...history, userMessage],
+        experimental_telemetry: AI_TELEMETRY,
       });
 
       let assistant = '';
