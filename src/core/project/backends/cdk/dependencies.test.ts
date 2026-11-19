@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import type { ProjectEvent } from "../../../../handlers/project/types";
 import { ProcessFailedError, type ProcessRunner } from "../../../../io";
 import { createSilentLogger } from "../../../../testing";
-import { planDependencySync, syncCdkDependencies } from "./dependencies";
+import { newerPinMessage, planDependencySync, syncCdkDependencies } from "./dependencies";
+
+const VENDED_CDK_PACKAGE_JSON = join(import.meta.dir, "../../../../assets/cdk/package.json");
 
 const VENDED = {
   devDependencies: { "aws-cdk": "~2.1126.0", typescript: "~5.9.3" },
@@ -109,6 +111,48 @@ describe("planDependencySync", () => {
   });
 });
 
+describe("newerPinMessage", () => {
+  test("puts the L3 message first and names every newer toolchain pin", () => {
+    const message = newerPinMessage(
+      [
+        { name: "typescript", declared: "~6.0.0", expected: "~5.9.3" },
+        { name: "@aws/agentcore-cdk", declared: "1.2.0", expected: "1.1.0" },
+        { name: "aws-cdk-lib", declared: "~2.270.0", expected: "~2.269.0" },
+      ],
+      VENDED,
+    );
+
+    expect(message).toBe(
+      "agentcore/cdk/package.json declares @aws/agentcore-cdk 1.2.0, newer than this " +
+        "AgentCore CLI supports (1.1.0). Run 'agentcore update', then try again.\n" +
+        "agentcore/cdk/package.json declares typescript ~6.0.0, aws-cdk-lib ~2.270.0. The " +
+        "AgentCore CLI manages these CDK dependencies, and they can't be upgraded: " +
+        "aws-cdk ~2.1126.0, typescript ~5.9.3, aws-cdk-lib ~2.269.0. Set them back to the " +
+        "versions above, or run 'agentcore config disableDependencyManagement true' to manage " +
+        "them yourself.",
+    );
+  });
+
+  test("lists every managed pin the real vended manifest declares, in its order", async () => {
+    const vended = JSON.parse(await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"));
+    // Section order follows the file, so a reordered asset still matches.
+    const expected = Object.keys(vended)
+      .filter((key) => key === "dependencies" || key === "devDependencies")
+      .flatMap((key) => Object.entries(vended[key] as Record<string, string>))
+      .filter(([name]) => name !== "@aws/agentcore-cdk")
+      .map(([name, spec]) => `${name} ${spec}`)
+      .join(", ");
+
+    const message = newerPinMessage(
+      [{ name: "constructs", declared: "~99.0.0", expected: vended.dependencies.constructs }],
+      vended,
+    );
+
+    expect(message).toContain(`they can't be upgraded: ${expected}. Set constructs back to`);
+    expect(message).not.toContain("—");
+  });
+});
+
 describe("syncCdkDependencies", () => {
   test("rewrites only managed entries and installs once", async () => {
     const directory = await cdkDirectoryWith({
@@ -191,14 +235,29 @@ describe("syncCdkDependencies", () => {
     expect(events).toEqual([]);
   });
 
-  test("fails on a pin newer than this CLI, naming the dependency and the opt-out", async () => {
+  test("fails on an L3 library newer than this CLI, pointing at agentcore update", async () => {
     const directory = await cdkDirectoryWith({
       ...VENDED,
       dependencies: { ...VENDED.dependencies, "@aws/agentcore-cdk": "1.2.0" },
     });
 
     await expect(run(directory)).rejects.toThrow(
-      /@aws\/agentcore-cdk 1\.2\.0 \(this CLI expects 1\.1\.0\).*disableDependencyManagement/s,
+      "agentcore/cdk/package.json declares @aws/agentcore-cdk 1.2.0, newer than this " +
+        "AgentCore CLI supports (1.1.0). Run 'agentcore update', then try again.",
+    );
+  });
+
+  test("fails on a newer toolchain pin, listing what the CLI manages", async () => {
+    const directory = await cdkDirectoryWith({
+      ...VENDED,
+      dependencies: { ...VENDED.dependencies, "aws-cdk-lib": "~2.270.0" },
+    });
+
+    await expect(run(directory)).rejects.toThrow(
+      "agentcore/cdk/package.json declares aws-cdk-lib ~2.270.0. The AgentCore CLI manages " +
+        "these CDK dependencies, and they can't be upgraded: aws-cdk ~2.1126.0, " +
+        "typescript ~5.9.3, aws-cdk-lib ~2.269.0. Set aws-cdk-lib back to ~2.269.0, or run " +
+        "'agentcore config disableDependencyManagement true' to manage them yourself.",
     );
   });
 

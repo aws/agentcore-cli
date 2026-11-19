@@ -27,8 +27,7 @@ export type DependencyPlan = {
 
 const SECTIONS: Section[] = ["dependencies", "devDependencies"];
 
-export const OPT_OUT_HINT =
-  "To manage these versions yourself, run 'agentcore config disableDependencyManagement true'.";
+const L3_LIBRARY = "@aws/agentcore-cdk";
 
 // node-semver's Range API expands ~ and ^ into comparators, which loses the distinction
 // the policy needs: a caret range is migrated, a tilde range keeps floating patches.
@@ -89,10 +88,43 @@ function formatChanges(changes: DependencyChange[]): string {
   return changes.map(({ name, from, to }) => `${name} ${from ?? "(missing)"} -> ${to}`).join(", ");
 }
 
-function formatNewer(newer: DependencyPlan["newer"]): string {
-  return newer
-    .map(({ name, declared, expected }) => `${name} ${declared} (this CLI expects ${expected})`)
-    .join(", ");
+/**
+ * Explains managed pins the project declares newer than this CLI vends. The L3 library
+ * moves with the CLI, so the fix is a CLI update; the other pins are the toolchain this
+ * CLI is tested with, so the fix is to set them back or opt out.
+ */
+export function newerPinMessage(newer: DependencyPlan["newer"], vended: Manifest): string {
+  const messages: string[] = [];
+  const library = newer.find(({ name }) => name === L3_LIBRARY);
+  if (library) {
+    messages.push(
+      `agentcore/cdk/package.json declares ${L3_LIBRARY} ${library.declared}, newer than this ` +
+        `AgentCore CLI supports (${library.expected}). Run 'agentcore update', then try again.`,
+    );
+  }
+  const toolchain = newer.filter(({ name }) => name !== L3_LIBRARY);
+  if (toolchain.length > 0) {
+    // Listed in the order the vended manifest declares them, sections included.
+    const managed = Object.entries(vended)
+      .filter((entry): entry is [Section, Record<string, string>] =>
+        SECTIONS.includes(entry[0] as Section),
+      )
+      .flatMap(([, deps]) => Object.entries(deps))
+      .filter(([name]) => name !== L3_LIBRARY)
+      .map(([name, spec]) => `${name} ${spec}`)
+      .join(", ");
+    const declared = toolchain.map(({ name, declared }) => `${name} ${declared}`).join(", ");
+    const setBack =
+      toolchain.length === 1
+        ? `Set ${toolchain[0]!.name} back to ${toolchain[0]!.expected}`
+        : "Set them back to the versions above";
+    messages.push(
+      `agentcore/cdk/package.json declares ${declared}. The AgentCore CLI manages these CDK ` +
+        `dependencies, and they can't be upgraded: ${managed}. ${setBack}, or run ` +
+        `'agentcore config disableDependencyManagement true' to manage them yourself.`,
+    );
+  }
+  return messages.join("\n");
 }
 
 export type SyncCdkDependenciesInput = {
@@ -132,7 +164,8 @@ export async function* syncCdkDependencies(
       cause: error,
     });
   }
-  const plan = planDependencySync(JSON.parse(input.vendedManifest) as Manifest, project);
+  const vended = JSON.parse(input.vendedManifest) as Manifest;
+  const plan = planDependencySync(vended, project);
 
   for (const { name, declared } of plan.skipped) {
     yield {
@@ -142,10 +175,7 @@ export async function* syncCdkDependencies(
   }
 
   if (plan.newer.length > 0) {
-    const message =
-      `agentcore/cdk/package.json declares ${formatNewer(plan.newer)}, newer than this ` +
-      `AgentCore CLI was released with. Update the CLI with 'npm install -g @aws/agentcore@latest'. ` +
-      OPT_OUT_HINT;
+    const message = newerPinMessage(plan.newer, vended);
     if (!input.disabled && !input.lenient) throw new ProjectStateError(message);
     yield { type: "warning", message };
   }
