@@ -248,6 +248,44 @@ On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the ex
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes
 itself.
 
+### Use mounted storage
+
+This preview requires a matching Box-enabled CDK development package. Follow the
+[workspace CLI and CDK setup](docs/box-local-testing.md) before deploying.
+
+For an HTTP Box runtime, add `filesystemConfigurations` to its existing runtime object in
+`agentcore/agentcore.json`. For example, this fragment requests Runtime session storage:
+
+```json
+{
+  "filesystemConfigurations": [{ "sessionStorage": { "mountPath": "/mnt/workspace" } }]
+}
+```
+
+Keep your agent source, virtual environment, and usual `create`, `build`, and `deploy` commands.
+Build generates a launcher configuration and read-only Box grants for the exact mount paths.
+The same startup path handles the existing `efsAccessPoint` and `s3FilesAccessPoint` configurations;
+those retain their existing VPC requirements. It does not grant writes or execution on storage.
+
+A small generated HTTP server starts first and answers `/ping` without importing the agent.
+On the first real `POST /invocations`, it waits for the configured network filesystems to be mounted,
+then starts one Box process. A directory or the pre-restore placeholder mount is insufficient.
+Requests then pass through Box to the existing agent, including streamed responses. Concurrent first
+requests share that startup; later requests reuse the agent. The first request includes Box and
+agent initialization time. Local development and runtimes without storage retain eager startup.
+
+Build and deploy reject older or incompatible generated launchers before staging a storage profile.
+For an existing project, create a temporary project with the matching Box template and this CLI
+version. Copy its generated `start.py` (CodeZip) or `Dockerfile` (container) into your project.
+Review custom startup changes before replacing either file; keep your agent source and environment.
+
+The deferred server supports `/ping` and `/invocations`, not WebSocket upgrades or other protocols.
+Recognized Runtime warmup requests on a separate hook path return success without running agent
+warmup code. If storage or child health is not ready within 60 seconds, invocation returns HTTP 503.
+After a startup failure or child exit, the launcher returns HTTP 503 without restarting Box.
+Start a new Runtime session after correcting the cause. Storage added or replaced after the Box process starts still requires a new
+session. This startup change does not add mount propagation or in-sandbox filesystem mounting.
+
 ### Create, run and deploy
 
 ```sh

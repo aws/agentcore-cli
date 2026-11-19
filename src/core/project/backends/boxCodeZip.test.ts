@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
+import { defaultSource } from "../source";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import type { BoxLinuxBuild } from "./boxRelease";
@@ -71,6 +72,57 @@ async function project(entrypoint: string, runtimeVersion = "PYTHON_3_14"): Prom
 }
 
 describe("stageBoxCodeZip", () => {
+  test("stages the deferred launcher metadata and real storage grant together", async () => {
+    const demo = await project("start.py");
+    const runtime = demo.spec.runtimes[0]!;
+    runtime.filesystemConfigurations = [{ sessionStorage: { mountPath: "/mnt/workspace" } }];
+    await writeFile(
+      join(demo.rootPath, runtime.codeLocation, "start.py"),
+      await defaultSource().read("templates/box-codezip/start.py"),
+    );
+    const build = await linuxBuild();
+    await stageBoxCodeZip(demo, [], async () => build);
+    const dist = join(demo.rootPath, runtime.codeLocation, ".box-dist");
+    expect(JSON.parse(await readFile(join(dist, "runtime-start.json"), "utf8"))).toEqual({
+      version: 1,
+      required_mounts: [{ path: "/mnt/workspace", filesystem_types: ["nfs", "nfs4"] }],
+    });
+    expect(await readFile(join(dist, "box_runtime.py"), "utf8")).toBe(
+      await defaultSource().read("templates/box-codezip/box_runtime.py"),
+    );
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain(
+      'listen = "127.0.0.1:8082"',
+    );
+
+    runtime.filesystemConfigurations = [];
+    await stageBoxCodeZip(demo, [], async () => build);
+    expect(
+      JSON.parse(await readFile(join(dist, "runtime-start.json"), "utf8")).required_mounts,
+    ).toEqual([]);
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain('listen = "0.0.0.0:8080"');
+  });
+
+  test("rejects a legacy storage launcher before downloading or replacing staged files", async () => {
+    const demo = await project("start.py");
+    const runtime = demo.spec.runtimes[0]!;
+    runtime.filesystemConfigurations = [{ sessionStorage: { mountPath: "/mnt/workspace" } }];
+    await writeFile(
+      join(demo.rootPath, runtime.codeLocation, "start.py"),
+      "import os\nos.execvp('box', ['box', 'run'])\n",
+    );
+    const dist = join(demo.rootPath, runtime.codeLocation, ".box-dist");
+    await mkdir(dist);
+    await writeFile(join(dist, "profile.toml"), "previous profile");
+    const box = mock(async (): Promise<BoxLinuxBuild> => {
+      throw new Error("not downloaded");
+    });
+    await expect(stageBoxCodeZip(demo, [], box)).rejects.toThrow(
+      "Storage requires the generated deferred launcher",
+    );
+    expect(box).not.toHaveBeenCalled();
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe("previous profile");
+  });
+
   test("stages box, its packs, the shim, and the Runtime profile into the code folder", async () => {
     const build = await linuxBuild({ ffi: true });
     const demo = await project("start.py");

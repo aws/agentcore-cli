@@ -340,7 +340,7 @@ export class ContainerDevRunner implements DevRunner {
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
-    stageBoxImage(
+    await stageBoxImage(
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot, input.runtime.name),

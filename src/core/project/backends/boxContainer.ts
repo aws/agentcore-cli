@@ -8,6 +8,7 @@ import { isFile } from "../runtimeBuild";
 import { boxAwsDir, runsBoxStartScript } from "../templates/boxProfile";
 import type { BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
+import { assertBoxStorageLauncher, stageBoxRuntimeAssets } from "./boxRuntimeAssets";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -83,18 +84,19 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
  * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
  */
-export function stageBoxImage(
+export async function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[],
   release: BoxRelease,
   folder: string = BOX_IMAGE_DIST,
-): void {
+): Promise<void> {
   const dist = join(context, folder);
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(dist, { recursive: true });
   writeFileSync(join(dist, "profile.toml"), profileText);
   writeFileSync(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
+  await stageBoxRuntimeAssets(dist, true);
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
     mkdirSync(dirname(to), { recursive: true });
@@ -118,6 +120,9 @@ export async function stageBoxContainers(
     imageCopiesBox(project.rootPath, runtime),
   );
   if (runtimes.length === 0) return [];
+  for (const runtime of runtimes) {
+    await assertBoxStorageLauncher(runtime, dockerfileOf(project.rootPath, runtime));
+  }
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: boxAwsDir(runtime.name),
@@ -146,6 +151,7 @@ export async function stageBoxContainers(
     const release = await releaseFor(runtime.box?.version);
     writeFileSync(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
+    await stageBoxRuntimeAssets(folder, true);
     // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
     const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);
     rmSync(contextDist, { recursive: true, force: true });

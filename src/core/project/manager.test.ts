@@ -389,9 +389,9 @@ describe("FsProjectManager.create", () => {
     expect(dockerfile).toContain(
       "COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/",
     );
-    // The entry point is box run on that profile, not a start script.
+    // The generated launcher can defer Box until Runtime storage is mounted.
     expect(dockerfile).toContain(
-      'ENTRYPOINT ["/opt/box/box", "run", "/home/bedrock_agentcore/box-profile/profile.toml",',
+      'ENTRYPOINT ["/usr/local/bin/python", "/home/bedrock_agentcore/box-profile/box_container_start.py"]',
     );
     expect(dockerfile).not.toContain("start.sh");
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();

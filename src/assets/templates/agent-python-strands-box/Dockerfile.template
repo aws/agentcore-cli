@@ -44,7 +44,8 @@ RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
 # The box profile, its policy files, and the generated box/agentcore pack, which build and deploy
 # stage in the box dist folder; dev stages the project's .box/profile.toml there. The profile reads
 # the gateway URL and the deployed resources from the environment through the pack and signs with a
-# bare `aws://`, so the image runs `box run` directly, with no start script. box requires the profile
+# bare `aws://`. The generated launcher defers Box until invocation when storage is configured.
+# box requires the profile
 # be owned by the agent and writable only by it, and outside /app; the generated pack joins box's own
 # packs beside the binary.
 COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/
@@ -68,5 +69,5 @@ USER bedrock_agentcore
 # 9000: A2A Mode
 EXPOSE 8080 8000 9000
 
-# box starts in /app, listens on 8080 and runs the agent in its sandbox on 8081.
-ENTRYPOINT ["/opt/box/box", "run", "/home/bedrock_agentcore/box-profile/profile.toml", "--no-banner"]
+# The launcher keeps the agent on 8081 and serves Runtime on 8080, starting Box after storage.
+ENTRYPOINT ["/usr/local/bin/python", "/home/bedrock_agentcore/box-profile/box_container_start.py"]

@@ -7,6 +7,7 @@
 # directory from the environment through the box/agentcore and box/agentcore-codezip packs, and
 # signs AWS routes with the execution role through a bare `aws://`. So there is nothing to fill in,
 # no credentials to write, and no start.sh.
+import json
 import os
 import shutil
 import sys
@@ -19,12 +20,12 @@ except ModuleNotFoundError:  # Python 3.10: the template depends on tomli there.
 CODE = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(CODE, ".box-dist")
 BOX = os.path.join(DIST, "box")
-HOME = "/tmp/box/home"
+BOX_HOME = "/tmp/box/home"
 WORKSPACE = "/tmp/box/workspace"
 PROFILE_DIR = "/tmp/box/profile"
 PROFILE = os.path.join(PROFILE_DIR, "profile.toml")
 
-for directory in (HOME, WORKSPACE, PROFILE_DIR):
+for directory in (BOX_HOME, WORKSPACE, PROFILE_DIR):
     os.makedirs(directory, exist_ok=True)
 
 # box reads a profile's policy files from beside it, so copy the profile and each file its
@@ -39,14 +40,20 @@ for policy in policies:
     shutil.copyfile(os.path.join(DIST, policy), destination)
 
 os.chdir(WORKSPACE)
-os.execve(
-    BOX,
-    ["box", "run", PROFILE, "--no-banner"],
-    {
-        **os.environ,
-        "HOME": HOME,
-        "BOX_CODE": CODE,
-        "BOX_PYTHON": sys.executable,
-        "BOX_PYTHON_PREFIX": sys.base_prefix,
-    },
+os.environ.update(
+    HOME=BOX_HOME,
+    BOX_CODE=CODE,
+    BOX_PYTHON=sys.executable,
+    BOX_PYTHON_PREFIX=sys.base_prefix,
 )
+with open(os.path.join(DIST, "runtime-start.json"), encoding="utf-8") as handle:
+    configuration = json.load(handle)
+command = [BOX, "run", PROFILE, "--no-banner"]
+if configuration["required_mounts"]:
+    # Health checks can run before restore. Import the agent only after its storage is mounted.
+    sys.path.insert(0, DIST)
+    from box_runtime import serve
+
+    serve(command, configuration["required_mounts"])
+else:
+    os.execve(BOX, command, os.environ)

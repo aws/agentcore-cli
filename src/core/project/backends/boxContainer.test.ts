@@ -54,7 +54,13 @@ async function project(dockerfile: string): Promise<Project> {
 
 const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
 /** What build and deploy stage beside the Dockerfile. */
-const STAGED = ["box-release.env", "profile.toml"];
+const STAGED = [
+  "box-release.env",
+  "profile.toml",
+  "runtime-start.json",
+  "box_runtime.py",
+  "box_container_start.py",
+];
 
 /** The release getter build and deploy pass, which records the version each runtime asks for. */
 function releaseOf() {
@@ -67,6 +73,39 @@ function releaseOf() {
 }
 
 describe("stageBoxContainers", () => {
+  test("stages storage metadata and shared launcher for a generated container", async () => {
+    const demo = await project(TEMPLATE_DOCKERFILE);
+    demo.spec.runtimes[0]!.filesystemConfigurations = [
+      { sessionStorage: { mountPath: "/mnt/workspace" } },
+    ];
+    await stageBoxContainers(demo, [], releaseOf().releaseFor);
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(JSON.parse(await readFile(join(dist, "runtime-start.json"), "utf8"))).toEqual({
+      version: 1,
+      required_mounts: [{ path: "/mnt/workspace", filesystem_types: ["nfs", "nfs4"] }],
+    });
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toContain(
+      'listen = "127.0.0.1:8082"',
+    );
+    expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
+  });
+
+  test("rejects an eager storage container before selecting a release or replacing staged files", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    demo.spec.runtimes[0]!.filesystemConfigurations = [
+      { sessionStorage: { mountPath: "/mnt/workspace" } },
+    ];
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    await mkdir(dist);
+    await writeFile(join(dist, "profile.toml"), "previous profile");
+    const { releaseFor, versions } = releaseOf();
+    await expect(stageBoxContainers(demo, [], releaseFor)).rejects.toThrow(
+      "Storage requires the generated deferred launcher",
+    );
+    expect(versions).toEqual([]);
+    expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe("previous profile");
+  });
+
   test("stages the box release of the runtime's box.version, and the Runtime profile, into the build context", async () => {
     const demo = await project(BOX_DOCKERFILE);
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
