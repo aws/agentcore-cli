@@ -150,14 +150,22 @@ export async function* syncCdkDependencies(
     yield { type: "warning", message };
   }
 
-  if (input.disabled || plan.changes.length === 0) return;
+  if (input.disabled) return;
+  // A deleted node_modules, or a project created with --skip-install, is installed
+  // instead of failing the build, even when the pins already match.
+  const installed = existsSync(join(input.cdkDirectory, "node_modules"));
+  if (plan.changes.length === 0 && installed) return;
 
-  // Assigning into the parsed object keeps the user's key order and their own entries.
-  for (const { name, section, to } of plan.changes) {
-    (project[section] ??= {})[name] = to;
+  if (plan.changes.length > 0) {
+    // Assigning into the parsed object keeps the user's key order and their own entries.
+    for (const { name, section, to } of plan.changes) {
+      (project[section] ??= {})[name] = to;
+    }
+    yield { type: "step", message: `updating CDK dependencies: ${formatChanges(plan.changes)}` };
+    await writeFile(manifestPath, `${JSON.stringify(project, undefined, 2)}\n`);
+  } else {
+    yield { type: "step", message: "installing CDK dependencies (node_modules missing)" };
   }
-  yield { type: "step", message: `updating CDK dependencies: ${formatChanges(plan.changes)}` };
-  await writeFile(manifestPath, `${JSON.stringify(project, undefined, 2)}\n`);
 
   try {
     // npm reconciles the edited manifest against the existing lockfile, so dependencies
@@ -177,11 +185,11 @@ export async function* syncCdkDependencies(
   } catch (error) {
     // Restored so the next run plans the same changes and retries the install, instead of
     // seeing pins that already match and synthesizing against the stale node_modules.
-    await writeFile(manifestPath, raw).catch(() => undefined);
-    if (!input.lenient) throw error;
-    yield {
-      type: "warning",
-      message: `could not update CDK dependencies: ${(error as Error).message}`,
-    };
+    if (plan.changes.length > 0) await writeFile(manifestPath, raw).catch(() => undefined);
+    const message =
+      `npm install failed in ${input.cdkDirectory}, so the CDK dependencies could not be ` +
+      `installed: ${(error as Error).message}`;
+    if (!input.lenient) throw new ProjectStateError(message, { cause: error });
+    yield { type: "warning", message };
   }
 }

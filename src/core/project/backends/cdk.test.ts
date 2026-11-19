@@ -1482,6 +1482,30 @@ describe("CdkBackend.deploy", () => {
     expect(state.targets.default?.stackArn).toBeUndefined();
   });
 
+  test("installs a missing node_modules before provisioning credentials", async () => {
+    const input = await project(false);
+    await writeFile(
+      join(cdkDirectory(input), "package.json"),
+      await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    let commandsBeforeProvisioning: string[] = [];
+    // eslint-disable-next-line require-yield -- a spy that only records when provisioning starts
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      commandsBeforeProvisioning = subject.commands.map(({ command }) => command.join(" "));
+      return {};
+    };
+    const subject = harness({ provisionCredentials });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(deployed.events).toContainEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commandsBeforeProvisioning).toEqual(["npm install"]);
+  });
+
   test("checks local CDK prerequisites before provisioning credentials", async () => {
     const input = await project(false); // no agentcore/cdk/node_modules
     let provisioned = false;

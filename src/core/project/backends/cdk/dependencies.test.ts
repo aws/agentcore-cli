@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ProjectEvent } from "../../../../handlers/project/types";
@@ -20,10 +20,11 @@ afterEach(async () => {
   );
 });
 
-async function cdkDirectoryWith(manifest: object): Promise<string> {
+async function cdkDirectoryWith(manifest: object, installed = true): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-dependencies-"));
   tempDirectories.push(directory);
   await writeFile(join(directory, "package.json"), JSON.stringify(manifest, undefined, 2));
+  if (installed) await mkdir(join(directory, "node_modules"));
   return directory;
 }
 
@@ -140,6 +141,35 @@ describe("syncCdkDependencies", () => {
     expect(events).toEqual([]);
   });
 
+  test("installs a missing node_modules even when the pins already match", async () => {
+    const directory = await cdkDirectoryWith(VENDED, false);
+
+    const { commands, events, manifest } = await run(directory);
+
+    expect(manifest).toEqual(VENDED);
+    expect(commands).toEqual([["npm", "install"]]);
+    expect(events).toEqual([
+      { type: "step", message: "installing CDK dependencies (node_modules missing)" },
+    ]);
+  });
+
+  test("names the directory and npm's error when installing a missing node_modules fails", async () => {
+    const directory = await cdkDirectoryWith(VENDED, false);
+    const failure = new ProcessFailedError(["npm", "install"], directory, 1, "npm error E404");
+    const runner: ProcessRunner = async () => {
+      throw failure;
+    };
+
+    await expect(run(directory, { runner })).rejects.toThrow(
+      new RegExp(`npm install failed in ${directory}.*npm error E404`, "s"),
+    );
+    const { events } = await run(directory, { runner, lenient: true });
+    expect(events.at(-1)).toEqual({
+      type: "warning",
+      message: expect.stringContaining("npm error E404"),
+    });
+  });
+
   test("does nothing when the project has no CDK package.json", async () => {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-dependencies-"));
     tempDirectories.push(directory);
@@ -215,7 +245,7 @@ describe("syncCdkDependencies", () => {
           throw failure;
         },
       }),
-    ).rejects.toBe(failure);
+    ).rejects.toThrow(/npm install failed in .*E404/s);
     expect(await readFile(join(directory, "package.json"), "utf8")).toBe(before);
   });
 });

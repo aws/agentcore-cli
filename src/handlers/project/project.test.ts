@@ -1135,11 +1135,16 @@ describe("project build", () => {
     await expect(run(["build"])).rejects.toThrow(/No AgentCore project found/);
   });
 
-  test("fails when the CDK dependencies have not been installed", async () => {
+  test("installs the CDK dependencies when they have not been installed", async () => {
     const projectRoot = await inBuildableProject();
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
-    await expect(run(["build"])).rejects.toThrow(/npm install/);
+    const { core } = await run(["build"]);
+
+    expect(core.projectCommands[0]).toEqual({
+      command: ["npm", "install"],
+      cwd: join(projectRoot, "agentcore", "cdk"),
+    });
   });
 });
 

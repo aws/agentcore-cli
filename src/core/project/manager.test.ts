@@ -1779,13 +1779,34 @@ describe("FsProjectManager.build", () => {
     expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
   });
 
-  test("fails actionably when the CDK dependencies are missing", async () => {
+  test("installs the CDK dependencies when node_modules is missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    const project = await scaffolded(subject, directory, false);
+    commands.length = 0;
+    const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+
+    const events = await drain(subject.build(project));
+
+    expect(events[0]).toEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commands.map(({ command, cwd }) => [command.slice(0, 2), cwd])).toEqual([
+      [["npm", "install"], cdkDirectory],
+      [["npm", "run"], cdkDirectory],
+    ]);
+  });
+
+  test("fails actionably when node_modules is missing and dependency management is off", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
     const project = await scaffolded(subject, directory, false);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/npm install/);
+    await expect(
+      drain(subject.build(project, { disableDependencyManagement: true })),
+    ).rejects.toThrow(/Run 'npm install'/);
     expect(commands).toEqual([]);
   });
 

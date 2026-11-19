@@ -259,13 +259,18 @@ export class CdkBackend implements ProjectBackend {
     input: BuildBackendInput & { lenient?: boolean },
   ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
-    if (!existsSync(join(cdkDir, "node_modules"))) {
+    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    // The sync installs a missing node_modules, unless the user manages dependencies
+    // themselves or there is no package.json to install from.
+    if (
+      !existsSync(join(cdkDir, "node_modules")) &&
+      (input.disableDependencyManagement || !existsSync(join(cdkDir, "package.json")))
+    ) {
       throw new ProjectStateError(
         `CDK dependencies are missing for project '${project.name}'. ` +
           `Run 'npm install' in ${cdkDir}.`,
       );
     }
-    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     yield* syncCdkDependencies({
       cdkDirectory: cdkDir,
       vendedManifest: await this.source.read("cdk/package.json"),
