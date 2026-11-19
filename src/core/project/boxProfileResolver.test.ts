@@ -96,8 +96,8 @@ const SHOWN_POLICY =
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
 const PINNED =
-  "box 0.1.11-linux-preview.6 or a later release " +
-  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6)";
+  "box 0.1.11-linux-preview.7 or a later release " +
+  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7)";
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
@@ -328,8 +328,8 @@ describe("BoxCliProfileResolver", () => {
       ),
     ).rejects.toThrow(
       new InvalidEnvironmentError(
-        "Box is not installed or not on PATH. Install box 0.1.11-linux-preview.6 " +
-          "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6), " +
+        "Box is not installed or not on PATH. Install box 0.1.11-linux-preview.7 " +
+          "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7), " +
           "then retry.",
       ),
     );
