@@ -216,6 +216,31 @@ describe("the IAM policy files of the Box gateway", () => {
     expect(network?.grantedActions).toEqual([]);
     expect(network?.warnings).toEqual([]);
   });
+
+  test("does not count the actions of the policy files that build writes", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    const grant = (action: string) =>
+      JSON.stringify({ Statement: [{ Effect: "Allow", Action: [action] }] });
+    await writeFile(
+      join(root, "agentcore", "box-memory-policy.json"),
+      grant("bedrock-agentcore:GetEvent"),
+    );
+    await writeFile(join(root, "agentcore", "box-bedrock-policy.json"), "{ not json");
+    await writeFile(join(root, "agentcore", "grants.json"), grant("lambda:InvokeFunctionUrl"));
+    const listed = ["box-memory-policy", "box-bedrock-policy", "grants"].map(
+      (name) => `agentcore/${name}.json`,
+    );
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+
+    expect(network?.grantedActions).toEqual(["lambda:InvokeFunctionUrl"]);
+    expect(network?.warnings).toEqual([]);
+  });
 });
 
 describe("boxNetworkFailureMessage", () => {

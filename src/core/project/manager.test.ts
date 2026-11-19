@@ -2034,11 +2034,6 @@ describe("FsProjectManager.build", () => {
           "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box-egress' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
-      {
-        type: "warning",
-        message:
-          "Target 'bedrock' calls bedrock with the gateway's role, which has no bedrock permissions. Add an IAM policy file to additionalPolicies of the 'agent-python-minimal-box-egress' gateway.",
-      },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // The zip carries box and the Runtime profile, staged before synth packages the code.

@@ -110,22 +110,48 @@ export function parseEndpoint(
   };
 }
 
-/** The AWS signing service and region of an AWS endpoint, or `undefined` for any other host. */
-export function signingService(host: string): { service: string; region: string } | undefined {
-  const rules: [RegExp, string][] = [
-    [/^bedrock-runtime\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/, "bedrock"],
-    [/^bedrock\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/, "bedrock"],
-    [
-      /^bedrock-agentcore(?:-control)?\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
-      "bedrock-agentcore",
-    ],
-    [/^[a-z0-9]+\.lambda-url\.([a-z0-9-]+)\.on\.aws$/, "lambda"],
-  ];
-  for (const [pattern, service] of rules) {
+/** The AWS endpoints the gateway signs for: each host, the API it serves, and its signing service. */
+const AWS_ENDPOINTS = [
+  {
+    pattern: /^bedrock-runtime\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "bedrock-runtime",
+    service: "bedrock",
+  },
+  {
+    pattern: /^bedrock\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "bedrock-control",
+    service: "bedrock",
+  },
+  {
+    pattern: /^bedrock-agentcore(?:-control)?\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "bedrock-agentcore",
+    service: "bedrock-agentcore",
+  },
+  {
+    pattern: /^[a-z0-9]+\.lambda-url\.([a-z0-9-]+)\.on\.aws$/,
+    api: "lambda-url",
+    service: "lambda",
+  },
+] as const;
+
+/** The API of an AWS endpoint that the gateway signs for. */
+export type AwsEndpointApi = (typeof AWS_ENDPOINTS)[number]["api"];
+
+/** The API, signing service, and region of an AWS endpoint, or `undefined` for any other host. */
+export function awsEndpoint(
+  host: string,
+): { api: AwsEndpointApi; service: string; region: string } | undefined {
+  for (const { pattern, api, service } of AWS_ENDPOINTS) {
     const match = pattern.exec(host);
-    if (match) return { service, region: match[1]! };
+    if (match) return { api, service, region: match[1]! };
   }
   return undefined;
+}
+
+/** The AWS signing service and region of an AWS endpoint, or `undefined` for any other host. */
+export function signingService(host: string): { service: string; region: string } | undefined {
+  const endpoint = awsEndpoint(host);
+  return endpoint && { service: endpoint.service, region: endpoint.region };
 }
 
 /**
