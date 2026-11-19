@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -149,6 +149,36 @@ describe("resolveBoxLinuxBuild from the box release", () => {
 
     expect(commands.filter((command) => command[0] === "curl")).toHaveLength(1);
     expect(commands[0]!.at(-1)).toContain("other/ffi-releases");
+  });
+
+  test("keeps the release another process installed while this one downloaded it", async () => {
+    // Concurrent builds and deploys share the cache: each downloads into its own work folder, and
+    // one may finish while another is still downloading. The loser keeps the winner's folder, so a
+    // command already copying out of it does not lose files under it.
+    const { release, ffi, runner } = await fakeRelease();
+    const winner = await resolveBoxLinuxBuild(
+      {},
+      { runner, home: await temp("box-home-"), release, ffi },
+    );
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    let installedMeanwhile: bigint | undefined;
+    const racing: ProcessRunner = async (command, options) => {
+      if (command[0] === "curl" && command.at(-1)!.endsWith(release.linux.asset)) {
+        cpSync(winner.binaries, root, { recursive: true });
+        installedMeanwhile = (await stat(join(root, "box"), { bigint: true })).ino;
+      }
+      return runner(command, options);
+    };
+
+    const build = await resolveBoxLinuxBuild({}, { runner: racing, home, release, ffi });
+
+    expect(build.binaries).toBe(root);
+    expect(installedMeanwhile).toBeDefined();
+    expect((await stat(join(root, "box"), { bigint: true })).ino).toBe(installedMeanwhile!);
+    expect(await readFile(join(root, "strands-box-contain-trampoline"), "utf8")).toBe(
+      "#!strands-box-contain-trampoline\n",
+    );
   });
 
   test("reuses an installed release without downloading again", async () => {
