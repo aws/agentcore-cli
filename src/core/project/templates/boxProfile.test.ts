@@ -395,7 +395,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         ],
         env: {
           PORT: "8081",
-          PYTHONPATH: "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          PYTHONPATH: "${{ inputs.code.dir }}",
           PYTHONUNBUFFERED: "1",
           PYTHONUTF8: "1",
           ...RUNTIME_AWS_STAND_INS,

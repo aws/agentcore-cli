@@ -7,15 +7,5 @@
       "asset": "box-v0.1.11-linux-preview.7-aarch64-unknown-linux-gnu.tar.gz",
       "sha256": "782290ca3f0f0de3faa6c3943a0b51d521f16b135178ab7e4425986a97ee7622"
     }
-  },
-  "ffi": {
-    "repo": "mquang-amazon/box-releases",
-    "version": "0.1.11-linux-preview.2",
-    "pythons": {
-      "PYTHON_3_14": {
-        "asset": "box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz",
-        "sha256": "1266d484cbdbfa9df53a0aa29efbc0a1063e0ace9945bca5489b5f828f68b54e"
-      }
-    }
   }
 }

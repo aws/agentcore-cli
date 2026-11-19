@@ -62,8 +62,6 @@ export async function stageBoxCodeZip(
       chmodSync(join(folder, binary), 0o755);
     }
     cpSync(build.resources, join(folder, "resources"), { recursive: true });
-    const ffi = entry.runtimeVersion ? build.ffi[entry.runtimeVersion] : undefined;
-    if (ffi) cpSync(ffi, join(folder, "ffi"), { recursive: true });
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     writeRenderedBoxFiles(project.rootPath, runtime, dist, filesOf(dist));
   }
