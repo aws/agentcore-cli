@@ -295,7 +295,8 @@ function runtimeProfile(name: RuntimeTemplateShortcutName, overrides: Record<str
   ) as Record<string, any>;
 }
 
-const RUNTIME_ROUTE = { secret: { ref: "aws://" } };
+/** box 0.1.11-linux-preview.2 refuses a bare `aws://`, so the Runtime signs with the `default` profile. */
+const RUNTIME_ROUTE = { secret: { ref: "aws://default" } };
 
 const IMAGE_PYTHON_FILESYSTEM = {
   read: ["${{ workspace }}", "/usr/local/lib", "/usr/lib/aarch64-linux-gnu"],
@@ -433,7 +434,7 @@ describe("renderRuntimeBoxProfile", () => {
         {
           url: "@GATEWAY_BOX_URL@/agentcore",
           auth: {
-            ref: "aws://",
+            ref: "aws://default",
             aws: { service: "bedrock-agentcore", region: "us-west-2" },
           },
         },

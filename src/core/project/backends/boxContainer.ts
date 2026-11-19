@@ -1,23 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { chmod, copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { InvalidEnvironmentError } from "../../../errors/errors";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { isFile } from "../runtimeBuild";
 import { renderRuntimeBoxProfile, runsBoxStartScript } from "../templates/boxProfile";
 
-/** The folder a box image's Dockerfile copies box from, in the image's build context. */
+/** The folder a box image's Dockerfile copies its box profile from, in the build context. */
 export const BOX_IMAGE_DIST = ".box-dist";
-
-/** box and the two helper programs it runs, which must sit beside it. */
-const BOX_BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"] as const;
-
-/**
- * The Linux arm64 build of box, under AGENTCORE_BOX_SOURCE. Built on Amazon
- * Linux 2023 (glibc 2.34), it also runs in the template's newer Debian image.
- */
-const LINUX_BUILD = join("target-al2023", "release");
 
 /** The folder a container runtime's image builds from. */
 export function containerBuildContext(projectRoot: string, runtime: ProjectRuntime): string {
@@ -35,49 +24,15 @@ export function imageCopiesBox(projectRoot: string, runtime: ProjectRuntime): bo
 }
 
 /**
- * Writes `<context>/.box-dist/` for a box image: box, its helpers, its packs,
- * and `profile`, the text of the profile the image runs. The folder is
- * rewritten each time.
- *
- * box comes from AGENTCORE_BOX_SOURCE, a staging-boxy checkout with a Linux
- * build in target-al2023/release, until box ships a Linux release.
+ * Writes `<context>/.box-dist/profile.toml` for a box image: `profile`, the
+ * text of the profile the image runs. The image's Dockerfile installs box
+ * itself, from the box release. The folder is rewritten each time.
  */
-export async function stageBoxImage(
-  context: string,
-  profileText: string,
-  env: NodeJS.ProcessEnv,
-  runtimeName: string,
-): Promise<void> {
-  const source = env.AGENTCORE_BOX_SOURCE;
-  if (!source) {
-    throw new InvalidEnvironmentError(
-      `runtime "${runtimeName}" runs its agent in a box, so its image needs box built for Linux. ` +
-        `Set AGENTCORE_BOX_SOURCE to the staging-boxy checkout that holds it in ${LINUX_BUILD}.`,
-    );
-  }
-  const binaries = join(source, LINUX_BUILD);
-  for (const binary of BOX_BINARIES) {
-    if (!isFile(join(binaries, binary))) {
-      throw new InvalidEnvironmentError(
-        `AGENTCORE_BOX_SOURCE has no ${join(binaries, binary)}. Build box on Amazon Linux 2023 ` +
-          `into ${LINUX_BUILD} there, then retry.`,
-      );
-    }
-  }
-  const resources = join(source, "resources");
-  if (!existsSync(resources)) {
-    throw new InvalidEnvironmentError(`AGENTCORE_BOX_SOURCE has no box packs at ${resources}.`);
-  }
-
+export function stageBoxImage(context: string, profileText: string): void {
   const dist = join(context, BOX_IMAGE_DIST);
-  await rm(dist, { recursive: true, force: true });
-  await mkdir(dist, { recursive: true });
-  for (const binary of BOX_BINARIES) {
-    await copyFile(join(binaries, binary), join(dist, binary));
-    await chmod(join(dist, binary), 0o755);
-  }
-  await cp(resources, join(dist, "resources"), { recursive: true });
-  await writeFile(join(dist, "profile.toml"), profileText);
+  rmSync(dist, { recursive: true, force: true });
+  mkdirSync(dist, { recursive: true });
+  writeFileSync(join(dist, "profile.toml"), profileText);
 }
 
 /**
@@ -85,19 +40,14 @@ export async function stageBoxImage(
  * Dockerfile copies `.box-dist/`, with the AgentCore Runtime profile rendered
  * from agentcore.json. Returns the names of the runtimes it staged.
  */
-export async function stageBoxContainers(
-  project: Project,
-  env: NodeJS.ProcessEnv,
-): Promise<string[]> {
+export function stageBoxContainers(project: Project): string[] {
   const runtimes = project.spec.runtimes.filter((runtime) =>
     imageCopiesBox(project.rootPath, runtime),
   );
   for (const runtime of runtimes) {
-    await stageBoxImage(
+    stageBoxImage(
       containerBuildContext(project.rootPath, runtime),
       renderRuntimeBoxProfile(project.spec, runtime),
-      env,
-      runtime.name,
     );
   }
   return runtimes.map((runtime) => runtime.name);

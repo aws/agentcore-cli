@@ -262,12 +262,7 @@ export class ContainerDevRunner implements DevRunner {
           "`agentcore create` wrote.",
       );
     }
-    await stageBoxImage(
-      context,
-      readFileSync(profile, "utf8"),
-      this.processEnv,
-      input.runtime.name,
-    );
+    stageBoxImage(context, readFileSync(profile, "utf8"));
     return true;
   }
 
