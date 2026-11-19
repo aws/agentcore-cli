@@ -119,6 +119,7 @@ function DeployConfirm({
           confirmTeardown: async () => teardown,
           transactionSearch: globalConfig?.transactionSearch,
           onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
+          disableDependencyManagement: globalConfig?.disableDependencyManagement,
         });
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command

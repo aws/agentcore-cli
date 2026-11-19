@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
-import { ProjectKey } from "../../../router";
+import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
@@ -22,12 +22,20 @@ export function BuildProjectScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(PROJECT_MENU)}
     >
-      {(project) => <BuildConfirm project={project} core={core} />}
+      {(project) => <BuildConfirm ctx={ctx} project={project} core={core} />}
     </ProjectGate>
   );
 }
 
-function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["core"] }) {
+function BuildConfirm({
+  ctx,
+  project,
+  core,
+}: {
+  ctx: Context;
+  project: Project;
+  core: ScreenProps["core"];
+}) {
   const navigate = useNavigate();
 
   // No confirmation: a build changes nothing outside the project directory.
@@ -39,7 +47,10 @@ function BuildConfirm({ project, core }: { project: Project; core: ScreenProps["
       isPending={false}
       error={null}
       action={async function* () {
-        yield* core.projectManager.build(project);
+        const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
+        yield* core.projectManager.build(project, {
+          disableDependencyManagement: globalConfig?.disableDependencyManagement,
+        });
         return { rows: {} };
       }}
       successTitle={builtMessage(project)}

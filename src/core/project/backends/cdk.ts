@@ -25,6 +25,8 @@ import {
 import { buildxDriverWarning, checkArm64Builder, selectBuildxBuilder } from "./cdk/arm64Builder";
 import { localImageBuilds } from "./cdk/localImages";
 import { resolveCdkDockerExecutable } from "../../dev/containerTool";
+import { syncCdkDependencies } from "./cdk/dependencies";
+import { defaultSource, type AssetSource } from "../source";
 import {
   createLineSplitter,
   FsReadWriteJson,
@@ -38,6 +40,7 @@ import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
+  BuildBackendInput,
   DeployBackendInput,
   ProjectBackend,
   ResolveDeployedResourcesBackendInput,
@@ -151,6 +154,8 @@ export type CdkBackendConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  /** Where the CDK package.json this CLI vends is read from, as the pins to sync to. */
+  source?: AssetSource;
   createCloudFormationClient?: CreateCloudFormationClient;
   /** Identity client used to provision the project's credential providers. */
   identity: CredentialProviderCalls;
@@ -192,6 +197,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly source: AssetSource;
   private readonly cdk: CdkRunner;
   private readonly resolveCredentials: CdkCredentialResolver;
   private readonly bootstrap: BootstrapProbe;
@@ -218,6 +224,7 @@ export class CdkBackend implements ProjectBackend {
       config.createCloudFormationClient ?? createCloudFormationClient;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.source = config.source ?? defaultSource();
     this.cdk = config.cdk ?? createCdkRunner(config.logger);
     this.resolveCredentials =
       config.resolveCredentials ?? createCdkCredentialResolver(config.logger);
@@ -247,7 +254,10 @@ export class CdkBackend implements ProjectBackend {
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
   // toolchain or dependencies fails without having provisioned credentials.
-  private async ensureCdkDependencies(project: Project): Promise<void> {
+  private async *ensureCdkDependencies(
+    project: Project,
+    input: BuildBackendInput & { lenient?: boolean },
+  ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -256,6 +266,14 @@ export class CdkBackend implements ProjectBackend {
       );
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    yield* syncCdkDependencies({
+      cdkDirectory: cdkDir,
+      vendedManifest: await this.source.read("cdk/package.json"),
+      runner: this.runner,
+      logger: this.logger,
+      disabled: input.disableDependencyManagement,
+      lenient: input.lenient,
+    });
   }
 
   private async *synthesize(
@@ -263,8 +281,6 @@ export class CdkBackend implements ProjectBackend {
     explainUndeployedCredentials: boolean,
     builds: WorkloadBuilds,
   ): AsyncGenerator<ProjectEvent, void> {
-    await this.ensureCdkDependencies(project);
-
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
       yield { type: "warning", message: compatibilityWarning };
@@ -302,7 +318,11 @@ export class CdkBackend implements ProjectBackend {
     }
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(
+    project: Project,
+    input: BuildBackendInput = {},
+  ): AsyncGenerator<ProjectEvent, void> {
+    yield* this.ensureCdkDependencies(project, input);
     const { builds, local } = resolveWorkloads(project);
     yield* this.synthesize(project, true, builds);
     yield* this.buildLocalImages(project, builds, local);
@@ -375,7 +395,12 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    await this.ensureCdkDependencies(project);
+    // A project that declares nothing is about to have its stack removed, and a
+    // dependency problem must not keep that from happening.
+    const declaresNothing = !Object.values(project.spec).some(
+      (value) => Array.isArray(value) && value.length > 0,
+    );
+    yield* this.ensureCdkDependencies(project, { ...input, lenient: declaresNothing });
     const { builds, local } = input.workloadBuilds
       ? { builds: input.workloadBuilds, local: input.localWorkloads ?? new Map() }
       : resolveWorkloads(project);

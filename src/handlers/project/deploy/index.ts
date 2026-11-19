@@ -136,6 +136,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         region: ctx.require(RegionKey),
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
+        disableDependencyManagement: globalConfig.disableDependencyManagement,
         skipBootstrap: flags["skip-bootstrap"],
         onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
       });

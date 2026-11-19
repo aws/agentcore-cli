@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
@@ -36,6 +36,7 @@ const OLD_PAYMENT_ARN =
   "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
   `token-vault/default/paymentcredentialprovider/${OLD_PAYMENT_PROVIDER}`;
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
+const VENDED_CDK_PACKAGE_JSON = join(import.meta.dir, "../../../assets/cdk/package.json");
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
 const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
@@ -572,6 +573,46 @@ describe("CdkBackend.build", () => {
       { type: "output", line: "line two" },
       { type: "output", line: "trailing partial" },
     ]);
+  });
+
+  test("syncs the project's CDK dependencies to the vended pins before synthesizing", async () => {
+    const input = await project();
+    const vended = JSON.parse(await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"));
+    const manifestPath = join(cdkDirectory(input), "package.json");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        ...vended,
+        dependencies: { ...vended.dependencies, "@aws/agentcore-cdk": "1.0.3", zod: "4.1.0" },
+      }),
+    );
+    const subject = harness();
+
+    const events = await collect(subject.backend.build(input));
+
+    const updated = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(updated.dependencies).toEqual({ ...vended.dependencies, zod: "4.1.0" });
+    expect(events[0]).toEqual({
+      type: "step",
+      message: `updating CDK dependencies: @aws/agentcore-cdk 1.0.3 -> ${vended.dependencies["@aws/agentcore-cdk"]}`,
+    });
+    expect(subject.commands).toEqual([
+      { command: ["npm", "install"], cwd: cdkDirectory(input) },
+      { command: synthCommand(input), cwd: cdkDirectory(input) },
+    ]);
+  });
+
+  test("leaves the CDK dependencies alone when dependency management is disabled", async () => {
+    const input = await project();
+    const manifest = JSON.stringify({ dependencies: { "@aws/agentcore-cdk": "1.0.3" } });
+    const manifestPath = join(cdkDirectory(input), "package.json");
+    await writeFile(manifestPath, manifest);
+    const subject = harness();
+
+    await collect(subject.backend.build(input, { disableDependencyManagement: true }));
+
+    expect(await readFile(manifestPath, "utf8")).toBe(manifest);
+    expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
   });
 
   test("fails actionably when CDK dependencies are missing", async () => {
@@ -1611,6 +1652,30 @@ describe("CdkBackend.deploy", () => {
 
     // A destroy must not be blocked by (or trigger) Transaction Search setup.
     expect(subject.transactionSearchRegions).toEqual([]);
+  });
+
+  test("does not block a teardown on a CDK pin newer than this CLI", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const vended = JSON.parse(await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"));
+    await writeFile(
+      join(cdkDirectory(input), "package.json"),
+      JSON.stringify({
+        ...vended,
+        dependencies: { ...vended.dependencies, "@aws/agentcore-cdk": "999.0.0" },
+      }),
+    );
+    const subject = harness();
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(deployed.events).toContainEqual({
+      type: "warning",
+      message: expect.stringContaining("@aws/agentcore-cdk 999.0.0"),
+    });
   });
 
   test("removes the stack when the teardown is confirmed", async () => {
