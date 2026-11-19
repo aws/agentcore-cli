@@ -33,6 +33,8 @@ import {
   type PolicyFileText,
 } from "./boxNetwork";
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
+import { profileKeyPlaces } from "./runtimeProfile/context";
+import type { TomlTable } from "./runtimeProfile/types";
 
 /** The policy of an agent that has no local box profile at `profilePath`. */
 const noPolicy = (profilePath: string): ParsedPolicy => ({
@@ -215,7 +217,12 @@ async function readResolvedPolicy(
       ? await resolver.resolve(projectRoot, profileFile)
       : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
-  const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
+  const source = profileSource(text, profileFile);
+  const policy = parseResolvedPolicy(
+    { ...profile.profile, places, ...(source && { source }) },
+    resolved.policy,
+    files.texts,
+  );
   return {
     parsed: policy.parsed,
     failures: [
@@ -226,6 +233,23 @@ async function readResolvedPolicy(
     ],
   };
 }
+
+/**
+ * The box profile `text` at `profileFile` as a TOML table, with where it sets each key, or
+ * `undefined` when it is not TOML; the profile parser stops build for that.
+ */
+function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
+  try {
+    return {
+      table: parseToml(text) as TomlTable,
+      places: profileKeyPlaces(text, profileFile),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+type ParsedProfileSource = NonNullable<ParsedPolicy["profile"]["source"]>;
 
 /** The text of the local box profile of `agentName`, or `undefined` when the agent has none. */
 function profileText(projectRoot: string, agentName: string): string | undefined {

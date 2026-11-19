@@ -95,6 +95,20 @@ describe("readBoxNetworks", () => {
     expect(network?.hosts.map(({ target }) => target)).toEqual(["egress-api"]);
   });
 
+  test("derives the runtime's AgentCore Runtime profile from the text of its own local profile", async () => {
+    const root = await project([]);
+    await writeFile(
+      join(root, ...LOCAL, "profile.toml"),
+      '[limits]\nshell = { timeout = 30 }\n\n[project]\naccess = "read"\n',
+    );
+
+    const [network] = await readBoxNetworks(SPEC, root, new FakeBoxProfileResolver());
+
+    // A key that no rule of the derivation changes reaches the Runtime profile as it is.
+    expect(network?.runtimeProfile?.limits).toEqual({ shell: { timeout: 30 } });
+    expect(network?.runtimeProfile?.project).toEqual({ access: "read" });
+  });
+
   test("finds each runtime's Box gateway by boundRuntime, whatever its name", async () => {
     const root = await project([]);
     const spec = {

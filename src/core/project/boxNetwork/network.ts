@@ -23,6 +23,9 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
+import { runtimeProfileContext } from "../runtimeProfile/context";
+import { deriveRuntimeProfile } from "../runtimeProfile/derive";
+import type { TomlTable } from "../runtimeProfile/types";
 import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import {
@@ -118,6 +121,12 @@ export interface BoxNetwork {
   /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
   readonly telemetry?: readonly CloudWatchTelemetry[];
   /**
+   * The AgentCore Runtime profile that build derives from the local profile (`deriveRuntimeProfile`
+   * in runtimeProfile/derive.ts); absent when build has no profile text. The runtime profile writer
+   * still writes `renderRuntimeBoxProfile` until each rule of the derivation is in place.
+   */
+  readonly runtimeProfile?: TomlTable;
+  /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
    */
@@ -184,6 +193,26 @@ export function buildBoxNetwork(
   const telemetry =
     parsed.profile.telemetry &&
     withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
+  const source = parsed.profile.source;
+  const derived =
+    source &&
+    deriveRuntimeProfile(
+      source.table,
+      runtimeProfileContext({
+        spec: project.spec,
+        runtime: project.runtime,
+        profileFile: parsed.profile.path,
+        region: project.region,
+        gateway: { name: project.gateway, targets: project.targets },
+        hosts: targets.hosts,
+        telemetry: telemetry?.telemetry ?? [],
+        policyFiles: parsed.profile.policyFiles,
+        places: source.places,
+      }),
+    );
+  failures.push(
+    ...(derived?.problems ?? []).map(({ code, reason, place }) => ({ code, reason, place })),
+  );
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -192,6 +221,7 @@ export function buildBoxNetwork(
     envRoutes: envRoutesOf(targets.hosts),
     policyFiles: parsed.profile.policyFiles,
     ...(telemetry && { telemetry: telemetry.telemetry }),
+    ...(derived && { runtimeProfile: derived.profile }),
     grantedActions: project.grantedActions,
     warnings: [
       ...hostWarnings(targets.hosts),
@@ -203,6 +233,7 @@ export function buildBoxNetwork(
         );
       }),
       ...(telemetry?.warnings ?? []),
+      ...(derived?.warnings ?? []),
     ],
     failures,
   };
