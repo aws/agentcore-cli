@@ -522,10 +522,9 @@ export const AgentCoreGatewaySchema = z
     additionalPolicies: z.array(z.string().min(1)).optional(),
     /**
      * Deliver the gateway's `APPLICATION_LOGS` to the CloudWatch Logs group
-     * `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. Defaults to true
-     * for a gateway with `boundRuntime` and to false for every other gateway. It has no schema
-     * default, because the default depends on `boundRuntime` and the CLI writes the parsed spec
-     * back to agentcore.json.
+     * `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. Defaults to false
+     * for every gateway, because the logs can hold the request and response bodies of its MCP
+     * operations.
      */
     enableApplicationLogs: z.boolean().optional(),
     /**

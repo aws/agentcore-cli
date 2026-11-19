@@ -183,6 +183,7 @@ describe("agentcore create", () => {
       protocolType: "None",
       boundRuntime: "my_agent",
       discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+      enableApplicationLogs: true,
       targets: [],
     });
   });

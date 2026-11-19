@@ -201,6 +201,7 @@ async function boxGateway(root: string) {
   const spec = JSON.parse(await text(root, SPEC));
   return spec.agentCoreGateways.find(({ name }: { name: string }) => name === GATEWAY) as {
     targets: Record<string, unknown>[];
+    enableApplicationLogs?: boolean;
   };
 }
 
@@ -299,6 +300,30 @@ describe("build writes the Box network of the box profile", () => {
     expect(await targetNames(root)).toContain("egress-github");
     // The Box gateway gets only the fields build changed.
     expect(Object.keys(await boxGateway(root))).not.toContain("enableSemanticSearch");
+  });
+
+  test("keeps the enableApplicationLogs of the Box gateway as the user wrote it", async () => {
+    const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    expect((await boxGateway(root)).enableApplicationLogs).toBe(true);
+
+    await editGateway(root, (gateway) => Object.assign(gateway, { enableApplicationLogs: false }));
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-github");
+    expect((await boxGateway(root)).enableApplicationLogs).toBe(false);
+
+    // Without the field the gateway sends no logs, and a build that changes the targets does not
+    // add the field back.
+    await editGateway(root, (gateway) => {
+      delete (gateway as { enableApplicationLogs?: boolean }).enableApplicationLogs;
+    });
+    const profile = await text(root, PROFILE);
+    await writeFile(path(root, PROFILE), profile.replace(GITHUB_ROUTE, ""));
+    box.answer = shows();
+    await build(manager, root);
+    expect(await targetNames(root)).not.toContain("egress-github");
+    expect("enableApplicationLogs" in (await boxGateway(root))).toBe(false);
   });
 
   test("writes no target for an env:// route whose key build cannot find, and says what to set", async () => {

@@ -47,8 +47,9 @@ export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
 /**
  * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
- * variable prefix, `AWS_IAM` auth and `protocolType: "None"`. The CDK library binds it from
- * `boundRuntime` and `discoveryPrefix`.
+ * variable prefix, `AWS_IAM` auth, `protocolType: "None"` and its `APPLICATION_LOGS` on. The CDK
+ * library binds it from `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a
+ * user's `enableApplicationLogs: false` stays.
  */
 export const boxGatewaySpec = (runtimeName: string) => ({
   name: boxGatewayName(runtimeName),
@@ -56,6 +57,7 @@ export const boxGatewaySpec = (runtimeName: string) => ({
   protocolType: "None" as const,
   boundRuntime: runtimeName,
   discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
+  enableApplicationLogs: true,
   targets: [],
 });
 /**
