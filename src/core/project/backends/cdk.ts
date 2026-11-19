@@ -26,6 +26,7 @@ import { buildxDriverWarning, checkArm64Builder, selectBuildxBuilder } from "./c
 import { localImageBuilds } from "./cdk/localImages";
 import { resolveCdkDockerExecutable } from "../../dev/containerTool";
 import { syncCdkDependencies } from "./cdk/dependencies";
+import { declaresNothingDeployable } from "../spec";
 import { defaultSource, type AssetSource } from "../source";
 import {
   createLineSplitter,
@@ -402,10 +403,10 @@ export class CdkBackend implements ProjectBackend {
     // provisioned or the stack ARN unrecorded.
     // A project that declares nothing is about to have its stack removed, and a
     // dependency problem must not keep that from happening.
-    const declaresNothing = !Object.values(project.spec).some(
-      (value) => Array.isArray(value) && value.length > 0,
-    );
-    yield* this.ensureCdkDependencies(project, { ...input, lenient: declaresNothing });
+    yield* this.ensureCdkDependencies(project, {
+      ...input,
+      lenient: declaresNothingDeployable(project),
+    });
     const { builds, local } = input.workloadBuilds
       ? { builds: input.workloadBuilds, local: input.localWorkloads ?? new Map() }
       : resolveWorkloads(project);

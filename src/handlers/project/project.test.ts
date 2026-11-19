@@ -1142,7 +1142,7 @@ describe("project build", () => {
     const { core } = await run(["build"]);
 
     expect(core.projectCommands[0]).toEqual({
-      command: ["npm", "install"],
+      command: ["npm", "install", "--no-audit", "--no-fund"],
       cwd: join(projectRoot, "agentcore", "cdk"),
     });
   });

@@ -169,7 +169,7 @@ describe("syncCdkDependencies", () => {
       zod: "4.1.0",
     });
     expect(manifest.name).toBe("agentcore-cdk-app");
-    expect(commands).toEqual([["npm", "install"]]);
+    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
     expect(events).toContainEqual({
       type: "step",
       message: "updating CDK dependencies: @aws/agentcore-cdk 1.0.3 -> 1.1.0",
@@ -191,7 +191,7 @@ describe("syncCdkDependencies", () => {
     const { commands, events, manifest } = await run(directory);
 
     expect(manifest).toEqual(VENDED);
-    expect(commands).toEqual([["npm", "install"]]);
+    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
     expect(events).toEqual([
       { type: "step", message: "installing CDK dependencies (node_modules missing)" },
     ]);
@@ -285,8 +285,38 @@ describe("syncCdkDependencies", () => {
 
     expect(manifest.dependencies["aws-cdk-lib"]).toBe("~2.269.0");
     expect(manifest.dependencies["@aws/agentcore-cdk"]).toBe("1.2.0");
-    expect(commands).toEqual([["npm", "install"]]);
+    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
     expect(events[0]?.type).toBe("warning");
+  });
+
+  test("warns when package.json cannot be restored after npm install fails", async () => {
+    const directory = await cdkDirectoryWith({
+      ...VENDED,
+      dependencies: { ...VENDED.dependencies, "aws-cdk-lib": "^2.1.0" },
+    });
+    const manifestPath = join(directory, "package.json");
+    const events: ProjectEvent[] = [];
+    const sync = syncCdkDependencies({
+      cdkDirectory: directory,
+      vendedManifest: JSON.stringify(VENDED),
+      runner: async () => {
+        // A directory in its place makes the restore fail.
+        await rm(manifestPath);
+        await mkdir(manifestPath);
+        throw new ProcessFailedError(["npm", "install"], directory, 1, "E404");
+      },
+      logger: createSilentLogger(),
+    });
+
+    await expect(
+      (async () => {
+        for await (const event of sync) events.push(event);
+      })(),
+    ).rejects.toThrow(/npm install failed in .*E404/s);
+    expect(events).toContainEqual({
+      type: "warning",
+      message: expect.stringContaining("could not restore agentcore/cdk/package.json: "),
+    });
   });
 
   test("restores package.json when npm install fails, so the next run retries", async () => {

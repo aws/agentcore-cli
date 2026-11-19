@@ -98,6 +98,8 @@ type TestDeployOptions = {
   resolveAccount?: (region: string) => Promise<string>;
   /** Seeds the global config's transactionSearch flag (defaults to on). */
   transactionSearch?: boolean;
+  /** Seeds the global config's disableDependencyManagement flag (defaults to off). */
+  disableDependencyManagement?: boolean;
   runV0Deploy?: V0DeployRunner;
 };
 
@@ -114,12 +116,15 @@ async function testDeployCommand(
   });
   const logger = createSilentLogger();
   const globalConfigAccessor = new TestGlobalConfigAccessor(
-    options.transactionSearch === undefined
+    options.transactionSearch === undefined && options.disableDependencyManagement === undefined
       ? undefined
       : {
           initialConfigData: {
             ...DEFAULT_GLOBAL_CONFIG,
-            transactionSearch: options.transactionSearch,
+            transactionSearch: options.transactionSearch ?? DEFAULT_GLOBAL_CONFIG.transactionSearch,
+            disableDependencyManagement:
+              options.disableDependencyManagement ??
+              DEFAULT_GLOBAL_CONFIG.disableDependencyManagement,
           },
         },
   );
@@ -529,6 +534,20 @@ describe("project deploy handler", () => {
     await inProjectWithTargets();
     await disabled.run();
     expect(disabled.calls[0]?.input.transactionSearch).toBe(false);
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the deploy", async () => {
+    const managed = await testDeployCommand({ outputs: {} });
+    await inProjectWithTargets();
+    await managed.run();
+    expect(managed.calls[0]?.input.disableDependencyManagement).toBe(false);
+
+    const optedOut = await testDeployCommand({ outputs: {} }, [], {
+      disableDependencyManagement: true,
+    });
+    await inProjectWithTargets();
+    await optedOut.run();
+    expect(optedOut.calls[0]?.input.disableDependencyManagement).toBe(true);
   });
 
   test("passes --skip-bootstrap into the deploy", async () => {

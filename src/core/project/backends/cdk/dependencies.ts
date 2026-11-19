@@ -15,9 +15,9 @@ type Manifest = Partial<Record<Section, Record<string, string>>> & Record<string
 type Specifier = { kind: "exact" | "tilde" | "caret"; version: semver.SemVer };
 
 /** A managed dependency whose declared specifier is rewritten to the one this CLI vends. */
-export type DependencyChange = { name: string; section: Section; from?: string; to: string };
+type DependencyChange = { name: string; section: Section; from?: string; to: string };
 
-export type DependencyPlan = {
+type DependencyPlan = {
   changes: DependencyChange[];
   /** Managed dependencies the project declares newer than this CLI was released with. */
   newer: { name: string; declared: string; expected: string }[];
@@ -127,7 +127,7 @@ export function newerPinMessage(newer: DependencyPlan["newer"], vended: Manifest
   return messages.join("\n");
 }
 
-export type SyncCdkDependenciesInput = {
+type SyncCdkDependenciesInput = {
   cdkDirectory: string;
   /** Text of the CDK package.json this CLI vends at create. */
   vendedManifest: string;
@@ -142,7 +142,7 @@ export type SyncCdkDependenciesInput = {
 /**
  * Brings the project's managed CDK dependencies to the versions this CLI release vends.
  *
- * `create` is the only other writer of agentcore/cdk/package.json, so without this a
+ * Otherwise only `create` and `migrate` write agentcore/cdk/package.json, so without this a
  * project keeps the L3 library it was created with across CLI upgrades, and any field
  * the newer CLI writes to agentcore.json that the old library does not know is dropped
  * at synth without an error.
@@ -203,7 +203,7 @@ export async function* syncCdkDependencies(
     yield* withOutputEvents((emit) => {
       const lines = createLineSplitter(emit);
       return input
-        .runner(["npm", "install"], {
+        .runner(["npm", "install", "--no-audit", "--no-fund"], {
           cwd: input.cdkDirectory,
           onOutput: (chunk) => {
             input.logger.debug(chunk);
@@ -215,7 +215,16 @@ export async function* syncCdkDependencies(
   } catch (error) {
     // Restored so the next run plans the same changes and retries the install, instead of
     // seeing pins that already match and synthesizing against the stale node_modules.
-    if (plan.changes.length > 0) await writeFile(manifestPath, raw).catch(() => undefined);
+    if (plan.changes.length > 0) {
+      try {
+        await writeFile(manifestPath, raw);
+      } catch (restoreError) {
+        yield {
+          type: "warning",
+          message: `could not restore agentcore/cdk/package.json: ${(restoreError as Error).message}`,
+        };
+      }
+    }
     const message =
       `npm install failed in ${input.cdkDirectory}, so the CDK dependencies could not be ` +
       `installed: ${(error as Error).message}`;

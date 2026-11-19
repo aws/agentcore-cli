@@ -10,8 +10,8 @@ import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
+import { declaresNothingDeployable } from "../../../core/project/spec";
 import {
-  declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
   recordBuildTypeCounts,
