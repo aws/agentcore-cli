@@ -17,8 +17,8 @@ export function boxTelemetryPolicyFile(runtimeName: string): string {
 /**
  * The IAM policy document for {@link boxTelemetryPolicyFile}, or undefined when no target sends
  * to CloudWatch. Build has no account, so each log stream ARN matches any account. CloudWatch Logs
- * takes OTLP records only into a group and a stream that exist, and X-Ray's `PutSpans` has no
- * resource type.
+ * takes OTLP records only into a group and a stream that exist. X-Ray's OTLP traces endpoint is
+ * authorized as `PutTraceSegments`, beside `PutSpans`, and neither has a resource type.
  */
 export function boxTelemetryPolicy(
   telemetry: readonly CloudWatchTelemetry[],
@@ -48,7 +48,14 @@ export function boxTelemetryPolicy(
         ]
       : []),
     ...(traces
-      ? [{ Sid: "BoxTelemetryToXRay", Effect: "Allow", Action: ["xray:PutSpans"], Resource: "*" }]
+      ? [
+          {
+            Sid: "BoxTelemetryToXRay",
+            Effect: "Allow",
+            Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+            Resource: "*",
+          },
+        ]
       : []),
   ];
   return statements.length > 0 ? { Version: "2012-10-17", Statement: statements } : undefined;

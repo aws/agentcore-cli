@@ -30,7 +30,7 @@ const LOGS_STATEMENT = {
 const TRACES_STATEMENT = {
   Sid: "BoxTelemetryToXRay",
   Effect: "Allow",
-  Action: ["xray:PutSpans"],
+  Action: ["xray:PutSpans", "xray:PutTraceSegments"],
   Resource: "*",
 };
 
