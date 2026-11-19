@@ -628,6 +628,24 @@ async function runUi(subject: ReturnType<typeof harness>, args: readonly string[
 }
 
 describe("project dev Inspector UI mode", () => {
+  test("leaves the box's agent port to the box when a CodeZip runtime runs in one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-dev-box-ui-"));
+    try {
+      await mkdir(join(root, ".box"));
+      await writeFile(join(root, ".box", "profile.toml"), "");
+      const subject = harness({ project: { ...project(runtime("search")), rootPath: root } });
+
+      const { pending } = await runUi(subject);
+
+      expect(subject.ui.starts).toEqual([{ port: 8082 }]);
+
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("starts the Inspector, prints the URL, and opens the browser on a TTY", async () => {
     const subject = harness({ tty: true });
     const { pending } = await runUi(subject);

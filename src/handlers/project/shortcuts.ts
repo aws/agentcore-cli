@@ -6,6 +6,7 @@ import {
   type Memory,
 } from "../../projectSchemas/memory";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
@@ -29,8 +30,35 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 /**
  * The Bedrock region of the box profile `agentcore create` writes when the
  * caller passes no region. Both create paths pass the region they resolved.
+ * For now it is also the region of the Box gateway's AgentCore target.
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+
+/**
+ * The name of the Box gateway's AgentCore target, which build and deploy add
+ * for a boxed agent's default Memory; also the name of the box route to it.
+ */
+export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
+
+/** The AgentCore data-plane host that the Box gateway's AgentCore target fronts. */
+export const BOX_GATEWAY_AGENTCORE_HOST = `bedrock-agentcore.${DEFAULT_EGRESS_BEDROCK_REGION}.amazonaws.com`;
+
+/**
+ * The Box gateway's passthrough target for the AgentCore data plane (Memory),
+ * signed with the gateway's role.
+ */
+export function getBoxGatewayAgentCoreTargetSpec(): AgentCoreGatewayTarget {
+  return {
+    name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: { endpoint: `https://${BOX_GATEWAY_AGENTCORE_HOST}`, protocolType: "CUSTOM" },
+    outboundAuth: {
+      type: "GATEWAY_IAM_ROLE",
+      service: "bedrock-agentcore",
+      region: DEFAULT_EGRESS_BEDROCK_REGION,
+    },
+  };
+}
 
 /**
  * Whether the scaffolded agent calls Bedrock for its model: the Bedrock

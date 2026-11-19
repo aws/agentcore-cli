@@ -495,16 +495,19 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const path = join(created.rootPath, "agentcore", "agentcore.json");
     const onDisk = (await Bun.file(path).json()) as {
       runtimes: { name: string }[];
-      agentCoreGateways?: unknown[];
+      agentCoreGateways?: { boundRuntime?: string }[];
     };
+    const gateways = onDisk.agentCoreGateways ?? [];
     await Bun.write(
       path,
       JSON.stringify({
         ...onDisk,
         projectType: "box",
         agentCoreGateways: [
-          ...(onDisk.agentCoreGateways ?? []),
-          ...onDisk.runtimes.map(({ name }) => boxGatewaySpec(name)),
+          ...gateways,
+          ...onDisk.runtimes
+            .filter(({ name }) => !gateways.some(({ boundRuntime }) => boundRuntime === name))
+            .map(({ name }) => boxGatewaySpec(name)),
         ],
       }),
     );
