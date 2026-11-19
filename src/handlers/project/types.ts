@@ -26,7 +26,7 @@ import { RuntimeTemplateProfileSchema } from "./templateProfile";
 export const CONTAINMENT_LEVELS = ["sandboxed", "private-vpc"] as const;
 export type ContainmentLevel = (typeof CONTAINMENT_LEVELS)[number];
 export const PRIVATE_VPC_COST =
-  "from about $58/month while deployed, about $88 for a container runtime · uses 1 of the account's VPCs (default 5 per region)";
+  "about $58/month while deployed for CodeZip, $88 for a container, more with 3 AZs · the VPC is kept after the stack is deleted and counts toward the account's VPC quota until you delete it";
 export const PRIVATE_VPC_NOTE = `containment: private VPC with no internet path · ${PRIVATE_VPC_COST}`;
 
 type CreateProjectInputBase = {

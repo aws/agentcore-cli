@@ -49,6 +49,7 @@ import {
   type DeployedCredentials,
 } from "./cdk/credentials";
 import {
+  assertPrivateVpcs,
   countDeployableResources,
   stackArtifactForTarget,
   synthCommand,
@@ -355,6 +356,14 @@ export class CdkBackend implements ProjectBackend {
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
       return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
     }
+    await assertPrivateVpcs(
+      this.json,
+      assemblyDirectory,
+      artifact,
+      project.spec.runtimes
+        .filter((runtime) => runtime.containment === "PRIVATE_VPC")
+        .map((runtime) => runtime.name),
+    );
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
     // above, so a destroy is never blocked by Transaction Search. Never fail the
