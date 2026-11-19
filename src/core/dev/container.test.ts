@@ -847,8 +847,12 @@ describe("ContainerDevRunner", () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { calls, runner } = harness({ processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
+      expect(events).toContainEqual({
+        type: "status",
+        message: `Staged box for the image in ${join(context, ".box-dist")}`,
+      });
       // Without build secrets the build is unchanged.
       expect(commandCall(calls, "build").command).toEqual([
         "docker",
@@ -971,10 +975,13 @@ describe("ContainerDevRunner", () => {
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
-      await collect(runner.run(input(root, projectRuntime)));
+      const events = await collect(runner.run(input(root, projectRuntime)));
 
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
+      expect(
+        events.some((event) => event.type === "status" && event.message.startsWith("Staged box")),
+      ).toBe(false);
     });
 
     test.each([
