@@ -8,6 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderRuntimeBoxProfile } from "../templates/boxProfile";
 import { stageBoxContainers } from "./boxContainer";
+import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 const directories: string[] = [];
 
@@ -50,36 +51,58 @@ async function project(dockerfile: string): Promise<Project> {
 }
 
 const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
+/** What build and deploy stage beside the Dockerfile. */
+const STAGED = ["box-release.env", "profile.toml"];
+
+/** The release getter build and deploy pass, which records the version each runtime asks for. */
+function releaseOf() {
+  const versions: (string | undefined)[] = [];
+  const releaseFor = async (version: string | undefined): Promise<BoxRelease> => {
+    versions.push(version);
+    return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
+  };
+  return { releaseFor, versions };
+}
 
 describe("stageBoxContainers", () => {
-  test("stages only the Runtime profile into the build context; the image installs box", async () => {
+  test("stages the box release of the runtime's box.version, and the Runtime profile, into the build context", async () => {
     const demo = await project(BOX_DOCKERFILE);
+    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
+    const { releaseFor, versions } = releaseOf();
 
-    expect(stageBoxContainers(demo, [])).toEqual(["agent"]);
+    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual(["agent"]);
 
+    expect(versions).toEqual(["2.0.0"]);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     // The Runtime profile is rendered from agentcore.json.
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
       renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
     );
-    expect(await readdir(dist)).toEqual(["profile.toml"]);
+    expect((await readdir(dist)).sort()).toEqual(STAGED);
+    expect(await readFile(join(dist, "box-release.env"), "utf8")).toBe(
+      `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
+        `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
+    );
   });
 
   test("replaces what an earlier build staged", async () => {
     const demo = await project(BOX_DOCKERFILE);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    await mkdir(join(dist, "resources"), { recursive: true });
+    await mkdir(join(dist), { recursive: true });
     await writeFile(join(dist, "box"), "old");
+    await writeFile(join(dist, "stale.dw"), "old");
 
-    stageBoxContainers(demo, []);
+    await stageBoxContainers(demo, [], releaseOf().releaseFor);
 
-    expect(await readdir(dist)).toEqual(["profile.toml"]);
+    expect((await readdir(dist)).sort()).toEqual(STAGED);
   });
 
   test("stages nothing for an image that does not copy .box-dist/", async () => {
     const demo = await project("FROM scratch\n");
 
-    expect(stageBoxContainers(demo, [])).toEqual([]);
+    const { releaseFor, versions } = releaseOf();
+    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual([]);
+    expect(versions).toEqual([]);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 
@@ -89,10 +112,10 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
 
-    stageBoxContainers(demo, [model(["policy.dw"])]);
+    await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    expect((await readdir(dist)).sort()).toEqual(["policy.dw", "profile.toml"]);
+    expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED].sort());
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
   });
 
@@ -101,9 +124,9 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
 
-    expect(() => stageBoxContainers(demo, [model(["policy.dw"])])).toThrow(
-      "does not copy .box-dist/ whole into the image",
-    );
+    await expect(
+      stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),
+    ).rejects.toThrow("does not copy .box-dist/ whole into the image");
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 });
@@ -121,6 +144,7 @@ function model(policyFiles: string[]): BoxNetwork {
   return {
     runtime: "agent",
     gateway: "agent-box-egress",
+    region: "us-west-2",
     hosts: [],
     envRoutes: [],
     policyFiles,

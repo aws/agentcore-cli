@@ -28,11 +28,30 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 }
 
 /**
- * The Bedrock region of the box profile `agentcore create` writes when the
- * caller passes no region. Both create paths pass the region they resolved.
- * For now it is also the region of the Box gateway's AgentCore target.
+ * The Bedrock region of the box profile `agentcore create` writes when the caller passes no
+ * region. Both create paths pass the region they resolved. Build and deploy write the Box
+ * gateway's `bedrock` and `agentcore` targets, and the AgentCore Runtime profile, for the region
+ * they build for instead (see `boxBuildRegion`).
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+
+/** The name of the Box gateway's Bedrock model target, which build and deploy add. */
+export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
+
+/** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
+export function getBoxGatewayBedrockTargetSpec(
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): AgentCoreGatewayTarget {
+  return {
+    name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: {
+      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
+      protocolType: "CUSTOM",
+    },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+  };
+}
 
 /**
  * The name of the Box gateway's AgentCore target, which build and deploy add
@@ -40,23 +59,23 @@ export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
  */
 export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
 
-/** The AgentCore data-plane host that the Box gateway's AgentCore target fronts. */
-export const BOX_GATEWAY_AGENTCORE_HOST = `bedrock-agentcore.${DEFAULT_EGRESS_BEDROCK_REGION}.amazonaws.com`;
+/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
+export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
+  return `bedrock-agentcore.${region}.amazonaws.com`;
+}
 
 /**
  * The Box gateway's passthrough target for the AgentCore data plane (Memory),
  * signed with the gateway's role.
  */
-export function getBoxGatewayAgentCoreTargetSpec(): AgentCoreGatewayTarget {
+export function getBoxGatewayAgentCoreTargetSpec(
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): AgentCoreGatewayTarget {
   return {
     name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
     targetType: "passthrough",
-    passthrough: { endpoint: `https://${BOX_GATEWAY_AGENTCORE_HOST}`, protocolType: "CUSTOM" },
-    outboundAuth: {
-      type: "GATEWAY_IAM_ROLE",
-      service: "bedrock-agentcore",
-      region: DEFAULT_EGRESS_BEDROCK_REGION,
-    },
+    passthrough: { endpoint: `https://${boxGatewayAgentCoreHost(region)}`, protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
   };
 }
 

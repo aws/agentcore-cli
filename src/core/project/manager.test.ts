@@ -48,8 +48,10 @@ import {
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
+import { MissingToolError } from "../../io/exec";
 import { FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -348,6 +350,7 @@ describe("FsProjectManager.create", () => {
       {
         name: "agent_python_minimal",
         build: "CodeZip",
+        box: { version: BOX_RELEASE.version },
         entrypoint: "start.py",
         codeLocation: "app/agent_python_minimal",
         runtimeVersion: "PYTHON_3_14",
@@ -380,7 +383,7 @@ describe("FsProjectManager.create", () => {
     expect(spec.projectType).toBe("box");
   });
 
-  test("scaffolds a container image that installs box from the pinned box release", async () => {
+  test("scaffolds a container image that runs the box dev, build and deploy stage", async () => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
@@ -390,14 +393,14 @@ describe("FsProjectManager.create", () => {
     const appDir = join(directory, "example", "app", "agent_python_strands_container");
     expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(true);
     const dockerfile = await Bun.file(join(appDir, "Dockerfile")).text();
-    expect(dockerfile).toContain(`ARG BOX_REPO=${BOX_RELEASE.repo}`);
-    expect(dockerfile).toContain(`ARG BOX_VERSION=${BOX_RELEASE.version}`);
-    expect(dockerfile).toContain(`ARG BOX_SHA256=${BOX_RELEASE.box.sha256}`);
+    // The image downloads the release that box-release.env names, staged from the runtime's
+    // box.version; dev names its own .box-dev/ with BOX_DIST.
+    expect(dockerfile).toContain("ARG BOX_DIST=.box-dist\nCOPY ${BOX_DIST}/box-release.env");
+    expect(dockerfile).toContain("COPY ${BOX_DIST}/ /opt/box/");
+    expect(dockerfile).toContain("sha256sum -c");
     expect(dockerfile).not.toContain("--mount=type=secret");
-    // The download is checked against the pinned SHA-256 before it is unpacked.
-    expect(dockerfile).toContain('echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c -');
-    // The release is public, so the build needs no token.
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].box).toEqual({ version: BOX_RELEASE.version });
     expect(spec.runtimes[0].customDockerBuildArgs).toBeUndefined();
   });
 
@@ -542,7 +545,8 @@ describe("FsProjectManager.create", () => {
       name: "python",
       scaffoldRuntimeInput: AGENT_PYTHON,
     });
-    expect(python.checkedTools).toEqual(["npm", "uv", "git", "uv"]);
+    // A Python CodeZip template makes a Box project, whose dev runs the box on PATH.
+    expect(python.checkedTools).toEqual(["npm", "uv", "box", "git", "uv"]);
 
     const typescript = manager();
     await runCreate(typescript.manager, {
@@ -583,6 +587,51 @@ describe("FsProjectManager.create", () => {
     });
   });
 
+  test("checks for box only for a CodeZip Box template, whose dev runs the box on PATH", async () => {
+    await inTempDirectory();
+
+    const codeZip = manager();
+    await runCreate(codeZip.manager, {
+      name: "codezip",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+    });
+    expect(codeZip.checkedTools).toEqual(["npm", "uv", "box", "git", "uv"]);
+
+    // The container image downloads its own box.
+    const container = manager();
+    await runCreate(container.manager, {
+      name: "container",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
+    });
+    expect(container.checkedTools).not.toContain("box");
+
+    const skipInstall = manager();
+    await runCreate(skipInstall.manager, {
+      name: "skipped",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
+      skipInstall: true,
+    });
+    expect(skipInstall.checkedTools).toEqual(["git"]);
+  });
+
+  test("fails before writing files when box is not on PATH, with the install hint", async () => {
+    const directory = await inTempDirectory();
+    const subject = new FsProjectManager({
+      logger: createSilentLogger(),
+      identity: new TestIdentityClient(),
+      enableTransactionSearch: async () => {},
+      runner: async () => {},
+      checkTool: async (tool, installHint) => {
+        if (tool === "box") throw new MissingToolError(tool, installHint);
+      },
+    });
+
+    await expect(
+      runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON_STRANDS }),
+    ).rejects.toThrow(`'box' was not found on your PATH. ${BOX_INSTALL_HINT}`);
+    expect(existsSync(join(directory, "example"))).toBe(false);
+  });
+
   test("defers template-managed local dependency setup", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands, checkedTools } = manager();
@@ -600,7 +649,7 @@ describe("FsProjectManager.create", () => {
       },
       { command: ["git", "init"], cwd: join(directory, "example") },
     ]);
-    expect(checkedTools).toEqual(["npm", "git"]);
+    expect(checkedTools).toEqual(["npm", "box", "git"]);
   });
 
   test("skipInstall skips npm install and uv sync", async () => {
@@ -668,7 +717,7 @@ describe("FsProjectManager.create", () => {
     });
 
     expect(commands.map(({ command }) => command[0])).toEqual(["npm", "uv"]);
-    expect(checkedTools).toEqual(["npm", "uv", "uv"]);
+    expect(checkedTools).toEqual(["npm", "uv", "box", "uv"]);
   });
 
   test("yields each step as a project event", async () => {
@@ -1913,16 +1962,12 @@ describe("chinaModelProviderRestriction", () => {
 });
 
 describe("FsProjectManager.build", () => {
-  /** A staging-boxy checkout: the scaffolded runtime starts in a box, so build stages box. */
-  async function boxSource(): Promise<NodeJS.ProcessEnv> {
-    const source = await mkdtemp(join(tmpdir(), "agentcore-box-source-"));
-    tempDirectories.push(source);
-    await mkdir(join(source, "target-al2023", "release"), { recursive: true });
-    for (const binary of ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"]) {
-      await writeFile(join(source, "target-al2023", "release", binary), `#!${binary}\n`);
-    }
-    await mkdir(join(source, "resources"), { recursive: true });
-    return { AGENTCORE_BOX_SOURCE: source };
+  /** A home whose box cache holds the pinned release: the scaffolded runtime starts in a box. */
+  async function boxHome(): Promise<NodeJS.ProcessEnv> {
+    const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
+    tempDirectories.push(home);
+    await seedBoxCache(home);
+    return { HOME: home };
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
@@ -1954,7 +1999,7 @@ describe("FsProjectManager.build", () => {
 
   test("compiles and synthesizes via the generated cdk script", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager(await boxSource());
+    const { manager: subject, commands } = manager(await boxHome());
     const project = await scaffolded(subject, directory);
     commands.length = 0; // discard create()'s commands
 
@@ -1975,14 +2020,34 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    expect(events).toEqual([{ type: "step", message: "synthesizing CloudFormation templates" }]);
+    // Build adds the Bedrock target, and grants the Box gateway's role Bedrock, since the gateway
+    // signs the model calls with that role.
+    expect(events).toEqual([
+      {
+        type: "step",
+        message:
+          "adding target 'bedrock' to gateway 'agent-python-minimal-box-egress' in agentcore.json, for the boxed agent's model calls",
+      },
+      {
+        type: "step",
+        message:
+          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-minimal-box-egress' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
+      },
+      { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
+      {
+        type: "warning",
+        message:
+          "Target 'bedrock' calls bedrock with the gateway's role, which has no bedrock permissions. Add an IAM policy file to additionalPolicies of the 'agent-python-minimal-box-egress' gateway.",
+      },
+      { type: "step", message: "synthesizing CloudFormation templates" },
+    ]);
     // The zip carries box and the Runtime profile, staged before synth packages the code.
     const dist = join(directory, "example", "app", "agent_python_minimal", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
     expect(existsSync(join(dist, "profile.toml"))).toBe(true);
   });
 
-  test("downloads box from the public box release when AGENTCORE_BOX_SOURCE is unset", async () => {
+  test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
     tempDirectories.push(home);
@@ -2024,7 +2089,7 @@ describe("FsProjectManager.build", () => {
 
   test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
     const directory = await inTempDirectory();
-    const { manager: subject } = manager(await boxSource());
+    const { manager: subject } = manager(await boxHome());
     const { project } = await runCreate(subject, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS,
@@ -2043,8 +2108,11 @@ describe("FsProjectManager.build", () => {
     const box = spec.agentCoreGateways.find(
       ({ name }: { name: string }) => name === boxGatewayName,
     );
-    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["agentcore"]);
-    expect(box.additionalPolicies).toEqual(["agentcore/box-memory-policy.json"]);
+    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
+    expect(box.additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+      "agentcore/box-memory-policy.json",
+    ]);
     expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
     expect(events).toContainEqual({
       type: "step",
@@ -2075,7 +2143,7 @@ describe("FsProjectManager.build", () => {
         throw new Error("cdk synth exploded");
       },
       checkTool: async () => {},
-      processEnv: await boxSource(),
+      processEnv: await boxHome(),
       boxProfileResolver: new FakeBoxProfileResolver(),
     });
 

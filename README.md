@@ -198,20 +198,41 @@ declares, not the ones you add in the stack.
 ## Running agents in Box (preview)
 
 The Python templates run their agent in a box, both under `agentcore dev` and on AgentCore
-Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.2` of
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases), pinned with its
-SHA-256 in `src/core/project/backends/boxRelease.ts`. No token or account is needed to download
-it:
+Runtime. box comes from the public GitHub release `v0.1.11-linux-preview.3` of
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
+is needed to download it.
 
-- A CodeZip agent's zip carries box. `build` and `deploy` download the release once with `curl`
-  into `~/.agentcore/box/`, check both archives against the pinned SHA-256s, and stage box, its
-  packs and the Python 3.14 ffi shim into the runtime's `.box-dist/`.
-- A container agent's image installs box while it builds: its Dockerfile downloads the release
-  archive, checks its pinned SHA-256 and unpacks it into `/opt/box`. `agentcore dev` builds the
-  image on your machine and `agentcore deploy` builds it in AWS CodeBuild, the same way.
+`src/core/project/backends/boxRelease.json` pins two releases on their own, each with its
+repository, version and SHA-256s:
 
-To use a local box build instead of the release for a CodeZip agent, set `AGENTCORE_BOX_SOURCE` to a
-staging-boxy checkout with an Amazon Linux 2023 build in `target-al2023/release`.
+- `box`: the Linux build that ships to AgentCore Runtime.
+- `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
+  another repository or version than box.
+
+`bun scripts/bump-box-release.ts --box <version>` (or `--ffi <version>`, with `--box-repo` or
+`--ffi-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
+
+How each command uses it:
+
+- A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
+  `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
+  SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
+- A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
+  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
+  (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
+  checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
+  the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
+  builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.
+- A CodeZip agent under `agentcore dev` runs in the `box` on your PATH, which you install from
+  the release: download the build for your machine, unpack it into a folder, and add that folder
+  to your PATH. `agentcore create --template agent-python-strands-box` and `agentcore dev` stop
+  with that instruction when `box` is not on your PATH. Container agents need no local box.
+
+Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
+which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
+another version takes them from its release's `SHA256SUMS.txt`. `box.version` picks box only: the
+ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
+publish it as a pre-release with the same file names and set `box.version` to it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role through
 the AWS profile `default`: `start.sh` writes the role's keys into box's own credentials file and
@@ -230,9 +251,9 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"[box]"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.2`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.3`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
-`blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
+`FAILED`, `ERROR`, `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands` and skip the container settings.
 
 ### Troubleshooting
@@ -243,8 +264,10 @@ second answer should say teal, and the runtime log shows `running profile ...` w
   names the release URL: the pinned version is not published in `mquang-amazon/box-releases`.
 - `SHA-256 ... not the pinned` or `sha256sum: WARNING: 1 computed checksum did NOT match`: the
   release asset changed after it was pinned. Nothing was installed.
-- `FALLBACK (box run exited with 1)` in the runtime log: box refused its profile. The line above it
-  names the reason.
+- `FAILED (box run exited with 1)` (CodeZip) or `[box] ERROR: box run exited with 1 ...; not
+serving the agent outside box` (container) in the runtime log: box refused its profile. The line
+  above it names the reason. A CodeZip agent does not start without box unless the runtime sets
+  `BOX_START_FALLBACK=1`, and a container agent unless it sets `BOX_START_DISABLE=1`.
 
 ## Documentation
 

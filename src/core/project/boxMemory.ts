@@ -1,9 +1,13 @@
+import { isDeepStrictEqual } from "node:util";
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  DEFAULT_EGRESS_BEDROCK_REGION,
+  callsBedrockModel,
   getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
 } from "../../handlers/project/shortcuts";
-import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { isBoundGateway, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
@@ -17,6 +21,16 @@ export const BOX_MEMORY_TARGET = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
  * role call AgentCore Memory for the boxed agents. The CLI rewrites it on build.
  */
 export const BOX_MEMORY_POLICY_FILE = "agentcore/box-memory-policy.json";
+
+/**
+ * The policy file, relative to the project root, that lets the Box gateway's role call the Bedrock
+ * model for the boxed agents: the gateway's `bedrock` target signs the model calls with that role,
+ * not the execution role. The CLI rewrites it on build.
+ */
+export const BOX_BEDROCK_POLICY_FILE = "agentcore/box-bedrock-policy.json";
+
+/** The Bedrock actions behind Converse and ConverseStream, which the agent's model calls make. */
+const BEDROCK_INVOKE_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
 
 /** The Memory data-plane actions the agent's session manager calls, as the L3 grants a runtime. */
 const MEMORY_DATA_PLANE_ACTIONS = [
@@ -39,14 +53,33 @@ export function hasDefaultMemory(spec: ProjectSpec, runtime: ProjectRuntime): bo
 }
 
 /**
- * The runtimes of a Box project that run their agent in a box and have their default Memory.
- * Only a Box project has the Box gateways their Memory calls go through.
+ * The runtimes of a Box project that run their agent in a box. Only a Box project has the Box
+ * gateways their calls go through.
  */
-function boxedRuntimesWithMemory(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
+function boxedRuntimes(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
   if (!isBoxProject(spec)) return [];
-  return spec.runtimes.filter(
-    (runtime) => runsAgentInBox(projectRoot, runtime) && hasDefaultMemory(spec, runtime),
+  return spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime));
+}
+
+/** The runtimes of a Box project that run their agent in a box and have their default Memory. */
+function boxedRuntimesWithMemory(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
+  return boxedRuntimes(spec, projectRoot).filter((runtime) => hasDefaultMemory(spec, runtime));
+}
+
+/**
+ * Whether a runtime's agent calls a Bedrock model, as its box profile routes it: a protocol other
+ * than MCP, and the Bedrock provider (the default) or a `bedrock/` LiteLLM model.
+ */
+function callsBedrock(runtime: ProjectRuntime): boolean {
+  return (
+    runtime.protocol !== "MCP" &&
+    callsBedrockModel({ modelProvider: runtime.modelProvider, modelId: runtime.modelId })
   );
+}
+
+/** The runtimes of a Box project that run their agent in a box and call a Bedrock model. */
+function boxedRuntimesCallingBedrock(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
+  return boxedRuntimes(spec, projectRoot).filter(callsBedrock);
 }
 
 /**
@@ -79,56 +112,136 @@ export function boxMemoryPolicy(
 }
 
 /**
- * Adds the `agentcore` passthrough target to the Box gateway (the gateway bound to the runtime)
- * of each runtime that runs its agent in a box and has its default Memory, so the box can send
- * the agent's Memory calls through the gateway, and lists {@link BOX_MEMORY_POLICY_FILE} in that
- * gateway's `additionalPolicies` so its role may make them (unless the gateway imports its role).
- * Changes nothing outside a Box project. Changes `spec` in place, and returns the step messages;
- * none when nothing changed. The target name on a gateway that is not a Box gateway is an error.
+ * The IAM policy document for {@link BOX_BEDROCK_POLICY_FILE}, or undefined when no boxed runtime
+ * calls a Bedrock model. A cross-region (`us.`, `global.`) inference profile invokes the model in
+ * other regions, so both the profiles and the foundation models match any region.
  */
-export function addBoxMemoryTarget(spec: ProjectSpec, projectRoot: string): string[] {
-  const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
-  if (runtimes.length === 0) return [];
+export function boxBedrockPolicy(
+  spec: ProjectSpec,
+  projectRoot: string,
+): Record<string, unknown> | undefined {
+  if (boxedRuntimesCallingBedrock(spec, projectRoot).length === 0) return undefined;
+  return {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "BoxedAgentModelCallsThroughGateway",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [
+          "arn:aws:bedrock:*:*:inference-profile/*",
+          "arn:aws:bedrock:*::foundation-model/*",
+        ],
+      },
+    ],
+  };
+}
 
+/**
+ * Refuses a target named `name` on a gateway that is not a Box gateway: the Box gateways need the
+ * name for `calls`.
+ */
+function refuseTargetNameOutsideBoxGateways(spec: ProjectSpec, name: string, calls: string): void {
   const owner = spec.agentCoreGateways.find(
-    (gateway) =>
-      !isBoundGateway(gateway) &&
-      gateway.targets.some((target) => target.name === BOX_MEMORY_TARGET),
+    (gateway) => !isBoundGateway(gateway) && gateway.targets.some((target) => target.name === name),
   );
   if (owner) {
     throw new InputValidationError(
-      `gateway '${owner.name}' has a target named '${BOX_MEMORY_TARGET}', the name the Box ` +
-        "gateways need for the agent's Memory calls. Rename that target.",
+      `gateway '${owner.name}' has a target named '${name}', the name the Box gateways need for ` +
+        `${calls}. Rename that target.`,
     );
   }
+}
+
+/**
+ * Lists `policyFile` in `gateway`'s `additionalPolicies`, unless the gateway imports its role
+ * (`executionRoleArn`), which is the user's to grant; the L3 warns about it at synth.
+ */
+function grantPolicyFile(
+  gateway: AgentCoreGateway,
+  policyFile: string,
+  messages: string[],
+  calls: string,
+): void {
+  if (gateway.executionRoleArn || gateway.additionalPolicies?.includes(policyFile)) return;
+  gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), policyFile];
+  messages.push(
+    `adding '${policyFile}' to gateway '${gateway.name}' additionalPolicies in agentcore.json, ` +
+      `so its role can call ${calls}`,
+  );
+}
+
+/**
+ * Adds the `agentcore` passthrough target, in `region`, to the Box gateway (the gateway bound to
+ * the runtime) of each runtime that runs its agent in a box and has its default Memory, so the box
+ * can send the agent's Memory calls through the gateway, and lists {@link BOX_MEMORY_POLICY_FILE}
+ * in that gateway's `additionalPolicies` so its role may make them. Changes nothing outside a Box
+ * project. Changes `spec` in place, and returns the step messages; none when nothing changed. The
+ * target name on a gateway that is not a Box gateway is an error.
+ */
+export function addBoxMemoryTarget(
+  spec: ProjectSpec,
+  projectRoot: string,
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): string[] {
+  const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
+  if (runtimes.length === 0) return [];
+  refuseTargetNameOutsideBoxGateways(spec, BOX_MEMORY_TARGET, "the agent's Memory calls");
 
   const messages: string[] = [];
   for (const runtime of runtimes) {
-    // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
-    const gateway = spec.agentCoreGateways.find(
-      ({ boundRuntime }) => boundRuntime === runtime.name,
-    );
+    const gateway = boxGatewayFor(spec, runtime);
     if (!gateway) continue;
-    if (!servesTarget(gateway.targets, getBoxGatewayAgentCoreTargetSpec())) {
-      gateway.targets.push(getBoxGatewayAgentCoreTargetSpec());
-      messages.push(
-        `adding target '${BOX_MEMORY_TARGET}' to gateway '${gateway.name}' in agentcore.json, ` +
-          "for the boxed agent's Memory calls",
-      );
-    }
-    // An imported role (executionRoleArn) is the user's to grant; the L3 warns about it at synth.
-    if (
-      !gateway.executionRoleArn &&
-      !gateway.additionalPolicies?.includes(BOX_MEMORY_POLICY_FILE)
-    ) {
-      gateway.additionalPolicies = [...(gateway.additionalPolicies ?? []), BOX_MEMORY_POLICY_FILE];
-      messages.push(
-        `adding '${BOX_MEMORY_POLICY_FILE}' to gateway '${gateway.name}' additionalPolicies in ` +
-          "agentcore.json, so its role can call Memory",
-      );
-    }
+    placeTarget(gateway, getBoxGatewayAgentCoreTargetSpec, region, messages, "Memory calls");
+    grantPolicyFile(gateway, BOX_MEMORY_POLICY_FILE, messages, "Memory");
   }
   return messages;
+}
+
+/**
+ * Adds the `bedrock` passthrough target, in `region`, to the Box gateway of each runtime that runs
+ * its agent in a box and calls a Bedrock model, so the Runtime profile has a route for the model
+ * calls: the profile has a route for each target of the Box gateway, and no other. Lists
+ * {@link BOX_BEDROCK_POLICY_FILE} in that gateway's `additionalPolicies`, since the target signs
+ * the model calls with the gateway's role. Changes nothing outside a Box project. Changes `spec`
+ * in place, and returns the step messages; none when nothing changed.
+ */
+export function addBoxBedrockTarget(
+  spec: ProjectSpec,
+  projectRoot: string,
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): string[] {
+  const messages: string[] = [];
+  for (const runtime of boxedRuntimesCallingBedrock(spec, projectRoot)) {
+    const gateway = boxGatewayFor(spec, runtime);
+    if (!gateway) continue;
+    placeTarget(gateway, getBoxGatewayBedrockTargetSpec, region, messages, "model calls");
+    grantPolicyFile(gateway, BOX_BEDROCK_POLICY_FILE, messages, "the Bedrock model");
+  }
+  return messages;
+}
+
+/**
+ * Adds the Box gateway targets that the boxed agents' calls need, the Bedrock model and the default
+ * Memory, in `region`, before build renders the Runtime profiles from those targets.
+ */
+export function addBoxGatewayTargets(
+  spec: ProjectSpec,
+  projectRoot: string,
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): string[] {
+  return [
+    ...addBoxBedrockTarget(spec, projectRoot, region),
+    ...addBoxMemoryTarget(spec, projectRoot, region),
+  ];
+}
+
+/**
+ * The Box gateway of `runtime`: the gateway bound to it. ProjectSpecSchema requires a Box project
+ * to keep one for each runtime.
+ */
+function boxGatewayFor(spec: ProjectSpec, runtime: ProjectRuntime): AgentCoreGateway | undefined {
+  return spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === runtime.name);
 }
 
 /**
@@ -140,5 +253,39 @@ function servesTarget(targets: readonly AgentCoreGatewayTarget[], wanted: AgentC
     target.passthrough && new URL(target.passthrough.endpoint).host;
   return targets.some(
     (target) => target.name === wanted.name || endpoint(target) === endpoint(wanted),
+  );
+}
+
+/**
+ * Puts the target `targetFor(region)` on `gateway`: adds it when no target serves its name or
+ * endpoint, and moves one that build wrote for another region to `region`. A target of that name
+ * that build did not write is the user's, and stays as it is.
+ */
+function placeTarget(
+  gateway: { name: string; targets: AgentCoreGatewayTarget[] },
+  targetFor: (region: string) => AgentCoreGatewayTarget,
+  region: string,
+  messages: string[],
+  calls: string,
+): void {
+  const wanted = targetFor(region);
+  const index = gateway.targets.findIndex(({ name }) => name === wanted.name);
+  const existing = index === -1 ? undefined : gateway.targets[index]!;
+  const writtenRegion = existing?.outboundAuth?.region;
+  if (existing && writtenRegion && writtenRegion !== region) {
+    if (isDeepStrictEqual(existing, targetFor(writtenRegion))) {
+      gateway.targets[index] = wanted;
+      messages.push(
+        `updating target '${wanted.name}' of gateway '${gateway.name}' in agentcore.json from ` +
+          `${writtenRegion} to ${region}`,
+      );
+    }
+    return;
+  }
+  if (servesTarget(gateway.targets, wanted)) return;
+  gateway.targets.push(wanted);
+  messages.push(
+    `adding target '${wanted.name}' to gateway '${gateway.name}' in agentcore.json, for the ` +
+      `boxed agent's ${calls}`,
   );
 }

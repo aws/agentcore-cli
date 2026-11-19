@@ -18,8 +18,9 @@
 #
 # On AgentCore Runtime, this script puts the deployed Memories' and Gateways' variables and the
 # Box gateway's URL into the profile, and starts box run. Box signs the AWS requests with the
-# execution role, through the AWS profile default that this script writes and refreshes. If box fails, or the agent in it does not answer by 22s, it serves
-# the agent without box: the Runtime allows 30s to start. Under `agentcore dev` (LOCAL_DEV=1), dev
+# execution role, through the AWS profile default that this script writes and refreshes. If box fails, or the agent
+# in it does not answer by 22s, it exits non-zero, so the Runtime reports the start failure
+# (BOX_START_DISABLE=1 serves the agent without box). Under `agentcore dev` (LOCAL_DEV=1), dev
 # passes your credentials, so it only starts box. box runs only a profile file the agent's user owns
 # and only it can write, so both paths run a copy in $HOME, not the root-owned image copy.
 set -u
@@ -54,9 +55,16 @@ if [ "${LOCAL_DEV:-}" = 1 ]; then
   cd /app && exec "$BOX" run "$PROFILE" --no-banner
 fi
 
+# Only BOX_START_DISABLE=1 serves the agent without box. Any other failure stops the container, so
+# the Runtime reports the start failure and the agent never runs outside its sandbox.
 serve_without_box() {
-  log "FALLBACK ($1) after ${SECONDS}s: serving the agent without box"
+  log "BOX_START_DISABLE=1: serving the agent without box"
   cd /app && exec "$PYTHON" -m main
+}
+
+fail_closed() {
+  echo "[box] ERROR: $1 after ${SECONDS}s; not serving the agent outside box (set BOX_START_DISABLE=1 to opt out)" >&2
+  exit 1
 }
 
 # --- Credentials (TEMPORARY) -----------------------------------------------------------------------
@@ -119,22 +127,33 @@ agent_ready() (
   read -r -t 2 status <&3 && [[ "$status" == HTTP/* ]]
 ) 2>/dev/null
 
+# Asks box to stop and waits up to 5s for it to exit, then kills it.
+stop_box() {
+  local _
+  kill -TERM "$pid" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  kill -KILL "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
+}
+
 start_box() {
-  local port pid code
+  local port code
   port=$(grep -m1 -oE '^listen = "[0-9.]+:[0-9]+"' "$PROFILE" | grep -oE '[0-9]+"$' | tr -d '"')
   log "starting box run (ingress :${port:-8080})"
-  cd /app || serve_without_box "no /app"
+  cd /app || fail_closed "no /app"
   # The prefix keeps box's own lines in a "[box]" log query.
   "$BOX" run "$PROFILE" --no-banner > >(sed -u 's/^/[box] box: /') 2>&1 &
   pid=$!
+  # PID 1 ignores SIGTERM without a handler, so set it before the wait. Forward it and wait for box
+  # and the agent to drain, so they flush before this script, and the container, exit.
+  trap 'stop_box; exit 143' TERM INT
   while [ "$SECONDS" -lt "$READY_BY" ]; do
     if ! kill -0 "$pid" 2>/dev/null; then
       wait "$pid"
-      serve_without_box "box run exited with $?"
+      fail_closed "box run exited with $?"
     fi
     if agent_ready "${port:-8080}"; then
       log "the agent in box answers after ${SECONDS}s"
-      trap 'kill -TERM "$pid"' TERM INT
       wait "$pid"
       code=$?
       log "box run exited with $code"
@@ -142,17 +161,16 @@ start_box() {
     fi
     sleep 0.5
   done
-  kill "$pid" 2>/dev/null
-  serve_without_box "the agent in box did not answer by ${READY_BY}s"
+  stop_box
+  fail_closed "the agent in box did not answer by ${READY_BY}s"
 }
 
 # --- Main --------------------------------------------------------------------------------------------
-[ "${BOX_START_DISABLE:-}" = 1 ] && serve_without_box "BOX_START_DISABLE=1"
+[ "${BOX_START_DISABLE:-}" = 1 ] && serve_without_box
 log "box: $("$BOX" --version 2>&1 | head -1)  user: $(id)"
-log "covers over /proc: $(awk '$5 ~ "^/proc/" {printf "%s ", $5}' /proc/self/mountinfo)"
 
 start_credentials
-fill_profile || serve_without_box "cannot write $PROFILE and its policy files"
+fill_profile || fail_closed "cannot write $PROFILE and its policy files"
 log "profile:"
 sed 's/^/[box]   /' "$PROFILE"
 start_box

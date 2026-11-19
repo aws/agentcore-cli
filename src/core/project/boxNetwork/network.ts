@@ -4,7 +4,7 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { BOX_GATEWAY_AGENTCORE_HOST } from "../../../handlers/project/shortcuts";
+import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -29,12 +29,6 @@ export type { BoxNetworkFailure } from "./types";
 
 /** Where a failure of a target in agentcore.json is. */
 const PROJECT_SPEC_PLACE = "agentcore/agentcore.json";
-
-/**
- * The routes of box/bedrock. The agent calls Bedrock directly with the execution role, as the
- * AgentCore Runtime profile's own `[egress.bedrock]` route does, so their hosts take no target.
- */
-const DIRECT_BEDROCK_ROUTES: ReadonlySet<string> = new Set(["bedrock", "bedrock_control"]);
 
 /** How the gateway authenticates its requests to a host. */
 export type BoxEgressAuth =
@@ -85,6 +79,8 @@ export interface BoxNetwork {
   readonly runtime: string;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
+  /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
+  readonly region: string;
   /** The `[egress]` entries' hosts in profile order, then the hosts only the permits name. */
   readonly hosts: readonly BoxNetworkHost[];
   /** The `env://` route of each target that sends an API key, for the credentials writer. */
@@ -103,7 +99,12 @@ export interface BoxNetworkProject {
   readonly runtime: ProjectRuntime;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
-  /** The gateway's targets, with the `agentcore` target that build adds for the Memory calls. */
+  /** The region build builds for. */
+  readonly region: string;
+  /**
+   * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
+   * runtime's model and Memory calls (`addBoxGatewayTargets`).
+   */
   readonly targets: readonly AgentCoreGatewayTarget[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant. */
   readonly grantedActions: readonly string[];
@@ -146,16 +147,13 @@ export function buildBoxNetwork(
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
   const mcpHosts = map.hosts.filter(({ entry }) => entry?.table === "mcp");
-  const routed = map.hosts.filter(
-    ({ entry }) =>
-      entry?.table !== "mcp" &&
-      !(entry?.table === "egress" && DIRECT_BEDROCK_ROUTES.has(entry.name)),
-  );
+  const routed = map.hosts.filter(({ entry }) => entry?.table !== "mcp");
   const targets = hostTargets(routed, project, located, parsed.profile.path);
   failures.push(...targets.failures);
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
+    region: project.region,
     hosts: targets.hosts,
     envRoutes: envRoutesOf(targets.hosts),
     policyFiles: parsed.profile.policyFiles,
@@ -519,7 +517,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
-  network: Pick<BoxNetwork, "runtime" | "gateway" | "grantedActions">,
+  network: Pick<BoxNetwork, "runtime" | "gateway" | "grantedActions" | "region">,
 ): string[] {
   const gateway = boxGatewayOf(spec, network.runtime);
   if (!gateway || gateway.executionRoleArn) return [];
@@ -533,7 +531,8 @@ export function boxGatewayIamWarnings(
     const auth = target.outboundAuth;
     if (auth?.type !== "GATEWAY_IAM_ROLE" || !auth.service || granted(auth.service)) continue;
     const memory =
-      auth.service === "bedrock-agentcore" && endpointKey(target) === BOX_GATEWAY_AGENTCORE_HOST;
+      auth.service === "bedrock-agentcore" &&
+      endpointKey(target) === boxGatewayAgentCoreHost(network.region);
     if (memory && memoryGranted) continue;
     warnings.push(
       `Target '${target.name}' calls ${auth.service} with the gateway's role, which has no ` +

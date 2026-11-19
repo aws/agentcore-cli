@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
   AddResourceOptions,
@@ -55,6 +56,7 @@ import {
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
@@ -64,7 +66,9 @@ import {
   boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
+  startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { BOX_INSTALL_HINT } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -416,7 +420,7 @@ type ProjectManagerConfig = {
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
   /**
-   * The environment the CDK backend reads AGENTCORE_BOX_SOURCE from, and build reads box `env://`
+   * The environment the CDK backend reads HOME (the box cache) from, and build reads box `env://`
    * egress secrets from; process.env by default.
    */
   processEnv?: NodeJS.ProcessEnv;
@@ -1561,24 +1565,45 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "build");
+    const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
   }
 
   /**
+   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
+   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
+   * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
+   * DEFAULT_REGION. Deploy uses its target's region instead.
+   */
+  private async boxBuildRegion(): Promise<string> {
+    return (
+      this.processEnv.AWS_REGION ||
+      this.processEnv.AWS_DEFAULT_REGION ||
+      (await regionFromConfigFile(this.processEnv)) ||
+      DEFAULT_REGION
+    );
+  }
+
+  /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --format json --full`), then writes what the Box network writers derive
-   * from it, before synth reads agentcore.json and staging renders each Runtime profile's routes
-   * from its Box gateway's targets: agentcore.json once, patched in the raw file so unknown fields
-   * and key order survive and checked against the schema first, then the files, then
-   * `.env.local`. A failure of any model stops `command` before anything is written.
+   * (`box profile show --format json --full`) for `region`, then writes what the Box network
+   * writers derive from it, before synth reads agentcore.json and staging renders each Runtime
+   * profile's routes from its Box gateway's targets: agentcore.json once, patched in the raw file
+   * so unknown fields and key order survive and checked against the schema first, then the files,
+   * then `.env.local`. A failure of any model stops `command` before anything is written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
+    region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    const networks = await readBoxNetworks(project.spec, project.rootPath, this.boxProfileResolver);
+    const networks = await readBoxNetworks(
+      project.spec,
+      project.rootPath,
+      this.boxProfileResolver,
+      region,
+    );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
@@ -1593,9 +1618,16 @@ export class FsProjectManager implements ProjectManager {
     let result = project;
     if (edits.specChanged) {
       // Only the fields a writer changed are set, so every other field keeps its value and place.
+      // In the gateways and credentials, only the entries a writer changed, and only their
+      // changed fields, so schema defaults are not written into the user's other entries.
       const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-      const changes = edits.changedFields.map((field) => [field, edits.spec[field]]);
+      const changes = edits.changedFields.map((field) => [
+        field,
+        field === "agentCoreGateways" || field === "credentials"
+          ? patchNamedEntries<{ name: string }>(raw[field], project.spec[field], edits.spec[field])
+          : edits.spec[field],
+      ]);
       const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
@@ -1723,7 +1755,7 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const boxed = await this.applyBoxNetwork(synced.project, "deploy");
+    const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
 
@@ -1988,6 +2020,10 @@ export class FsProjectManager implements ProjectManager {
       ) {
         await this.checkTool("uv", UV_INSTALL_HINT);
       }
+      // `agentcore dev` runs a CodeZip box agent with the box on PATH; a container's image has its own.
+      if (input.scaffoldRuntimeInput && startsInBoxOnCodeZip(input.scaffoldRuntimeInput)) {
+        await this.checkTool("box", BOX_INSTALL_HINT);
+      }
     }
     if (!input.skipGit) {
       await this.checkTool("git", GIT_INSTALL_HINT);
@@ -2221,6 +2257,45 @@ function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: 
     );
   }
   spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, entry));
+}
+
+/**
+ * The raw agentcore.json array `raw` with the edits that turned the parsed entries `before` into
+ * `after`, matched by name: an entry `after` changed gets only its changed fields, so its other
+ * keys, their order, and fields the schema does not know about survive; a new entry is appended,
+ * and one `after` dropped is removed. Every other entry stays as the user wrote it.
+ */
+function patchNamedEntries<T extends { name: string }>(
+  raw: unknown,
+  before: readonly T[],
+  after: readonly T[],
+): unknown[] {
+  const entries = Array.isArray(raw) ? [...(raw as unknown[])] : [];
+  const nameOf = (entry: unknown) => (entry as { name?: unknown } | null)?.name;
+  const kept = new Set(after.map(({ name }) => name));
+  const patched = entries.filter((entry) => {
+    const name = nameOf(entry);
+    return typeof name !== "string" || kept.has(name) || !before.some((b) => b.name === name);
+  });
+  for (const entry of after) {
+    const old = before.find(({ name }) => name === entry.name);
+    if (old && isDeepStrictEqual(old, entry)) continue;
+    const index = patched.findIndex((candidate) => nameOf(candidate) === entry.name);
+    if (!old || index < 0) {
+      patched.push(entry);
+      continue;
+    }
+    const next: Record<string, unknown> = { ...(patched[index] as object) };
+    const oldFields = old as Record<string, unknown>;
+    const newFields = entry as Record<string, unknown>;
+    for (const key of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
+      if (isDeepStrictEqual(oldFields[key], newFields[key])) continue;
+      if (newFields[key] === undefined) delete next[key];
+      else next[key] = newFields[key];
+    }
+    patched[index] = next;
+  }
+  return patched;
 }
 
 function parseResource<TSchema extends z.ZodType>(
