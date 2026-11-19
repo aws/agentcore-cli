@@ -85,7 +85,10 @@ const gatewayRoute = (target: string, host: string) => ({
   backends: [
     {
       url: `\${{ inputs.gateway.url }}/${target}`,
-      auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+      auth: {
+        ref: "aws://",
+        aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+      },
     },
   ],
 });
@@ -843,7 +846,10 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
     const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
     expect(egress.bedrock!.destinations).toEqual(["bedrock-runtime.eu-central-1.amazonaws.com"]);
-    expect(JSON.stringify(egress.bedrock!.backends)).toContain('"region":"eu-central-1"');
+    // The backend signs for the Runtime's own region, which box reads from AWS_REGION there.
+    expect(JSON.stringify(egress.bedrock!.backends)).toContain(
+      '"region":"${{ inputs.aws.region }}"',
+    );
   });
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {

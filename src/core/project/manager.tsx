@@ -594,6 +594,15 @@ export class FsProjectManager implements ProjectManager {
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
+    if (input.skipInstall && scaffoldRuntimeInput && startsInBoxOnCodeZip(scaffoldRuntimeInput)) {
+      // The box profile keeps the venv out of the project's write grant with an optional
+      // deny_write, which box drops while `.venv` is missing; box then refuses the profile, as the
+      // venv's Python would be writable. An empty `.venv` keeps the profile valid, and `uv sync`
+      // fills it later.
+      await mkdir(join(destination, "app", scaffoldRuntimeInput.runtimeName, ".venv"), {
+        recursive: true,
+      });
+    }
 
     if (scaffoldRuntimeInput) {
       yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);

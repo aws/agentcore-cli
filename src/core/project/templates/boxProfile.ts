@@ -99,6 +99,14 @@ const RUNTIME_AWS_STAND_IN_LINES = [
   'AWS_SECRET_ACCESS_KEY = "box-stand-in"',
 ].join("\n");
 
+/**
+ * The tools of box/base that get the project's write grant: box gives each one its own grant, so
+ * each lists the agent's `deny_write` folders as well. Taken from box/base in the box release that
+ * `boxRelease.json` pins (0.1.11-linux-preview.6). When the pin moves, check box/base's tools: box
+ * refuses a CodeZip box profile if a tool it misses gets the project write grant.
+ */
+const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
+
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
 /**
@@ -443,6 +451,12 @@ export function renderBoxProfile(
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
   const container = isBoxedContainer(runtime);
+  // The image's agent reads /app and writes nothing there. Build resolves the profile on the host,
+  // where the image's /app/.venv does not exist, so a write grant would leave its Python unprotected
+  // and box would refuse the profile. A CodeZip agent writes in the folder box starts in.
+  const projectSection = container
+    ? '# The agent, and the tools its packs add, can read the folder box starts in.\n[project]\naccess = "read"\n'
+    : '# The agent, and the tools its packs add, can read and write the folder box starts in.\n[project]\naccess = "write"\n';
   const codeZipOnRuntime = onRuntime && !container;
   const runner = container
     ? containerRunner(workloadPort, !onRuntime)
@@ -479,6 +493,14 @@ export function renderBoxProfile(
   const execComment = runner.execComment ?? "";
   const denyWrite =
     runner.denyWrite.length > 0 ? `deny_write = [${runner.denyWrite.join(", ")}]\n` : "";
+  // box refuses to run a program from a folder that any process in the box can write, so each
+  // tool that gets the project's write grant lists the venv too.
+  const toolDenyWrite =
+    !container && runner.denyWrite.length > 0
+      ? BOX_BASE_PROJECT_WRITE_TOOLS.map(
+          (tool) => `\n[tool.${tool}.filesystem]\ndeny_write = [${runner.denyWrite.join(", ")}]\n`,
+        ).join("")
+      : "";
   // Only the Runtime agent calls AgentCore: locally, LOCAL_DEV=1 skips Identity, and no memory ID
   // reaches the box, so Memory is off.
   const routes = onRuntime ? runtimeRoutes : "";
@@ -520,6 +542,7 @@ ${policies}
 [profile]
 name = ${str(projectName)}
 
+${projectSection}
 ${options}[agent]
 command = ${list(runner.command)}
 
@@ -533,28 +556,23 @@ ${denyWrite}
 [[agent.ingress]]
 listen = ${str(`${listenHost}:${ingressPort}`)}
 workload_port = ${workloadPort}
-${routes}${bedrockRoute}${keyedRoute}`;
+${toolDenyWrite}${routes}${bedrockRoute}${keyedRoute}`;
 }
 
 /**
  * A route the agent's calls take on the Runtime: the box sends calls to `host`
  * to the runtime's Box gateway target `target`, signing them for the gateway in
- * `region` with the execution role; the gateway calls `host` with the target's
+ * the Runtime's region with the execution role; the gateway calls `host` with the target's
  * own auth. Every `[egress.<name>]` on the Runtime is one of these, so every
  * outbound call goes through the Box gateway. Starts with a blank line.
  */
-function runtimeGatewayRouteSection(
-  gatewayName: string,
-  target: string,
-  host: string,
-  region: string,
-): string {
+function runtimeGatewayRouteSection(gatewayName: string, target: string, host: string): string {
   const key = tomlKey(target);
   return `
 # Calls to ${host}, through the '${gatewayName}' gateway's '${target}' target.
 [egress.${key}]
 destinations = [${str(host)}]
-${runtimeGatewayBackend(`egress.${key}`, target, region)}`;
+${runtimeGatewayBackend(`egress.${key}`, target)}`;
 }
 
 /** An HTTP MCP server of the box profile that a Box gateway target serves. */
@@ -574,7 +592,6 @@ function runtimeMcpServerSection(
   server: RuntimeMcpServer,
   target: string,
   host: string,
-  region: string,
 ): string {
   const key = tomlKey(server.name);
   const secret = server.secret?.ref.startsWith("env://")
@@ -588,23 +605,23 @@ function runtimeMcpServerSection(
 [mcp.${key}]
 type = "http"
 destinations = [${str(host)}]
-${secret}${runtimeGatewayBackend(`mcp.${key}`, target, region)}`;
+${secret}${runtimeGatewayBackend(`mcp.${key}`, target)}`;
 }
 
 /**
  * The backend of a Runtime route or MCP server: the runtime's Box gateway
- * target, signed for the gateway in `region` with the execution role. Both
- * Runtime profiles read the gateway URL from the environment through the
- * box/agentcore pack's input, and sign through a bare `aws://`, so no start
- * script fills the profile in. Starts with a blank line.
+ * target. Both Runtime profiles read the gateway URL and the region from the
+ * environment through the agentcore pack's inputs, and sign with the execution
+ * role through a bare `aws://`, so the backend names no region. Starts with a
+ * blank line.
  */
-function runtimeGatewayBackend(table: string, target: string, region: string): string {
+function runtimeGatewayBackend(table: string, target: string): string {
   return `
 [[${table}.backends]]
 url = ${str(`\${{ inputs.gateway.url }}/${target}`)}
 auth.ref = ${str(RUNTIME_AWS_SIGNER)}
 auth.aws.service = "bedrock-agentcore"
-auth.aws.region = ${str(region)}
+auth.aws.region = "\${{ inputs.aws.region }}"
 `;
 }
 
@@ -619,7 +636,6 @@ auth.aws.region = ${str(region)}
 function runtimeGatewayRoutes(
   spec: ProjectSpec,
   runtime: ProjectRuntime,
-  region: string,
   servers: ReadonlyMap<string, RuntimeMcpServer>,
 ): string {
   if (!isBoxProject(spec)) return "";
@@ -646,8 +662,8 @@ function runtimeGatewayRoutes(
     .map((target) => {
       const server = servers.get(target.name);
       return server
-        ? runtimeMcpServerSection(gateway.name, server, target.name, hostOf(target), region)
-        : runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target), region);
+        ? runtimeMcpServerSection(gateway.name, server, target.name, hostOf(target))
+        : runtimeGatewayRouteSection(gateway.name, target.name, hostOf(target));
     })
     .join("");
 }
@@ -721,7 +737,7 @@ export function renderRuntimeBoxProfile(
     input,
     region,
     "runtime",
-    runtimeGatewayRoutes(spec, runtime, region, runtimeMcpServers(network?.hosts ?? [])),
+    runtimeGatewayRoutes(spec, runtime, runtimeMcpServers(network?.hosts ?? [])),
     network?.policyFiles,
   )!;
   return profile + (network?.telemetry ?? []).map(runtimeTelemetrySection).join("");
@@ -812,7 +828,8 @@ description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
 pattern = ${str(GATEWAY_URL_PATTERN)}
 
-# The Runtime's region. The Runtime sets AWS_REGION; the profile passes it to the agent.
+# The Runtime's region, which box signs each Box gateway backend for and passes to the agent. The
+# Runtime sets AWS_REGION.
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
