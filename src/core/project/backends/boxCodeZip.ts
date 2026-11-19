@@ -58,8 +58,6 @@ export async function stageBoxCodeZip(
       chmodSync(join(folder, binary), 0o755);
     }
     cpSync(build.resources, join(folder, "resources"), { recursive: true });
-    const ffi = entry.runtimeVersion ? build.ffi[entry.runtimeVersion] : undefined;
-    if (ffi) cpSync(ffi, join(folder, "ffi"), { recursive: true });
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     // Copy the canonical AWS tree into the code folder's .box-dist so the zip carries it.
     const codeDist = join(project.rootPath, ...entry.codeLocation.split("/"), BOX_CODEZIP_DIST);

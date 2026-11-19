@@ -430,12 +430,7 @@ function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner 
   const { command, env } = serve(protocol, code, workloadPort, false, python);
   return {
     command,
-    env: {
-      ...env,
-      // Python finds the _ctypes that deploy stages before its own: its libffi uses static
-      // trampolines, which Box Core's W^X filter allows.
-      PYTHONPATH: `${code}/${BOX_CODEZIP_DIST}/ffi:${code}`,
-    },
+    env: { ...env, PYTHONPATH: code },
     read: [code, pythonPrefix, "/usr/lib64", "/lib64"].map(str),
     execComment:
       "# Box Core adds the loader folders itself and refuses exec on them, so they are read only.\n" +
