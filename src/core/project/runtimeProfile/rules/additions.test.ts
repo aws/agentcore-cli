@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
+import {
+  RUNTIME_TEMPLATE_SHORTCUTS,
+  resolveRuntimeTemplateShortcut,
+  type RuntimeTemplateShortcutName,
+} from "../../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../../projectSchemas/project";
@@ -58,7 +63,7 @@ function specOf(runtime: ProjectRuntime, memories: readonly string[] = []) {
     runtimes: [runtime],
     memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
     projectType: "box",
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec(runtime.name), targets }],
   } as unknown as ProjectSpec;
 }
 
@@ -135,7 +140,16 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
 };
 
 /** The tables that the additions rule owns, which the old renderer wrote. */
-const OWNED = ["packs", "policies", "profile", "options", "agent", "telemetry"] as const;
+const OWNED = [
+  "packs",
+  "policies",
+  "profile",
+  "project",
+  "options",
+  "agent",
+  "tool",
+  "telemetry",
+] as const;
 
 const agentOf = (profile: TomlTable) => profile.agent as Record<string, any>;
 
@@ -209,6 +223,99 @@ describe("deriveRuntimeProfile on the created templates", () => {
   );
 });
 
+/** The name of each box template of `agentcore create`. */
+const BOX_TEMPLATES = (Object.keys(RUNTIME_TEMPLATE_SHORTCUTS) as RuntimeTemplateShortcutName[])
+  .filter((name) => (RUNTIME_TEMPLATE_SHORTCUTS[name] as { box?: boolean }).box === true)
+  .sort();
+
+/** The runtime that `agentcore create` writes into agentcore.json for the template `input`. */
+function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
+  return {
+    name: input.runtimeName,
+    build: input.build,
+    entrypoint: input.build === "CodeZip" ? "start.py" : "main.py",
+    codeLocation: `app/${input.runtimeName}`,
+    ...(input.protocol !== undefined && { protocol: input.protocol }),
+    ...(input.modelProvider !== undefined && { modelProvider: input.modelProvider }),
+    box: { version: "1.0.0" },
+  } as ProjectRuntime;
+}
+
+describe("deriveRuntimeProfile on each box template of create", () => {
+  test("covers the seven box templates", () => {
+    expect(BOX_TEMPLATES).toEqual([
+      "a2a-python-strands-box",
+      "agent-python-langchain-box",
+      "agent-python-minimal-box",
+      "agent-python-strands-box",
+      "agent-python-strands-box-container",
+      "agui-python-strands-box",
+      "mcp-python-fastmcp-box",
+    ]);
+  });
+
+  const cases = BOX_TEMPLATES.flatMap((template) => {
+    const providers = RUNTIME_TEMPLATE_SHORTCUTS[template].supportsModelProviderOverride
+      ? ["of the template", "OpenAI"]
+      : ["of the template"];
+    return providers.flatMap((provider) =>
+      [[], ["agentMemory"]].flatMap((memories) =>
+        Object.keys(TELEMETRY_CASES).map((telemetry) => ({
+          template,
+          provider,
+          memories,
+          telemetry,
+        })),
+      ),
+    );
+  });
+
+  test.each(cases)(
+    "gives the whole profile that the old renderer wrote, with the default target when no target is cloudwatch_logs ($template, provider $provider, memories $memories, telemetry $telemetry)",
+    ({ template, provider, memories, telemetry: telemetryCase }) => {
+      const input = resolveRuntimeTemplateShortcut(
+        template as RuntimeTemplateShortcutName,
+        provider === "OpenAI" ? { modelProvider: "OpenAI", apiKey: "sk-test" } : {},
+      );
+      const runtime = createdRuntime(input);
+      const local = parse(renderBoxProfile("demo", input, CREATE_REGION, "local")!) as TomlTable;
+      const tables = TELEMETRY_CASES[telemetryCase];
+      const extras = tables !== undefined;
+      if (extras) {
+        local.policies = ["policy.dw"];
+        local.telemetry = structuredClone(tables);
+      }
+      const telemetry = withDeployRegion(
+        cloudWatchTelemetry(local),
+        BUILD_REGION,
+        PROFILE_FILE,
+      ).telemetry;
+      const policyFiles = extras ? ["policy.dw"] : [];
+      const old = parse(
+        renderRuntimeBoxProfile(specOf(runtime, memories), runtime, {
+          policyFiles,
+          region: BUILD_REGION,
+          hosts: [],
+          telemetry,
+        }),
+      ) as TomlTable;
+
+      const { profile, problems } = deriveRuntimeProfile(
+        local,
+        contextOf(runtime, { memories, telemetry, policyFiles }),
+      );
+
+      const logs = telemetry.some(({ kind }) => kind === "cloudwatch_logs");
+      const expected: TomlTable = {
+        ...old,
+        telemetry: { ...(old.telemetry as TomlTable), ...(!logs && { agentcore: DEFAULT_TARGET }) },
+      };
+      expect(problems).toEqual([]);
+      expect(profile).toEqual(expected);
+    },
+  );
+});
+
 describe("the additions rule", () => {
   const CODEZIP = runtimeOf("CodeZip");
   const CONTAINER = runtimeOf("Container");
@@ -241,6 +348,22 @@ describe("the additions rule", () => {
     apply(local, contextOf(CODEZIP));
 
     expect(local).toEqual(before);
+  });
+
+  test("removes the [tool.uname] table that a CodeZip template writes, and keeps each tool table of the user", () => {
+    const local = createdProfile(CODEZIP);
+    const notes = { program: "/usr/bin/notes" };
+    const changed = { filesystem: { deny_write: ["${{ workspace }}/app/agent/data"] } };
+
+    expect(Object.keys(local.tool as TomlTable)).toEqual(["uname"]);
+    expect(apply(local, contextOf(CODEZIP)).table).not.toHaveProperty("tool");
+    expect(
+      apply({ ...local, tool: { ...(local.tool as TomlTable), notes } }, contextOf(CODEZIP)).table
+        .tool,
+    ).toEqual({ notes });
+    expect(apply({ ...local, tool: { uname: changed } }, contextOf(CODEZIP)).table.tool).toEqual({
+      uname: changed,
+    });
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {

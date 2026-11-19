@@ -127,13 +127,16 @@ function gateway(
   return apply(parse(text) as TomlTable, contextOf(text, hosts, targets, region));
 }
 
-/** The TOML text of one route's gateway backend, under the table `table`. */
-const backendText = (table: string, target: string, region = "us-west-2") =>
+/**
+ * The TOML text of one route's gateway backend, under the table `table`: signed for the Runtime's
+ * own region, which box reads from the `aws.region` input, whatever region build builds for.
+ */
+const backendText = (table: string, target: string) =>
   `[[${table}.backends]]\n` +
   `url = "\${{ inputs.gateway.url }}/${target}"\n` +
   'auth.ref = "aws://"\n' +
   'auth.aws.service = "bedrock-agentcore"\n' +
-  `auth.aws.region = "${region}"\n`;
+  'auth.aws.region = "${{ inputs.aws.region }}"\n';
 
 describe("the gateway rule", () => {
   test("carries each key it does not own, and a stdio [mcp] server, as the local profile has them", () => {
@@ -187,7 +190,7 @@ describe("the gateway rule", () => {
     );
   });
 
-  test("gives each host of an entry with several destinations its own route, in the region build builds for", () => {
+  test("gives each host of an entry with several destinations its own route, signed for the Runtime's region and not the build region", () => {
     const text =
       '[egress.models]\ndestinations = ["api.one.example.com", "api.two.example.com:8443/v1"]\n';
 
@@ -208,10 +211,10 @@ describe("the gateway rule", () => {
     expect(table.egress).toEqual(
       parse(
         '[egress.egress-models-one]\ndestinations = ["api.one.example.com"]\n' +
-          backendText("egress.egress-models-one", "egress-models-one", "eu-central-1") +
+          backendText("egress.egress-models-one", "egress-models-one") +
           // The route keeps the port of the target's endpoint, and no path.
           '[egress.egress-models-two]\ndestinations = ["api.two.example.com:8443"]\n' +
-          backendText("egress.egress-models-two", "egress-models-two", "eu-central-1"),
+          backendText("egress.egress-models-two", "egress-models-two"),
       ).egress,
     );
   });
