@@ -20,9 +20,8 @@ type RuntimeTemplateTestCase = {
   runtimeVersion?: string;
   skip?: boolean;
   /**
-   * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
-   * PATH. `agentcore dev` runs box on the protocol's fixed ingress port (8080, 8000 or 9000), so
-   * concurrent tests cannot run it side by side; the Runtime path is what these tests cover.
+   * A Strands Box template: it runs its agent in a box on AgentCore Runtime, so the test checks the
+   * Runtime's logs for box starting it. Create needs `box` on PATH.
    */
   box?: boolean;
 };
@@ -92,15 +91,8 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   // The box templates run their agent in Strands Box on AgentCore Runtime; the cases test create,
   // deploy and invoke, not `agentcore dev`. CI deploys with the released @aws/agentcore-cdk, which
   // has no Box support yet, so they run only outside CI for now.
-  {
-    name: "py_strands_box",
-    template: "agent-python-strands-box",
-    protocol: "HTTP" as const,
-    payload: { prompt: "Reply with a short greeting." },
-    skipDev: true,
-    skip: process.env.CI === "true",
-  },
-  // The CodeZip box template on each other Python the CodeZip Runtime supports; it defaults to 3.14.
+  // The CodeZip box template on each other Python the CodeZip Runtime supports; it defaults to 3.14,
+  // which the Box describe below covers, as it does the box container template.
   ...(["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"] as const).map(
     (runtimeVersion) => ({
       name: `py_strands_box_${runtimeVersion.slice("PYTHON_".length)}`,
@@ -109,17 +101,11 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
       payload: { prompt: "Reply with a short greeting." },
       skipDev: true,
       runtimeVersion,
+      box: true,
+      // CI deploys with the released @aws/agentcore-cdk, which has no Box support, and has no box.
       skip: process.env.CI === "true",
     }),
   ),
-  {
-    name: "py_strands_box_container",
-    template: "agent-python-strands-box-container",
-    protocol: "HTTP" as const,
-    payload: { prompt: "Reply with a short greeting." },
-    skipDev: true,
-    skip: process.env.CI === "true",
-  },
   {
     name: "agent_python_langchain",
     template: "agent-python-langchain",
@@ -174,12 +160,10 @@ const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
     payload: { prompt: "Reply with a short greeting." },
   },
   {
-    name: "py_strands_box_container",
+    name: "agent_python_strands_box_container",
     template: "agent-python-strands-box-container",
     protocol: "HTTP" as const,
     payload: { prompt: "Reply with a short greeting." },
-    // The same container limits as the non-box container template above.
-    skip: process.env.CI === "true" && process.platform !== "linux",
   },
   {
     name: "agent_python_langchain_box",
@@ -206,11 +190,9 @@ const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
     protocol: "AGUI" as const,
     payload: AGUI_RUN_PAYLOAD,
   },
-]
-  .map((template) => ({ ...template, box: true }))
-  .filter((r) => !r.skip);
+].map((template) => ({ ...template, box: true }));
 
-/** Every template the suite creates, so each project gets its own name and local dev port. */
+/** Every template the suite creates, so each project gets its own name. */
 const ALL_TEMPLATES = [...RUNTIME_TEMPLATES, ...BOX_TEMPLATES];
 
 const ProjectCreatedSchema = z.object({
@@ -313,6 +295,7 @@ describe(
           if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
             assertProtocolResponse(runtime, response.body);
           }
+          if (runtime.box) await assertRunsInBox(cli, projectDir);
 
           const removed = parseResult(
             OperationSchema,
@@ -338,8 +321,9 @@ describe(
 // The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
 // deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
 // `agentcore dev`. They need `box` on PATH: create checks for it. Run them with
-// `bun run test:e2e -- --tagsFilter='box'`.
-describe(
+// `bun run test:e2e -- --tagsFilter='box'`. CI skips them: it deploys with the released
+// @aws/agentcore-cdk, which has no Box support, and has no box on PATH.
+describe.skipIf(process.env.CI === "true")(
   "create, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
@@ -382,6 +366,10 @@ describe(
             ),
           );
           expect(response.complete).toBe(true);
+          // An agent that box started but that failed answers with an error status or nothing.
+          expect(response.statusCode).toBeGreaterThanOrEqual(200);
+          expect(response.statusCode).toBeLessThan(300);
+          expect(response.body.trim()).not.toBe("");
           if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
             assertProtocolResponse(runtime, response.body);
           }
@@ -401,25 +389,18 @@ describe(
 );
 
 /**
- * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent.
- * The logs arrive a little after the invoke, so it retries.
+ * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent,
+ * then checks they show no box error. The logs arrive a little after the invoke, so it retries.
  */
 async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void> {
-  const result = await retry(
+  const logs = (query: string) =>
+    cli.run(
+      ["logs", "runtime", "--name", CREATED_RUNTIME_NAME, "--since", "30m", "--query", query],
+      projectDir,
+    );
+  await retry(
     async () => {
-      const found = await cli.run(
-        [
-          "logs",
-          "runtime",
-          "--name",
-          CREATED_RUNTIME_NAME,
-          "--since",
-          "30m",
-          "--query",
-          '"running profile"',
-        ],
-        projectDir,
-      );
+      const found = await logs('"running profile"');
       if (found.exitCode !== 0 || !found.stdout.includes("running profile")) {
         throw new Error(
           `the Runtime's logs do not show box running the agent.\nstdout: ${found.stdout}\nstderr: ${found.stderr}`,
@@ -430,7 +411,11 @@ async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void
     2 * 60 * 1000,
     10 * 1000,
   );
-  expect(result.stdout).not.toMatch(/FALLBACK|FAILED/);
+  // `--query` is a CloudWatch filter pattern, so it returns only the matching events: the error
+  // lines need their own query. These are the ones the README says a working box agent never logs.
+  const errors = await logs('?ERROR ?"blocked by egress control" ?AccessDenied');
+  expect(errors.exitCode).toBe(0);
+  expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);
 }
 
 /** Given a template test case, creates a project scaffolded from it and returns its path. */
