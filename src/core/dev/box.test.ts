@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InputValidationError } from "../../errors";
+import { InputValidationError, ResourceNotFoundError } from "../../errors";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
@@ -52,9 +52,10 @@ function input(
   projectRoot: string,
   port = 8080,
   protocol?: ProjectRuntime["protocol"],
+  entrypoint = "main.py",
 ): DevServerInput {
   return {
-    runtime: { name: "agent", build: "CodeZip", protocol } as ProjectRuntime,
+    runtime: { name: "agent", build: "CodeZip", protocol, entrypoint } as ProjectRuntime,
     projectRoot,
     port,
     env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318" },
@@ -113,6 +114,21 @@ describe("BoxDevRunner", () => {
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test("refuses a runtime that starts box, when the project has no box profile", async () => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
+
+    const error = await collect(runner.run(input(projectRoot, 8080, "HTTP", "start.py"))).catch(
+      (caught) => caught,
+    );
+
+    expect(error).toBeInstanceOf(ResourceNotFoundError);
+    expect((error as Error).message).toContain(
+      'runtime "agent" runs its agent in a box (entrypoint start.py)',
+    );
+    expect(calls).toEqual([]);
+    expect(fallbackRuns).toHaveLength(0);
   });
 
   test("expects the dev port of the runtime's protocol", async () => {

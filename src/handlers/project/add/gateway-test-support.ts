@@ -34,10 +34,15 @@ export function createGatewayProjectTestHarness(directoryPrefix: string) {
     return io;
   }
 
+  /**
+   * A project whose template writes no box profile and no memory, so it starts with no gateways
+   * and no memories: a Python CodeZip template would make a Box project with its runtime's Box
+   * gateway.
+   */
   async function inProject(name = "TestProject"): Promise<string> {
     const { projectRoot, cleanup } = await initProject({
       name,
-      flags: ["--template", "agent-python-minimal"],
+      flags: ["--template", "agent-typescript-vercel"],
       prefix: `agentcore-${directoryPrefix}-`,
     });
     cleanups.push(cleanup);
