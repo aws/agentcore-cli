@@ -26,8 +26,13 @@ import {
   boxBedrockPolicy,
   boxMemoryPolicy,
 } from "./boxMemory";
-import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
-import type { BoxEnvRoute } from "./boxProfileEgress";
+import type { ReadEnvFileOptions } from "../../io/envFile";
+import {
+  boxKeyVariables,
+  planBoxProfileCredentials,
+  type BoxKeySources,
+} from "./boxProfileCredentials";
+import { hasValue, type BoxEnvRoute } from "./boxProfileEgress";
 import {
   boxTelemetryPolicy,
   boxTelemetryPolicyFile,
@@ -183,6 +188,26 @@ export const credentialsWriter: BoxNetworkWriter = {
     };
   },
 };
+
+/**
+ * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it: only
+ * the variables its routes use, and none that `env` sets to a value, because a value set in `env`
+ * wins. An entry that is not read is not decrypted, so it cannot stop the build. Undefined when no
+ * route reads a key, and build then does not read the file.
+ */
+export function boxKeyReads(
+  networks: readonly BoxNetwork[],
+  env: NodeJS.ProcessEnv,
+): ReadEnvFileOptions | undefined {
+  const routes = uniqueRoutes(networks);
+  if (routes.length === 0) return undefined;
+  const variables = boxKeyVariables(routes);
+  return {
+    select: (name) => variables.has(name),
+    // A blank value in `env` does not win, so build reads that variable from the file instead.
+    overrides: Object.fromEntries(Object.entries(env).filter(([, value]) => hasValue(value))),
+  };
+}
 
 function uniqueRoutes(networks: readonly BoxNetwork[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];

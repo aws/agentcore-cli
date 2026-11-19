@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FsProjectManager } from "./manager";
@@ -10,6 +10,7 @@ import { BOX_PROFILE_FILE } from "./templates/boxProfile";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
+import { ENC_PREFIX } from "../../secrets/cipher";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 
 // A box template: only it writes the box profile whose env:// secrets build provisions.
@@ -21,6 +22,8 @@ const GITHUB_SHOWN = boxShowOf({
   egress: { github: { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_TOKEN" } } },
 });
 const RESERVED = credentialEnvVarName("github");
+/** A stored secret in the encrypted format that no key on this machine decrypts. */
+const UNDECRYPTABLE = `${ENC_PREFIX}${Buffer.alloc(48).toString("base64")}`;
 
 const originalCwd = process.cwd();
 const directories: string[] = [];
@@ -84,6 +87,17 @@ async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<str
   const messages: string[] = [];
   for await (const event of generator) if (event.type === "step") messages.push(event.message);
   return messages;
+}
+
+/** Appends `line` to the project's `.env.local` as written, so no value in it is encrypted. */
+async function appendEnvLocal(root: string, line: string): Promise<void> {
+  await mkdir(join(root, "agentcore"), { recursive: true });
+  await appendFile(join(root, ENV_LOCAL_RELATIVE_PATH), `\n${line}\n`);
+}
+
+/** The key build stored under the credential's reserved variable; reads no other entry. */
+async function storedKey(root: string): Promise<string | undefined> {
+  return (await new EnvLocalFile(root).read({ select: (name) => name === RESERVED }))[RESERVED];
 }
 
 async function specOf(root: string): Promise<Record<string, unknown>> {
@@ -161,6 +175,55 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     // Build still adds the model's target, so only the credentials stay as they were.
     expect(await credentials()).toEqual(before);
   });
+
+  test("builds when .env.local holds an undecryptable entry that no route uses", async () => {
+    const { subject, built } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(subject, GITHUB_PROFILE);
+    await appendEnvLocal(created.rootPath, `OTHER_API_KEY='${UNDECRYPTABLE}'`);
+
+    await drain(subject.build(created));
+
+    expect(built[0]?.spec.credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "github",
+    });
+    expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+  });
+
+  test("builds when the shell sets the variable of an undecryptable .env.local entry", async () => {
+    const { subject, built } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(subject, GITHUB_PROFILE);
+    await appendEnvLocal(created.rootPath, `GITHUB_TOKEN='${UNDECRYPTABLE}'`);
+
+    await drain(subject.build(created));
+
+    expect(built[0]?.spec.credentials).toContainEqual({
+      authorizerType: "ApiKeyCredentialProvider",
+      name: "github",
+    });
+    expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+  });
+
+  for (const [label, env] of [
+    ["the shell does not set it", {}],
+    ["the shell sets it blank", { GITHUB_TOKEN: " " }],
+  ] as const) {
+    test(`stops on an undecryptable .env.local entry that a route uses when ${label}`, async () => {
+      const { subject, built } = manager(env);
+      const created = await project(subject, GITHUB_PROFILE);
+      await appendEnvLocal(created.rootPath, `GITHUB_TOKEN='${UNDECRYPTABLE}'`);
+      const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
+
+      await expect(drain(subject.build(created))).rejects.toThrow(
+        "Could not decrypt a stored secret in agentcore/.env.local. " +
+          "Restore the original encryption key or re-add the credential.",
+      );
+      expect(built).toEqual([]);
+      expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
+        spec,
+      );
+    });
+  }
 
   test("stops on a box profile that does not parse, and changes nothing", async () => {
     const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });

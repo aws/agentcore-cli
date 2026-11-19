@@ -47,6 +47,15 @@ export function boxEgressCredentialName(
 }
 
 /**
+ * The variables {@link planBoxProfileCredentials} looks up in its key sources for `routes`: each
+ * route's `env://` variable, and the reserved variable of the credential named for the route.
+ * Build reads only these from `.env.local`, so an entry no route uses cannot stop it.
+ */
+export function boxKeyVariables(routes: readonly BoxEnvRoute[]): Set<string> {
+  return new Set(routes.flatMap(({ route, variable }) => [variable, credentialEnvVarName(route)]));
+}
+
+/**
  * For each `[egress.<route>] secret.ref = "env://VAR"` route of the box profile, make sure the
  * project declares an `ApiKeyCredentialProvider` named `<route>`, and that `.env.local` holds its
  * key under the credential's reserved variable. A later `agentcore deploy` then provisions the

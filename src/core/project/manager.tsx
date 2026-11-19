@@ -58,7 +58,12 @@ import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
-import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
+import {
+  BOX_NETWORK_WRITERS,
+  boxKeyReads,
+  boxNetworkEdits,
+  writeBoxNetworkFiles,
+} from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
   boxProfilePath,
@@ -1609,11 +1614,12 @@ export class FsProjectManager implements ProjectManager {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
     const envLocal = new EnvLocalFile(project.rootPath);
+    const keyReads = boxKeyReads(networks, this.processEnv);
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
-      envLocal: networks.length > 0 ? await envLocal.read() : {},
+      envLocal: keyReads ? await envLocal.read(keyReads) : {},
     });
     const messages = [...edits.messages];
     let result = project;
