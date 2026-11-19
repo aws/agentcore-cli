@@ -229,6 +229,29 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
+  test("writes the Memory policy for the region of the agentcore target it writes", () => {
+    const project = spec();
+    project.memories.push({
+      name: "agentMemory",
+      eventExpiryDuration: 30,
+      strategies: [],
+    } as never);
+
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
+
+    const agentcore = edits.spec.agentCoreGateways[0]!.targets.find(
+      ({ name }) => name === "agentcore",
+    );
+    expect(agentcore?.outboundAuth?.region).toBe("eu-central-1");
+    const memory = edits.files.find(({ path }) => path === BOX_MEMORY_POLICY_FILE);
+    expect(JSON.parse((memory as { text: string }).text).Statement).toEqual([
+      expect.objectContaining({
+        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      }),
+    ]);
+  });
+
   test("adds no default target for an endpoint a target serves already", () => {
     const project = spec([
       passthrough("egress-models", "https://bedrock-runtime.us-west-2.amazonaws.com"),
