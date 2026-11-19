@@ -31,6 +31,7 @@ import { modelProviderOverridableCnMessage } from "../../../core/project/manager
 /** Moves the template list's cursor from its first entry down to `name`. */
 async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
   const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  expect(index).toBeGreaterThan(-1);
   for (let i = 0; i < index; i++) await r.press("down");
 }
 

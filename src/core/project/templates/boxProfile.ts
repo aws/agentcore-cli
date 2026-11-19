@@ -101,7 +101,9 @@ const RUNTIME_AWS_STAND_IN_LINES = [
 
 /**
  * The tools of box/base that get the project's write grant: box gives each one its own grant, so
- * each lists the agent's `deny_write` folders as well.
+ * each lists the agent's `deny_write` folders as well. Taken from box/base in the box release that
+ * `boxRelease.json` pins (0.1.11-linux-preview.6). When the pin moves, check box/base's tools: box
+ * refuses a CodeZip box profile if a tool it misses gets the project write grant.
  */
 const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
 
@@ -610,7 +612,7 @@ ${secret}${runtimeGatewayBackend(`mcp.${key}`, target)}`;
  * The backend of a Runtime route or MCP server: the runtime's Box gateway
  * target. Both Runtime profiles read the gateway URL and the region from the
  * environment through the agentcore pack's inputs, and sign with the execution
- * role through a bare `aws://`, so the profile names no region. Starts with a
+ * role through a bare `aws://`, so the backend names no region. Starts with a
  * blank line.
  */
 function runtimeGatewayBackend(table: string, target: string): string {
