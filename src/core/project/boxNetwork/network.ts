@@ -124,7 +124,8 @@ export interface BoxNetwork {
   /**
    * The AgentCore Runtime profile that build derives from the local profile (`deriveRuntimeProfile`
    * in runtimeProfile/derive.ts), which the runtime profile writer stages; absent when build has no
-   * profile text.
+   * profile text. It can name a route that the staged file does not have: the writer removes each
+   * route to a target that build does not write (withoutUnsentRoutes in boxNetworkWriters.ts).
    */
   readonly runtimeProfile?: TomlTable;
   /** The comment lines above {@link runtimeProfile} in the staged file. */

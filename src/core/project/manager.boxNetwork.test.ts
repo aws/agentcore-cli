@@ -393,6 +393,32 @@ describe("build writes the Box network of the box profile", () => {
     });
   });
 
+  test("stages no Runtime [mcp] server for an HTTP MCP server whose key build cannot find", async () => {
+    const { manager, root, box } = await strandsProject();
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(steps).toContain(
+      `not adding gateway target 'egress-tools' of '${GATEWAY}' for tools.example.com: it sends ` +
+        "the key of env://TOOLS_TOKEN, and agentcore.json has no API key credential 'tools' " +
+        "to hold it",
+    );
+    // With no target, the Runtime profile has no [mcp.tools] server, as it has no route above.
+    expect((await runtimeProfile(root)).mcp).toBeUndefined();
+  });
+
   test("routes a host through the target the gateway holds for it, and keeps every user target", async () => {
     const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
     await editProfile(root, { tables: GITHUB_ROUTE });
