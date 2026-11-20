@@ -119,6 +119,7 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
+    ...(infra.platformVersion && { platformVersion: infra.platformVersion }),
     ...(infra.authorizerType && { authorizerType: infra.authorizerType }),
     ...(infra.authorizerConfiguration && {
       authorizerConfiguration: infra.authorizerConfiguration,

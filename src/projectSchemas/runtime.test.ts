@@ -51,6 +51,18 @@ describe("runtime custom validation", () => {
       }).success,
     ).toBe(false);
   });
+  it("accepts only the V1 and V2 platform versions", () => {
+    for (const platformVersion of ["V1", "V2"]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
+        true,
+      );
+    }
+    for (const platformVersion of ["v2", "V3", ""]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
+        false,
+      );
+    }
+  });
   it("couples VPC mode and network configuration", () => {
     expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, networkMode: "VPC" }).success).toBe(
       false,

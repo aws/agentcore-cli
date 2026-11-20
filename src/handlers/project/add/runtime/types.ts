@@ -13,6 +13,7 @@ const RuntimeInfraConfigSchema = z.object({
   additionalPolicies: ProjectRuntimeSchema.shape.additionalPolicies,
   envVars: ProjectRuntimeSchema.shape.envVars,
   networkMode: ProjectRuntimeSchema.shape.networkMode,
+  platformVersion: ProjectRuntimeSchema.shape.platformVersion,
   networkConfig: ProjectRuntimeSchema.shape.networkConfig,
   authorizerType: ProjectRuntimeSchema.shape.authorizerType,
   authorizerConfiguration: ProjectRuntimeSchema.shape.authorizerConfiguration,

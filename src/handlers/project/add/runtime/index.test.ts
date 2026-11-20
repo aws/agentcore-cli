@@ -77,6 +77,8 @@ describe("project add runtime", () => {
     "VPC",
     "--network-config",
     '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+    "--platform-version",
+    "V2",
     "--authorizer-type",
     "CUSTOM_JWT",
     "--authorizer-configuration",
@@ -208,6 +210,7 @@ describe("project add runtime", () => {
         subnets: ["subnet-0123456789abcdef0"],
         securityGroups: ["sg-0123456789abcdef0"],
       },
+      platformVersion: "V2",
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
         customJwtAuthorizer: {
@@ -316,6 +319,7 @@ describe("project add runtime", () => {
     ["--model-provider", "anthropic"],
     ["--language", "rust"],
     ["--protocol", "GRPC"],
+    ["--platform-version", "v2"],
     ["--type", "create"],
     ["--type", "import"],
   ])("rejects %s %s and writes nothing", async (flagName, value) => {

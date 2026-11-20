@@ -8,6 +8,7 @@ import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
+  PlatformVersionSchema,
   ProtocolModeSchema,
   type ProtocolMode,
 } from "../../../../projectSchemas/constants";
@@ -123,6 +124,12 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("network-config", "VPC network configuration (JSON)", z.string().optional(), {
         group: ENVIRONMENT,
       }),
+      flag(
+        "platform-version",
+        "Runtime platform version: V1 (service default) or V2",
+        PlatformVersionSchema.optional(),
+        { group: ENVIRONMENT },
+      ),
       flag(
         "lifecycle-configuration",
         "session idle timeout and instance lifetime configuration (JSON)",
@@ -267,6 +274,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         envVars: toEnvironmentVariables(inputEnvironmentVariables),
         networkMode: flags["network-mode"],
         networkConfig: parseJsonFlag("network-config", flags["network-config"]),
+        platformVersion: flags["platform-version"],
         authorizerType: flags["authorizer-type"],
         authorizerConfiguration: parseJsonFlag(
           "authorizer-configuration",

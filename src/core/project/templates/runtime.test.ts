@@ -100,6 +100,7 @@ describe("runtime templates", () => {
     const { runtime, appDir, core } = await addTemplate("my_bma", "environment-python-bma", {
       infra: {
         lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+        platformVersion: "V2",
         additionalPolicies: ["custom-policy.json"],
         tags: { team: "agents" },
       },
@@ -111,6 +112,7 @@ describe("runtime templates", () => {
       dockerfile: "Dockerfile",
       protocol: "HTTP",
       lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+      platformVersion: "V2",
       additionalPolicies: ["bma-acr-policy.json", "custom-policy.json"],
       tags: { "agentcore:template": "BedrockManagedAgents", team: "agents" },
     });

@@ -42,6 +42,7 @@ function getRuntimeResponse(
     lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
     roleArn: "arn:aws:iam::123456789012:role/runtime-role",
     networkConfiguration: { networkMode: "PUBLIC" },
+    platformVersion: "V2",
     status: "READY",
     protocolConfiguration: { serverProtocol: "HTTP" },
     lifecycleConfiguration: {
@@ -176,6 +177,7 @@ describe("runtime hub", () => {
     expect(r.lastFrame()).toMatch(/version\s+7/);
     expect(r.lastFrame()).toMatch(/protocol\s+HTTP/);
     expect(r.lastFrame()).toMatch(/network\s+PUBLIC/);
+    expect(r.lastFrame()).toMatch(/platform\s+V2/);
     expect(r.lastFrame()).not.toContain("failureReason");
     await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntime"));
     expect(core.runtime.calls.find((call) => call.method === "getRuntime")).toEqual({
