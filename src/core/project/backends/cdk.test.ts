@@ -1661,6 +1661,20 @@ describe("CdkBackend.resolveProjectResources", () => {
     },
     {
       title:
+        "a shared target name of a gateway with an underscore gets the export name with a hyphen",
+      gateways: [
+        ["my_tools", ["search"]],
+        ["other", ["search"]],
+      ],
+      deployed: ["my_tools", "other"],
+      exports: { "my-tools:search": "search-of-my-tools", "other:search": "search-of-other" },
+      expected: [
+        ["my_tools", [["search", "search-of-my-tools"]]],
+        ["other", [["search", "search-of-other"]]],
+      ],
+    },
+    {
+      title:
         "a target name that two gateways share gives no id while the stack has only the export without the gateway",
       gateways: [
         [ONE, ["bedrock"]],
@@ -1710,7 +1724,7 @@ describe("CdkBackend.resolveProjectResources", () => {
         StackStatus: "CREATE_COMPLETE",
         Outputs: [
           ...deployed.map((gateway) =>
-            out(`${S}-Gateway-${gateway}-Arn`, `arn:gateway/${gateway}`),
+            out(`${S}-Gateway-${gateway.replace(/_/g, "-")}-Arn`, `arn:gateway/${gateway}`),
           ),
           ...Object.entries(exports).map(([name, id]) => out(`${S}-GatewayTarget-${name}-Id`, id)),
         ],
