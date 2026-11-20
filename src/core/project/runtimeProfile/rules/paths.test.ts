@@ -65,7 +65,6 @@ const LEAVES = toml(
   "",
   "[mcp.notes.filesystem]",
   `read = ["${APP}", { path = "${APP}/.venv", optional = true }, { path = "\${{ home }}/.local/share/uv/python", optional = true }]`,
-  `write = ["${APP}/notes/out"]`,
   "",
   "[mcp.notes.network]",
   "contain_egress = true",
@@ -90,7 +89,6 @@ const LEAVES_ON_RUNTIME = {
     // The venv moves to the code folder, which the first grant names already.
     filesystem: {
       read: [CODE, { path: PREFIX, optional: true }],
-      write: [`${CODE}/notes/out`],
     },
     network: { contain_egress: true },
   },

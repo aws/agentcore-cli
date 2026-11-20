@@ -80,6 +80,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_PATH_NOT_FOUND",
   /** A program that build cannot find on the Runtime. */
   "RUNTIME_PROGRAM_NOT_FOUND",
+  /** A write grant in the code folder of a CodeZip Runtime, which box runs files from. */
+  "RUNTIME_WRITE_IN_CODE",
   /** A process whose calls on the Runtime would not go through the Box gateway. */
   "RUNTIME_EGRESS_NOT_CONTAINED",
   /** A telemetry target that is not CloudWatch, which the Runtime cannot send to yet. */

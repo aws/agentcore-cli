@@ -9,9 +9,10 @@
  * | a `[telemetry.<name>]` that is not `cloudwatch_logs` or `cloudwatch_traces` | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
  * | CodeZip: a path of the project outside the code folder, of the home folder, or in the venv | RUNTIME_PATH_NOT_FOUND |
  * | CodeZip: a stdio server or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
+ * | CodeZip: a `write` or `write_file` grant in the code folder, which the agent runs files from on the Runtime | RUNTIME_WRITE_IN_CODE |
  *
  * A container image runs the same paths and programs under `agentcore dev` and on the Runtime, so
- * the last two do not apply to it. It replaces the CloudWatch-only filter of `cloudWatchTelemetry`
+ * the last three do not apply to it. It replaces the CloudWatch-only filter of `cloudWatchTelemetry`
  * (boxNetwork/telemetry.ts), which leaves out each other target with no message.
  */
 import { keyLabel } from "../derive";
@@ -31,6 +32,9 @@ import type {
   RuntimeProfileProblemCode,
   TomlTable,
 } from "../types";
+
+/** The filesystem lists that let a process write. */
+const WRITE_LISTS = ["write", "write_file"] as const;
 
 /** The telemetry kinds that a box on AgentCore Runtime can send to, with the execution role. */
 const RUNTIME_TELEMETRY_KINDS: ReadonlySet<string> = new Set([
@@ -107,6 +111,27 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
         problem("RUNTIME_PROGRAM_NOT_FOUND", [...key, "program"], notFound(searched, paths));
       }
     }
+    // On the Runtime the agent gets exec on the code folder, and box refuses a write grant in a
+    // folder that it can run files from.
+    for (const { key, table: process } of processTables(table)) {
+      const filesystem = isTable(process.filesystem) ? process.filesystem : {};
+      for (const list of WRITE_LISTS) {
+        const grants = filesystem[list];
+        if (!Array.isArray(grants)) continue;
+        for (const grant of grants) {
+          const path = grantPath(grant);
+          const moved = path === undefined ? undefined : moveProjectPath(path, paths);
+          if (typeof moved !== "string" || !inRuntimeCode(moved, paths)) continue;
+          problem(
+            "RUNTIME_WRITE_IN_CODE",
+            [...key, "filesystem", list],
+            `names ${JSON.stringify(path)}, a path in ${code}. On AgentCore Runtime, the agent ` +
+              `can run each file in ${code}, and box refuses a write grant in a folder that the ` +
+              "box can run files from. Remove the path from the list.",
+          );
+        }
+      }
+    }
   }
 
   return {
@@ -114,6 +139,17 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     problems: inProfileOrder(problems),
     warnings: [],
   };
+}
+
+/** The path of a filesystem grant: the string, or the `path` of a grant table. */
+function grantPath(grant: unknown): string | undefined {
+  if (typeof grant === "string") return grant;
+  return isTable(grant) && typeof grant.path === "string" ? grant.path : undefined;
+}
+
+/** Whether `path`, as a CodeZip Runtime profile names it, is the code folder or in it. */
+function inRuntimeCode(path: string, paths: RuntimeProfileContext["paths"]): boolean {
+  return path === paths.runtimeCode || path.startsWith(`${paths.runtimeCode}/`);
 }
 
 /** Why build cannot find the program `program` of a process on a CodeZip Runtime. */
