@@ -205,7 +205,7 @@ These templates run their agent in a box, both under `agentcore dev` and on Agen
 its agent without box, and `--isolation private-vpc` needs a box template. Each box runtime has its
 own box profile, `.box/<runtime>/local/profile.toml`; build and deploy stop without it. Build
 derives the AgentCore Runtime profile of each runtime from its local profile. box comes from the
-public GitHub release `v0.1.11-mquang.preview.9` of
+public GitHub release `v0.1.11-preview.10` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it. When that release has no build for your machine, use the build of
 `v0.1.11-linux-preview.7`, or of a later release that has one, for `agentcore dev` and the profile
@@ -257,7 +257,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"[box]"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.2`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-preview.10`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
 `FAILED`, `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands` and skip the container settings.
