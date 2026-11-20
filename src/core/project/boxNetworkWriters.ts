@@ -302,10 +302,7 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     return {
       spec: [(copy) => addBoxGatewayTargets(copy, region)],
       files: [
-        {
-          path: BOX_BEDROCK_POLICY_FILE,
-          policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
-        },
+        { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec) },
         {
           path: BOX_MEMORY_POLICY_FILE,
           policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),

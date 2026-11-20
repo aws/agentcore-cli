@@ -968,21 +968,6 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect((await runtimeProfile(root)).options).toEqual({ bedrock: { region: "ap-northeast-1" } });
   });
 
-  test("writes the gateway role's Bedrock grant for that region", async () => {
-    const { manager, root } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
-
-    await build(manager, root);
-
-    const policy = JSON.parse(await text(root, "agentcore/box-bedrock-policy.json")) as {
-      Statement: { Resource: string[] }[];
-    };
-    expect(policy.Statement.map(({ Resource }) => Resource)).toEqual([
-      ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
-      ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
-      ["arn:aws:bedrock:*::foundation-model/*"],
-    ]);
-  });
-
   test("has box resolve the profile for that region, from a copy it then removes", async () => {
     // create wrote the profile for us-west-2, the region `agentcore dev` calls Bedrock in.
     const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
