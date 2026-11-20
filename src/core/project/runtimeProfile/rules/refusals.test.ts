@@ -191,6 +191,48 @@ describe("the refusals rule", () => {
     },
   );
 
+  test("stops for a write grant in the code folder of [agent], a stdio [mcp], and a [tool], on a CodeZip Runtime only (RUNTIME_WRITE_IN_CODE)", () => {
+    const text = toml(
+      "[agent.filesystem]",
+      `write = ["${APP}/cache"]`,
+      "[mcp.notes]",
+      'type = "stdio"',
+      `command = ["${APP}/.venv/bin/python3.15", "${APP}/notes_server.py"]`,
+      "[mcp.notes.filesystem]",
+      `write_file = [{ path = "${APP}/notes.db", optional = true }]`,
+      "[tool.lister]",
+      `command = ["${APP}/bin/lister"]`,
+      "[tool.lister.filesystem]",
+      `write = ["${APP}"]`,
+    );
+    const reason = (key: string, path: string) =>
+      `${key} names "${path}", a path in app/agent/. On AgentCore Runtime, the agent can run ` +
+      "each file in app/agent/, and box refuses a write grant in a folder that the box can run " +
+      "files from. Remove the path from the list.";
+
+    expect(problemsOf(text)).toEqual([
+      {
+        code: "RUNTIME_WRITE_IN_CODE",
+        key: ["agent", "filesystem", "write"],
+        reason: reason("[agent.filesystem] write", `${APP}/cache`),
+        place: `${PROFILE}:2:1`,
+      },
+      {
+        code: "RUNTIME_WRITE_IN_CODE",
+        key: ["mcp", "notes", "filesystem", "write_file"],
+        reason: reason("[mcp.notes.filesystem] write_file", `${APP}/notes.db`),
+        place: `${PROFILE}:7:1`,
+      },
+      {
+        code: "RUNTIME_WRITE_IN_CODE",
+        key: ["tool", "lister", "filesystem", "write"],
+        reason: reason("[tool.lister.filesystem] write", APP),
+        place: `${PROFILE}:11:1`,
+      },
+    ]);
+    expect(problemsOf(text, CONTAINER)).toEqual([]);
+  });
+
   test("stops for a [tool] program that box finds on PATH, on a CodeZip Runtime only", () => {
     const text = toml("[tool.jq]", 'program = "jq"');
 
