@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -253,6 +254,12 @@ const LOCAL_DEV_PORT_BASE = 18080;
  * tests run one at a time.
  */
 const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
+/**
+ * Whether a `box` runs from PATH. Create, build and deploy of a Box template run it, and box ships
+ * only arm64 builds, so the Box tests are optional: they skip on a machine without one, such as
+ * the x86_64 Linux CI runner.
+ */
+const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
 
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
@@ -344,7 +351,7 @@ describe(
 // deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
 // `agentcore dev`, which the sequential tests below cover. They need `box` on PATH: create checks
 // for it. Run them with `bun run test:e2e -- --tagsFilter='box'`.
-describe(
+describe.skipIf(!BOX_ON_PATH)(
   "create, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
@@ -408,24 +415,28 @@ describe(
 // `agentcore dev` for each Strands Box template: box runs the agent on the developer's machine. Box
 // listens on the protocol's fixed ingress port, so these tests run one at a time. They deploy
 // nothing. They need `box` on PATH and a machine where `box run` can start its sandbox.
-describe.sequential("create and dev for Strands Box templates", { tags: [TAGS.BOX] }, () => {
-  const cli = new CliRunner();
+describe.skipIf(!BOX_ON_PATH)(
+  "create and dev for Strands Box templates",
+  { tags: [TAGS.BOX], sequential: true },
+  () => {
+    const cli = new CliRunner();
 
-  test.each(BOX_TEMPLATES)(
-    "$name",
-    { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
-    async (runtime) => {
-      const projectDir = await createTemplateProject(cli, runtime);
-      const { devOutput } = await invokeLocally(
-        cli,
-        runtime,
-        projectDir,
-        BOX_DEV_PORTS[runtime.protocol],
-      );
-      expect(devOutput).toContain("box: running profile");
-    },
-  );
-});
+    test.each(BOX_TEMPLATES)(
+      "$name",
+      { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
+      async (runtime) => {
+        const projectDir = await createTemplateProject(cli, runtime);
+        const { devOutput } = await invokeLocally(
+          cli,
+          runtime,
+          projectDir,
+          BOX_DEV_PORTS[runtime.protocol],
+        );
+        expect(devOutput).toContain("box: running profile");
+      },
+    );
+  },
+);
 
 // Egress from a boxed agent under `agentcore dev`: the box profile allows one host with no
 // credential, and box blocks every other host. The agent is the minimal template with its code
@@ -462,39 +473,43 @@ const EgressReplySchema = z.object({
   blocked: z.object({ status: z.number().optional(), error: z.string().optional() }),
 });
 
-describe("egress under dev for a Strands Box template", { tags: [TAGS.BOX_EGRESS] }, () => {
-  const cli = new CliRunner();
-  const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+describe.skipIf(!BOX_ON_PATH)(
+  "egress under dev for a Strands Box template",
+  { tags: [TAGS.BOX_EGRESS] },
+  () => {
+    const cli = new CliRunner();
+    const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
 
-  test.skipIf(!runtime)(
-    "allows the profile's host and blocks any other",
-    {
-      retry: 2,
-      timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE,
-    },
-    async () => {
-      const template = runtime!;
-      const projectDir = await createTemplateProject(cli, template);
-      await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
-      const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
-      const host = new URL(EGRESS_ALLOWED_URL).host;
-      await writeFile(
-        profile,
-        `${await readFile(profile, "utf8")}\n[egress.checkip]\ndestinations = ["${host}"]\n`,
-      );
+    test.skipIf(!runtime)(
+      "allows the profile's host and blocks any other",
+      {
+        retry: 2,
+        timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE,
+      },
+      async () => {
+        const template = runtime!;
+        const projectDir = await createTemplateProject(cli, template);
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
+        const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
+        const host = new URL(EGRESS_ALLOWED_URL).host;
+        await writeFile(
+          profile,
+          `${await readFile(profile, "utf8")}\n[egress.checkip]\ndestinations = ["${host}"]\n`,
+        );
 
-      const { response } = await invokeLocally(
-        cli,
-        template,
-        projectDir,
-        BOX_DEV_PORTS[template.protocol],
-      );
-      const reply = EgressReplySchema.parse(JSON.parse(response.body));
-      expect(reply.allowed).toEqual({ status: 200 });
-      expect(reply.blocked.error).toMatch(/403/);
-    },
-  );
-});
+        const { response } = await invokeLocally(
+          cli,
+          template,
+          projectDir,
+          BOX_DEV_PORTS[template.protocol],
+        );
+        const reply = EgressReplySchema.parse(JSON.parse(response.body));
+        expect(reply.allowed).toEqual({ status: 200 });
+        expect(reply.blocked.error).toMatch(/403/);
+      },
+    );
+  },
+);
 
 /**
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent.
