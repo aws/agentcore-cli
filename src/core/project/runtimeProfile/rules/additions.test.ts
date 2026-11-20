@@ -596,23 +596,29 @@ describe("the additions rule", () => {
       });
     });
 
-    test("gives a list no Runtime grant of the template when the user removed a grant of the template from it", () => {
+    test("keeps the grants that only the Runtime has, and no grant of the template that the user removed", () => {
       const local = createdProfile(CODEZIP);
       const filesystem = agentOf(local).filesystem;
-      // The user keeps the code folder, and removes the venv and the uv Pythons.
-      filesystem.read = ["${{ workspace }}/app/agent"];
-      filesystem.exec = [];
+      // The user removes the read grant of the uv Pythons.
+      filesystem.read = filesystem.read.filter(
+        (grant: unknown) =>
+          (grant as { path?: string }).path !== "${{ home }}/.local/share/uv/python",
+      );
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
-        read: ["${{ workspace }}/app/agent"],
+        read: ["${{ workspace }}/app/agent", "/usr/lib64", "/lib64"],
+        exec: ["${{ workspace }}/app/agent", "${{ home }}/.local/share/uv/python"],
       });
     });
 
-    test("gives an [agent] with no filesystem table no grant", () => {
+    test("gives an [agent] with no filesystem table only the grants that only the Runtime has", () => {
       const local = createdProfile(CODEZIP);
       delete agentOf(local).filesystem;
 
-      expect(agentOf(apply(local, contextOf(CODEZIP)).table)).not.toHaveProperty("filesystem");
+      expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
+        read: ["/usr/lib64", "/lib64"],
+        exec: ["${{ workspace }}/app/agent"],
+      });
     });
 
     test("leaves out a grant that the user removed from a container's template", () => {

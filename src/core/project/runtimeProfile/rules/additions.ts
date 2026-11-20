@@ -298,12 +298,13 @@ function runtimeEnv(
 }
 
 /**
- * `[agent.filesystem]` for the Runtime. In each list, the template's Runtime grants come first, and
- * each grant of the user follows in its order. When the local list keeps each grant of the
- * template, the list gets each Runtime grant of the template. When the user removed a grant of the
- * template, the list gets only the Runtime grants that it names, so the Runtime gets no grant that
- * the local profile does not give. A grant is the same as another when its path is, whether it is
- * optional or not. A list that ends empty goes.
+ * `[agent.filesystem]` for the Runtime. In each list, the template's Runtime grants come first,
+ * and each grant of the user follows in its order. A Runtime grant of the template whose path the
+ * local template list has stays only when the local list keeps it, so a grant that the user removed
+ * stays removed. A Runtime grant that only the Runtime has (the loader folders, and exec on the code
+ * folder, where the Runtime installs the dependencies and their native modules) always stays. A
+ * grant is the same as another when its path is, whether it is optional or not. A list that ends
+ * empty goes.
  */
 function runtimeFilesystem(
   filesystem: unknown,
@@ -323,10 +324,9 @@ function runtimeFilesystem(
     const grants = (own ?? []) as unknown[];
     const localGrants = listOf(templateLocal[name]);
     const runtimeGrants = listOf(templateRuntime[name]);
-    const keepsTemplate = localGrants.every((grant) => includesPath(grants, grant));
-    const kept = keepsTemplate
-      ? runtimeGrants
-      : runtimeGrants.filter((grant) => includesPath(grants, grant));
+    const kept = runtimeGrants.filter(
+      (grant) => !includesPath(localGrants, grant) || includesPath(grants, grant),
+    );
     const users = grants.filter(
       (grant, index) =>
         !includesPath(localGrants, grant) &&
