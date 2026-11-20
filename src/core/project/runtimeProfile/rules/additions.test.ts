@@ -379,6 +379,14 @@ describe("the additions rule", () => {
     expect(apply({}, contextOf(CONTAINER)).table.packs).toEqual(["@box/agentcore"]);
   });
 
+  test("adds no Runtime pack that the profile already lists, on CodeZip and on a container", () => {
+    const codeZip = ["@box/agentcore-codezip", "@box/base", "@box/agentcore"];
+    const container = ["@box/base", "@box/agentcore"];
+
+    expect(apply({ packs: codeZip }, contextOf(CODEZIP)).table.packs).toEqual(codeZip);
+    expect(apply({ packs: container }, contextOf(CONTAINER)).table.packs).toEqual(container);
+  });
+
   test("names the profile for the project, and keeps the other [profile] keys", () => {
     const local = { profile: { name: "demo-agent", description: "mine" } };
 
@@ -513,6 +521,19 @@ describe("the additions rule", () => {
       expect(agentOf(apply({ agent: { env } }, contextOf(CONTAINER)).table).env.PYTHONPATH).toBe(
         "${{ workspace }}/app/agent/lib",
       );
+    });
+
+    test("adds no second ffi entry to a PYTHONPATH that starts with the ffi shim", () => {
+      for (const path of [
+        "${{ inputs.code.dir }}/.box-dist/ffi",
+        "${{ inputs.code.dir }}/.box-dist/ffi:${{ workspace }}/app/agent/lib",
+      ]) {
+        const env = { PYTHONPATH: path };
+
+        expect(agentOf(apply({ agent: { env } }, contextOf(CODEZIP)).table).env.PYTHONPATH).toBe(
+          path,
+        );
+      }
     });
 
     test("sets the region, the AWS stand-ins, and the ffi PYTHONPATH whatever the template's Runtime env", () => {
