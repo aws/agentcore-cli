@@ -2393,10 +2393,6 @@ function ingressPort(text: string): string | undefined {
 }
 
 /**
- * Refuses to export a harness as a runtime into a Box project. Every runtime of a Box project runs
- * in a box, and the exported harness runs its agent the usual way.
- */
-/**
  * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
  * runs in a box in `spec`, and that does not turn observability off.
  */
@@ -2412,6 +2408,10 @@ function defaultLogTargetNotices(
     }));
 }
 
+/**
+ * Refuses to export a harness as a runtime into a Box project. Every runtime of a Box project runs
+ * in a box, and the exported harness runs its agent the usual way.
+ */
 function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
   if (!isBoxProject(spec)) return;
   throw new ProjectStateError(
