@@ -30,9 +30,10 @@ only for the box templates. The runtime's entry point and Dockerfile never decid
 `start.py` runs the usual way. A runtime with `box.version` in a project without
 `"projectType": "box"` stops dev with `agentcore.json has no "projectType": "box"`.
 
-To try an unreleased box build, publish it as a pre-release with the same file names and set
-`box.version` to it: a version the CLI does not pin takes its checksums from the release's
-`SHA256SUMS.txt`.
+`box.version` must be the box version the CLI pins in
+`src/core/project/backends/boxRelease.json`; build and deploy stop on any other version. To try an
+unreleased box build, publish it as a pre-release with the same file names and run
+`bun scripts/bump-box-release.ts --box <version>` in your CLI checkout, then set `box.version` to it.
 
 ## Prerequisites
 

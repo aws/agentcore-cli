@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { lt, valid } from "semver";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
@@ -41,34 +40,6 @@ export const BOX_RELEASE: BoxRelease = PINNED.box;
  * the `key` of an input of the `@box/agentcore` pack.
  */
 export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
-
-/** The `0.1.11-linux-preview.<N>` line of box releases, the line {@link BOX_MINIMUM_VERSION} is in. */
-const LINUX_PREVIEW = /^0\.1\.11-linux-preview\.(\d+)$/;
-
-/**
- * Whether box `version` is a release from before {@link BOX_MINIMUM_VERSION}, which refuses the
- * `@box/<name>` packs the CLI writes: `0.1.11-linux-preview.<N>` below that release's N, or any
- * box before 0.1.11. Releases are not ordered across prerelease lines (`mquang.preview.9` is not
- * later than `linux-preview.7` by any rule they share), so a version on another line passes.
- */
-export function boxPredatesPackNames(version: string): boolean {
-  const minimum = Number(LINUX_PREVIEW.exec(BOX_MINIMUM_VERSION)![1]);
-  const preview = LINUX_PREVIEW.exec(version);
-  if (preview) return Number(preview[1]) < minimum;
-  return valid(version) !== null && lt(version, "0.1.11-0");
-}
-
-/**
- * The sentence that tells the user to move `box.version` off `version`, a box that
- * {@link boxPredatesPackNames}.
- */
-export function boxVersionTooOld(version: string): string {
-  return (
-    `agentcore.json names box ${version} under box.version, a box before ${BOX_MINIMUM_VERSION} ` +
-    `that refuses the @box/<name> packs the CLI writes. Set box.version to ${BOX_RELEASE.version}, ` +
-    "or remove it to use that box."
-  );
-}
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
@@ -270,63 +241,16 @@ async function download(
 }
 
 /**
- * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
- * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE. Refuses a box that {@link boxPredatesPackNames}:
- * it would start on AgentCore Runtime with a profile it refuses, which build cannot see.
+ * The box release that `version`, a runtime's `box.version`, names. It must be the pinned one,
+ * BOX_RELEASE, whose checksums `boxRelease.json` pins: another box is untested with this CLI (box
+ * 0.1.11-linux-preview.6, for one, refuses the `@box/` packs the CLI writes), and build cannot
+ * see that, since it checks the profile with the box on PATH. No version means BOX_RELEASE.
  */
-export async function boxReleaseFor(
-  version: string | undefined,
-  env: NodeJS.ProcessEnv,
-  options: { runner?: ProcessRunner; home?: string } = {},
-): Promise<BoxRelease> {
+export async function boxReleaseFor(version: string | undefined): Promise<BoxRelease> {
   if (version === undefined || version === BOX_RELEASE.version) return BOX_RELEASE;
-  if (boxPredatesPackNames(version)) {
-    throw new InvalidEnvironmentError(`${boxVersionTooOld(version)} Then retry.`);
-  }
-  const target = BOX_RELEASE.linux.target;
-  const linux = `box-v${version}-${target}.tar.gz`;
-  const release = { repo: BOX_RELEASE.repo, version };
-  const sums = await releaseChecksums(release, env, options.runner ?? runProcess, options.home);
-  const linuxSha = sums.get(linux);
-  if (!linuxSha) {
-    throw new InvalidEnvironmentError(
-      `box ${version}, which agentcore.json names under box.version, has no ${linux} in the ` +
-        `SHA256SUMS.txt of its release at github.com/${release.repo}. Name a box version that ` +
-        `release has, or remove box.version to use box ${BOX_RELEASE.version}.`,
-    );
-  }
-  return { ...release, linux: { target, asset: linux, sha256: linuxSha } };
-}
-
-/** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
-async function releaseChecksums(
-  release: Pick<BoxRelease, "repo" | "version">,
-  env: NodeJS.ProcessEnv,
-  runner: ProcessRunner,
-  home: string | undefined,
-): Promise<Map<string, string>> {
-  const cache = boxCache(home ?? env.HOME ?? homedir());
-  mkdirSync(cache, { recursive: true });
-  const work = mkdtempSync(join(cache, ".download-"));
-  try {
-    await download(
-      release,
-      "SHA256SUMS.txt",
-      work,
-      env,
-      runner,
-      (url) =>
-        `agentcore.json names box ${release.version} under box.version, whose checksums ` +
-        `download from ${url}, which failed. Check the version and your network, then retry.`,
-    );
-    const sums = new Map<string, string>();
-    for (const line of readFileSync(join(work, "SHA256SUMS.txt"), "utf8").split("\n")) {
-      const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
-      if (match) sums.set(match[2]!, match[1]!);
-    }
-    return sums;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
+  throw new InvalidEnvironmentError(
+    `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
+      `${BOX_RELEASE.version}, the one box it pins. Set box.version to ${BOX_RELEASE.version}, ` +
+      "then retry.",
+  );
 }

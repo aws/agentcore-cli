@@ -227,7 +227,7 @@ export class CdkBackend implements ProjectBackend {
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
     const events: ProjectEvent[] = [];
     const box = async (version: string | undefined) => {
-      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      const release = await boxReleaseFor(version);
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
@@ -239,9 +239,7 @@ export class CdkBackend implements ProjectBackend {
       });
     };
     await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, (version) =>
-      boxReleaseFor(version, this.processEnv, { runner: this.runner }),
-    );
+    await stageBoxContainers(project, boxNetworks, boxReleaseFor);
     return events;
   }
 
