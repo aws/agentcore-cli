@@ -261,6 +261,21 @@ describe("the refusals rule", () => {
     },
   );
 
+  test("takes a [telemetry] table with no kind that adds to a CloudWatch target of a pack", () => {
+    const text = toml("[telemetry.logs]", 'include = ["deny"]');
+    const resolved = {
+      name: "logs",
+      kind: "cloudwatch_logs" as const,
+      region: "us-west-2",
+      logGroup: "/team/agent",
+      logStream: "box",
+    };
+    const context = { ...contextOf(text), telemetry: [resolved] };
+
+    expect(apply(parse(text) as TomlTable, context).problems).toEqual([]);
+    expect(problemsOf(text).map(({ code }) => code)).toEqual(["RUNTIME_TELEMETRY_NOT_CLOUDWATCH"]);
+  });
+
   test("stops for a [tool] program that box finds on PATH, on a CodeZip Runtime only", () => {
     const text = toml("[tool.jq]", 'program = "jq"');
 

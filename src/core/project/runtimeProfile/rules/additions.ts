@@ -359,13 +359,15 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
   const resolved = new Map(context.telemetry.map((target) => [target.name, target]));
   const result: TomlTable = {};
   for (const [name, entry] of Object.entries(local)) {
-    if (!isTable(entry) || !CLOUDWATCH_KINDS.has(entry.kind)) {
+    // A table with no kind adds to the CloudWatch target of that name that a pack gives.
+    const addsToPack = isTable(entry) && entry.kind === undefined && resolved.has(name);
+    if (!isTable(entry) || (!CLOUDWATCH_KINDS.has(entry.kind) && !addsToPack)) {
       result[name] = entry;
       continue;
     }
     const { kind, region, ...rest } = entry;
     result[name] = {
-      kind,
+      ...(kind !== undefined && { kind }),
       region: region ?? resolved.get(name)?.region ?? context.region,
       ...rest,
       secret: { ref: RUNTIME_AWS_SIGNER },
@@ -384,8 +386,9 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
       secret: { ref: RUNTIME_AWS_SIGNER },
     };
   }
-  const logs = Object.values(result).some(
-    (entry) => isTable(entry) && entry.kind === "cloudwatch_logs",
+  const logs = Object.entries(result).some(
+    ([name, entry]) =>
+      isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === "cloudwatch_logs",
   );
   if (!logs) {
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";

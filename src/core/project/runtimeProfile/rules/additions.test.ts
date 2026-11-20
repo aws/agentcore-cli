@@ -651,6 +651,24 @@ describe("the additions rule", () => {
       });
     });
 
+    test("signs a table with no kind that adds to the CloudWatch target of a pack", () => {
+      const local = { telemetry: { logs: { include: ["deny"] } } };
+      const telemetry = [
+        {
+          name: "logs",
+          kind: "cloudwatch_logs",
+          region: "ap-south-1",
+          logGroup: "/team/agent",
+          logStream: "box",
+        } as const,
+      ];
+
+      // The pack gives the kind, the log group, and the log stream on the Runtime too.
+      expect(apply(local, contextOf(CODEZIP, { telemetry })).table.telemetry).toEqual({
+        logs: { region: "ap-south-1", include: ["deny"], secret: { ref: "aws://" } },
+      });
+    });
+
     test("gives a target with no region the region of the box network model", () => {
       const local = { telemetry: { "x-ray": CLOUDWATCH["x-ray"] } };
       const telemetry = [

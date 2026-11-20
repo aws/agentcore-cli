@@ -68,6 +68,9 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (typeof kind === "string" && RUNTIME_TELEMETRY_KINDS.has(kind)) continue;
     // The additions rule carries each third-party target that the Box network model carries.
     if (context.thirdPartyTelemetry?.some((carried) => carried.name === name)) continue;
+    // A table with no kind adds to the target of that name that a pack gives, which box resolves.
+    if (kind === undefined && context.telemetry.some((resolved) => resolved.name === name))
+      continue;
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
