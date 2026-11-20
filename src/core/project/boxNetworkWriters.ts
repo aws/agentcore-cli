@@ -8,6 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync 
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { EnvLocalEntry } from "../../handlers/project/types";
+import { credentialEnvironmentVariableNames } from "../../projectSchemas/credential";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import {
@@ -343,10 +344,18 @@ export function unsentTargetWarnings(
       if (auth === undefined || source === undefined) continue;
       const [table, route] =
         source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
+      // The model names a credential from agentcore.json before this build adds to it.
+      const holder = after.credentials.find((credential) =>
+        credentialEnvironmentVariableNames(credential).includes(auth.variable),
+      );
       const why =
         plan.unprovisioned.get(route) ??
-        `agentcore.json has no API key credential '${auth.credentialName}' to hold the key of ` +
-          `env://${auth.variable}.`;
+        (holder
+          ? `env://${auth.variable} is the variable of the credential '${holder.name}', which ` +
+            "this build adds to agentcore.json. Build again, and the next build gives the host " +
+            "its target."
+          : `agentcore.json has no API key credential '${auth.credentialName}' to hold the key ` +
+            `of env://${auth.variable}.`);
       warnings.push(
         `${host.authority}: build gives [${table}.${route}] no gateway target, so the agent ` +
           `cannot reach this host on AgentCore Runtime. ${why}`,

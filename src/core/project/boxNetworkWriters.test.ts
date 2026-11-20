@@ -315,6 +315,32 @@ describe("unsentTargetWarnings", () => {
     ]);
   });
 
+  test("says to build again for the variable of a credential that this build adds", () => {
+    const mirror = network({
+      hosts: [
+        host("mirror.example.com", "egress-mirror", {
+          outboundAuth: {
+            ...GITHUB_AUTH,
+            credentialName: "mirror",
+            variable: "AGENTCORE_CREDENTIAL_GITHUB",
+          },
+          sources: [{ kind: "entry", egressEntry: "mirror", destinations: ["mirror.example.com"] }],
+        }),
+      ],
+      envRoutes: [
+        { route: "github", variable: "GITHUB_TOKEN" },
+        { route: "mirror", variable: "AGENTCORE_CREDENTIAL_GITHUB" },
+      ],
+    });
+
+    expect(unsentTargetWarnings([mirror], contextFor())).toEqual([
+      "mirror.example.com: build gives [egress.mirror] no gateway target, so the agent cannot " +
+        "reach this host on AgentCore Runtime. env://AGENTCORE_CREDENTIAL_GITHUB is the " +
+        "variable of the credential 'github', which this build adds to agentcore.json. Build " +
+        "again, and the next build gives the host its target.",
+    ]);
+  });
+
   test("names the credential and the variable when the credentials writer gives no reason", () => {
     expect(unsentTargetWarnings([github([])], contextFor())).toEqual([
       "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
