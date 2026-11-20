@@ -26,6 +26,7 @@ import {
   boxBedrockPolicy,
   boxMemoryPolicy,
 } from "./boxMemory";
+import { boxGatewayTargetsText } from "./boxGatewayTargets";
 import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import {
@@ -229,9 +230,7 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
     );
     return {
       spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
-      files: [
-        { path: BOX_GATEWAY_TARGETS_FILE, text: `${JSON.stringify(record, undefined, 2)}\n` },
-      ],
+      files: [{ path: BOX_GATEWAY_TARGETS_FILE, text: boxGatewayTargetsText(record) }],
     };
   },
 };

@@ -394,9 +394,31 @@ describe("build writes the Box network of the box profile", () => {
     expect(second.warnings.filter((w) => w.split(":", 1)[0] === "api.openai.com")).toEqual([]);
   });
 
-  test("owns only the targets it records, after it takes its old egress- targets once", async () => {
+  test("keeps a user's egress- target that a new project has before its first build", async () => {
     const { manager, root } = await strandsProject();
-    // A project built before the record: build wrote egress-old, for a host the profile has left.
+    // create wrote an empty entry for the Box gateway, so build owns none of its targets yet.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-mine", "bedrock", "agentcore"]);
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+    // The Runtime profile routes the user's target, as a target build does not own.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(egress["egress-mine"]?.destinations).toEqual(["mine.example.com"]);
+  });
+
+  test("takes the old egress- targets of a gateway that an older CLI made, one time", async () => {
+    const { manager, root } = await strandsProject();
+    // A project of an older CLI has no record, and build wrote egress-old for a host it has left.
+    await rm(path(root, "agentcore/box-gateway-targets.json"));
     await editGateway(root, (gateway) =>
       gateway.targets.push(userTarget("egress-old", "https://old.example.com")),
     );
@@ -411,18 +433,12 @@ describe("build writes the Box network of the box profile", () => {
       [GATEWAY]: [],
     });
 
-    // The user's own target with the prefix, of the shape build writes, now stays theirs.
+    // Once the record names the gateway, a user's egress- target of the shape build writes stays.
     await editGateway(root, (gateway) =>
       gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
     );
     await build(manager, root);
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-mine"]);
-    // The Runtime profile routes the user's target, as a target build does not own.
-    const egress = (await runtimeProfile(root)).egress as Record<
-      string,
-      { destinations: string[] }
-    >;
-    expect(egress["egress-mine"]?.destinations).toEqual(["mine.example.com"]);
   });
 
   test("changes nothing on a second build", async () => {

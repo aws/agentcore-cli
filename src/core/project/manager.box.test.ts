@@ -155,6 +155,9 @@ async function existingProject(manager: FsProjectManager): Promise<Project> {
   return project;
 }
 
+/** The record of the gateway targets that build writes, `agentcore/box-gateway-targets.json`. */
+const recordOf = (project: Project) =>
+  join(project.rootPath, "agentcore", "box-gateway-targets.json");
 const specText = (project: Project) =>
   readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf8");
 /** The spec on disk, parsed, for a test that reads runtimes or gateway bindings. */
@@ -286,6 +289,26 @@ describe("agentcore create", () => {
     expect(runtime?.network).toEqual(network);
   });
 
+  test("a Box template writes an empty entry for each Box gateway in the record of build's targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": [],
+    });
+  });
+
   test("templates that are not Box templates write no projectType and no gateway", () => {
     const spec = newProjectSpec("example", [{ runtimes: [{ name: "agent" } as never] }]);
     expect("projectType" in spec).toBe(false);
@@ -415,6 +438,24 @@ describe("gateway targets in a Box project", () => {
       "agent",
       "search",
     ]);
+  });
+
+  test("add runtime adds an empty entry for its Box gateway to the record of build's targets", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    await writeFile(recordOf(project), '{\n  "agent-box-egress": ["egress-x"]\n}\n');
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-x"],
+      "search-box-egress": [],
+    });
   });
 
   test("add runtime says that the new Box gateway sends its logs, and how to stop them", async () => {
@@ -666,6 +707,7 @@ describe("gateway targets in a Box project", () => {
     expect(messages).toContain(`writing box profile ${profile}`);
     expect(messages).not.toContain(boxGatewayLogsNotice(boxGatewaySpec("search").name));
     expect(await specText(project)).toBe(before);
+    expect(existsSync(recordOf(project))).toBe(false);
   });
 
   test("add runtime warns when the kept box profile is for another protocol", async () => {

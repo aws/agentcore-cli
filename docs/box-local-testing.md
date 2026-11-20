@@ -132,9 +132,11 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
   `<runtime>-box-egress`. A host the gateway already has a target for keeps that target. Build owns
   only the targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them,
   changes them, and removes one when no host needs it. It never changes another target, also one
-  whose name starts with `egress-`. For a gateway that the file does not list, which an older CLI
-  built, build takes each `egress-` target that has the shape it writes as its own, once, and warns
-  for each other `egress-` target, which it keeps as yours. Commit
+  whose name starts with `egress-`. `agentcore create` and `agentcore add runtime` write an empty
+  entry for each new Box gateway, so build owns none of its targets until it writes one. For a
+  gateway that the file does not list, which an older CLI made, build takes each `egress-` target
+  that has the shape it writes as its own, once, and warns for each other `egress-` target, which it
+  keeps as yours. Commit
   `agentcore/box-gateway-targets.json` with `agentcore.json`: in a clone without it, build goes
   back to that `egress-` rule, and can take or give up the wrong targets. The `.gitignore` that
   `agentcore create` writes does not exclude it.

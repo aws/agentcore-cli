@@ -58,6 +58,7 @@ import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
+import { addBoxGatewaysToRecord, BOX_GATEWAY_TARGETS_FILE } from "./boxGatewayTargets";
 import {
   BOX_NETWORK_WRITERS,
   boxNetworkEdits,
@@ -1105,9 +1106,19 @@ export class FsProjectManager implements ProjectManager {
         newProjectSpec,
         newProjectSpec.runtimes.filter(({ name }) => name === added),
       );
-      yield* boxGatewayLogsWarnings(
-        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
+      const boxGateways = newProjectSpec.agentCoreGateways.filter(
+        ({ boundRuntime }) => boundRuntime === added,
       );
+      yield* boxGatewayLogsWarnings(boxGateways);
+      // Build owns no target of the new Box gateway yet: an empty entry in the record says so.
+      if (
+        addBoxGatewaysToRecord(
+          project.rootPath,
+          boxGateways.map(({ name }) => name),
+        )
+      ) {
+        yield { type: "step", message: `writing ${BOX_GATEWAY_TARGETS_FILE}` };
+      }
     }
 
     return {

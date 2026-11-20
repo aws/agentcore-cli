@@ -8,6 +8,7 @@ import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
@@ -44,11 +45,7 @@ export type { BoxNetworkFailure } from "./types";
 /** Where a failure of a target in agentcore.json is. */
 const PROJECT_SPEC_PLACE = "agentcore/agentcore.json";
 
-/**
- * The file, from the project root, where build records the targets of each Box gateway that it
- * writes, by the gateway's name. Build owns those targets, and no other.
- */
-export const BOX_GATEWAY_TARGETS_FILE = "agentcore/box-gateway-targets.json";
+export { BOX_GATEWAY_TARGETS_FILE };
 
 /** How the gateway authenticates its requests to a host. */
 export type BoxEgressAuth =

@@ -24,8 +24,8 @@ import {
   boxStartFolder,
   runtimeRunsInBox,
 } from "./templates/boxProfile";
+import { readBoxGatewayTargets } from "./boxGatewayTargets";
 import {
-  BOX_GATEWAY_TARGETS_FILE,
   boxGatewayOf,
   buildBoxNetwork,
   parseResolvedPolicy,
@@ -99,31 +99,6 @@ export async function readBoxNetworks(
     });
   }
   return networks;
-}
-
-/** The record of the targets build writes, as {@link BOX_GATEWAY_TARGETS_FILE} holds it. */
-const BoxGatewayTargetsSchema = z.record(z.string(), z.array(z.string()));
-
-/**
- * The targets build wrote for each Box gateway, by the gateway's name, or `undefined` when the
- * project has no {@link BOX_GATEWAY_TARGETS_FILE}. Throws for a file that is not that record.
- */
-function readBoxGatewayTargets(projectRoot: string): Record<string, string[]> | undefined {
-  const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
-  if (!existsSync(path)) return undefined;
-  let document: unknown;
-  try {
-    document = JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    document = undefined;
-  }
-  const record = BoxGatewayTargetsSchema.safeParse(document);
-  if (record.success) return record.data;
-  throw new ProjectStateError(
-    `${BOX_GATEWAY_TARGETS_FILE} is not the record of the gateway targets that build writes: a ` +
-      "JSON object with a list of target names for each Box gateway. Remove the file, and build " +
-      "writes it again.",
-  );
 }
 
 /**
