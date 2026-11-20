@@ -12,7 +12,7 @@ import {
   gatewayTargetsWriter,
   runtimeProfileWriter,
   telemetryPolicyWriter,
-  unsentTargetWarnings,
+  type BoxNetworkWriteContext,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
 import { BOX_GATEWAY_TARGETS_FILE } from "./boxNetwork";
@@ -153,6 +153,41 @@ describe("boxNetworkEdits", () => {
   });
 });
 
+describe("boxNetworkEdits", () => {
+  test("gives a writer's warnings and late files agentcore.json as every writer changed it", () => {
+    const seen: string[] = [];
+    const reader: BoxNetworkWriter = {
+      name: "reader",
+      writes: () => [{ kind: "file", path: "seen.txt" }],
+      edits: () => ({
+        warnings: (spec) => [`warning: ${spec.name}`],
+        filesAfter: (spec) => {
+          seen.push(spec.name);
+          return [{ path: "seen.txt", text: spec.name }];
+        },
+      }),
+    };
+    const renamer: BoxNetworkWriter = {
+      name: "renamer",
+      writes: () => [{ kind: "defaultTargets" }],
+      edits: () => ({
+        spec: [
+          (spec) => {
+            spec.name = "renamed";
+            return [];
+          },
+        ],
+      }),
+    };
+
+    const edits = boxNetworkEdits([reader, renamer], [], contextFor());
+
+    expect(seen).toEqual(["renamed"]);
+    expect(edits.files).toEqual([{ path: "seen.txt", text: "renamed" }]);
+    expect(edits.warnings).toEqual(["warning: renamed"]);
+  });
+});
+
 describe("gatewayTargetsWriter", () => {
   test("keeps a user's egress- target that the record does not name, and records the targets it writes", () => {
     const project = spec([
@@ -285,7 +320,11 @@ describe("gatewayTargetsWriter", () => {
   });
 });
 
-describe("unsentTargetWarnings", () => {
+describe("the warning for a host with no gateway target", () => {
+  /** The warnings of the credentials and gateway targets writers, as build runs them. */
+  const warningsOf = (networks: BoxNetwork[], context: BoxNetworkWriteContext) =>
+    boxNetworkEdits([credentialsWriter, gatewayTargetsWriter], networks, context).warnings;
+
   const github = (envRoutes: BoxNetwork["envRoutes"]) =>
     network({
       hosts: [
@@ -299,13 +338,13 @@ describe("unsentTargetWarnings", () => {
 
   test("warns for no host whose credential the credentials writer adds", () => {
     const routes = [{ route: "github", variable: "GITHUB_TOKEN" }];
-    expect(unsentTargetWarnings([github(routes)], contextFor())).toEqual([]);
+    expect(warningsOf([github(routes)], contextFor())).toEqual([]);
   });
 
   test("says why a host gets no target, and what to do, from the credentials writer", () => {
     const routes = [{ route: "github", variable: "GITHUB_TOKEN" }];
     expect(
-      unsentTargetWarnings([github(routes)], { ...contextFor(), env: {} }).map((w) =>
+      warningsOf([github(routes)], { ...contextFor(), env: {} }).map((w) =>
         w.replace(ENV_LOCAL_RELATIVE_PATH, ".env.local"),
       ),
     ).toEqual([
@@ -333,7 +372,7 @@ describe("unsentTargetWarnings", () => {
       ],
     });
 
-    expect(unsentTargetWarnings([mirror], contextFor())).toEqual([
+    expect(warningsOf([mirror], contextFor())).toEqual([
       "mirror.example.com: build gives [egress.mirror] no gateway target, so the agent cannot " +
         "reach this host on AgentCore Runtime. env://AGENTCORE_CREDENTIAL_GITHUB is the " +
         "variable of the credential 'github', which this build adds to agentcore.json. Build " +
@@ -342,7 +381,7 @@ describe("unsentTargetWarnings", () => {
   });
 
   test("names the credential and the variable when the credentials writer gives no reason", () => {
-    expect(unsentTargetWarnings([github([])], contextFor())).toEqual([
+    expect(warningsOf([github([])], contextFor())).toEqual([
       "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
         "this host on AgentCore Runtime. agentcore.json has no API key credential 'github' to " +
         "hold the key of env://GITHUB_TOKEN.",

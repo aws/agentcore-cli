@@ -59,12 +59,7 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { addBoxGatewaysToRecord, BOX_GATEWAY_TARGETS_FILE } from "./boxGatewayTargets";
-import {
-  BOX_NETWORK_WRITERS,
-  boxNetworkEdits,
-  unsentTargetWarnings,
-  writeBoxNetworkFiles,
-} from "./boxNetworkWriters";
+import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
@@ -1743,7 +1738,7 @@ export class FsProjectManager implements ProjectManager {
         ...network.warnings,
         ...boxGatewayIamWarnings(edits.spec, network),
       ]),
-      ...unsentTargetWarnings(networks, context),
+      ...edits.warnings,
     ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),

@@ -72,8 +72,12 @@ export interface BoxNetworkEdits {
   /** Changes to the copy of agentcore.json, in order; each returns its step messages. */
   readonly spec?: readonly ((spec: ProjectSpec) => string[])[];
   readonly files?: readonly BoxNetworkFile[];
+  /** Files that depend on the copy of agentcore.json once every writer changed it. */
+  readonly filesAfter?: (spec: ProjectSpec) => readonly BoxNetworkFile[];
   /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
+  /** Warnings on the copy of agentcore.json once every writer changed it. */
+  readonly warnings?: (spec: ProjectSpec) => readonly string[];
 }
 
 /** What a writer reads besides the models: the project, and where build looks for each key. */
@@ -104,6 +108,7 @@ export interface CollectedEdits {
   readonly files: readonly BoxNetworkFile[];
   readonly envLocal: readonly EnvLocalEntry[];
   readonly messages: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -131,11 +136,16 @@ export function boxNetworkEdits(
   const messages: string[] = [];
   const files: BoxNetworkFile[] = [];
   const envLocal: EnvLocalEntry[] = [];
-  for (const writer of writers) {
-    const edits = writer.edits(networks, context);
+  const all = writers.map((writer) => writer.edits(networks, context));
+  for (const edits of all) {
     for (const change of edits.spec ?? []) messages.push(...change(spec));
     files.push(...(edits.files ?? []));
     envLocal.push(...(edits.envLocal ?? []));
+  }
+  const warnings: string[] = [];
+  for (const edits of all) {
+    files.push(...(edits.filesAfter?.(spec) ?? []));
+    warnings.push(...(edits.warnings?.(spec) ?? []));
   }
   const changedFields = (Object.keys(spec) as (keyof ProjectSpec)[]).filter(
     (field) => !isDeepStrictEqual(spec[field], context.spec[field]),
@@ -147,6 +157,7 @@ export function boxNetworkEdits(
     files,
     envLocal,
     messages,
+    warnings,
   };
 }
 
@@ -188,6 +199,7 @@ export const credentialsWriter: BoxNetworkWriter = {
         },
       ],
       envLocal: plan.entries,
+      warnings: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
     };
   },
 };
@@ -217,46 +229,28 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
     ...networks.map(({ gateway }) => ({ kind: "gatewayTargets" as const, gateway })),
     ...(networks.length > 0 ? [{ kind: "file" as const, path: BOX_GATEWAY_TARGETS_FILE }] : []),
   ],
-  edits: (networks, context) => {
+  edits: (networks) => {
     if (networks.length === 0) return {};
-    const after = withPlannedCredentials(networks, context).spec;
-    const record = Object.fromEntries(
-      networks.map((network) => [
-        network.gateway,
-        [
-          ...new Set(
-            network.hosts.flatMap((host) =>
-              host.target !== undefined &&
-              network.managedTargets.has(host.target) &&
-              undeclaredKey(after, host) === undefined
-                ? [host.target]
-                : [],
-            ),
-          ),
-        ],
-      ]),
-    );
     return {
       spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
-      files: [{ path: BOX_GATEWAY_TARGETS_FILE, text: boxGatewayTargetsText(record) }],
+      filesAfter: (written) => [
+        {
+          path: BOX_GATEWAY_TARGETS_FILE,
+          text: boxGatewayTargetsText(
+            Object.fromEntries(
+              networks.map((network) => [
+                network.gateway,
+                (boxGatewayOf(written, network.runtime)?.targets ?? []).flatMap(({ name }) =>
+                  network.managedTargets.has(name) ? [name] : [],
+                ),
+              ]),
+            ),
+          ),
+        },
+      ],
     };
   },
 };
-
-/**
- * `context.spec` with the API key credentials that the credentials writer adds, and the plan that
- * adds them.
- */
-function withPlannedCredentials(
-  networks: readonly BoxNetwork[],
-  { spec, env, envLocal }: BoxNetworkWriteContext,
-): { spec: ProjectSpec; plan: ReturnType<typeof planBoxProfileCredentials> } {
-  const plan = planBoxProfileCredentials(structuredClone(spec), uniqueRoutes(networks), {
-    env,
-    envLocal,
-  });
-  return { spec: { ...spec, credentials: [...spec.credentials, ...plan.added] }, plan };
-}
 
 /**
  * Sets the build-owned targets of the network's Box gateway: a managed target that a host takes is
@@ -324,19 +318,20 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
 
 /**
  * A warning for each host of `networks` that gets no gateway target because no API key credential
- * of agentcore.json, once the credentials writer runs, holds the key its target sends: the agent
- * cannot reach the host on AgentCore Runtime. It says why, and what to do.
+ * of `spec`, agentcore.json as the writers changed it, holds the key its target sends: the agent
+ * cannot reach the host on AgentCore Runtime. It says why, from the credential planner's
+ * `unprovisioned`, and what to do.
  */
-export function unsentTargetWarnings(
+function unsentTargetWarnings(
+  spec: ProjectSpec,
   networks: readonly BoxNetwork[],
-  context: BoxNetworkWriteContext,
+  unprovisioned: ReadonlyMap<string, string>,
 ): string[] {
-  const { spec: after, plan } = withPlannedCredentials(networks, context);
   const warnings: string[] = [];
   for (const { hosts, managedTargets } of networks)
     for (const host of hosts) {
       if (host.target === undefined || !managedTargets.has(host.target)) continue;
-      const auth = undeclaredKey(after, host);
+      const auth = undeclaredKey(spec, host);
       const source = host.sources.find(
         (candidate): candidate is Exclude<typeof candidate, { kind: "rule" }> =>
           candidate.kind !== "rule",
@@ -345,11 +340,11 @@ export function unsentTargetWarnings(
       const [table, route] =
         source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
       // The model names a credential from agentcore.json before this build adds to it.
-      const holder = after.credentials.find((credential) =>
+      const holder = spec.credentials.find((credential) =>
         credentialEnvironmentVariableNames(credential).includes(auth.variable),
       );
       const why =
-        plan.unprovisioned.get(route) ??
+        unprovisioned.get(route) ??
         (holder
           ? `env://${auth.variable} is the variable of the credential '${holder.name}', which ` +
             "this build adds to agentcore.json. Build again, and the next build gives the host " +
