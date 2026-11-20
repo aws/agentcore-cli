@@ -454,6 +454,74 @@ describe("the telemetry of each box runtime", () => {
   });
 });
 
+describe("two routes of one profile to one host", () => {
+  /** The Box network model of `agent` for the local profile `text`, which box resolves to `egress`. */
+  async function networkOf(text: string, egress: Record<string, unknown>) {
+    const root = await project([]);
+    await writeFile(join(root, ...LOCAL, "profile.toml"), text);
+    const [network] = await readBoxNetworks(
+      SPEC,
+      root,
+      new FakeBoxProfileResolver(boxShowOf({ egress })),
+    );
+    return network!;
+  }
+  const open = { destinations: ["api.example.com"] };
+  const keyed = { destinations: ["api.example.com"], secret: { ref: "env://A_TOKEN" } };
+
+  test.each([
+    [
+      "two open routes",
+      '[egress.a]\ndestinations = ["api.example.com"]\n' +
+        '[egress.b]\ndestinations = ["api.example.com"]\n',
+      { a: open, b: open },
+      ".box/agent/local/profile.toml:3:1",
+    ],
+    [
+      "a route with a secret and an open route",
+      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.b]\ndestinations = ["api.example.com"]\n',
+      { a: keyed, b: open },
+      ".box/agent/local/profile.toml:4:1",
+    ],
+  ])(
+    "stop build for %s to one host, with one problem that names both entries",
+    async (_label, text, egress, place) => {
+      const network = await networkOf(text, egress);
+
+      expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
+        [
+          "EGRESS_DESTINATION_OVERLAP",
+          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
+            "one entry. Keep api.example.com in only one of the two.",
+          place,
+        ],
+      ]);
+      expect(boxNetworkFailureMessage([network], "build")).toStartWith("Build stopped: 1 problem");
+    },
+  );
+
+  test("gives an entry that names its host twice one target and one route", async () => {
+    const twice = { destinations: ["api.example.com", "api.example.com:443"] };
+    const network = await networkOf(
+      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+        'secret.ref = "env://A_TOKEN"\n',
+      { a: { ...twice, secret: keyed.secret } },
+    );
+
+    expect(network.failures).toEqual([]);
+    expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
+      ["api.example.com", "egress-a"],
+    ]);
+    const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
+      ([, route]) => route.destinations.includes("api.example.com"),
+    );
+    expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
+      ["egress-a", ["api.example.com"]],
+    ]);
+  });
+});
+
 describe("the IAM policy files of the Box gateway", () => {
   test("counts the actions of each listed file, and warns for one it cannot count", async () => {
     const root = await project([]);
