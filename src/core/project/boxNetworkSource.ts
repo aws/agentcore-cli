@@ -57,6 +57,7 @@ export async function readBoxNetworks(
     ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
     : [];
   if (runtimes.length === 0) return [];
+  assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
@@ -91,6 +92,35 @@ export async function readBoxNetworks(
     });
   }
   return networks;
+}
+
+/**
+ * Throws, naming each profile to create, when a runtime that runs its agent in a box has no local
+ * box profile of its own: build has nothing to derive its AgentCore Runtime profile from.
+ */
+function assertBoxRuntimesHaveProfiles(
+  projectRoot: string,
+  runtimes: readonly ProjectSpec["runtimes"][number][],
+): void {
+  const missing = runtimes.filter(
+    ({ name }) => !existsSync(boxLocalProfilePath(projectRoot, name)),
+  );
+  if (missing.length === 0) return;
+  throw new ProjectStateError(
+    missing
+      .map(
+        ({ name, build, entrypoint }) =>
+          `runtime "${name}" runs its agent in a box (${boxReason(build, entrypoint)}), but ` +
+          `${boxLocalProfileFile(name)} does not exist. Create that box profile for the runtime, ` +
+          "then retry.",
+      )
+      .join("\n"),
+  );
+}
+
+/** Why dev and build run the agent of a runtime in a box: its start.py, or its Dockerfile. */
+function boxReason(build: string, entrypoint: string): string {
+  return build === "CodeZip" ? `entrypoint ${entrypoint}` : "its Dockerfile installs box";
 }
 
 /** By API key credential, the variable and the runtime of the first entry that takes it. */

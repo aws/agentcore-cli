@@ -49,6 +49,12 @@ async function writeProfile(root: string, agentName: string, policies: string[])
   );
 }
 
+/** Writes the local box profile of the runtime `quiet`, which has no route. */
+async function quietProfile(root: string): Promise<void> {
+  await mkdir(join(root, ".box", "quiet", "local"), { recursive: true });
+  await writeFile(join(root, ".box", "quiet", "local", "profile.toml"), "# quiet\n");
+}
+
 /** {@link SPEC} with a box runtime and a bound Box gateway for each of `names` after `agent`. */
 function specWith(...names: string[]): ProjectSpec {
   return {
@@ -91,6 +97,7 @@ describe("readBoxNetworks", () => {
     const root = await project(["policy.dw"]);
     await writeProfile(root, "second", ["rules.dw"]);
     await writeFile(join(root, ".box", "second", "local", "rules.dw"), "// second\n");
+    await quietProfile(root);
     const egress: Record<string, Record<string, unknown>> = {
       ".box/agent/local/profile.toml": API_ROUTE,
       ".box/second/local/profile.toml": { docs: { destinations: ["docs.example.com"] } },
@@ -105,7 +112,11 @@ describe("readBoxNetworks", () => {
 
     const networks = await readBoxNetworks(specWith("second", "quiet"), root, resolver);
 
-    expect(calls).toEqual([".box/agent/local/profile.toml", ".box/second/local/profile.toml"]);
+    expect(calls).toEqual([
+      ".box/agent/local/profile.toml",
+      ".box/second/local/profile.toml",
+      ".box/quiet/local/profile.toml",
+    ]);
     expect(
       networks.map(({ runtime, gateway, hosts, policyFiles }) => [
         runtime,
@@ -186,13 +197,26 @@ describe("readBoxNetworks", () => {
     ]);
   });
 
-  test("runs no box for a project that is not a Box project, or that has no box profile", async () => {
+  test("runs no box for a project that is not a Box project", async () => {
     const box = new FakeBoxProfileResolver();
     const root = await project([]);
 
     expect(await readBoxNetworks({ ...SPEC, projectType: undefined }, root, box)).toEqual([]);
-    await rm(join(root, ...LOCAL, "profile.toml"));
-    expect((await readBoxNetworks(SPEC, root, box))[0]?.hosts).toEqual([]);
+    expect(box.calls).toEqual([]);
+  });
+
+  test("stops for a box runtime with no box profile of its own, and names the profile to create", async () => {
+    const box = new FakeBoxProfileResolver();
+    const root = await project([]);
+
+    const read = readBoxNetworks(specWith("second"), root, box);
+
+    await expect(read).rejects.toBeInstanceOf(ProjectStateError);
+    await expect(read).rejects.toThrow(
+      'runtime "second" runs its agent in a box (entrypoint start.py), but ' +
+        ".box/second/local/profile.toml does not exist. Create that box profile for the " +
+        "runtime, then retry.",
+    );
     expect(box.calls).toEqual([]);
   });
 
