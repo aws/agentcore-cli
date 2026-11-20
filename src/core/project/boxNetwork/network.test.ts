@@ -558,6 +558,23 @@ describe("hosts the model cannot carry", () => {
     ]);
   });
 
+  test.each([65536, 0, -1])("fails each rule that names port %d, which is not a port", (port) => {
+    const pinned = `context.input.port == ${port}`;
+    const r = model(
+      connect("odd_connect", on("api.example.com", pinned)) +
+        permit("odd", on("api.example.com", pinned)),
+    );
+    expect(r.lines()).toEqual(
+      [".box/agent/local/policy.dw:1:1", ".box/agent/local/policy.dw:2:1"].map(
+        (place, i) =>
+          `${place}  The rule "${["odd_connect", "odd"][i]}" allows api.example.com on port ` +
+          `${port}, which is not a port. Name a port from 1 to 65535, such as ` +
+          "context.input.port == 443.",
+      ),
+    );
+    expect(r.targets()).toEqual([]);
+  });
+
   test("fails a host reachable only over plain HTTP", () => {
     expect(
       model(

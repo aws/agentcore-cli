@@ -361,6 +361,15 @@ class HostMapBuilder {
           let port: number;
           if (typeof pinned === "number") {
             if (!atoms("port").every((a) => holds(a, pinned)) || pinned === 80) continue;
+            if (!Number.isInteger(pinned) || pinned < 1 || pinned > 65535) {
+              this.ruleFailure(
+                rule,
+                "INVALID_PORT",
+                `allows ${host} on port ${pinned}, which is not a port. Name a port from 1 to ` +
+                  "65535, such as context.input.port == 443.",
+              );
+              continue;
+            }
             port = pinned;
           } else if (atoms("port").every((a) => holds(a, 443))) {
             port = 443;
