@@ -182,7 +182,7 @@ describe("addBoxBedrockTarget", () => {
 
     for (const project of [mcp, openai, plain]) {
       expect(addBoxBedrockTarget(project)).toEqual([]);
-      expect(boxBedrockPolicy(project)).toBeUndefined();
+      expect(boxBedrockPolicy(project, "us-west-2")).toBeUndefined();
     }
   });
 
@@ -195,22 +195,64 @@ describe("addBoxBedrockTarget", () => {
     expect(targets(project)).toEqual(["bedrock"]);
     expect(gateway(project).additionalPolicies).toBeUndefined();
   });
+});
 
-  test("grants the gateway role the model invoke actions in any region", () => {
-    expect(boxBedrockPolicy(spec())).toEqual({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Sid: "BoxedAgentModelCallsThroughGateway",
-          Effect: "Allow",
-          Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-          Resource: [
-            "arn:aws:bedrock:*:*:inference-profile/*",
-            "arn:aws:bedrock:*::foundation-model/*",
-          ],
-        },
-      ],
+describe("boxBedrockPolicy", () => {
+  type Statement = Record<string, unknown> & { Resource: string[] };
+  const statements = (region: string) =>
+    (boxBedrockPolicy(spec(), region) as { Statement: Statement[] }).Statement;
+  const ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+
+  test("allows the inference profiles of the gateway role's account in the region it is given, and no other", () => {
+    expect(statements("eu-central-1")).toHaveLength(3);
+    expect(statements("eu-central-1")[0]).toEqual({
+      Sid: "BoxedAgentInferenceProfilesThroughGateway",
+      Effect: "Allow",
+      Action: ACTIONS,
+      Resource: ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
+      Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
     });
+  });
+
+  test("allows a foundation model by its own ID only in the region it is given", () => {
+    expect(statements("eu-central-1")[1]).toEqual({
+      Sid: "BoxedAgentModelsInRegionThroughGateway",
+      Effect: "Allow",
+      Action: ACTIONS,
+      Resource: ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
+    });
+  });
+
+  test("allows a foundation model in another region only through an inference profile of that account and region", () => {
+    expect(statements("eu-central-1")[2]).toEqual({
+      Sid: "BoxedAgentModelsThroughInferenceProfiles",
+      Effect: "Allow",
+      Action: ACTIONS,
+      Resource: ["arn:aws:bedrock:*::foundation-model/*"],
+      Condition: {
+        StringLike: {
+          "bedrock:InferenceProfileArn":
+            "arn:aws:bedrock:eu-central-1:${aws:PrincipalAccount}:inference-profile/*",
+        },
+      },
+    });
+  });
+
+  test("names the partition of the region it is given", () => {
+    const [profiles, inRegion, throughProfiles] = statements("cn-north-1");
+
+    expect(profiles!.Resource).toEqual(["arn:aws-cn:bedrock:cn-north-1:*:inference-profile/*"]);
+    expect(inRegion!.Resource).toEqual(["arn:aws-cn:bedrock:cn-north-1::foundation-model/*"]);
+    expect(throughProfiles!.Resource).toEqual(["arn:aws-cn:bedrock:*::foundation-model/*"]);
+    expect(throughProfiles!.Condition).toEqual({
+      StringLike: {
+        "bedrock:InferenceProfileArn":
+          "arn:aws-cn:bedrock:cn-north-1:${aws:PrincipalAccount}:inference-profile/*",
+      },
+    });
+    expect(statements("us-gov-west-1")[1]!.Resource).toEqual([
+      "arn:aws-us-gov:bedrock:us-gov-west-1::foundation-model/*",
+    ]);
   });
 });
 

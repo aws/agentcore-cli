@@ -1127,9 +1127,12 @@ describe("warnings", () => {
       expect(warningsFor(control)).toEqual([forService("egress-bedrock-control", "bedrock")]);
     });
 
-    test("a Bedrock runtime target needs bedrock:InvokeModel, which the Bedrock file grants", () => {
+    test("a Bedrock runtime target needs bedrock:InvokeModel, which the Bedrock file grants in the build region only", () => {
       expect(warningsFor(runtime, [], [BEDROCK_FILE])).toEqual([]);
       expect(warningsFor(getBoxGatewayBedrockTargetSpec(), [], [BEDROCK_FILE])).toEqual([]);
+      expect(warningsFor(getBoxGatewayBedrockTargetSpec("us-east-1"), [], [BEDROCK_FILE])).toEqual([
+        forHost("bedrock", "bedrock-runtime.us-east-1.amazonaws.com", "bedrock"),
+      ]);
       for (const granted of ["BEDROCK:invokemodel", "bedrock:Invoke*", "bedrock:InvokeMode?"]) {
         expect(warningsFor(runtime, [granted])).toEqual([]);
       }

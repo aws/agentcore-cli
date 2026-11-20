@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { partition } from "@aws-sdk/util-endpoints";
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
@@ -31,6 +32,9 @@ export const BOX_BEDROCK_POLICY_FILE = "agentcore/box-bedrock-policy.json";
 
 /** The Bedrock actions behind Converse and ConverseStream, which the agent's model calls make. */
 const BEDROCK_INVOKE_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+
+/** The IAM policy variable for the account of the gateway role. */
+const PRINCIPAL_ACCOUNT = "${aws:PrincipalAccount}";
 
 /** The Memory data-plane actions the agent's session manager calls, as the L3 grants a runtime. */
 const MEMORY_DATA_PLANE_ACTIONS = [
@@ -114,22 +118,45 @@ export function boxMemoryPolicy(
 
 /**
  * The IAM policy document for {@link BOX_BEDROCK_POLICY_FILE}, or undefined when no boxed runtime
- * calls a Bedrock model. A cross-region (`us.`, `global.`) inference profile invokes the model in
- * other regions, so both the profiles and the foundation models match any region.
+ * calls a Bedrock model. Each ARN is in the partition of `region`, the region of the `bedrock`
+ * target that build writes. One file serves every deploy target, so the inference profile ARN
+ * names no account, and the condition holds the profile to the gateway role's own account. A
+ * cross-region (`us.`, `global.`) inference profile invokes the model in other regions, so a
+ * foundation model outside `region` matches only through an inference profile of that account in
+ * `region`.
  */
-export function boxBedrockPolicy(spec: ProjectSpec): Record<string, unknown> | undefined {
+export function boxBedrockPolicy(
+  spec: ProjectSpec,
+  region: string,
+): Record<string, unknown> | undefined {
   if (boxedRuntimesCallingBedrock(spec).length === 0) return undefined;
+  const bedrock = `arn:${partition(region).name}:bedrock`;
   return {
     Version: "2012-10-17",
     Statement: [
       {
-        Sid: "BoxedAgentModelCallsThroughGateway",
+        Sid: "BoxedAgentInferenceProfilesThroughGateway",
         Effect: "Allow",
         Action: BEDROCK_INVOKE_ACTIONS,
-        Resource: [
-          "arn:aws:bedrock:*:*:inference-profile/*",
-          "arn:aws:bedrock:*::foundation-model/*",
-        ],
+        Resource: [`${bedrock}:${region}:*:inference-profile/*`],
+        Condition: { StringEquals: { "aws:ResourceAccount": PRINCIPAL_ACCOUNT } },
+      },
+      {
+        Sid: "BoxedAgentModelsInRegionThroughGateway",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [`${bedrock}:${region}::foundation-model/*`],
+      },
+      {
+        Sid: "BoxedAgentModelsThroughInferenceProfiles",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [`${bedrock}:*::foundation-model/*`],
+        Condition: {
+          StringLike: {
+            "bedrock:InferenceProfileArn": `${bedrock}:${region}:${PRINCIPAL_ACCOUNT}:inference-profile/*`,
+          },
+        },
       },
     ],
   };
