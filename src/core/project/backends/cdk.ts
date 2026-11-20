@@ -254,14 +254,13 @@ export class CdkBackend implements ProjectBackend {
 
     for (const runtime of project.spec.runtimes) {
       if (
-        runtime.build === "Container" &&
         runtimeRunsInBox(project.spec, runtime) &&
         (runtime.instrumentation?.enableOtel ?? true)
       ) {
         yield {
           type: "warning",
           message:
-            `Runtime '${runtime.name}' runs its agent in a box, whose image does not run ` +
+            `Runtime '${runtime.name}' runs its agent in a box, where the agent does not run under ` +
             `opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.`,
         };
       }

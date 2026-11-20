@@ -329,41 +329,46 @@ describe("CdkBackend.build", () => {
   });
 
   test.each([
-    ["a box container", "box", true, true],
-    ["a box container with enableOtel false", "box", false, false],
-    ["a container outside a Box project", undefined, true, false],
-  ] as const)("warns that %s sends no traces: %p", async (_label, projectType, otel, warns) => {
-    const input = await project();
-    input.spec = ProjectSpecSchema.parse({
-      name: "example",
-      version: 2,
-      ...(projectType && { projectType }),
-      runtimes: [
-        {
-          name: "agent",
-          build: "Container",
-          entrypoint: "main.py",
-          codeLocation: "app/agent",
-          ...(projectType && { box: { version: BOX_RELEASE.version } }),
-          ...(!otel && { instrumentation: { enableOtel: false } }),
-        },
-      ],
-      agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
-    });
-    await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
-    await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
+    ["a box container", "box", "Container", true, true],
+    ["a box CodeZip runtime", "box", "CodeZip", true, true],
+    ["a box container with enableOtel false", "box", "Container", false, false],
+    ["a container outside a Box project", undefined, "Container", true, false],
+  ] as const)(
+    "warns that %s sends no traces: %p",
+    async (_label, projectType, build, otel, warns) => {
+      const input = await project();
+      input.spec = ProjectSpecSchema.parse({
+        name: "example",
+        version: 2,
+        ...(projectType && { projectType }),
+        runtimes: [
+          {
+            name: "agent",
+            build,
+            ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
+            entrypoint: "main.py",
+            codeLocation: "app/agent",
+            ...(projectType && { box: { version: BOX_RELEASE.version } }),
+            ...(!otel && { instrumentation: { enableOtel: false } }),
+          },
+        ],
+        agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
+      });
+      await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
+      await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
 
-    const events = await collect(harness().backend.build(input, NO_BOX_NETWORKS));
+      const events = await collect(harness().backend.build(input, NO_BOX_NETWORKS));
 
-    const warning: ProjectEvent = {
-      type: "warning",
-      message:
-        "Runtime 'agent' runs its agent in a box, whose image does not run " +
-        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
-    };
-    if (warns) expect(events).toContainEqual(warning);
-    else expect(events).not.toContainEqual(warning);
-  });
+      const warning: ProjectEvent = {
+        type: "warning",
+        message:
+          "Runtime 'agent' runs its agent in a box, where the agent does not run under " +
+          "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+      };
+      if (warns) expect(events).toContainEqual(warning);
+      else expect(events).not.toContainEqual(warning);
+    },
+  );
 
   test("warns but continues when the installed CDK is legacy", async () => {
     const input = await project();
