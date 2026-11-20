@@ -300,15 +300,7 @@ function actionValue(expr: Expr, action: NetworkAction): boolean | undefined {
       if (expr.op !== "==" && expr.op !== "!=" && expr.op !== "in") return undefined;
       const variable = attributePath(expr.left);
       if (variable?.length !== 1 || variable[0] !== "action") return undefined;
-      const right = expr.right;
-      const entities =
-        right.kind === "entity"
-          ? [right.entity]
-          : expr.op === "in" &&
-              right.kind === "set" &&
-              right.items.every((i) => i.kind === "entity")
-            ? right.items.map((i) => (i as Extract<Expr, { kind: "entity" }>).entity)
-            : undefined;
+      const entities = namedEntities(expr);
       if (!entities) return undefined;
       const matches = entities.some((e) => sameEntity(e, { type: ["Box", "Action"], id: action }));
       return expr.op === "!=" ? !matches : matches;
@@ -510,14 +502,7 @@ function identityFormula(
 ): Formula | undefined {
   const variable = attributePath(expr.left);
   if (variable?.length !== 1) return undefined;
-  const entities =
-    expr.right.kind === "entity"
-      ? [expr.right.entity]
-      : expr.op === "in" &&
-          expr.right.kind === "set" &&
-          expr.right.items.every((i) => i.kind === "entity")
-        ? expr.right.items.map((i) => (i as Extract<Expr, { kind: "entity" }>).entity)
-        : undefined;
+  const entities = namedEntities(expr);
   if (!entities) return undefined;
   let matches: boolean;
   if (variable[0] === "action") {
@@ -530,6 +515,18 @@ function identityFormula(
     return undefined;
   }
   return constant(expr.op === "!=" ? !matches : matches, expr.text);
+}
+
+/** The entities the right of `==`, `!=`, or `in` names: one entity, or a set of entities. */
+function namedEntities(expr: Extract<Expr, { kind: "binary" }>): EntityRef[] | undefined {
+  const right = expr.right;
+  if (right.kind === "entity") return [right.entity];
+  if (expr.op !== "in" || right.kind !== "set" || !right.items.every(isEntity)) return undefined;
+  return right.items.map((item) => item.entity);
+}
+
+function isEntity(expr: Expr): expr is Extract<Expr, { kind: "entity" }> {
+  return expr.kind === "entity";
 }
 
 /** Why a rule that names the `Box::Action` `id`, which Box does not have, fails. */

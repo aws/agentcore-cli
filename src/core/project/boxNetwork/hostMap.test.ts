@@ -145,6 +145,11 @@ describe("the policy decision on each host", () => {
         false,
       ],
       ["if", `(if ${NC} then true else context.input.method == "GET")`, true],
+      [
+        "|| with in",
+        `(action in [Box::Action::"net:connect"] || context.input.method == "GET")`,
+        true,
+      ],
     ])("accepts a connection rule that reads a request field behind %s", (_, guard, reachable) => {
       const result = map(connect("guarded", on("a.example.com", guard)) + get);
       expect(codes(result)).toEqual([]);
