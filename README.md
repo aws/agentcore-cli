@@ -208,9 +208,11 @@ to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import th
 `agentcore export harness` refuses a Box project. Each box runtime needs its
 `"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
 box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
-each runtime from its local profile. box comes from the public GitHub release `v0.1.11-linux-preview.7` of
+each runtime from its local profile. box comes from the public GitHub release `v0.1.11-mquang.preview.9` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
-is needed to download it.
+is needed to download it. That release has only the Linux arm64 build that ships to AgentCore
+Runtime. For `agentcore dev` and the profile checks of `build` on macOS, install the macOS build of
+`v0.1.11-linux-preview.7`, or of a later release that has one.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. `bun scripts/bump-box-release.ts --box <version>`
@@ -253,7 +255,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.7`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-mquang.preview.9`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.
