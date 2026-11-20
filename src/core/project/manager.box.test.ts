@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
+import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
@@ -32,13 +33,14 @@ afterEach(async () => {
   );
 });
 
-function subject(): FsProjectManager {
+function subject(json?: ReadWriteJson): FsProjectManager {
   return new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
     enableTransactionSearch: async () => {},
     runner: async () => {},
     checkTool: async () => {},
+    ...(json && { json }),
   });
 }
 
@@ -560,30 +562,30 @@ describe("gateway targets in a Box project", () => {
   });
 
   test("a failed write of agentcore.json gives no notice of the default log target", async () => {
-    const manager = subject();
-    const project = await createdProject(manager);
-    const agentcore = join(project.rootPath, "agentcore");
-    const specFile = join(agentcore, "agentcore.json");
-    await chmod(specFile, 0o444);
-    await chmod(agentcore, 0o555);
+    const project = await createdProject(subject());
+    const specFile = join(project.rootPath, "agentcore", "agentcore.json");
+    // The write of agentcore.json fails for each user, root too; each other file is written.
+    const files = new FsReadWriteJson({ logger: createSilentLogger() });
+    const json: ReadWriteJson = {
+      read: (path, schema) => files.read(path, schema),
+      write: async (path, data) => {
+        if (path === specFile) throw new Error(`the test refuses the write of ${path}`);
+        return files.write(path, data);
+      },
+    };
+    const generator = subject(json).addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
     const events: unknown[] = [];
-    try {
-      const generator = manager.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
-      } as never);
-      await expect(
-        (async () => {
-          for (let next = await generator.next(); !next.done; next = await generator.next()) {
-            events.push(next.value);
-          }
-        })(),
-      ).rejects.toThrow();
-    } finally {
-      await chmod(agentcore, 0o755);
-      await chmod(specFile, 0o644);
-    }
 
+    await expect(
+      (async () => {
+        for (let next = await generator.next(); !next.done; next = await generator.next()) {
+          events.push(next.value);
+        }
+      })(),
+    ).rejects.toThrow(`the test refuses the write of ${specFile}`);
     expect(events.some((event) => (event as { type?: string }).type === "warning")).toBe(false);
   });
 
