@@ -520,6 +520,18 @@ export const AgentCoreGatewaySchema = z
      * files relative to the project root.
      */
     additionalPolicies: z.array(z.string().min(1)).optional(),
+    /**
+     * Deliver the gateway's `APPLICATION_LOGS` to the CloudWatch Logs group
+     * `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. Defaults to false
+     * for every gateway, because the logs can hold the request and response bodies of its MCP
+     * operations.
+     */
+    enableApplicationLogs: z.boolean().optional(),
+    /**
+     * Deliver the gateway's `TRACES` to X-Ray. Defaults to false for every gateway, because the
+     * deploy fails in an account and Region without CloudWatch Transaction Search.
+     */
+    enableTraces: z.boolean().optional(),
     tags: TagsSchema.optional(),
   })
   .strict()

@@ -19,7 +19,7 @@ import {
 import { createRootHandler } from "../../index";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
-import { resolveRuntimeTemplateShortcut } from "../shortcuts";
+import { PROJECT_TEMPLATE_NAMES, resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
@@ -27,6 +27,13 @@ import { readEnvFile } from "../../../io/envFile";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
+
+/** Moves the template list's cursor from its first entry down to `name`. */
+async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
+  const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  expect(index).toBeGreaterThan(-1);
+  for (let i = 0; i < index; i++) await r.press("down");
+}
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -1019,11 +1026,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
+    await selectTemplate(r, "environment-python-bma");
     await waitForText(r.lastFrame, "● environment-python-bma");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -1034,6 +1037,45 @@ describe("project create wizard", () => {
     expect(existsSync(join(directory, "CnBma"))).toBe(false);
     r.unmount();
   });
+
+  test("template flow: a box template asks for containment, and private VPC reaches the spec", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("VpcApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+
+    await waitForText(r.lastFrame, "how contained should the agent be?");
+    expect(r.lastFrame()).toContain("● sandboxed");
+    await r.press("down");
+    await waitForText(r.lastFrame, "● private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).toContain("private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./VpcApp", 5000);
+
+    expect(inputs[0]?.containment).toBe("private-vpc");
+    const spec = await Bun.file(join(directory, "VpcApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].containment).toBe("PRIVATE_VPC");
+    expect(spec.runtimes[0].network).toEqual({ mode: "CONTAINED" });
+    r.unmount();
+  }, 10000);
 
   test("template flow: the minimal template scaffolds without memory", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -1049,12 +1091,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
-    await r.press("down"); // agent-python-minimal
+    await selectTemplate(r, "agent-python-minimal");
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
@@ -1095,10 +1132,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-box
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-strands-box-container
-    await r.press("down"); // agent-python-langchain
+    await selectTemplate(r, "agent-python-langchain");
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
@@ -1138,7 +1172,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 12; i++) await r.press("down");
+    for (let i = 0; i < PROJECT_TEMPLATE_NAMES.length - 1; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 

@@ -409,6 +409,87 @@ describe("project custom validation", () => {
   });
 });
 
+describe("containment", () => {
+  const box = { ...minimalProject, projectType: "box" };
+  const contained = { ...runtime, containment: "PRIVATE_VPC" };
+  const boxProject = (
+    runtimes: ({ name: string } & Record<string, unknown>)[],
+    fields: Record<string, unknown> = {},
+  ) => ({
+    ...box,
+    runtimes,
+    agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name)),
+    ...fields,
+  });
+  const withNetwork = (network: Record<string, unknown>) => boxProject([{ ...contained, network }]);
+  test.each([
+    ["PRIVATE_VPC in a Box project", boxProject([contained])],
+    [
+      "PRIVATE_VPC with every network field",
+      withNetwork({
+        mode: "CONTAINED",
+        cidr: "10.8.0.0/20",
+        availabilityZoneIds: ["usw2-az1", "usw2-az3"],
+        ipAddressType: "DUAL_STACK",
+      }),
+    ],
+    ["SANDBOXED", boxProject([{ ...runtime, containment: "SANDBOXED" }])],
+    [
+      "a contained runtime next to a sandboxed runtime and a harness",
+      boxProject([contained, { ...runtime, name: "helper" }], {
+        harnesses: [{ name: "support", path: "app/support" }],
+      }),
+    ],
+  ])("accepts containment %s", (_name, project) => {
+    expect(ProjectSpecSchema.safeParse(project).success).toBe(true);
+  });
+
+  test("containment has no default", () => {
+    const [parsed] = ProjectSpecSchema.parse(boxProject([runtime])).runtimes;
+    expect("containment" in parsed!).toBe(false);
+  });
+
+  test.each([
+    [
+      "containment without projectType box",
+      { ...minimalProject, runtimes: [{ ...runtime, containment: "SANDBOXED" }] },
+      'requires "projectType": "box"',
+    ],
+    [
+      "two PRIVATE_VPC runtimes",
+      boxProject([contained, { ...contained, name: "billing" }]),
+      "only one runtime",
+    ],
+    [
+      "network without PRIVATE_VPC",
+      boxProject([{ ...runtime, network: { cidr: "10.0.0.0/16" } }]),
+      '"network" is only allowed',
+    ],
+    ["an unknown network mode", withNetwork({ mode: "EXISTING" }), "mode"],
+    ["a /25 CIDR", withNetwork({ cidr: "10.0.0.0/25" }), "/16 to /24"],
+    ["a CIDR with host bits set", withNetwork({ cidr: "10.0.5.0/16" }), "/16 to /24"],
+    ["a CIDR with a leading zero", withNetwork({ cidr: "010.0.0.0/16" }), "/16 to /24"],
+    [
+      "an AZ name",
+      withNetwork({ availabilityZoneIds: ["us-west-2a", "us-west-2b"] }),
+      "Availability Zone ID",
+    ],
+    [
+      "a contained runtime with its own network",
+      boxProject([{ ...contained, networkMode: "PUBLIC" }]),
+      "networkMode and networkConfig",
+    ],
+  ])("rejects containment with %s", (_name, project, message) => {
+    const result = ProjectSpecSchema.safeParse(project);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.map((issue) => `${issue.path.join(".")} ${issue.message}`).join("\n"),
+      ).toContain(message);
+    }
+  });
+});
+
 describe("projectType", () => {
   test("is absent after a parse of a project without it, so a write-back adds no key", () => {
     expect(ProjectSpecSchema.parse(minimalProject)).not.toHaveProperty("projectType");

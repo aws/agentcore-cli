@@ -49,6 +49,7 @@ import {
   type DeployedCredentials,
 } from "./cdk/credentials";
 import {
+  assertPrivateVpcs,
   countDeployableResources,
   stackArtifactForTarget,
   synthCommand,
@@ -158,6 +159,22 @@ export type CdkBackendConfig = {
   processEnv?: NodeJS.ProcessEnv;
 };
 
+/**
+ * A warning for each runtime of `spec` that runs its agent in a box with OTEL on: the agent in the
+ * box does not run under opentelemetry-instrument, CodeZip or container, so it sends no traces.
+ */
+export function boxOtelWarnings(spec: Project["spec"]): string[] {
+  return spec.runtimes
+    .filter(
+      (runtime) => runtimeRunsInBox(spec, runtime) && (runtime.instrumentation?.enableOtel ?? true),
+    )
+    .map(
+      (runtime) =>
+        `Runtime '${runtime.name}' runs its agent in a box, where the agent does not run under ` +
+        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+    );
+}
+
 /** Builds and deploys projects through the scaffolded CDK app. */
 export class CdkBackend implements ProjectBackend {
   private readonly logger: Logger;
@@ -227,7 +244,7 @@ export class CdkBackend implements ProjectBackend {
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
     const events: ProjectEvent[] = [];
     const box = async (version: string | undefined) => {
-      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      const release = await boxReleaseFor(version);
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
@@ -239,9 +256,7 @@ export class CdkBackend implements ProjectBackend {
       });
     };
     await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, (version) =>
-      boxReleaseFor(version, this.processEnv, { runner: this.runner }),
-    );
+    await stageBoxContainers(project, boxNetworks, boxReleaseFor);
     return events;
   }
 
@@ -252,20 +267,7 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, void> {
     yield* await this.ensureCdkDependencies(project, boxNetworks);
 
-    for (const runtime of project.spec.runtimes) {
-      if (
-        runtime.build === "Container" &&
-        runtimeRunsInBox(project.spec, runtime) &&
-        (runtime.instrumentation?.enableOtel ?? true)
-      ) {
-        yield {
-          type: "warning",
-          message:
-            `Runtime '${runtime.name}' runs its agent in a box, whose image does not run ` +
-            `opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.`,
-        };
-      }
-    }
+    for (const message of boxOtelWarnings(project.spec)) yield { type: "warning", message };
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
@@ -355,6 +357,14 @@ export class CdkBackend implements ProjectBackend {
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
       return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
     }
+    await assertPrivateVpcs(
+      this.json,
+      assemblyDirectory,
+      artifact,
+      project.spec.runtimes
+        .filter((runtime) => runtime.containment === "PRIVATE_VPC")
+        .map((runtime) => runtime.name),
+    );
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
     // above, so a destroy is never blocked by Transaction Search. Never fail the
@@ -644,6 +654,14 @@ export class CdkBackend implements ProjectBackend {
     const asArn = (value: string | undefined) => (value ? { arn: value } : undefined);
     const asId = (value: string | undefined) => (value ? { id: value } : undefined);
 
+    // The L3 joins a target name that two or more gateways have to its gateway with a colon.
+    const gatewaysByTargetName = new Map<string, number>();
+    for (const gateway of spec.agentCoreGateways) {
+      for (const name of new Set((gateway.targets ?? []).map((target) => target.name))) {
+        gatewaysByTargetName.set(name, (gatewaysByTargetName.get(name) ?? 0) + 1);
+      }
+    }
+
     const identifierOf = (
       resourceType: DeployableResource,
       name: string,
@@ -665,8 +683,12 @@ export class CdkBackend implements ProjectBackend {
         case "gateway":
           return asArn(byExportName("Gateway", name, "Arn"));
         case "gateway-target":
-          // The L3 exports an id for targets and never an ARN
-          return asId(byExportName("GatewayTarget", name, "Id"));
+          // The L3 exports an id for targets and never an ARN.
+          return asId(
+            (gatewaysByTargetName.get(name) ?? 0) > 1
+              ? byExportName("GatewayTarget", `${owner ?? ""}:${name}`, "Id")
+              : byExportName("GatewayTarget", name, "Id"),
+          );
         case "policy":
           // ExportName: <StackName>-Policy-<engineName>-<policyName>-Arn
           return asArn(byExportName("Policy", owner ?? "", name, "Arn"));
@@ -732,13 +754,21 @@ export class CdkBackend implements ProjectBackend {
       ...spec.credentials.map(({ name }) => resolve("credential", name)),
       ...spec.evaluators.map(({ name }) => resolve("evaluator", name)),
       ...spec.onlineEvalConfigs.map(({ name }) => resolve("online-eval", name)),
-      ...spec.agentCoreGateways.map((gateway) =>
-        resolve("gateway", gateway.name, {
+      ...spec.agentCoreGateways.map((gateway) => {
+        // A target of a gateway that is not deployed has no id, even when an export has its name.
+        const deployed = identifierOf("gateway", gateway.name) !== undefined;
+        return resolve("gateway", gateway.name, {
           children: (gateway.targets ?? []).map(({ name }) =>
-            resolve("gateway-target", name, { owner: gateway.name }),
+            deployed
+              ? resolve("gateway-target", name, { owner: gateway.name })
+              : {
+                  resourceType: "gateway-target" as const,
+                  name,
+                  deploymentState: "local-only" as const,
+                },
           ),
-        }),
-      ),
+        });
+      }),
       ...spec.policyEngines.map((engine) =>
         resolve("policy-engine", engine.name, {
           children: (engine.policies ?? []).map(({ name }) =>

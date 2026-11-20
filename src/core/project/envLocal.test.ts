@@ -167,6 +167,76 @@ test("rollback restores the content removeKeys deleted", async () => {
   expect(await Bun.file(file.path).text()).toBe("# api key\nSECRET='v'\nOTHER=1\n");
 });
 
+test("upsert replaces every line of a key, so a later one cannot keep the old value", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old\nSECRET='v'\nOTHER=1\nSECRET='stale'\n");
+
+  await file.upsert([{ key: "SECRET", value: "w", comment: "c" }]);
+
+  expect(await Bun.file(file.path).text()).toStartWith("# old\nSECRET='w'\nOTHER=1\nSECRET='w'\n");
+  expect(await file.read()).toEqual({ SECRET: "w", OTHER: "1" });
+});
+
+test("rollback after a failed upsert restores the file from before it, not the half-written one", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old\nSECRET='v'\n");
+
+  // The new key's value has a quote, so the append fails after the in-place replacement.
+  await expect(
+    file.upsert([
+      { key: "SECRET", value: "w", comment: "c" },
+      { key: "NEW", value: "a'b", comment: "c" },
+    ]),
+  ).rejects.toThrow(/single quote/);
+  await file.rollback();
+
+  expect(await Bun.file(file.path).text()).toBe("# old\nSECRET='v'\n");
+});
+
+test("upsert keeps an export line an export line", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "export SECRET='v'\n");
+
+  await file.upsert([{ key: "SECRET", value: "w", comment: "c" }]);
+
+  expect(await Bun.file(file.path).text()).toStartWith("export SECRET='w'\n");
+});
+
+test("upsert replaces a key's value under its own comment, and appends a new key", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old key\nSECRET='v'\nOTHER=1\n");
+
+  const result = await file.upsert([
+    { key: "SECRET", value: "w", comment: "unused for an existing key" },
+    { key: "NEW", value: "n", comment: "new key" },
+  ]);
+
+  expect(result).toEqual({ written: ["NEW"], updated: ["SECRET"] });
+  expect(await file.read()).toEqual({ SECRET: "w", OTHER: "1", NEW: "n" });
+  expect(await Bun.file(file.path).text()).toStartWith("# old key\nSECRET='w'\nOTHER=1\n");
+});
+
+test("rollback undoes an upsert, the replaced value and the appended key", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old key\nSECRET='v'\n");
+
+  await file.upsert([ENTRY, { key: "SECRET", value: "w", comment: "c" }]);
+  await file.upsert([{ key: "NEW", value: "n", comment: "c" }]);
+  const second = new EnvLocalFile(root);
+  await second.upsert([
+    { key: "SECRET", value: "x", comment: "c" },
+    { key: "MORE", value: "m", comment: "c" },
+  ]);
+  await second.rollback();
+
+  expect(await second.read()).toEqual({ SECRET: "w", NEW: "n" });
+});
+
 testPosix("removeKeys keeps owner-only permissions on the rewritten file", async () => {
   const root = await tempRoot();
   const file = new EnvLocalFile(root);
@@ -240,46 +310,6 @@ test("preserves an existing secret and envelope when the key is skipped or a nei
   await file.removeKeys(["REMOVE"]);
   expect(parseEnv(await Bun.file(file.path).text()).MODEL_API_KEY).toBe(token);
   expect(await file.read()).toEqual({ MODEL_API_KEY: "old-value" });
-});
-
-test("keep: fills an existing key it rejects in place, and leaves the keys it keeps", async () => {
-  const root = await tempRoot();
-  const file = new EnvLocalFile(root);
-  await file.insertIfNew([{ key: "KEPT_API_KEY", value: "user-value", comment: "kept" }]);
-  const raw = await Bun.file(file.path).text();
-  await Bun.write(file.path, `# user comment\nBLANK_API_KEY=\n${raw}OTHER=1\n`);
-  const keep = (value: string) => value.trim() !== "";
-
-  const result = await file.insertIfNew(
-    [
-      { key: "BLANK_API_KEY", value: "seeded", comment: "seeded" },
-      { key: "KEPT_API_KEY", value: "ignored", comment: "ignored" },
-      { key: "NEW", value: "added", comment: "new" },
-    ],
-    { keep },
-  );
-
-  expect(result).toEqual({ written: ["BLANK_API_KEY", "NEW"], skipped: ["KEPT_API_KEY"] });
-  expect(await file.read()).toEqual({
-    BLANK_API_KEY: "seeded",
-    KEPT_API_KEY: "user-value",
-    OTHER: "1",
-    NEW: "added",
-  });
-  const after = await Bun.file(file.path).text();
-  expect(after.startsWith("# user comment\nBLANK_API_KEY=")).toBe(true);
-  expect(after).not.toContain("seeded");
-});
-
-test("without keep, an existing blank key is skipped", async () => {
-  const root = await tempRoot();
-  const file = new EnvLocalFile(root);
-  await Bun.write(file.path, "BLANK_API_KEY=\n");
-
-  const result = await file.insertIfNew([{ key: "BLANK_API_KEY", value: "v", comment: "c" }]);
-
-  expect(result).toEqual({ written: [], skipped: ["BLANK_API_KEY"] });
-  expect(await file.read()).toEqual({ BLANK_API_KEY: "" });
 });
 
 test("encrypts quote-bearing secrets before serializing them and migrates remaining secrets on removal", async () => {

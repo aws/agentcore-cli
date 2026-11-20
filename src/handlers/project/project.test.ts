@@ -143,7 +143,17 @@ describe("project create", () => {
   test.each([
     ["agent-python-strands-box", { version: BOX_RELEASE.version }],
     ["agent-python-strands-box-container", { version: BOX_RELEASE.version }],
+    ["agent-python-minimal-box", { version: BOX_RELEASE.version }],
+    ["agent-python-langchain-box", { version: BOX_RELEASE.version }],
+    ["a2a-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agui-python-strands-box", { version: BOX_RELEASE.version }],
+    ["mcp-python-fastmcp-box", { version: BOX_RELEASE.version }],
     ["agent-python-strands", undefined],
+    ["agent-python-minimal", undefined],
+    ["agent-python-langchain", undefined],
+    ["a2a-python-strands", undefined],
+    ["agui-python-strands", undefined],
+    ["mcp-python-fastmcp", undefined],
     ["agent-python-strands-container", undefined],
   ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -161,6 +171,28 @@ describe("project create", () => {
     const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0].box).toEqual(box);
   });
+
+  test.each(["agent-python-strands", "empty"])(
+    "create --template %s --containment private-vpc is refused and writes nothing",
+    async (template) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await expect(
+        run([
+          "create",
+          "--name",
+          "VpcApp",
+          "--template",
+          template,
+          "--containment",
+          "private-vpc",
+          "--skip-install",
+          "--skip-git",
+        ]),
+      ).rejects.toThrow("--containment private-vpc needs a box template");
+      expect(existsSync(join(directory, "VpcApp"))).toBe(false);
+    },
+  );
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>

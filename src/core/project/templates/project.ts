@@ -26,7 +26,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; privateVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -44,8 +44,14 @@ export async function createProjectTree(
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
     if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
-    // Only a box template (agent-python-strands-box or agent-python-strands-box-container) runs its
-    // agent in a box, so only it makes a Box project.
+    if (input.privateVpc && hasBoxProfile(options.runtime)) {
+      for (const runtime of template.spec.runtimes ?? []) {
+        runtime.containment = "PRIVATE_VPC";
+        runtime.network = { mode: "CONTAINED" };
+      }
+    }
+    // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
+    // only it makes a Box project.
     templates.push(
       hasBoxProfile(options.runtime)
         ? { ...template, spec: { ...template.spec, projectType: "box" } }
@@ -54,11 +60,13 @@ export async function createProjectTree(
   }
 
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
+  const boxProject = options?.runtime !== undefined && hasBoxProfile(options.runtime);
 
   const tree = FsTreeNode.createDirectory(".", [
-    FsTreeNode.createFile(".gitignore", () =>
-      config.assetSource.read("templates/shared/gitignore.template"),
-    ),
+    FsTreeNode.createFile(".gitignore", async () => {
+      const shared = await config.assetSource.read("templates/shared/gitignore.template");
+      return boxProject ? `${shared}${BOX_GITIGNORE}` : shared;
+    }),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
@@ -90,7 +98,7 @@ export async function createProjectTree(
  */
 function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
   // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
-  // Python and code paths the box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+  // Python and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
   template.tree.children.push(
     FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
       config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
@@ -115,6 +123,17 @@ function withBoxContainerBoxVersion(template: Template): void {
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * The lines a Box project adds to its .gitignore, for every runtime it has or gets later: the
+ * Runtime profile build renders into `.box/<agent>/aws/`, and the box release build and dev stage
+ * into `.box-dist/` and `.box-dev/`. `.box/<agent>/local/` is the user's, and is committed.
+ */
+const BOX_GITIGNORE =
+  "\n# Box (written by agentcore build, deploy and dev; .box/<agent>/local is committed)\n" +
+  ".box/*/aws/\n" +
+  ".box-dist/\n" +
+  ".box-dev/\n";
 
 /**
  * The agentcore.json of a new project, from the spec entries of its templates. Only a Box template

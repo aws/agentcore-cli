@@ -42,15 +42,8 @@ export class EnvLocalFile {
    * Appends entries, creating the file when missing. Keys that already exist
    * are left unchanged so user-managed values survive re-runs. Returns the keys
    * written and those skipped.
-   *
-   * `options.keep` decides from an existing key's decrypted value whether that
-   * key stays unchanged; without it, every existing key does. A key that `keep`
-   * rejects gets the entry's value in place, and counts as written.
    */
-  async insertIfNew(
-    entries: EnvLocalEntry[],
-    options: { keep?: (value: string) => boolean } = {},
-  ): Promise<{ written: string[]; skipped: string[] }> {
+  async insertIfNew(entries: EnvLocalEntry[]): Promise<{ written: string[]; skipped: string[] }> {
     const existing = await this.readOrNull();
     if (existing !== null) await this.enforcePermissions();
     const existingKeys = new Set(
@@ -59,54 +52,19 @@ export class EnvLocalFile {
         .map((line) => KEY_LINE.exec(line)?.[1])
         .filter((key) => key !== undefined),
     );
-    const { keep } = options;
-    // Decrypt only the existing keys that `keep` must check, so a secret this
-    // call does not touch cannot block the write.
-    const checked = new Set(
-      entries.map((entry) => entry.key).filter((key) => existingKeys.has(key)),
-    );
-    const values: Record<string, string> =
-      keep !== undefined && existing !== null && checked.size > 0
-        ? await this.secrets.decrypt(
-            Object.fromEntries(
-              Object.entries(parseEnv(existing) as Record<string, string>).filter(([key]) =>
-                checked.has(key),
-              ),
-            ),
-          )
-        : {};
 
     const written: string[] = [];
     const skipped: string[] = [];
-    const replacements = new Map<string, string>();
     let content = existing ?? "";
     for (const entry of entries) {
       if (existingKeys.has(entry.key)) {
-        const value = values[entry.key];
-        if (
-          keep === undefined ||
-          value === undefined ||
-          keep(value) ||
-          replacements.has(entry.key)
-        ) {
-          skipped.push(entry.key);
-          continue;
-        }
-        const encrypted = await this.secrets.encrypt({ [entry.key]: entry.value ?? "" });
-        replacements.set(entry.key, formatValue(encrypted[entry.key]));
-        written.push(entry.key);
+        skipped.push(entry.key);
         continue;
       }
       const separator = content === "" || content.endsWith("\n") ? "" : "\n";
       const encrypted = await this.secrets.encrypt({ [entry.key]: entry.value ?? "" });
       content += `${separator}# ${entry.comment}\n${entry.key}=${formatValue(encrypted[entry.key])}\n`;
       written.push(entry.key);
-    }
-    if (replacements.size > 0) {
-      content = content.replace(ENV_ENTRY, (span, prefix: string, key: string) => {
-        const value = replacements.get(key);
-        return value === undefined ? span : `${prefix}${value}`;
-      });
     }
 
     content = await this.encryptContent(content);
@@ -115,6 +73,53 @@ export class EnvLocalFile {
       await atomicWrite(this.path, content, { mode: SECRET_FILE_MODE });
     }
     return { written, skipped };
+  }
+
+  /**
+   * Writes each entry: replaces the value of a key the file holds already, in place and under its
+   * own comment, and appends the others as {@link insertIfNew} does. Returns the keys appended and
+   * those whose value it replaced.
+   */
+  async upsert(entries: EnvLocalEntry[]): Promise<{ written: string[]; updated: string[] }> {
+    const existing = await this.readOrNull();
+    if (existing === null) {
+      const { written } = await this.insertIfNew(entries);
+      return { written, updated: [] };
+    }
+    await this.enforcePermissions();
+    const values = new Map(entries.map((entry) => [entry.key, entry.value ?? ""]));
+    const encrypted = await this.secrets.encrypt(Object.fromEntries(values));
+    const updated: string[] = [];
+    const lines: string[] = [];
+    for (const line of existing.split("\n")) {
+      const key = KEY_LINE.exec(line)?.[1];
+      if (key === undefined || !values.has(key)) {
+        lines.push(line);
+        continue;
+      }
+      // Every line of the key gets the value: the parser keeps the last, so replacing only the
+      // first would leave an older one in force. An `export` line stays one.
+      const exported = /^\s*export\s+/.exec(line)?.[0] ?? "";
+      lines.push(`${exported}${key}=${formatValue(encrypted[key] ?? "")}`);
+      if (!updated.includes(key)) updated.push(key);
+    }
+    // Keep the earliest snapshot, as removeKeys does, so rollback undoes this whole call even when
+    // insertIfNew, which snapshots the file it starts from, fails after the in-place write.
+    const snapshot = this.snapshot === undefined ? existing : this.snapshot;
+    if (updated.length > 0) {
+      this.snapshot = snapshot;
+      await atomicWrite(this.path, await this.encryptContent(lines.join("\n")), {
+        mode: SECRET_FILE_MODE,
+      });
+    }
+    try {
+      const { written } = await this.insertIfNew(
+        entries.filter((entry) => !updated.includes(entry.key)),
+      );
+      return { written, updated };
+    } finally {
+      if (updated.length > 0) this.snapshot = snapshot;
+    }
   }
 
   /**

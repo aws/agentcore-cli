@@ -1,15 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
 import {
-  BOX_PROFILE_FILE,
   boxIngressPort,
-  boxProfileIsFor,
-  boxProfilePath,
+  boxLocalProfileFile,
+  boxLocalProfilePath,
+  boxStartFolder,
   runsInBox,
 } from "../project/templates/boxProfile";
 
@@ -19,28 +20,36 @@ type BoxDevRunnerConfig = {
   streamProcess?: ProcessStreamer;
   /** Fails when `box` is not on PATH, with the install hint; tests inject one. */
   checkTool?: (tool: string, installHint: string) => Promise<void>;
+  /** The environment `box run` starts from, the shell's by default; tests inject one. */
+  processEnv?: NodeJS.ProcessEnv;
+  /** The platform, whose rules for variable names apply to `processEnv`; tests inject one. */
+  platform?: NodeJS.Platform;
 };
 
 /**
- * Runs a CodeZip agent with `box run .box/profile.toml` in the project folder
- * when the project has that box profile, the one `agentcore create` writes,
- * and with the fallback runner otherwise. `box` is the one on PATH, which the
- * user installs from the box release. The box listens on the profile's
- * ingress port and relays to the agent, so the dev port must be that port.
+ * Runs a CodeZip agent with `box run` in the runtime's folder when the project has the agent's
+ * box profile, `.box/<agentName>/local/profile.toml`, and with the fallback runner otherwise.
+ * `box` is the one on PATH, which the user installs from the box release. The box listens on the
+ * profile's ingress port and relays to the agent, so the dev port must be that port.
  */
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
   private readonly checkTool: NonNullable<BoxDevRunnerConfig["checkTool"]>;
+  private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly platform: NodeJS.Platform;
 
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.checkTool = config.checkTool ?? requireTool;
+    this.processEnv = config.processEnv ?? process.env;
+    this.platform = config.platform ?? process.platform;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
-    const profile = boxProfilePath(input.projectRoot);
+    const profileFile = boxLocalProfileFile(input.runtime.name);
+    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
     // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
     if (!runsInBox(input.boxProject, input.runtime)) {
       if (input.runtime.box !== undefined) {
@@ -58,15 +67,14 @@ export class BoxDevRunner implements DevRunner {
       yield* this.fallback.run(input);
       return;
     }
-    const hasProfile = existsSync(profile);
-    if (!hasProfile || !boxProfileIsFor(readFileSync(profile, "utf8"), input.runtime)) {
+    if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +
-          `agentcore.json), but ${profile} ` +
-          (hasProfile ? "is the box profile of another runtime." : "does not exist.") +
-          " Restore the profile that `agentcore create` wrote.",
+          `agentcore.json), but ${profile} does not exist. ` +
+          "Restore the profile that `agentcore create` or `agentcore add runtime` wrote.",
       );
     }
+    const profileText = readFileSync(profile, "utf8");
     const listen = boxIngressPort(input.runtime.protocol);
     if (input.port !== listen) {
       throw new InputValidationError(
@@ -74,23 +82,48 @@ export class BoxDevRunner implements DevRunner {
           `${input.port}. Free port ${listen}, then retry.`,
       );
     }
+    // `create --skip-install` leaves an empty .venv, which `uv sync` fills; the profile runs its
+    // Python.
     const venv = join(input.projectRoot, input.runtime.codeLocation, ".venv");
-    if (!existsSync(venv)) {
+    if (!existsSync(join(venv, "bin", "python"))) {
       throw new ResourceNotFoundError(
-        `${venv} does not exist. Run \`uv sync\` in ${input.runtime.codeLocation}, then retry.`,
+        `${venv} has no Python. Run \`uv sync\` in ${input.runtime.codeLocation}, then retry.`,
       );
     }
     await this.checkTool("box", BOX_INSTALL_HINT);
     if (input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
       yield { type: "status", message: "Traces are not collected when the agent runs in a box" };
     }
+    const fileEnv = credentialEnvironment(input.env);
+    // box reads each env:// key of the profile from its own environment, picked as build picks it:
+    // the shell's value when set and not blank, else agentcore/.env.local's. Dev writes neither.
+    const secrets = boxDevSecrets(
+      profileText,
+      { env: this.processEnv, envLocal: fileEnv },
+      this.platform,
+    );
+    for (const missing of secrets.missing) {
+      yield { type: "status", message: missingBoxSecretWarning(profileFile, missing) };
+    }
+    for (const shadowed of secrets.shadowed) {
+      yield { type: "status", message: shadowedBoxSecretNote(shadowed) };
+    }
+    // box starts in the runtime's code folder for a CodeZip runtime (the project root for a
+    // container), so the agent reaches no other folder of the project; box finds the profile from
+    // there.
+    const startFolder = boxStartFolder(input.runtime);
+    const cwd =
+      startFolder === ""
+        ? input.projectRoot
+        : join(input.projectRoot, ...startFolder.split("/").filter(Boolean));
+    const profileArg = posix.relative(startFolder, profileFile);
     yield {
       type: "status",
-      message: `Starting the agent in a box (box run ${BOX_PROFILE_FILE})`,
+      message: `Starting the agent in a box (box run ${profileArg})`,
     };
-    yield* this.streamProcess(["box", "run", BOX_PROFILE_FILE, "--no-banner"], {
-      cwd: input.projectRoot,
-      env: { ...process.env, ...credentialEnvironment(input.env) },
+    yield* this.streamProcess(["box", "run", profileArg, "--no-banner"], {
+      cwd,
+      env: { ...this.processEnv, ...fileEnv, ...secrets.env },
       signal: input.signal,
     });
   }

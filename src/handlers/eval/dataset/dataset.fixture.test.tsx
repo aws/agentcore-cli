@@ -185,8 +185,6 @@ describe("eval dataset against recorded responses", () => {
       DATASET_NAME,
       "--source",
       `file://${writeExamples()}`,
-      "--schema-type",
-      "predefined",
       "--description",
       "Recorded fixture for the dataset commands",
     ]);
@@ -211,7 +209,6 @@ describe("eval dataset against recorded responses", () => {
     const response = JSON.parse(stdout);
     expect(response.datasetVersion).toBe("DRAFT");
     expect(response.exampleCount).toBe(EXAMPLES.length);
-    expect(response.schemaType).toBe("AGENTCORE_EVALUATION_PREDEFINED_V1");
     expect(response.draftStatus).toBe("MODIFIED");
   }, 60_000);
 
@@ -262,8 +259,6 @@ describe("eval dataset against recorded responses", () => {
       SECOND_DATASET_NAME,
       "--source",
       `file://${writeExamples()}`,
-      "--schema-type",
-      "predefined",
     ]);
     secondDatasetId = JSON.parse(secondStdout).datasetId;
     await settle();

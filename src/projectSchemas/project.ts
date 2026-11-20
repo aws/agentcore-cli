@@ -1,5 +1,5 @@
 import { isReservedProjectName } from "./constants";
-import { ProjectRuntimeSchema } from "./runtime";
+import { PRIVATE_VPC_LIMIT, ProjectRuntimeSchema, type Containment } from "./runtime";
 import { AgentCoreGatewaySchema, REAL_KB_ID_PATTERN, ToolRuntimeSchema } from "./gateway";
 import { ConfigBundleSchema } from "./config-bundle";
 import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
@@ -47,8 +47,9 @@ export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
 /**
  * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
- * variable prefix, `AWS_IAM` auth and `protocolType: "None"`. The CDK library binds it from
- * `boundRuntime` and `discoveryPrefix`.
+ * variable prefix, `AWS_IAM` auth, `protocolType: "None"` and its `APPLICATION_LOGS` on. The CDK
+ * library binds it from `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a
+ * user's `enableApplicationLogs: false` stays.
  */
 export const boxGatewaySpec = (runtimeName: string) => ({
   name: boxGatewayName(runtimeName),
@@ -56,6 +57,7 @@ export const boxGatewaySpec = (runtimeName: string) => ({
   protocolType: "None" as const,
   boundRuntime: runtimeName,
   discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
+  enableApplicationLogs: true,
   targets: [],
 });
 /**
@@ -146,6 +148,7 @@ export const ProjectSpecSchema = z
   })
   .strict()
   .superRefine((spec, ctx) => {
+    for (const issue of containmentIssues(spec)) ctx.addIssue({ code: "custom", ...issue });
     const agentNames = new Set(spec.runtimes.map((a) => a.name));
     const evaluatorNames = new Set(spec.evaluators.map((e) => e.name));
     // A gateway bound to a runtime that does not exist binds to nothing and fails the synth.
@@ -388,3 +391,26 @@ export const ProjectSpecSchema = z
     }
   });
 export type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
+/** Containment needs a Box project, and a project holds one PRIVATE_VPC runtime for now. **/
+function containmentIssues(spec: {
+  projectType?: string;
+  runtimes: { name: string; containment?: Containment }[];
+}): { message: string; path: (string | number)[] }[] {
+  const issues: { message: string; path: (string | number)[] }[] = [];
+  spec.runtimes.forEach((runtime, index) => {
+    if (runtime.containment !== undefined && !isBoxProject(spec)) {
+      issues.push({
+        message: `Runtime "${runtime.name}" sets containment, which requires "projectType": "box"`,
+        path: ["runtimes", index, "containment"],
+      });
+    }
+  });
+  const contained = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
+  if (contained.length > 1) {
+    issues.push({
+      message: `${PRIVATE_VPC_LIMIT} Found ${contained.map((runtime) => runtime.name).join(", ")}.`,
+      path: ["runtimes"],
+    });
+  }
+  return issues;
+}

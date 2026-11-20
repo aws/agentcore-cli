@@ -6,7 +6,7 @@ import { FsProjectManager } from "./manager";
 import type { Project, ProjectEvent } from "../../handlers/project/types";
 import type { ProjectBackend } from "./backends/types";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
-import { BOX_PROFILE_FILE } from "./templates/boxProfile";
+import { boxLocalDir, boxLocalProfileFile } from "./templates/boxProfile";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
@@ -15,6 +15,8 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 
 // A box template: only it writes the box profile whose env:// secrets build provisions.
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-strands-box");
+/** The local box profile of the template's runtime, from the project root. */
+const BOX_PROFILE_FILE = boxLocalProfileFile(AGENT_PYTHON.runtimeName);
 const GITHUB_PROFILE =
   '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n';
 /** What box resolves {@link GITHUB_PROFILE} to. */
@@ -78,7 +80,7 @@ async function project(subject: FsProjectManager, profile: string): Promise<Proj
   let next = await iterator.next();
   while (!next.done) next = await iterator.next();
   const created = next.value;
-  await mkdir(join(created.rootPath, ".box"), { recursive: true });
+  await mkdir(join(created.rootPath, boxLocalDir(AGENT_PYTHON.runtimeName)), { recursive: true });
   await writeFile(join(created.rootPath, BOX_PROFILE_FILE), profile);
   return created;
 }
@@ -157,33 +159,6 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_stored");
   });
 
-  test("seeds the key over a blank reserved variable in .env.local", async () => {
-    const { subject, built } = manager({ GITHUB_TOKEN: "ghp_shell" });
-    const created = await project(subject, GITHUB_PROFILE);
-    await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=\n`);
-
-    const messages = await drain(subject.build(created));
-
-    // Build adds the credential, so the key it reads on deploy must be set, not left blank.
-    expect(built[0]?.spec.credentials).toContainEqual({
-      authorizerType: "ApiKeyCredentialProvider",
-      name: "github",
-    });
-    expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_shell");
-    expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
-  });
-
-  test("keeps a reserved variable that .env.local already sets", async () => {
-    const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });
-    const created = await project(subject, GITHUB_PROFILE);
-    await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=ghp_user\n`);
-
-    const messages = await drain(subject.build(created));
-
-    expect((await new EnvLocalFile(created.rootPath).read())[RESERVED]).toBe("ghp_user");
-    expect(messages).not.toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
-  });
-
   test("adds no credential, and says which variable to set, when the key is in neither place", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);
@@ -223,10 +198,9 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=\n`);
     await appendEnvLocal(created.rootPath, `OTHER_API_KEY='${UNDECRYPTABLE}'`);
 
-    const messages = await drain(subject.build(created));
+    await drain(subject.build(created));
 
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
-    expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
   });
 
   test("builds when the shell sets the variable of an undecryptable .env.local entry", async () => {

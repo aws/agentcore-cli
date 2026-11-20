@@ -82,6 +82,9 @@ import type {
   UpdateHarnessEndpointResponse,
   UpdateHarnessRequest,
   UpdateHarnessResponse,
+  GetAgentInsightStoreResponse,
+  ListAgentInsightStoresResponse,
+  UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   GetABTestResponse,
@@ -90,8 +93,10 @@ import type {
   CreateABTestResponse,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteDatasetGenerationResponse,
   DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetDatasetGenerationResponse,
   GetRecommendationResponse,
   GetEventInput,
   GetEventOutput,
@@ -106,6 +111,7 @@ import type {
   ListActorsInput,
   ListActorsOutput,
   ListBatchEvaluationsResponse,
+  ListDatasetGenerationsResponse,
   ListEventsInput,
   ListEventsOutput,
   ListMemoryRecordsInput,
@@ -115,8 +121,12 @@ import type {
   ListSessionsOutput,
   RecommendationStatus,
   StartBatchEvaluationResponse,
+  StartDatasetGenerationResponse,
   StartRecommendationResponse,
   StopBatchEvaluationResponse,
+  GetAgentInsightResponse,
+  ListAgentInsightsResponse,
+  UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { Core } from "../handlers/types";
 import type {
@@ -195,9 +205,13 @@ import type {
   LlmAsAJudgeUpdate,
   SessionTrace,
   StartBatchEvaluationInput,
+  StartDatasetGenerationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
+  AgentInsightStoreUpdate,
+  ListAgentInsightsInput,
+  UpdateAgentInsightInput,
 } from "../handlers/eval/types";
 import { isTerminalStatus } from "../core/batchEvaluationResults";
 import { abortable } from "../core/abortable";
@@ -365,6 +379,12 @@ const DEFAULT_LIST_RECOMMENDATIONS_RESPONSE: ListRecommendationsResponse = {
   recommendationSummaries: [],
 };
 const DEFAULT_DELETE_RECOMMENDATION_RESPONSE = {} as DeleteRecommendationResponse;
+const DEFAULT_START_DATASET_GENERATION_RESPONSE = {} as StartDatasetGenerationResponse;
+const DEFAULT_GET_DATASET_GENERATION_RESPONSE = {} as GetDatasetGenerationResponse;
+const DEFAULT_LIST_DATASET_GENERATIONS_RESPONSE: ListDatasetGenerationsResponse = {
+  datasetGenerations: [],
+};
+const DEFAULT_DELETE_DATASET_GENERATION_RESPONSE = {} as DeleteDatasetGenerationResponse;
 const DEFAULT_UPDATE_DATASET_RESULT: DatasetUpdateResult = {
   datasetId: "dataset-orders-abc123",
   added: 0,
@@ -1660,6 +1680,16 @@ export class TestEvalClient implements CoreEvalClient {
   private recommendationListResponses = new Map<string | undefined, ListRecommendationsResponse>();
   private deleteRecommendationResponse: DeleteRecommendationResponse =
     DEFAULT_DELETE_RECOMMENDATION_RESPONSE;
+  private startDatasetGenerationResponse: StartDatasetGenerationResponse =
+    DEFAULT_START_DATASET_GENERATION_RESPONSE;
+  private getDatasetGenerationResponse: GetDatasetGenerationResponse =
+    DEFAULT_GET_DATASET_GENERATION_RESPONSE;
+  private datasetGenerationListResponses = new Map<
+    string | undefined,
+    ListDatasetGenerationsResponse
+  >();
+  private deleteDatasetGenerationResponse: DeleteDatasetGenerationResponse =
+    DEFAULT_DELETE_DATASET_GENERATION_RESPONSE;
   // Online-eval responses, keyed the same way: listOnlineEvaluationConfigs pages
   // by nextToken, the rest are single canned values.
   private onlineEvalListResponses = new Map<
@@ -1779,6 +1809,29 @@ export class TestEvalClient implements CoreEvalClient {
 
   setDeleteRecommendationResponse(response: DeleteRecommendationResponse): this {
     this.deleteRecommendationResponse = response;
+    return this;
+  }
+
+  setStartDatasetGenerationResponse(response: StartDatasetGenerationResponse): this {
+    this.startDatasetGenerationResponse = response;
+    return this;
+  }
+
+  setGetDatasetGenerationResponse(response: GetDatasetGenerationResponse): this {
+    this.getDatasetGenerationResponse = response;
+    return this;
+  }
+
+  setListDatasetGenerationsResponse(
+    response: ListDatasetGenerationsResponse,
+    forNextToken?: string,
+  ): this {
+    this.datasetGenerationListResponses.set(forNextToken, response);
+    return this;
+  }
+
+  setDeleteDatasetGenerationResponse(response: DeleteDatasetGenerationResponse): this {
+    this.deleteDatasetGenerationResponse = response;
     return this;
   }
 
@@ -2065,6 +2118,56 @@ export class TestEvalClient implements CoreEvalClient {
     this.calls.push({ method: "deleteRecommendation", args: [id, options] });
     if (this.error) throw this.error;
     return this.deleteRecommendationResponse;
+  }
+
+  async startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse> {
+    this.calls.push({ method: "startDatasetGeneration", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.startDatasetGenerationResponse;
+  }
+
+  async getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse> {
+    this.calls.push({ method: "getDatasetGeneration", args: [datasetId, generationId, options] });
+    if (this.error) throw this.error;
+    return this.getDatasetGenerationResponse;
+  }
+
+  async listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse> {
+    this.calls.push({
+      method: "listDatasetGenerations",
+      args: [datasetId, nextToken, maxResults, options],
+    });
+    if (this.error) throw this.error;
+    return (
+      this.datasetGenerationListResponses.get(nextToken) ??
+      this.datasetGenerationListResponses.get(undefined) ??
+      DEFAULT_LIST_DATASET_GENERATIONS_RESPONSE
+    );
+  }
+
+  async deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse> {
+    this.calls.push({
+      method: "deleteDatasetGeneration",
+      args: [datasetId, generationId, options],
+    });
+    if (this.error) throw this.error;
+    return this.deleteDatasetGenerationResponse;
   }
 
   async getBatchEvaluation(
@@ -2426,6 +2529,103 @@ export class TestEvalClient implements CoreEvalClient {
     });
     if (this.error) throw this.error;
     return this.updateDatasetResult;
+  }
+
+  private insightListResponse: ListAgentInsightsResponse = { agentInsights: [] };
+  private insightGetResponse = {} as GetAgentInsightResponse;
+  private insightUpdateResponse = {} as UpdateAgentInsightResponse;
+  private insightStoreListResponse: ListAgentInsightStoresResponse = { agentInsightStores: [] };
+  private insightStoreGetResponse = {} as GetAgentInsightStoreResponse;
+  private insightStoreUpdateResponse = {} as UpdateAgentInsightStoreResponse;
+
+  setInsightListResponse(response: ListAgentInsightsResponse): this {
+    this.insightListResponse = response;
+    return this;
+  }
+
+  setInsightGetResponse(response: GetAgentInsightResponse): this {
+    this.insightGetResponse = response;
+    return this;
+  }
+
+  setInsightUpdateResponse(response: UpdateAgentInsightResponse): this {
+    this.insightUpdateResponse = response;
+    return this;
+  }
+
+  setInsightStoreListResponse(response: ListAgentInsightStoresResponse): this {
+    this.insightStoreListResponse = response;
+    return this;
+  }
+
+  setInsightStoreGetResponse(response: GetAgentInsightStoreResponse): this {
+    this.insightStoreGetResponse = response;
+    return this;
+  }
+
+  setInsightStoreUpdateResponse(response: UpdateAgentInsightStoreResponse): this {
+    this.insightStoreUpdateResponse = response;
+    return this;
+  }
+
+  async listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse> {
+    this.calls.push({ method: "listAgentInsights", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.insightListResponse;
+  }
+
+  async getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse> {
+    this.calls.push({
+      method: "getAgentInsight",
+      args: [applicationName, agentInsightId, options],
+    });
+    if (this.error) throw this.error;
+    return this.insightGetResponse;
+  }
+
+  async updateAgentInsight(
+    input: UpdateAgentInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse> {
+    this.calls.push({ method: "updateAgentInsight", args: [input, options] });
+    if (this.error) throw this.error;
+    return this.insightUpdateResponse;
+  }
+
+  async listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse> {
+    this.calls.push({ method: "listAgentInsightStores", args: [nextToken, maxResults, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreListResponse;
+  }
+
+  async getAgentInsightStore(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightStoreResponse> {
+    this.calls.push({ method: "getAgentInsightStore", args: [id, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreGetResponse;
+  }
+
+  async updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse> {
+    this.calls.push({ method: "updateAgentInsightStore", args: [id, update, options] });
+    if (this.error) throw this.error;
+    return this.insightStoreUpdateResponse;
   }
 }
 
