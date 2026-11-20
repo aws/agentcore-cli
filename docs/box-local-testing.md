@@ -37,7 +37,10 @@ to it.
 
 ## Prerequisites
 
-- A local checkout of the CLI and of `@aws/agentcore-cdk`.
+- A local checkout of the CLI and of `@aws/agentcore-cdk`. The L3 checkout must have
+  [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
+  as its `box-integration` branch does. The Box gateway that `create` writes has
+  `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
 - `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. The oldest box that
   works is `0.1.11-linux-preview.7`, the first release with
   [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
@@ -100,9 +103,9 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` must print `box 0.1.11-preview.10`, the release the CLI pins in
-  `src/core/project/backends/boxRelease.json`. The oldest box that build, deploy and dev accept is
-  `0.1.11-linux-preview.7`.
+- `box --version` should print the pinned `box 0.1.11-preview.10` (from
+  `src/core/project/backends/boxRelease.json`). Build, deploy and dev accept
+  `0.1.11-linux-preview.7` or later.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
   `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-preview.10"`.
 
@@ -201,8 +204,7 @@ build context, and write a copy of the profile, the generated packs, and the pol
 `.box/<runtime>/aws/` for you to read.
 
 Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
-For a profile that names a pack or a plugin `box/<name>`, build stops and gives each `@box/<name>`
-name.
+A profile that names a pack `box/<name>` fails: box refuses it and names the `@box/<name>` pack.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
   with `type = "http"`, or a policy permit names, and that the policy allows at least one
@@ -222,7 +224,9 @@ name.
   `[egress.github]`. Nothing is written.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
-  AWS service that no policy of the gateway's role grants.
+  AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
+  the gateway's `additionalPolicies` that does not exist, cannot be read, or is not a JSON
+  object, as it counts none of its actions.
 - **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
   profile. Each key of the local profile stays, and build changes only what must differ on
   AgentCore Runtime:
@@ -286,8 +290,8 @@ deploy. It deploys nothing. The agent signs its Bedrock calls with your `[defaul
 
 Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
 have `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a
-plain runtime the usual way, and stops on one that starts box (a CodeZip `start.py` entrypoint, or
-a Dockerfile that installs box) with `agentcore.json has no "projectType": "box"`.
+runtime the usual way, and stops on one that has `box.version` with
+`agentcore.json has no "projectType": "box"`.
 
 ### Which box builds exist
 
@@ -363,8 +367,9 @@ bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 t
 **CodeZip template** (`agent-python-strands-box`; create it in step 3 with
 `--template agent-python-strands-box`):
 
-- Dev runs `box run .box/<runtime>/local/profile.toml` in the project folder with the `box` on
-  your `PATH`. The box listens on 8080 and relays to the agent on 8081.
+- Dev runs `box run` on `.box/<runtime>/local/profile.toml` from the agent's folder
+  (`app/<runtime>`), with the `box` on your `PATH`. The box listens on 8080 and relays to the agent
+  on 8081.
 - Invoke once the dev output shows `Uvicorn running on http://127.0.0.1:8081`.
 - Dev needs the agent's venv: `create` runs `uv sync` in `app/agent`, on a uv-managed Python in
   `~/.local/share/uv/python`, the only Python folder the profile lets box run. With
@@ -476,9 +481,14 @@ bun run "$CLI" logs runtime --name agent --since 15m --query '"strands.box.polic
 Each record is one decision, with `strands.box.policy.verdict`, `.rule`, and `.resource`. To show
 only the deny decisions, use `--query '"deny"'`.
 
-Deploy always sends the `APPLICATION_LOGS` of each Box gateway to
-`/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. The gateway sends no
-traces to X-Ray. Read the gateway logs with the gateway ID from step 9:
+A Box gateway that `create` or `add runtime` writes has `"enableApplicationLogs": true` in
+`agentcore.json`, and they tell you so with a notice. Deploy then sends the gateway's
+`APPLICATION_LOGS` to `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`.
+This needs an L3 that has
+[aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
+as the `box-integration` branch of the L3 does. Set `"enableApplicationLogs": false` to stop the
+logs. Traces to X-Ray stay off unless you set `"enableTraces": true`, which needs CloudWatch
+Transaction Search in the account and Region. Read the gateway logs with the gateway ID from step 9:
 
 ```sh
 aws logs tail "/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/$GATEWAY_ID" --since 15m
