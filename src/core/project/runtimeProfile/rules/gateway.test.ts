@@ -536,7 +536,11 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         mcp,
         policyFiles: ["policy.dw"],
         places: profilePlaces(text, PROFILE),
-        source: { table: parse(text) as TomlTable, places: profileKeyPlaces(text, PROFILE) },
+        source: {
+          table: parse(text) as TomlTable,
+          places: profileKeyPlaces(text, PROFILE),
+          startFolder: "",
+        },
       },
       `${policy}${boxNetworkRules(egress, mcp)}`,
       [{ file: ".box/agent/local/policy.dw", text: policy }],

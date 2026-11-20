@@ -24,6 +24,7 @@ const HOME = "${{ home }}";
  */
 export function runtimePaths(
   runtime: Pick<ProjectRuntime, "build" | "codeLocation">,
+  startFolder = "",
 ): RuntimePaths {
   if (runtime.build !== "CodeZip") {
     return {
@@ -41,7 +42,11 @@ export function runtimePaths(
     .normalize(runtime.codeLocation.replace(/\\/g, "/"))
     .replace(/^\.\/|\/+$/g, "");
   const root = folder === "." || folder === "";
-  const localCode = root ? WORKSPACE : `${WORKSPACE}/${folder}`;
+  // `${{ workspace }}` is the folder box starts in: the code folder for a profile that create or
+  // add runtime writes now, and the project root for one written before.
+  const start = posix.normalize(startFolder || ".").replace(/^\.\/|\/+$/g, "");
+  const fromStart = posix.relative(start === "." ? "" : start, root ? "" : folder);
+  const localCode = fromStart === "" ? WORKSPACE : `${WORKSPACE}/${fromStart}`;
   return {
     build: "CodeZip",
     localCode,
@@ -120,12 +125,14 @@ export function runtimeProfileContext(
   input: Omit<RuntimeProfileContext, "paths" | "template" | "placeOf"> & {
     /** Where the local profile sets each key: {@link profileKeyPlaces}. */
     readonly places: ReadonlyMap<string, string>;
+    /** The folder, from the project root, that box starts in for the local profile. */
+    readonly startFolder?: string;
   },
 ): RuntimeProfileContext {
-  const { places, ...rest } = input;
+  const { places, startFolder, ...rest } = input;
   return {
     ...rest,
-    paths: runtimePaths(input.runtime),
+    paths: runtimePaths(input.runtime, startFolder),
     template: runtimeTemplate(input.spec.name, input.runtime, input.region),
     placeOf: (key) => {
       for (let depth = key.length; depth > 0; depth--) {

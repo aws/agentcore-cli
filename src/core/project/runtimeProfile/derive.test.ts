@@ -88,6 +88,15 @@ describe("runtimePaths", () => {
     ).toBe("${{ workspace }}/app/agent");
   });
 
+  test("names the code folder ${{ workspace }} when box starts in it, as for a profile create writes now", () => {
+    expect(runtimePaths(CODEZIP, "app/agent")).toMatchObject({
+      localCode: "${{ workspace }}",
+      localVenv: "${{ workspace }}/.venv",
+      shownCode: "app/agent/",
+    });
+    expect(runtimePaths(CODEZIP, "app").localCode).toBe("${{ workspace }}/agent");
+  });
+
   test("keeps each path of a container image, which runs in /app under dev and on the Runtime", () => {
     const paths = runtimePaths(CONTAINER);
 
@@ -104,7 +113,7 @@ describe("runtimeTemplate", () => {
     expect(Object.keys(runtime)).toEqual(["agent"]);
     const agent = runtime.agent as { command: string[]; env: Record<string, string> };
     expect(agent.command).not.toContain("--reload");
-    expect(agent.command[0]).toBe("${{ workspace }}/app/agent/.venv/bin/python");
+    expect(agent.command[0]).toBe("${{ workspace }}/.venv/bin/python");
     expect(agent.env).not.toHaveProperty("LOCAL_DEV");
   });
 });

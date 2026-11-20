@@ -13,7 +13,7 @@ import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 
 /**
  * Where build looks for a route's key: the environment it runs in, and the project's `.env.local`,
- * where `agentcore dev` stores each box variable under its own name.
+ * where a user can keep a box variable under its own name, as `agentcore dev` reads it.
  */
 export type BoxKeySources = {
   env: NodeJS.ProcessEnv;
@@ -91,15 +91,28 @@ export function planBoxProfileCredentials(
   const messages: string[] = [];
   const added: Credential[] = [];
   const entries: EnvLocalEntry[] = [];
-  /** Stores the route's key under `credential`'s reserved variable; false when there is none. */
+  /**
+   * Stores the route's key under `credential`'s reserved variable, as `agentcore dev` reads it: the
+   * route's variable from the environment, else from `.env.local`. A stored key that differs is
+   * replaced, so dev and deploy use the same key after a rotation. False when there is none.
+   */
   const seed = ({ variable }: BoxEnvRoute, credential: string): boolean => {
     const key = credentialEnvVarName(credential);
-    if (hasValue(sources.env[key]) || hasValue(sources.envLocal[key])) return true;
+    // Set in the environment itself, it is what deploy provisions; nothing to store.
+    if (hasValue(sources.env[key])) return true;
     if (entries.some((entry) => entry.key === key)) return true;
     const value = hasValue(sources.env[variable])
       ? sources.env[variable]
       : sources.envLocal[variable];
-    if (!hasValue(value)) return false;
+    const stored = sources.envLocal[key];
+    if (!hasValue(value)) return hasValue(stored);
+    if (value === stored) return true;
+    if (hasValue(stored)) {
+      messages.push(
+        `updating ${key} in ${ENV_LOCAL_RELATIVE_PATH}: ${variable} holds a different key, which ` +
+          "agentcore dev uses, so deploy provisions it too",
+      );
+    }
     entries.push({
       key,
       value,

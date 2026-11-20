@@ -105,6 +105,42 @@ describe("planBoxProfileCredentials", () => {
     expect(s.credentials).toEqual([API_KEY]);
   });
 
+  // dev hands box the route's variable, so after a rotation deploy must provision the same key.
+  test("replaces a stored key the route's variable no longer holds, and says so", () => {
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env: { GITHUB_TOKEN: "ghp_new" },
+      envLocal: { [RESERVED]: "ghp_old" },
+    });
+
+    expect(plan.entries.map(({ key, value }) => [key, value])).toEqual([[RESERVED, "ghp_new"]]);
+    expect(plan.messages).toEqual([
+      `updating ${RESERVED} in ${ENV_LOCAL_RELATIVE_PATH}: GITHUB_TOKEN holds a different key, ` +
+        "which agentcore dev uses, so deploy provisions it too",
+    ]);
+  });
+
+  test("leaves a stored key alone when the variable holds it, or when nothing sets the variable", () => {
+    for (const env of [{ GITHUB_TOKEN: "ghp_same" }, {}]) {
+      const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+        env,
+        envLocal: { [RESERVED]: "ghp_same" },
+      });
+
+      expect(plan.entries).toEqual([]);
+      expect(plan.messages).toEqual([]);
+    }
+  });
+
+  test("leaves the stored key alone when the shell sets the credential's own variable", () => {
+    // Deploy provisions that one, so the route's variable has nothing to change.
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env: { GITHUB_TOKEN: "ghp_new", [RESERVED]: "ghp_explicit" },
+      envLocal: { [RESERVED]: "ghp_old" },
+    });
+
+    expect(plan.entries).toEqual([]);
+  });
+
   test("keeps an earlier build's credential and says what to set when its key has gone", () => {
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
 

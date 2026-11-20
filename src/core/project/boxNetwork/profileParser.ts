@@ -37,6 +37,8 @@ export interface ParsedProfile {
   readonly source?: {
     readonly table: Readonly<TomlTable>;
     readonly places: ReadonlyMap<string, string>;
+    /** The folder, from the project root, that box starts in for the profile (boxStartFolder). */
+    readonly startFolder: string;
   };
 }
 

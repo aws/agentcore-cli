@@ -10,7 +10,7 @@ import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
-import { CdkBackend } from "./cdk";
+import { boxOtelWarnings, CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisionInput,
@@ -67,6 +67,10 @@ function unusedIdentity(): CredentialProviderCalls {
 
 /** A build of a project that has no box runtime. */
 const NO_BOX_NETWORKS = { boxNetworks: [] };
+
+const OTEL_WARNING =
+  "Runtime 'agent' runs its agent in a box, where the agent does not run under " +
+  "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.";
 
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
   return { target: TARGET, confirmTeardown: async () => false, boxNetworks: [], ...overrides };
@@ -328,20 +332,22 @@ describe("CdkBackend.build", () => {
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
   });
 
+  // A CodeZip box build downloads box before it warns, so the cases check the warning itself.
   test.each([
-    ["a box container", "box", true, true],
-    ["a box container with enableOtel false", "box", false, false],
-    ["a container outside a Box project", undefined, true, false],
-  ] as const)("warns that %s sends no traces: %p", async (_label, projectType, otel, warns) => {
-    const input = await project();
-    input.spec = ProjectSpecSchema.parse({
+    ["a box container", "box", "Container", true, true],
+    ["a box CodeZip runtime", "box", "CodeZip", true, true],
+    ["a box container with enableOtel false", "box", "Container", false, false],
+    ["a container outside a Box project", undefined, "Container", true, false],
+  ] as const)("warns that %s sends no traces: %p", (_label, projectType, build, otel, warns) => {
+    const spec = ProjectSpecSchema.parse({
       name: "example",
       version: 2,
       ...(projectType && { projectType }),
       runtimes: [
         {
           name: "agent",
-          build: "Container",
+          build,
+          ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
           entrypoint: "main.py",
           codeLocation: "app/agent",
           ...(projectType && { box: { version: BOX_RELEASE.version } }),
@@ -350,36 +356,48 @@ describe("CdkBackend.build", () => {
       ],
       agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
     });
+
+    expect(boxOtelWarnings(spec)).toEqual(warns ? [OTEL_WARNING] : []);
+  });
+
+  test("build yields the OTEL warning of a box runtime", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent")],
+    });
     await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
     await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
 
     // Build stages box from the runtime's Box network model, with its derived Runtime profile.
-    const boxNetworks = projectType
-      ? [
-          {
-            runtime: "agent",
-            gateway: "agent-box-egress",
-            region: "us-west-2",
-            hosts: [],
-            envRoutes: [],
-            policyFiles: [],
-            runtimeProfile: { packs: ["@box/base", "@box/agentcore"] },
-            grantedActions: [],
-            warnings: [],
-            failures: [],
-          },
-        ]
-      : [];
+    const boxNetworks = [
+      {
+        runtime: "agent",
+        gateway: "agent-box-egress",
+        region: "us-west-2",
+        hosts: [],
+        envRoutes: [],
+        policyFiles: [],
+        runtimeProfile: { packs: ["@box/base", "@box/agentcore"] },
+        grantedActions: [],
+        warnings: [],
+        failures: [],
+      },
+    ];
     const events = await collect(harness().backend.build(input, { boxNetworks }));
 
-    const warning: ProjectEvent = {
-      type: "warning",
-      message:
-        "Runtime 'agent' runs its agent in a box, whose image does not run " +
-        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
-    };
-    if (warns) expect(events).toContainEqual(warning);
-    else expect(events).not.toContainEqual(warning);
+    expect(events).toContainEqual({ type: "warning", message: OTEL_WARNING } as ProjectEvent);
   });
 
   test("warns but continues when the installed CDK is legacy", async () => {

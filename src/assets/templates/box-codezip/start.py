@@ -7,9 +7,16 @@
 # directory from the environment through the @box/agentcore and @box/agentcore-codezip packs, and
 # signs AWS routes with the execution role through a bare `aws://`. So there is nothing to fill in,
 # no credentials to write, and no start.sh.
+import json
 import os
+import re
 import shutil
 import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10, which has no tomllib.
+    tomllib = None
 
 CODE = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(CODE, ".box-dist")
@@ -22,6 +29,21 @@ PROFILE = os.path.join(PROFILE_DIR, "profile.toml")
 # The names of box's own interpreter aliases. box refuses a stdio MCP server whose program has one
 # of these names, so a server on the Runtime's Python needs that Python by its versioned name.
 INTERPRETER_ALIASES = ("python", "python3")
+
+
+def staged_policies(path):
+    """The policy files the staged profile's `policies` names.
+
+    Deploy writes `policies` on one line, with names of only letters, digits, ".", "_", "-" and
+    "/", so on Python 3.10 the line reads as a JSON list. The box templates reuse the folders of
+    the agents without box, so no template has to depend on tomli for it.
+    """
+    with open(path, "rb") as handle:
+        text = handle.read()
+    if tomllib is not None:
+        return tomllib.loads(text.decode("utf-8")).get("policies", [])
+    match = re.search(rb"^policies = (\[.*\])$", text, re.MULTILINE)
+    return json.loads(match.group(1)) if match else []
 
 
 def box_python(executable, version):
@@ -39,11 +61,6 @@ def box_python(executable, version):
 
 
 def main():
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python 3.10: the template depends on tomli there.
-        import tomli as tomllib
-
     for directory in (HOME, WORKSPACE, PROFILE_DIR):
         os.makedirs(directory, exist_ok=True)
 
@@ -51,9 +68,7 @@ def main():
     # `policies` names out of the read-only zip, into this user's folder, outside the workspace.
     staged_profile = os.path.join(DIST, "profile.toml")
     shutil.copyfile(staged_profile, PROFILE)
-    with open(staged_profile, "rb") as handle:
-        policies = tomllib.load(handle).get("policies", [])
-    for policy in policies:
+    for policy in staged_policies(staged_profile):
         destination = os.path.join(PROFILE_DIR, policy)
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         shutil.copyfile(os.path.join(DIST, policy), destination)

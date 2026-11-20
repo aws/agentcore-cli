@@ -85,6 +85,8 @@ function contextOf(
     hosts: [],
     telemetry: options.telemetry ?? [],
     places: new Map(),
+    // box starts a CodeZip profile that create writes in the code folder of the runtime.
+    startFolder: runtime.build === "CodeZip" ? runtime.codeLocation : "",
   });
 }
 
@@ -415,7 +417,7 @@ describe("the additions rule", () => {
       const local = createdProfile(CODEZIP);
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).command).toEqual(
-        runtimeCommand("${{ workspace }}/app/agent", "${{ workspace }}/app/agent/.venv/bin/python"),
+        runtimeCommand("${{ workspace }}", "${{ workspace }}/.venv/bin/python"),
       );
       expect(agentOf(deriveRuntimeProfile(local, contextOf(CODEZIP)).profile).command).toEqual(
         runtimeCommand("${{ inputs.code.dir }}", "${{ inputs.python.path }}"),
@@ -425,20 +427,20 @@ describe("the additions rule", () => {
     test("removes --reload and --reload-dir from a command of the user, and moves no path", () => {
       const local = createdProfile(CODEZIP);
       agentOf(local).command = [
-        "${{ workspace }}/app/agent/.venv/bin/python",
+        "${{ workspace }}/.venv/bin/python",
         "-m",
         "uvicorn",
         "main:app",
         "--reload",
         "--reload-dir",
-        "${{ workspace }}/app/agent",
-        "--reload-dir=${{ workspace }}/app/agent/lib",
+        "${{ workspace }}",
+        "--reload-dir=${{ workspace }}/lib",
         "--log-level",
         "debug",
       ];
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).command).toEqual([
-        "${{ workspace }}/app/agent/.venv/bin/python",
+        "${{ workspace }}/.venv/bin/python",
         "-m",
         "uvicorn",
         "main:app",
@@ -580,20 +582,20 @@ describe("the additions rule", () => {
     test("gives the template's grants their Runtime grants, and keeps each grant of the user", () => {
       const local = createdProfile(CODEZIP);
       const filesystem = agentOf(local).filesystem;
-      filesystem.read.push("${{ workspace }}/app/agent/data", "/usr/lib64");
-      filesystem.deny_write.push("${{ workspace }}/app/agent/secrets");
+      filesystem.read.push("${{ workspace }}/data", "/usr/lib64");
+      filesystem.deny_write.push("${{ workspace }}/secrets");
       filesystem.write = ["/tmp/agent"];
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
         read: [
-          "${{ workspace }}/app/agent",
+          "${{ workspace }}",
           "${{ home }}/.local/share/uv/python",
           "/usr/lib64",
           "/lib64",
-          "${{ workspace }}/app/agent/data",
+          "${{ workspace }}/data",
         ],
-        exec: ["${{ workspace }}/app/agent", "${{ home }}/.local/share/uv/python"],
-        deny_write: ["${{ workspace }}/app/agent/secrets"],
+        exec: ["${{ workspace }}", "${{ home }}/.local/share/uv/python"],
+        deny_write: ["${{ workspace }}/secrets"],
         write: ["/tmp/agent"],
       });
       // The paths rule moves each path of the project after this rule.
@@ -621,8 +623,8 @@ describe("the additions rule", () => {
       );
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
-        read: ["${{ workspace }}/app/agent", "/usr/lib64", "/lib64"],
-        exec: ["${{ workspace }}/app/agent", "${{ home }}/.local/share/uv/python"],
+        read: ["${{ workspace }}", "/usr/lib64", "/lib64"],
+        exec: ["${{ workspace }}", "${{ home }}/.local/share/uv/python"],
       });
     });
 
@@ -632,7 +634,7 @@ describe("the additions rule", () => {
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
         read: ["/usr/lib64", "/lib64"],
-        exec: ["${{ workspace }}/app/agent"],
+        exec: ["${{ workspace }}"],
       });
     });
 

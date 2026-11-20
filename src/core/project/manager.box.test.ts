@@ -11,6 +11,7 @@ import { BOX_RELEASE } from "./backends/boxRelease";
 import { FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
+import { boxStartFolder } from "./templates/boxProfile";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
 /**
@@ -344,7 +345,8 @@ describe("gateway targets in a Box project", () => {
       expect.objectContaining(boxGatewaySpec("search")),
     );
     const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
-    expect(await readFile(profile, "utf8")).toContain("${{ workspace }}/app/search");
+    // dev starts this profile's box in app/search, the runtime's own folder.
+    expect(boxStartFolder(await readFile(profile, "utf8"))).toBe("app/search");
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${profile}` });
     expect(existsSync(join(project.rootPath, "app", "search", "start.py"))).toBe(true);
     expect(existsSync(join(project.rootPath, "app", "search", ".venv"))).toBe(true);

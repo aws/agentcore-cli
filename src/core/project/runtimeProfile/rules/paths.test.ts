@@ -20,7 +20,11 @@ const CODEZIP = {
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
 const PROFILE = ".box/agent/local/profile.toml";
 
-const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
+/**
+ * The context of the local profile `text`. box starts in `startFolder`: the code folder for a
+ * profile that create writes now, and the project root for the profiles of these tests.
+ */
+const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder = "") =>
   runtimeProfileContext({
     spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
     runtime,
@@ -30,6 +34,7 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
     hosts: [],
     telemetry: [],
     places: profileKeyPlaces(text, PROFILE),
+    startFolder,
   });
 
 /** The table of the paths rule for the local profile `text`. */
@@ -349,7 +354,7 @@ describe("the paths rule", () => {
   test.each(["HTTP", "A2A", "MCP", "AGUI"])(
     "moves each path of the profile that create writes for a %s runtime to the Runtime's inputs",
     (protocol) => {
-      const context = contextOf("", { ...CODEZIP, protocol } as ProjectRuntime);
+      const context = contextOf("", { ...CODEZIP, protocol } as ProjectRuntime, "app/agent");
 
       const text = serializeRuntimeProfile(apply(context.template.local, context).table);
 

@@ -20,8 +20,12 @@ const CODEZIP = {
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
 const PROFILE = ".box/agent/local/profile.toml";
 
-/** The context of the local profile `text`, with the CloudWatch targets that box takes from it. */
-const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
+/**
+ * The context of the local profile `text`, with the CloudWatch targets that box takes from it. box
+ * starts in `startFolder`: the code folder for a profile that create writes now, and the project
+ * root for the profiles of these tests.
+ */
+const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder = "") =>
   runtimeProfileContext({
     spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
     runtime,
@@ -32,6 +36,7 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
     telemetry: withDeployRegion(cloudWatchTelemetry(parse(text) as TomlTable), "us-west-2", PROFILE)
       .telemetry,
     places: profileKeyPlaces(text, PROFILE),
+    startFolder,
   });
 
 /** The problems of the refusals rule for the local profile `text`. */
@@ -445,7 +450,8 @@ describe("the refusals rule", () => {
     "finds no problem in each profile that create writes for a %s runtime",
     (protocol) => {
       for (const build of [CODEZIP, CONTAINER]) {
-        const context = contextOf("", { ...build, protocol } as ProjectRuntime);
+        const start = build.build === "CodeZip" ? "app/agent" : "";
+        const context = contextOf("", { ...build, protocol } as ProjectRuntime, start);
 
         expect(apply(context.template.local, context).problems).toEqual([]);
       }
