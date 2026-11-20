@@ -108,9 +108,10 @@ export class BoxDevRunner implements DevRunner {
     for (const shadowed of secrets.shadowed) {
       yield { type: "status", message: shadowedBoxSecretNote(shadowed) };
     }
-    // box starts in the folder the profile names, the runtime's own for a CodeZip profile, so the
-    // agent reaches no other folder of the project; box finds the profile from there.
-    const startFolder = boxStartFolder(profileText);
+    // box starts in the runtime's code folder for a CodeZip runtime (the project root for a
+    // container), so the agent reaches no other folder of the project; box finds the profile from
+    // there.
+    const startFolder = boxStartFolder(input.runtime);
     const cwd =
       startFolder === ""
         ? input.projectRoot

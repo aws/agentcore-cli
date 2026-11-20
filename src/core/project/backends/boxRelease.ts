@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -255,8 +256,7 @@ async function installBox(
         `${build.asset} has no release.json for box ${release.version}, or no box packs.`,
       );
     }
-    rmSync(root, { recursive: true, force: true });
-    renameSync(payload, root);
+    publishInstall(payload, root, () => installedBox(release.version, root));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
@@ -275,7 +275,8 @@ async function installFfi(
 ): Promise<string> {
   const root = ffiCachePath(home, ffi.version, runtimeVersion);
   const marker = join(root, FFI_CACHE_MARKER);
-  if (isFile(marker) && readFileSync(marker, "utf8").trim() === asset.sha256) return root;
+  const installed = () => isFile(marker) && readFileSync(marker, "utf8").trim() === asset.sha256;
+  if (installed()) return root;
 
   const url = boxReleaseAssetUrl(ffi, asset.asset);
   onDownload?.({ name: `the box ffi shim for ${runtimeVersion}`, version: ffi.version, url });
@@ -294,13 +295,42 @@ async function installFfi(
     mkdirSync(payload);
     await runner(["tar", "-xzf", archive, "-C", payload], { cwd: work, env });
     writeFileSync(join(payload, FFI_CACHE_MARKER), `${asset.sha256}\n`);
-    rmSync(root, { recursive: true, force: true });
     mkdirSync(join(root, ".."), { recursive: true });
-    renameSync(payload, root);
+    publishInstall(payload, root, installed);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
   return root;
+}
+
+/**
+ * Moves the checked `payload` into the cache folder `root`, where another process may be
+ * installing the same release at the same time: several concurrent build or deploy commands each
+ * download into their own work folder. A complete `root` only ever appears through a rename of a
+ * complete payload, and a process that loses the race keeps the winner's copy and drops its own.
+ * `root` is removed only when the rename fails and `installed()` does not hold, as for a folder an
+ * interrupted install left. Another process can finish its install between that check and the
+ * removal; the removal then takes that install away while its command may still be reading it, and
+ * this process's own payload replaces it.
+ */
+export function publishInstall(payload: string, root: string, installed: () => boolean): void {
+  if (installed()) return;
+  try {
+    renameSync(payload, root);
+    return;
+  } catch (error) {
+    // `root` exists: EEXIST or ENOTEMPTY, or EPERM on Windows. It holds the install of a process
+    // that renamed its payload first, or an incomplete folder from an interrupted install.
+    if (installed()) return;
+    if (!existsSync(root)) throw error;
+  }
+  // A concurrent process may remove the incomplete folder too.
+  rmSync(root, { recursive: true, force: true });
+  try {
+    renameSync(payload, root);
+  } catch (error) {
+    if (!installed()) throw error;
+  }
 }
 
 async function download(
