@@ -313,6 +313,7 @@ describe("the gateway's targets", () => {
       );
       expect(r.failures()).toEqual([]);
       expect([...r.network.managedTargets]).toEqual(["egress-github"]);
+      expect(r.network.warnings.filter((w) => w.includes("'egress-"))).toEqual([]);
     });
 
     test("fail a target the file names that the user changed, and say how to keep it", () => {
@@ -347,6 +348,13 @@ describe("the gateway's targets", () => {
       );
       expect(r.failures()).toEqual([]);
       expect([...r.network.managedTargets]).toEqual(["egress-stale", "egress-github"]);
+      // The one build that takes the old egress- targets says which one it keeps as the user's.
+      expect(r.network.warnings.filter((w) => w.includes("'egress-"))).toEqual([
+        "agentcore/agentcore.json: build keeps the gateway target 'egress-old' as yours, because " +
+          "it sends the API key credential 'old' in the query parameter key, which build does " +
+          "not write. Build does not change or remove it. Remove the target if build wrote it " +
+          "before and you do not use it.",
+      ]);
     });
 
     test("leave a user's target of another shape on an entry's host to the user", () => {

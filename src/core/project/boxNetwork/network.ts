@@ -266,6 +266,7 @@ export function buildBoxNetwork(
           );
         }),
       ),
+      ...targets.warnings,
       ...hostWarnings(targets.hosts),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);
@@ -362,13 +363,27 @@ function hostTargets(
   hosts: BoxNetworkHost[];
   failures: BoxNetworkFailure[];
   managed: ReadonlySet<string>;
+  warnings: string[];
 } {
   const existing = project.targets;
   const failures: BoxNetworkFailure[] = [];
   const recorded = project.ownedTargets;
   const isManaged = (target: AgentCoreGatewayTarget) =>
     recorded ? recorded.has(target.name) : isManagedTarget(target);
+  const warnings: string[] = [];
   for (const target of existing) {
+    // The one build that takes a gateway's old egress- targets names each one it keeps.
+    const kept =
+      recorded === undefined && target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)
+        ? unmanagedShape(target)
+        : undefined;
+    if (kept !== undefined) {
+      warnings.push(
+        `${PROJECT_SPEC_PLACE}: build keeps the gateway target '${target.name}' as yours, ` +
+          `because it ${kept}, which build does not write. Build does not change or remove it. ` +
+          "Remove the target if build wrote it before and you do not use it.",
+      );
+    }
     const changed = recorded?.has(target.name) ? unmanagedShape(target) : undefined;
     if (changed === undefined) continue;
     failures.push({
@@ -532,7 +547,7 @@ function hostTargets(
   hosts.forEach(({ target }, index) => {
     if (target !== undefined && !reused.has(index)) managed.add(target);
   });
-  return { hosts, failures, managed };
+  return { hosts, failures, managed, warnings };
 }
 
 /** The source of the entry that names a host. */
