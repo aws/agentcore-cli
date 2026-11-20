@@ -8,7 +8,12 @@ import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
-import { BOX_MINIMUM_VERSION, BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
+import {
+  BOX_MINIMUM_VERSION,
+  BOX_OTHER_MACHINE_HINT,
+  BOX_RELEASE,
+  BOX_RELEASE_PAGE,
+} from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -38,7 +43,7 @@ export interface BoxProfileResolver {
 }
 
 /** What to install, which each error names when the `box` on PATH cannot resolve a profile. */
-const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry.`;
+const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry. ${BOX_OTHER_MACHINE_HINT}`;
 
 /** The refusal of an `@box/<name>` pack by a box older than {@link BOX_MINIMUM_VERSION}. */
 const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;

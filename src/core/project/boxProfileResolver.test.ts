@@ -100,7 +100,11 @@ const SHOWN_POLICY =
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
 /** The last sentence of each error that says to install another box: the pinned release. */
-const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry.`;
+const INSTALL =
+  `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
+  "When that release has no build for your machine, use box 0.1.11-linux-preview.7 " +
+  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a later " +
+  "release that has one.";
 
 /**
  * The profile of {@link OPEN_ROUTES_SHOWN}: the routes `auth` and `github` with no secret, and the
