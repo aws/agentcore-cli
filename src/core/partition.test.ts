@@ -15,8 +15,9 @@ describe("isChinaRegion", () => {
 });
 
 describe("supportsRuntimeV2", () => {
-  // ap-east-9 is not a region: one this CLI does not know of counts as having V2.
-  test.each(["us-west-2", "us-east-1", "eu-west-1", "cn-north-1", "ap-east-9"])(
+  // ap-east-9 is not a region: one this CLI does not know of counts as having V2, as the European
+  // Sovereign Cloud (eusc-de-east-1) does.
+  test.each(["us-west-2", "us-east-1", "eu-west-1", "cn-north-1", "ap-east-9", "eusc-de-east-1"])(
     "returns true for %s",
     (region) => {
       expect(supportsRuntimeV2(region)).toBe(true);
@@ -31,6 +32,7 @@ describe("supportsRuntimeV2", () => {
     "us-iso-east-1",
     "us-isob-east-1",
     "us-isof-south-1",
+    "eu-isoe-west-1",
   ])("returns false for %s", (region) => {
     expect(supportsRuntimeV2(region)).toBe(false);
   });

@@ -19,11 +19,16 @@ export function isChinaRegion(region: string): boolean {
  * the AgentCore Runtime team's; remove a region here once V2 launches in it.
  */
 const NO_RUNTIME_V2_REGIONS: ReadonlySet<string> = new Set(["ap-south-2", "us-west-1"]);
-/** Partitions with no V2 in any region: GovCloud, and the isolated (ADC) partitions. */
+/**
+ * Partitions with no V2 in any region: GovCloud, and the isolated (ADC) partitions. The European
+ * Sovereign Cloud (`aws-eusc`) is left out on purpose: like a region the CLI does not list, it
+ * counts as having V2, and CreateAgentRuntime refuses it there if it does not.
+ */
 const NO_RUNTIME_V2_PARTITIONS: ReadonlySet<string> = new Set([
   "aws-us-gov",
   "aws-iso",
   "aws-iso-b",
+  "aws-iso-e",
   "aws-iso-f",
 ]);
 
