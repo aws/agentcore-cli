@@ -491,10 +491,10 @@ export function renderBoxProfile(
       : "";
   const bedrockRoute = bedrock
     ? `
-# Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
-# rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
+# Sign the model calls with the AWS default credential chain, as \`agentcore dev\` does without a
+# box, rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
-secret.ref = "aws://default"
+secret.ref = "aws://"
 `
     : "";
   const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";

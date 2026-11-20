@@ -73,7 +73,7 @@ function credentialsText(credentials: AwsCredentialIdentity): string {
 
 /**
  * Writes the resolved AWS credentials as the `[default]` profile that a boxed dev container signs
- * with (`aws://default`), in place of a mount of `~/.aws`. Box in the container runs as the image's
+ * with (a bare `aws://`), in place of a mount of `~/.aws`. Box in the container runs as the image's
  * user, not as you, so it cannot read a `~/.aws/credentials` that only you may read (mode 0600, the
  * usual case on Linux), and `~/.aws` may not hold the credentials at all (SSO, a credential process,
  * environment variables). The files are readable by any user in the container but sit in a folder

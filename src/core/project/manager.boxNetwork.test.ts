@@ -32,7 +32,7 @@ const GITHUB_ROUTE =
 /** Box's resolution of the Bedrock route of the profile `create` writes, with @box/bedrock. */
 const BEDROCK = {
   destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
-  secret: { ref: "aws://default" },
+  secret: { ref: "aws://" },
 };
 const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_TOKEN" } };
 /** What box resolves the created profile to, with `routes` beside its Bedrock route. */
