@@ -47,35 +47,40 @@ macOS on an Apple chip (`aarch64-apple-darwin`) and Linux arm64 (`aarch64-unknow
 is no x86 build yet. Each archive unpacks flat: `box`, its two helpers, `release.json`, and
 `resources/` (box's packs, which it finds beside itself).
 
-Download the archive for your machine, check it, and unpack it into a versioned folder.
+Download the archive for your machine, check it, and unpack it into a versioned folder. Linux
+uses `0.1.11-mquang.preview.9`, the release that the CLI pins. That release has no macOS build, so
+macOS uses `0.1.11-linux-preview.7`, the newest release with a macOS build.
 
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-linux-preview.7 && cd ~/.local/share/box/0.1.11-linux-preview.7
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/box-v0.1.11-linux-preview.7-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/SHA256SUMS.txt
+BOX_VERSION=0.1.11-linux-preview.7
+mkdir -p ~/.local/share/box/$BOX_VERSION && cd ~/.local/share/box/$BOX_VERSION
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION/box-v$BOX_VERSION-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION/SHA256SUMS.txt
 grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-v0.1.11-linux-preview.7-aarch64-apple-darwin.tar.gz
+tar -xzf box-v$BOX_VERSION-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-linux-preview.7 && cd ~/.local/share/box/0.1.11-linux-preview.7
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/box-v0.1.11-linux-preview.7-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-linux-preview.7/SHA256SUMS.txt
+BOX_VERSION=0.1.11-mquang.preview.9
+mkdir -p ~/.local/share/box/$BOX_VERSION && cd ~/.local/share/box/$BOX_VERSION
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION/box-v$BOX_VERSION-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v$BOX_VERSION/SHA256SUMS.txt
 grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-v0.1.11-linux-preview.7-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf box-v$BOX_VERSION-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
 
-Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
+Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
+Run this in the same shell, so that `BOX_VERSION` is still set:
 
 ```
-export PATH="$HOME/.local/share/box/0.1.11-linux-preview.7:$PATH"
-grep -q 'share/box/0.1.11-linux-preview.7' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-linux-preview.7:$PATH"' >> ~/.zshrc
+export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
+grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
 
 The `grep -q ... ||` adds the line only once, so running it again does not repeat it. When you move
@@ -90,9 +95,10 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` must print `box 0.1.11-linux-preview.7` or later.
+- `box --version` must print `box 0.1.11-mquang.preview.9` on Linux, or
+  `box 0.1.11-linux-preview.7` on macOS.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-linux-preview.7"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/$BOX_VERSION"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
 to that folder.
@@ -183,7 +189,8 @@ resolves the profile to into the runtime's Box network. Every pack, option, and 
 already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
 the Runtime profile and its resources under `.box/<runtime>/aws/`.
 
-Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
+Box `0.1.11-linux-preview.7` and later name their packs `@box/base`, `@box/bedrock`, and
+`@box/agentcore`.
 For a profile that names a pack or a plugin `box/<name>`, build stops and gives each `@box/<name>`
 name.
 
