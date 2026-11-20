@@ -169,6 +169,8 @@ async function strandsProject(
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
         runtimeName: "agent_python_strands",
       }),
+      // As the create command does: the profile calls Bedrock in the region create resolved.
+      region: "us-west-2",
       skipInstall: true,
       skipGit: true,
     }),

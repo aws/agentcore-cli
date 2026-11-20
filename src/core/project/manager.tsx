@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
@@ -59,7 +59,7 @@ import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { resolveRegion } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
-import { createProjectTree } from "./templates/project";
+import { boxCodeZipFiles, createProjectTree } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
@@ -603,18 +603,15 @@ export class FsProjectManager implements ProjectManager {
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
-    if (input.skipInstall && scaffoldRuntimeInput && startsInBoxOnCodeZip(scaffoldRuntimeInput)) {
-      // The box profile keeps the venv out of the project's write grant with an optional
-      // deny_write, which box drops while `.venv` is missing; box then refuses the profile, as the
-      // venv's Python would be writable. An empty `.venv` keeps the profile valid, and `uv sync`
-      // fills it later.
-      await mkdir(join(destination, "app", scaffoldRuntimeInput.runtimeName, ".venv"), {
-        recursive: true,
-      });
-    }
-
     if (scaffoldRuntimeInput) {
-      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
+      // Both create paths pass the region they resolved; without one, create resolves it as
+      // --region does with no flag.
+      yield* this.writeBoxProfile(
+        destination,
+        input.name,
+        scaffoldRuntimeInput,
+        input.region ?? (await resolveRegion(undefined, this.processEnv)),
+      );
     }
 
     if (!input.skipGit) {
@@ -2136,24 +2133,14 @@ export class FsProjectManager implements ProjectManager {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
 
+    // start.py and an empty .venv, as create writes them. A file or folder the user has stays.
     const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
-    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
-    if (!existsSync(startScript)) {
-      scaffoldedPaths.push(startScript);
-      await writeFile(
-        startScript,
-        await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
-        { flag: "wx" },
-      );
-    }
-    // The profile keeps the venv out of the write grant with an optional deny_write, which box
-    // drops while `.venv` is missing, and then refuses the profile. An empty `.venv` keeps the
-    // profile valid until `uv sync` fills it.
     const venv = join(appDir, ".venv");
-    if (!existsSync(venv)) {
-      scaffoldedPaths.push(venv);
-      await mkdir(venv, { recursive: true });
-    }
+    if (!existsSync(venv)) scaffoldedPaths.push(venv);
+    await FsTreeNode.createDirectory(basename(appDir), boxCodeZipFiles(this.assetSource)).write(
+      dirname(appDir),
+      { skipExisting: true, written: scaffoldedPaths },
+    );
     const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
     if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
     yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
@@ -2188,7 +2175,7 @@ export class FsProjectManager implements ProjectManager {
     projectRoot: string,
     projectName: string,
     runtime: ScaffoldRuntimeInput,
-    region: string | undefined,
+    region: string,
   ): AsyncGenerator<ProjectEvent, void> {
     const text = renderBoxProfile(projectName, runtime, region);
     if (text === undefined) return;

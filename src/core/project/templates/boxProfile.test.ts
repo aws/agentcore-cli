@@ -18,6 +18,9 @@ import {
 } from "./boxProfile";
 
 /** The scaffold input of a box template, as create resolves it from the shortcut table. */
+/** The region create resolves in these tests, where `agentcore dev` calls Bedrock. */
+const REGION = "us-west-2";
+
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   const runtime = resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
   // The shortcut entry itself marks it a box template; the tests do not force it.
@@ -26,7 +29,10 @@ function template(name: RuntimeTemplateShortcutName, overrides: Record<string, s
 }
 
 function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return parse(renderBoxProfile("V3Demo", template(name, overrides))!) as Record<string, any>;
+  return parse(renderBoxProfile("V3Demo", template(name, overrides), REGION)!) as Record<
+    string,
+    any
+  >;
 }
 
 const STRANDS = template("agent-python-strands-box");
@@ -62,7 +68,7 @@ const UVICORN = [
 
 describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
-    expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
+    expect(parse(renderBoxProfile("V3Demo", STRANDS, REGION)!) as unknown).toEqual({
       packs: ["@box/base", "@box/bedrock"],
       profile: { name: "V3Demo-agent" },
       project: { access: "write" },
@@ -81,7 +87,7 @@ describe("renderBoxProfile", () => {
   test("names itself after the project and the runtime, and the folder `agentcore dev` starts box in", () => {
     // box keeps one profile of each name on a machine, and each runtime has its own local profile.
     expect(profile("agent-python-minimal-box").profile).toEqual({ name: "V3Demo-agent" });
-    const text = renderBoxProfile("V3Demo", STRANDS)!;
+    const text = renderBoxProfile("V3Demo", STRANDS, REGION)!;
     expect(text).toContain("runs `box run ../../.box/agent/local/profile.toml` there");
   });
 
@@ -109,7 +115,7 @@ describe("renderBoxProfile", () => {
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
-    const text = renderBoxProfile("V3Demo", STRANDS)!;
+    const text = renderBoxProfile("V3Demo", STRANDS, REGION)!;
     expect(text).not.toContain(process.cwd());
     expect(text).not.toMatch(/"\/(Users|home)\//);
   });
@@ -236,7 +242,7 @@ describe("renderBoxProfile", () => {
     "reads a LiteLLM %s key created without --api-key from LiteLLM's own variable",
     (modelId, route, variable) => {
       const runtime = template("agent-python-strands-box", { modelProvider: "LiteLLM", modelId });
-      const { egress } = parse(renderBoxProfile("V3Demo", runtime)!) as {
+      const { egress } = parse(renderBoxProfile("V3Demo", runtime, REGION)!) as {
         egress: Record<string, { secret: { ref: string } }>;
       };
       expect(egress[route]?.secret.ref).toBe(`env://${variable}`);
@@ -294,7 +300,7 @@ describe("renderBoxProfile", () => {
       }),
       apiBase: undefined,
     };
-    const text = renderBoxProfile("V3Demo", runtime)!;
+    const text = renderBoxProfile("V3Demo", runtime, REGION)!;
     expect(text).not.toContain("api.openai.com");
     expect((parse(text) as { egress?: unknown }).egress).toBeUndefined();
   });
@@ -323,7 +329,7 @@ describe("renderBoxProfile", () => {
   ] as const)("writes no profile for %s, which is not a box template", (name) => {
     const runtime = resolveRuntimeTemplateShortcut(name);
     expect(hasBoxProfile(runtime)).toBe(false);
-    expect(renderBoxProfile("V3Demo", runtime)).toBeUndefined();
+    expect(renderBoxProfile("V3Demo", runtime, REGION)).toBeUndefined();
   });
 });
 
@@ -381,22 +387,23 @@ describe("runtimeAgentTemplate", () => {
 });
 
 describe("startsInBoxOnCodeZip", () => {
-  test("starts only the CodeZip box template in a box", () => {
-    const plain = (name: RuntimeTemplateShortcutName) => resolveRuntimeTemplateShortcut(name);
-    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("agent-python-minimal-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("agent-python-minimal"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("agent-python-langchain-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("agent-python-langchain"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("a2a-python-strands-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("a2a-python-strands"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("agui-python-strands-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("agui-python-strands"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp-box"))).toBe(true);
-    expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
-    expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
+  test.each<[RuntimeTemplateShortcutName, boolean]>([
+    ["agent-python-strands-box", true],
+    ["agent-python-minimal-box", true],
+    ["agent-python-langchain-box", true],
+    ["a2a-python-strands-box", true],
+    ["agui-python-strands-box", true],
+    ["mcp-python-fastmcp-box", true],
+    ["agent-python-strands-box-container", false],
+    ["agent-python-minimal", false],
+    ["agent-python-langchain", false],
+    ["a2a-python-strands", false],
+    ["agui-python-strands", false],
+    ["agent-python-strands", false],
+    ["mcp-python-fastmcp", false],
+    ["agent-typescript-strands", false],
+  ])("%s starts in a box on CodeZip: %p", (name, starts) => {
+    expect(startsInBoxOnCodeZip(resolveRuntimeTemplateShortcut(name))).toBe(starts);
   });
 });
 
