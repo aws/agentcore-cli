@@ -391,7 +391,7 @@ describe("build writes the Box network of the box profile", () => {
     ]);
     const second = await build(manager, root);
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-openai"]);
-    expect(second.warnings.filter((w) => w.startsWith("api.openai.com"))).toEqual([]);
+    expect(second.warnings.filter((w) => w.split(":", 1)[0] === "api.openai.com")).toEqual([]);
   });
 
   test("owns only the targets it records, after it takes its old egress- targets once", async () => {
