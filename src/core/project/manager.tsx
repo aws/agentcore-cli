@@ -91,6 +91,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { pinnedVersion } from "./backends/cdk/dependencies";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -485,9 +486,8 @@ export class FsProjectManager implements ProjectManager {
     const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
     if (typeof declared !== "string") return undefined;
 
-    const spec = declared.trim();
-    const version = semver.valid(spec.replace(/^[~^=]/, ""));
-    return version ? { spec, version } : undefined;
+    const version = pinnedVersion(declared)?.version;
+    return version ? { spec: declared.trim(), version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {

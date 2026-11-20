@@ -1727,7 +1727,7 @@ describe("chinaModelProviderRestriction", () => {
 
 describe("FsProjectManager.build", () => {
   // build() requires the CDK app's node_modules; create() with skipInstall
-  // never produces them, so tests stub the directory in.
+  // never produces them, so tests stub in the library at the pin create() vends.
   async function scaffolded(
     subject: FsProjectManager,
     directory: string,
@@ -1740,9 +1740,16 @@ describe("FsProjectManager.build", () => {
       skipGit: true,
     });
     if (withDependencies) {
-      await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-        recursive: true,
-      });
+      const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+      const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+      const { dependencies } = JSON.parse(
+        await readFile(join(cdkDirectory, "package.json"), "utf8"),
+      );
+      await mkdir(library, { recursive: true });
+      await writeFile(
+        join(library, "package.json"),
+        JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+      );
     }
     return project;
   }

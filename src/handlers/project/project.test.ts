@@ -1,6 +1,6 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRootHandler } from "../index";
 import {
@@ -1090,8 +1090,15 @@ describe("project build", () => {
   async function inBuildableProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({ name: "MyAgent" });
     cleanups.push(cleanup);
-    // create --skip-install leaves no node_modules, which build requires.
-    await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+    // create --skip-install installs nothing, and build installs a missing library.
+    const cdkDirectory = join(projectRoot, "agentcore", "cdk");
+    const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+    const { dependencies } = JSON.parse(await readFile(join(cdkDirectory, "package.json"), "utf8"));
+    await mkdir(library, { recursive: true });
+    await writeFile(
+      join(library, "package.json"),
+      JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+    );
     return projectRoot;
   }
 

@@ -2,22 +2,29 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
-import { ProjectStateError } from "../../../../errors/errors";
+import z from "zod";
+import { DeserializationError, ProjectStateError } from "../../../../errors/errors";
 import type { ProjectEvent } from "../../../../handlers/project/types";
-import { createLineSplitter, type ProcessRunner } from "../../../../io";
+import { createLineSplitter, type ProcessRunner, type ReadWriteJson } from "../../../../io";
 import type { Logger } from "../../../../logging";
 import { withOutputEvents } from "../../events";
+import { installedCdkVersion } from "./compatibility";
 
 type Section = "dependencies" | "devDependencies";
 
-type Manifest = Partial<Record<Section, Record<string, string>>> & Record<string, unknown>;
+const ManifestSchema = z.object({
+  dependencies: z.record(z.string(), z.string()).optional(),
+  devDependencies: z.record(z.string(), z.string()).optional(),
+});
+
+type Manifest = z.infer<typeof ManifestSchema>;
 
 /** A managed dependency whose declared specifier is rewritten to the one this CLI vends. */
 type DependencyChange = { name: string; section: Section; from?: string; to: string };
 
 type DependencyPlan = {
   changes: DependencyChange[];
-  /** Managed dependencies the project declares newer than this CLI was released with. */
+  /** Managed dependencies the project declares newer than this CLI vends. */
   newer: { name: string; declared: string; expected: string }[];
   /** Managed dependencies declared with a specifier the sync cannot reason about. */
   skipped: { name: string; declared: string }[];
@@ -27,20 +34,26 @@ const SECTIONS: Section[] = ["dependencies", "devDependencies"];
 
 const L3_LIBRARY = "@aws/agentcore-cdk";
 
-// node-semver's Range API expands ~ and ^ into comparators, so the base version is read
-// directly; anything that is not one version behind an optional prefix is unsupported.
-function parseSpecifier(raw: string): semver.SemVer | null {
-  const trimmed = raw.trim();
-  return semver.parse(/^[~^=]/.test(trimmed) ? trimmed.slice(1) : trimmed);
+const MANIFEST = "agentcore/cdk/package.json";
+
+/**
+ * The version behind a single pinned specifier (`1.2.3`, `~1.2.3`, `^1.2.3`, `=1.2.3`).
+ * node-semver's Range API expands ~ and ^ into comparators, so the base version is read
+ * directly; anything else, such as `file:`, `>=1.0.0` or `2.x`, is not a single pin.
+ */
+export function pinnedVersion(spec: string): semver.SemVer | null {
+  return semver.parse(spec.trim().replace(/^[~^=]/, ""));
 }
 
-function isNewer(declared: semver.SemVer, expected: semver.SemVer, exact: boolean): boolean {
+function compare(declared: semver.SemVer, expected: semver.SemVer, exact: boolean): number {
   // An exact pin (the L3 library) compares fully, prerelease included, so a project a
   // newer CLI moved to 1.2.0 is never silently put back on 1.1.0.
-  if (exact) return semver.gt(declared, expected);
-  // Ranges float patches, so only a newer major.minor means a newer CLI wrote it.
-  if (declared.major !== expected.major) return declared.major > expected.major;
-  return declared.minor > expected.minor;
+  if (exact) return semver.compare(declared, expected);
+  if (declared.major !== expected.major) return declared.major - expected.major;
+  if (declared.minor !== expected.minor) return declared.minor - expected.minor;
+  // A higher patch is inside the vended range, and rewriting it down would flip the file
+  // back and forth when two CLI releases build the same repo.
+  return declared.patch >= expected.patch ? 0 : -1;
 }
 
 /**
@@ -59,19 +72,17 @@ export function planDependencySync(vended: Manifest, project: Manifest): Depende
         continue;
       }
       if (from === to) continue;
-      const declared = parseSpecifier(from);
-      const expected = parseSpecifier(to);
+      const declared = pinnedVersion(from);
+      const expected = pinnedVersion(to);
       if (!declared || !expected) {
-        // file:, git: and tag specifiers are deliberate local overrides, such as a tarball
+        // file:, git:, tags and open ranges are deliberate overrides, such as a tarball
         // under test, so they are never rewritten.
         plan.skipped.push({ name, declared: from });
         continue;
       }
-      if (isNewer(declared, expected, !/^[~^]/.test(to.trim()))) {
-        plan.newer.push({ name, declared: from, expected: to });
-        continue;
-      }
-      plan.changes.push({ name, section: declaredIn, from, to });
+      const order = compare(declared, expected, !/^[~^]/.test(to.trim()));
+      if (order > 0) plan.newer.push({ name, declared: from, expected: to });
+      else if (order < 0) plan.changes.push({ name, section: declaredIn, from, to });
     }
   }
   return plan;
@@ -82,51 +93,38 @@ function formatChanges(changes: DependencyChange[]): string {
 }
 
 /**
- * Explains managed pins the project declares newer than this CLI vends. The L3 library
- * moves with the CLI, so the fix is a CLI update; the other pins are the toolchain this
- * CLI is tested with, so the fix is to set them back or opt out.
+ * Explains managed pins the project declares newer than this CLI vends. Only a newer CLI
+ * writes a newer L3 pin, and updating to it fixes the toolchain pins too, so those are
+ * left out when the L3 pin is newer.
  */
-export function newerPinMessage(newer: DependencyPlan["newer"], vended: Manifest): string {
-  const messages: string[] = [];
-  const library = newer.find(({ name }) => name === L3_LIBRARY);
-  if (library) {
-    messages.push(
-      `agentcore/cdk/package.json declares ${L3_LIBRARY} ${library.declared}, newer than this ` +
-        `AgentCore CLI supports (${library.expected}). Run 'agentcore update', then try again.`,
-    );
-  }
-  const toolchain = newer.filter(({ name }) => name !== L3_LIBRARY);
-  if (toolchain.length > 0) {
-    // Listed in the order the vended manifest declares them, sections included.
-    const managed = Object.entries(vended)
-      .filter((entry): entry is [Section, Record<string, string>] =>
-        SECTIONS.includes(entry[0] as Section),
-      )
-      .flatMap(([, deps]) => Object.entries(deps))
-      .filter(([name]) => name !== L3_LIBRARY)
-      .map(([name, spec]) => `${name} ${spec}`)
-      .join(", ");
-    const declared = toolchain.map(({ name, declared }) => `${name} ${declared}`).join(", ");
-    const setBack =
-      toolchain.length === 1
-        ? `Set ${toolchain[0]!.name} back to ${toolchain[0]!.expected}`
-        : "Set them back to the versions above";
-    messages.push(
-      `agentcore/cdk/package.json declares ${declared}. The AgentCore CLI manages these CDK ` +
-        `dependencies, and they can't be upgraded: ${managed}. ${setBack}, or run ` +
-        `'agentcore config disableDependencyManagement true' to manage them yourself.`,
-    );
-  }
-  return messages.join("\n");
+export function newerPinMessage(newer: DependencyPlan["newer"]): string {
+  const library = newer.filter(({ name }) => name === L3_LIBRARY);
+  const pins = (library.length > 0 ? library : newer).map(
+    ({ name, declared, expected }) =>
+      `${MANIFEST} pins ${name} ${declared}, newer than the version this CLI vends (${expected}).`,
+  );
+  return (
+    `${pins.join(" ")} Run 'agentcore update', or run ` +
+    `'agentcore config disableDependencyManagement true' to manage the CDK dependencies yourself.`
+  );
+}
+
+/** Writes `manifest` with the indent, line endings and trailing newline found in `raw`. */
+function formatLike(raw: string, manifest: unknown): string {
+  const indent = /^[ \t]+(?=")/m.exec(raw)?.[0] ?? "";
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const text = JSON.stringify(manifest, undefined, indent).replace(/\n/g, eol);
+  return /\r?\n$/.test(raw) ? text + eol : text;
 }
 
 type SyncCdkDependenciesInput = {
   cdkDirectory: string;
   /** Text of the CDK package.json this CLI vends at create. */
   vendedManifest: string;
+  json: ReadWriteJson;
   runner: ProcessRunner;
   logger: Logger;
-  /** From the global config: leave package.json alone and only warn about newer pins. */
+  /** From the global config: leave package.json and node_modules alone. */
   disabled?: boolean;
   /** Downgrade failures to warnings, so a deploy that removes the stack is never blocked. */
   lenient?: boolean;
@@ -148,46 +146,72 @@ export async function* syncCdkDependencies(
   // synth reports that on its own.
   if (!existsSync(manifestPath)) return;
 
-  const raw = await readFile(manifestPath, "utf8");
   let project: Manifest;
   try {
-    project = JSON.parse(raw) as Manifest;
+    project = await input.json.read(manifestPath, ManifestSchema);
   } catch (error) {
-    throw new ProjectStateError(`Could not parse ${manifestPath}: ${(error as Error).message}`, {
-      cause: error,
-    });
+    if (!(error instanceof DeserializationError)) throw error;
+    throw new ProjectStateError(error.message, { cause: error });
   }
-  const vended = JSON.parse(input.vendedManifest) as Manifest;
-  const plan = planDependencySync(vended, project);
+  const plan = planDependencySync(ManifestSchema.parse(JSON.parse(input.vendedManifest)), project);
 
   for (const { name, declared } of plan.skipped) {
     yield {
       type: "warning",
-      message: `${name} (${declared}) in agentcore/cdk/package.json is not a version, so the CLI leaves it as is.`,
+      message: `${name} ${declared} in ${MANIFEST} is not a single pinned version, so the CLI leaves it unchanged.`,
     };
   }
 
+  if (input.disabled) {
+    const library = plan.changes.find(({ name, from }) => name === L3_LIBRARY && from);
+    if (library) {
+      yield {
+        type: "warning",
+        message:
+          `${MANIFEST} pins ${L3_LIBRARY} ${library.from}, older than the version this CLI ` +
+          `vends (${library.to}). Fields this CLI writes that ${library.from} does not know ` +
+          `are dropped at synth. Set it to ${library.to}, or run ` +
+          `'agentcore config disableDependencyManagement false' to let the CLI manage it.`,
+      };
+    }
+    return;
+  }
+
   if (plan.newer.length > 0) {
-    const message = newerPinMessage(plan.newer, vended);
-    if (!input.disabled && !input.lenient) throw new ProjectStateError(message);
+    const message = newerPinMessage(plan.newer);
+    if (!input.lenient) throw new ProjectStateError(message);
     yield { type: "warning", message };
   }
 
-  if (input.disabled) return;
-  // A deleted node_modules, or a project created with --skip-install, is installed
-  // instead of failing the build, even when the pins already match.
-  const installed = existsSync(join(input.cdkDirectory, "node_modules"));
-  if (plan.changes.length === 0 && installed) return;
-
   if (plan.changes.length > 0) {
-    // Assigning into the parsed object keeps the user's key order and their own entries.
+    // Edits the parsed file, not the validated copy, so key order and unknown fields survive.
+    const raw = await readFile(manifestPath, "utf8");
+    const manifest = JSON.parse(raw) as Record<Section, Record<string, string> | undefined>;
     for (const { name, section, to } of plan.changes) {
-      (project[section] ??= {})[name] = to;
+      (manifest[section] ??= {})[name] = to;
     }
     yield { type: "step", message: `updating CDK dependencies: ${formatChanges(plan.changes)}` };
-    await writeFile(manifestPath, `${JSON.stringify(project, undefined, 2)}\n`);
+    await writeFile(manifestPath, formatLike(raw, manifest));
   } else {
-    yield { type: "step", message: "installing CDK dependencies (node_modules missing)" };
+    // What is installed decides, not the manifest: a pulled package.json a teammate
+    // already synced, or an interrupted install, leaves matching pins over an old library.
+    // A newer L3 pin only gets this far on a teardown, which needs no newer library.
+    const installed = await installedCdkVersion(input.cdkDirectory);
+    const declared = project.dependencies?.[L3_LIBRARY];
+    const stale =
+      installed === undefined ||
+      (declared !== undefined &&
+        semver.validRange(declared) !== null &&
+        !plan.newer.some(({ name }) => name === L3_LIBRARY) &&
+        !semver.satisfies(installed, declared));
+    if (!stale) return;
+    yield {
+      type: "step",
+      message:
+        installed === undefined
+          ? "installing CDK dependencies (node_modules missing)"
+          : `installing CDK dependencies (${L3_LIBRARY} ${installed} is installed, ${MANIFEST} pins ${declared})`,
+    };
   }
 
   try {
@@ -206,22 +230,7 @@ export async function* syncCdkDependencies(
         .finally(() => lines.flush());
     });
   } catch (error) {
-    // Restored so the next run plans the same changes and retries the install, instead of
-    // seeing pins that already match and synthesizing against the stale node_modules.
-    if (plan.changes.length > 0) {
-      try {
-        await writeFile(manifestPath, raw);
-      } catch (restoreError) {
-        yield {
-          type: "warning",
-          message: `could not restore agentcore/cdk/package.json: ${(restoreError as Error).message}`,
-        };
-      }
-    }
-    const message =
-      `npm install failed in ${input.cdkDirectory}, so the CDK dependencies could not be ` +
-      `installed: ${(error as Error).message}`;
-    if (!input.lenient) throw new ProjectStateError(message, { cause: error });
-    yield { type: "warning", message };
+    if (!input.lenient) throw error;
+    yield { type: "warning", message: (error as Error).message };
   }
 }

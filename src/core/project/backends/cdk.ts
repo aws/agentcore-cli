@@ -275,6 +275,7 @@ export class CdkBackend implements ProjectBackend {
     yield* syncCdkDependencies({
       cdkDirectory: cdkDir,
       vendedManifest: await this.source.read("cdk/package.json"),
+      json: this.json,
       runner: this.runner,
       logger: this.logger,
       disabled: input.disableDependencyManagement,
