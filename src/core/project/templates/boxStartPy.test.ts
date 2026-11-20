@@ -18,6 +18,9 @@ const START_PY = join(import.meta.dir, "..", "..", "..", "assets", "templates", 
 
 const hasPython = spawnSync("python3", ["--version"]).status === 0;
 
+/** The tests make symbolic links and `#!/bin/sh` files, which Windows does not run. */
+const skipped = !hasPython || process.platform === "win32";
+
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -66,19 +69,19 @@ describe("start.py BOX_PYTHON", () => {
     expect(text).toContain('"BOX_PYTHON": box_python(sys.executable, sys.version_info),');
   });
 
-  test.skipIf(!hasPython)("keeps a Python whose name box does not alias", () => {
+  test.skipIf(skipped)("keeps a Python whose name box does not alias", () => {
     const bin = binFolder(["python3.12"]);
 
     expect(boxPython(join(bin, "python3.12"))).toBe(join(bin, "python3.12"));
   });
 
-  test.skipIf(!hasPython)("names python3 by the versioned file beside it", () => {
+  test.skipIf(skipped)("names python3 by the versioned file beside it", () => {
     const bin = binFolder(["python3", "python3.12"]);
 
     expect(boxPython(join(bin, "python3"))).toBe(join(bin, "python3.12"));
   });
 
-  test.skipIf(!hasPython)(
+  test.skipIf(skipped)(
     "names python by the file it links to when no versioned file is beside it",
     () => {
       const bin = binFolder(["python3.12-real"], [["python", "python3.12-real"]]);
@@ -88,7 +91,7 @@ describe("start.py BOX_PYTHON", () => {
     },
   );
 
-  test.skipIf(!hasPython)("keeps an aliased name when nothing else names that Python", () => {
+  test.skipIf(skipped)("keeps an aliased name when nothing else names that Python", () => {
     const bin = binFolder(["python3"]);
 
     expect(boxPython(join(bin, "python3"))).toBe(join(bin, "python3"));
