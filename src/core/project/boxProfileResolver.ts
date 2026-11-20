@@ -4,7 +4,7 @@
  * Box adds already in them, so build reads them rather than compiling the profile itself.
  */
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative, sep } from "node:path";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
@@ -33,9 +33,16 @@ export interface ResolvedBoxProfile {
   readonly warnings: readonly string[];
 }
 
-/** Resolves the box profile at `profilePath`, relative to `projectRoot`, as a run there gets it. */
+/**
+ * Resolves the box profile at `profilePath`, relative to `projectRoot`, as a run there gets it:
+ * box starts in `startFolder`, from the project root, as `agentcore dev` starts it.
+ */
 export interface BoxProfileResolver {
-  resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
+  resolve(
+    projectRoot: string,
+    profilePath: string,
+    startFolder?: string,
+  ): Promise<ResolvedBoxProfile>;
 }
 
 /** The box release that `boxRelease.json` pins, which each error that asks for a box names. */
@@ -122,13 +129,22 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     this.streamProcess = config.streamProcess ?? streamProcess;
   }
 
-  public async resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
-    const command = ["box", "profile", "show", profilePath, "--format", "json", "--full"];
+  public async resolve(
+    projectRoot: string,
+    profilePath: string,
+    startFolder = "",
+  ): Promise<ResolvedBoxProfile> {
+    // box takes a relative profile path from the folder it starts in.
+    const shown = isAbsolute(profilePath) ? profilePath : posix.relative(startFolder, profilePath);
+    const command = ["box", "profile", "show", shown, "--format", "json", "--full"];
     const stdout: string[] = [];
     const stderr: string[] = [];
     try {
       const events = this.streamProcess(command, {
-        cwd: projectRoot,
+        cwd:
+          startFolder === ""
+            ? projectRoot
+            : join(projectRoot, ...startFolder.split("/").filter(Boolean)),
         env: { ...this.env, NO_COLOR: "1" },
       });
       for await (const event of events) {

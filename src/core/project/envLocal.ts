@@ -76,6 +76,45 @@ export class EnvLocalFile {
   }
 
   /**
+   * Writes each entry: replaces the value of a key the file holds already, in place and under its
+   * own comment, and appends the others as {@link insertIfNew} does. Returns the keys appended and
+   * those whose value it replaced.
+   */
+  async upsert(entries: EnvLocalEntry[]): Promise<{ written: string[]; updated: string[] }> {
+    const existing = await this.readOrNull();
+    if (existing === null) {
+      const { written } = await this.insertIfNew(entries);
+      return { written, updated: [] };
+    }
+    await this.enforcePermissions();
+    const values = new Map(entries.map((entry) => [entry.key, entry.value ?? ""]));
+    const updated: string[] = [];
+    const lines: string[] = [];
+    for (const line of existing.split("\n")) {
+      const key = KEY_LINE.exec(line)?.[1];
+      if (key === undefined || !values.has(key) || updated.includes(key)) {
+        lines.push(line);
+        continue;
+      }
+      const encrypted = await this.secrets.encrypt({ [key]: values.get(key)! });
+      lines.push(`${key}=${formatValue(encrypted[key])}`);
+      updated.push(key);
+    }
+    if (updated.length > 0) {
+      this.snapshot = existing;
+      await atomicWrite(this.path, await this.encryptContent(lines.join("\n")), {
+        mode: SECRET_FILE_MODE,
+      });
+    }
+    const { written } = await this.insertIfNew(
+      entries.filter((entry) => !updated.includes(entry.key)),
+    );
+    // insertIfNew snapshots what this call wrote; rollback restores the file from before it.
+    if (updated.length > 0) this.snapshot = existing;
+    return { written, updated };
+  }
+
+  /**
    * Reads the file's entries as a key/value map, returning {} when the file
    * does not exist. Values are read back with the same parser `agentcore dev`
    * uses, so quoting written by {@link insertIfNew} round-trips.

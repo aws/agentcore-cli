@@ -14,6 +14,7 @@ import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/projec
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   boxProfileWarnings,
+  boxStartFolder,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
@@ -22,46 +23,43 @@ import {
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 
-/**
- * The scaffold input of a template, as a box template would give it: the renderer takes every
- * template's shape, though create writes a profile only for the box templates.
- */
+/** The scaffold input of a box template, as create resolves it from the shortcut table. */
 function template(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
-  return {
-    ...resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides }),
-    boxTemplate: true,
-  };
+  const runtime = resolveRuntimeTemplateShortcut(name, { runtimeName: "agent", ...overrides });
+  // The shortcut entry itself marks it a box template; the tests do not force it.
+  expect(runtime.boxTemplate).toBe(true);
+  return runtime;
 }
 
 function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, string> = {}) {
   return parse(renderBoxProfile("V3Demo", template(name, overrides))!) as Record<string, any>;
 }
 
-const STRANDS = template("agent-python-strands");
+const STRANDS = template("agent-python-strands-box");
 
 const VENV_GRANTS = {
   read: [
-    "${{ workspace }}/app/agent",
-    { path: "${{ workspace }}/app/agent/.venv", optional: true },
+    "${{ workspace }}",
+    { path: "${{ workspace }}/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
-    { path: "${{ workspace }}/app/agent/.venv", optional: true },
+    { path: "${{ workspace }}/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
-  deny_write: [{ path: "${{ workspace }}/app/agent/.venv", optional: true }],
+  deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
 };
 
 const UVICORN = [
-  "${{ workspace }}/app/agent/.venv/bin/python",
+  "${{ workspace }}/.venv/bin/python",
   "-m",
   "uvicorn",
   "main:app",
   "--app-dir",
-  "${{ workspace }}/app/agent",
+  "${{ workspace }}",
   "--reload",
   "--reload-dir",
-  "${{ workspace }}/app/agent",
+  "${{ workspace }}",
   "--host",
   "127.0.0.1",
   "--port",
@@ -86,11 +84,26 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/agent/local/profile.toml` can load it by its path", () => {
-    expect(profile("agent-python-minimal").profile).toEqual({ name: "V3Demo" });
-    expect(renderBoxProfile("V3Demo", STRANDS)).toContain(
-      "Run `box run .box/agent/local/profile.toml`",
-    );
+  test("names itself after the project, and the folder `agentcore dev` starts box in", () => {
+    expect(profile("agent-python-minimal-box").profile).toEqual({ name: "V3Demo" });
+    const text = renderBoxProfile("V3Demo", STRANDS)!;
+    expect(text).toContain("runs `box run ../../.box/agent/local/profile.toml` there");
+    expect(boxStartFolder(text)).toBe("app/agent");
+  });
+
+  // agentcore dev starts box in app/<runtime>, so ${{ workspace }} and the project grant are that
+  // folder: agentcore/.env.local, with the model's key, .git and agentcore/cdk lie outside them.
+  test("grants the agent its own folder and no other folder of the project", () => {
+    const { project, agent, tool } = profile("agent-python-strands-box", {
+      modelProvider: "OpenAI",
+      apiKey: "sk-test",
+    });
+    expect(project).toEqual({ access: "write" });
+    for (const grant of [...agent.filesystem.read, ...agent.filesystem.exec]) {
+      const path = typeof grant === "string" ? grant : grant.path;
+      expect(path).not.toMatch(/agentcore|\.git|\.\./);
+    }
+    expect(JSON.stringify(tool)).not.toMatch(/agentcore|\.git|\.\./);
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
@@ -99,7 +112,7 @@ describe("renderBoxProfile", () => {
     expect(text).not.toMatch(/"\/(Users|home)\//);
   });
 
-  test.each(["agent-python-minimal", "agent-python-langchain"] as const)(
+  test.each(["agent-python-minimal-box", "agent-python-langchain-box"] as const)(
     "runs %s with uvicorn on Bedrock, like the Strands agent",
     (name) => {
       const { packs, agent, egress } = profile(name);
@@ -111,14 +124,14 @@ describe("renderBoxProfile", () => {
   );
 
   test.each([
-    ["agui-python-strands", "PORT", 8080],
-    ["a2a-python-strands", "A2A_PORT", 9000],
-    ["mcp-python-fastmcp", "FASTMCP_PORT", 8000],
+    ["agui-python-strands-box", "PORT", 8080],
+    ["a2a-python-strands-box", "A2A_PORT", 9000],
+    ["mcp-python-fastmcp-box", "FASTMCP_PORT", 8000],
   ] as const)("runs %s as a module on its own port, one above dev's", (name, variable, devPort) => {
     const { agent } = profile(name);
-    expect(agent.command).toEqual(["${{ workspace }}/app/agent/.venv/bin/python", "-m", "main"]);
+    expect(agent.command).toEqual(["${{ workspace }}/.venv/bin/python", "-m", "main"]);
     expect(agent.env).toMatchObject({
-      PYTHONPATH: "${{ workspace }}/app/agent",
+      PYTHONPATH: "${{ workspace }}",
       [variable]: String(devPort + 1),
     });
     expect(agent.ingress).toEqual([{ listen: `127.0.0.1:${devPort}`, workload_port: devPort + 1 }]);
@@ -126,16 +139,18 @@ describe("renderBoxProfile", () => {
   });
 
   test("names box's ingress port, not the agent's, in the A2A agent card", () => {
-    const { agent } = profile("a2a-python-strands");
+    const { agent } = profile("a2a-python-strands-box");
     expect(agent.env).toMatchObject({
       A2A_PORT: "9001",
       AGENTCORE_RUNTIME_URL: "http://localhost:9000/",
     });
-    expect(profile("agui-python-strands").agent.env).not.toHaveProperty("AGENTCORE_RUNTIME_URL");
+    expect(profile("agui-python-strands-box").agent.env).not.toHaveProperty(
+      "AGENTCORE_RUNTIME_URL",
+    );
   });
 
   test("gives the MCP server no route, because it calls no model", () => {
-    const mcp = profile("mcp-python-fastmcp");
+    const mcp = profile("mcp-python-fastmcp-box");
     expect(mcp.packs).toEqual(["box/base"]);
     expect(mcp.options).toBeUndefined();
     expect(mcp.egress).toBeUndefined();
@@ -194,7 +209,7 @@ describe("renderBoxProfile", () => {
   ] as const)(
     "routes %s model calls with the API key from the environment, and not through Bedrock",
     (provider, overrides, route, expected) => {
-      const { packs, options, egress } = profile("agent-python-strands", {
+      const { packs, options, egress } = profile("agent-python-strands-box", {
         modelProvider: provider as ModelProvider,
         apiKey: "sk-test",
         ...overrides,
@@ -206,7 +221,7 @@ describe("renderBoxProfile", () => {
   );
 
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
-    const { packs, egress } = profile("agent-python-strands", { modelProvider: "LiteLLM" });
+    const { packs, egress } = profile("agent-python-strands-box", { modelProvider: "LiteLLM" });
     expect(packs).toEqual(["box/base", "box/bedrock"]);
     expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
   });
@@ -218,7 +233,7 @@ describe("renderBoxProfile", () => {
   ] as const)(
     "reads a LiteLLM %s key created without --api-key from LiteLLM's own variable",
     (modelId, route, variable) => {
-      const runtime = template("agent-python-strands", { modelProvider: "LiteLLM", modelId });
+      const runtime = template("agent-python-strands-box", { modelProvider: "LiteLLM", modelId });
       const { egress } = parse(renderBoxProfile("V3Demo", runtime)!) as {
         egress: Record<string, { secret: { ref: string } }>;
       };
@@ -233,16 +248,16 @@ describe("renderBoxProfile", () => {
 
   test("does not warn when the LiteLLM agent has a key, or calls Bedrock", () => {
     const keyed = { modelProvider: "LiteLLM", modelId: "openai/gpt-4o", apiKey: "sk-test" };
-    expect(boxProfileWarnings(template("agent-python-strands", keyed))).toEqual([]);
+    expect(boxProfileWarnings(template("agent-python-strands-box", keyed))).toEqual([]);
     expect(
-      boxProfileWarnings(template("agent-python-strands", { modelProvider: "LiteLLM" })),
+      boxProfileWarnings(template("agent-python-strands-box", { modelProvider: "LiteLLM" })),
     ).toEqual([]);
   });
 
   test("warns that a LiteLLM agent on a provider with no route gets no model route", () => {
     const groq = { modelProvider: "LiteLLM", modelId: "groq/llama3", apiKey: "sk-test" };
-    expect(profile("agent-python-strands", groq).egress).toBeUndefined();
-    expect(boxProfileWarnings(template("agent-python-strands", groq))).toEqual([
+    expect(profile("agent-python-strands-box", groq).egress).toBeUndefined();
+    expect(boxProfileWarnings(template("agent-python-strands-box", groq))).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
         "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
@@ -257,7 +272,7 @@ describe("renderBoxProfile", () => {
   });
 
   test("keeps the port of an OpenAI-compatible endpoint in its destination", () => {
-    const { egress } = profile("agent-python-strands", {
+    const { egress } = profile("agent-python-strands-box", {
       modelProvider: "OpenAICompatible",
       modelId: "llama3",
       apiKey: "sk-test",
@@ -269,7 +284,7 @@ describe("renderBoxProfile", () => {
   test("gives an OpenAI-compatible agent with no base URL no route, rather than OpenAI's", () => {
     // The schema requires --api-base, so drop it from a valid input; the type still allows it.
     const runtime = {
-      ...template("agent-python-strands", {
+      ...template("agent-python-strands-box", {
         modelProvider: "OpenAICompatible",
         modelId: "llama3",
         apiKey: "sk-test",
@@ -283,7 +298,7 @@ describe("renderBoxProfile", () => {
   });
 
   test("names the provider section generically for a LiteLLM model ID with no prefix", () => {
-    const runtime = template("agent-python-strands", {
+    const runtime = template("agent-python-strands-box", {
       modelProvider: "LiteLLM",
       modelId: "gpt-4o",
       apiKey: "sk-test",
@@ -365,10 +380,23 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect(profile.agent.env.AWS_DEFAULT_REGION).toBe("${{ inputs.aws.region }}");
   });
 
+  test("gives an A2A agent card the Runtime's own URL, not the local ingress port", () => {
+    const spec = {
+      name: "V3Demo",
+      runtimes: [{ name: "agent", build: "CodeZip", protocol: "A2A", modelProvider: "Bedrock" }],
+      agentCoreGateways: [],
+    } as unknown as ProjectSpec;
+    const profile = parse(renderRuntimeBoxProfile(spec, spec.runtimes[0]!)) as Record<string, any>;
+
+    // serve_a2a gives AGENTCORE_RUNTIME_URL precedence, so localhost here would send clients that
+    // read the card back to themselves.
+    expect(profile.agent.env.AGENTCORE_RUNTIME_URL).toBe("${{ inputs.runtime.url }}");
+  });
+
   test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
     const text = renderBoxProfile(
       "V3Demo",
-      template("agent-python-strands"),
+      template("agent-python-strands-box"),
       "us-west-2",
       "runtime",
     )!;
@@ -410,7 +438,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     });
   });
 
-  test.each(["agent-python-strands-container"] as const)(
+  test.each(["agent-python-strands-box-container"] as const)(
     "runs %s from /app without --reload, signing calls with the Runtime's role",
     (name) => {
       const text = renderBoxProfile("V3Demo", template(name), "us-west-2", "runtime")!;
@@ -451,14 +479,14 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
   );
 
   test("serves the MCP server on all interfaces on the Runtime", () => {
-    const mcp = runtimeProfile("mcp-python-fastmcp");
+    const mcp = runtimeProfile("mcp-python-fastmcp-box");
     expect(mcp.agent.ingress).toEqual([{ listen: "0.0.0.0:8000", workload_port: 8001 }]);
     // The template has no default Memory route; build and deploy add it when the project has one.
     expect(mcp.egress).toBeUndefined();
   });
 
   test("gives a non-Bedrock model no route, since its key comes from AgentCore Identity", () => {
-    const openai = runtimeProfile("agent-python-strands", {
+    const openai = runtimeProfile("agent-python-strands-box", {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
@@ -906,6 +934,13 @@ describe("renderAgentCorePack", () => {
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("eu-central-1")).toBe(true);
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-gov-west-1")).toBe(true);
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-west-2; rm")).toBe(false);
+  });
+
+  test("declares the A2A card URL input from the Runtime's AGENTCORE_RUNTIME_URL", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime.url.from).toBe("env:AGENTCORE_RUNTIME_URL");
+    // What serve_a2a advertises outside a box when the Runtime sets none.
+    expect(inputs.runtime.url.default).toBe("http://localhost:9000/");
   });
 
   test("declares one input per memory and carries each ID into the agent's environment", () => {

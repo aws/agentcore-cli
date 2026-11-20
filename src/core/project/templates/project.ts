@@ -44,8 +44,8 @@ export async function createProjectTree(
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
     if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
-    // Only a box template (agent-python-strands-box or agent-python-strands-box-container) runs its
-    // agent in a box, so only it makes a Box project.
+    // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
+    // only it makes a Box project.
     templates.push(
       hasBoxProfile(options.runtime)
         ? { ...template, spec: { ...template.spec, projectType: "box" } }

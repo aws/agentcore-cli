@@ -4,7 +4,6 @@ import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
-import { writeBoxDevEnvLocal } from "../../../core/dev/boxEnvLocal";
 import { boxWorkloadPort, runsInBox } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
@@ -396,14 +395,6 @@ async function runRuntimeDev({
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
-        // Each boxed agent reads its own .box/<name>/local profile for the env vars its routes name.
-        // A runtime is boxed by the rule BoxDevRunner uses, not by a profile file on disk.
-        for (const runtime of runtimes) {
-          if (!runsInBox(isBoxProject(synced.project.spec), runtime)) continue;
-          for (const message of await writeBoxDevEnvLocal(project.rootPath, runtime.name)) {
-            renderStatus({ io: config.io, message, json });
-          }
-        }
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })
