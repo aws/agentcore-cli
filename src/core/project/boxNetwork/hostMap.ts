@@ -638,6 +638,11 @@ function decide(node: Node, policy: Policy): MappedHost {
       }
     }
   }
+  if (allowed.length > 0 || unchecked.size > 0) {
+    const connects = policy.connectPermits.filter((c) => possible(c.clause, node));
+    const open = new Set(connects.filter((c) => !limitsConnection(c.clause)).map((c) => c.ruleId));
+    for (const c of connects) if (!open.has(c.ruleId)) enforced.set(c.ruleId, c.order);
+  }
   for (const [ruleId, order] of forbiddenBy) enforced.set(ruleId, order);
   for (const ruleId of BOX_METADATA_RULE_IDS) enforced.delete(ruleId);
   const inOrder = (rules: Map<string, number>) =>
@@ -701,6 +706,14 @@ function solvedSamples(
     }
   }
   return { samples, undecided };
+}
+
+/** Whether a connection permit clause allows only some connections to its host: by address, or more. */
+function limitsConnection(clause: Clause): boolean {
+  return (
+    clause.opaque.length > 0 ||
+    clause.fields.some((atom) => atom.field === "ip4" || atom.field === "ip6")
+  );
 }
 
 /** Whether a permit clause allows only some requests to its host: by method, path, or more. */

@@ -119,6 +119,18 @@ describe("the policy decision on each host", () => {
     });
   });
 
+  test("names a connection permit that limits the address, and not one that allows any", () => {
+    const lan = 'context.input has ip4 && context.input.ip4 like "10.*"';
+    const result = map(
+      connect("lan", on("a.example.com", lan)) +
+        permit("get_a", on("a.example.com")) +
+        connect("any", on("b.example.com", `(${NC} || ${lan})`)) +
+        permit("get_b", on("b.example.com")),
+    );
+    expect(host(result, "a.example.com")?.enforcedByBox).toEqual(["lan"]);
+    expect(host(result, "b.example.com")?.enforcedByBox).toEqual([]);
+  });
+
   describe("an attribute that an action test keeps from the action, as Box reads it", () => {
     const codes = (result: ReturnType<typeof map>) =>
       result.failures.map(({ code, ruleId }) => [code, ruleId]);
