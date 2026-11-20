@@ -35,21 +35,21 @@ export function assertCdkLocalContainerSupport(cdkDirectory: string): void {
   );
 }
 
-export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<string | undefined> {
+/** The `@aws/agentcore-cdk` version installed in `node_modules`, if it can be read. */
+export async function installedCdkVersion(cdkDirectory: string): Promise<string | undefined> {
   const packagePath = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk", "package.json");
-
-  let installedVersion: unknown;
   try {
-    const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as {
-      version?: unknown;
-    };
-    installedVersion = packageJson.version;
+    const { version } = JSON.parse(await readFile(packagePath, "utf8")) as { version?: unknown };
+    return typeof version === "string" ? version : undefined;
   } catch {
     return undefined;
   }
+}
 
+export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<string | undefined> {
+  const installedVersion = await installedCdkVersion(cdkDirectory);
   if (
-    typeof installedVersion !== "string" ||
+    installedVersion === undefined ||
     semver.valid(installedVersion) === null ||
     !semver.lt(installedVersion, MINIMUM_COMPATIBLE_CDK_VERSION)
   ) {

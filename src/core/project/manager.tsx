@@ -6,6 +6,7 @@ import type {
   AddResourceOptions,
   AddResourceInput,
   CreateProjectInput,
+  BuildProjectInput,
   DeployProjectInput,
   DeployResult,
   EnvLocalEntry,
@@ -90,6 +91,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { pinnedVersion } from "./backends/cdk/dependencies";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -434,6 +436,7 @@ export class FsProjectManager implements ProjectManager {
         runner: config.runner,
         checkTool: config.checkTool,
         json: config.json,
+        source: this.assetSource,
       }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
@@ -483,9 +486,8 @@ export class FsProjectManager implements ProjectManager {
     const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
     if (typeof declared !== "string") return undefined;
 
-    const spec = declared.trim();
-    const version = semver.valid(spec.replace(/^[~^=]/, ""));
-    return version ? { spec, version } : undefined;
+    const version = pinnedVersion(declared)?.version;
+    return version ? { spec: declared.trim(), version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -1501,14 +1503,17 @@ export class FsProjectManager implements ProjectManager {
     return { spec: result.spec, envEntries: result.envEntries ?? [] };
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(
+    project: Project,
+    input: BuildProjectInput = {},
+  ): AsyncGenerator<ProjectEvent, void> {
     assertV1Project(project, "build");
     // Half-written project files from an interrupted `agentcore migrate` must not
     // be synced or synthesized; build has no target, so only that state stops it.
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    yield* this.backendFor(project).build(synced.project);
+    yield* this.backendFor(project).build(synced.project, input);
   }
 
   public async syncRuntimeBuilds(
@@ -1717,6 +1722,7 @@ export class FsProjectManager implements ProjectManager {
       skipBootstrap: input.skipBootstrap,
       workloadBuilds,
       localWorkloads,
+      disableDependencyManagement: input.disableDependencyManagement,
     });
   }
 

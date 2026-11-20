@@ -212,7 +212,12 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
-export type DeployProjectInput = {
+export type BuildProjectInput = {
+  /** Leaves agentcore/cdk/package.json alone instead of syncing it to the CLI's pins (global config). */
+  disableDependencyManagement?: boolean;
+};
+
+export type DeployProjectInput = BuildProjectInput & {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
   /**
@@ -579,7 +584,7 @@ export interface ProjectManager {
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
   /** Compile the project's CDK app and synthesize its CloudFormation templates. */
-  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+  build(project: Project, input?: BuildProjectInput): AsyncGenerator<ProjectEvent, void>;
 
   /**
    * Re-derives runtime build settings (build, dockerfile, runtimeVersion,

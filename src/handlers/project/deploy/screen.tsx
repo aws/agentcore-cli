@@ -10,8 +10,8 @@ import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
+import { declaresNothingDeployable } from "../../../core/project/spec";
 import {
-  declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
   recordBuildTypeCounts,
@@ -119,6 +119,7 @@ function DeployConfirm({
           confirmTeardown: async () => teardown,
           transactionSearch: globalConfig?.transactionSearch,
           onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
+          disableDependencyManagement: globalConfig?.disableDependencyManagement,
         });
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command

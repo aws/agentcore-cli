@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
+import { declaresNothingDeployable } from "../../../core/project/spec";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
 import {
@@ -136,6 +137,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         region: ctx.require(RegionKey),
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
+        disableDependencyManagement: globalConfig.disableDependencyManagement,
         skipBootstrap: flags["skip-bootstrap"],
         onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
       });
@@ -292,33 +294,6 @@ async function delegateV0Deploy(
   ctx.value(CommandRunMetricEventKey)?.setAttributes({ legacy_deploy_exit_code: exitCode });
   if (exitCode === 2) throw new LegacyDeployWarningExit();
   if (exitCode !== 0) throw new LegacyDeployError(exitCode);
-}
-
-/**
- * True when the spec declares none of the resources `removeAllResources`
- * clears, i.e. what an emptied project looks like. This is the up-front proxy
- * for the backend's post-synth zero-resource count; the two can disagree when a
- * declared resource synthesizes no CloudFormation resource (or a hand-edited
- * CDK app adds one), so the backend's count stays authoritative and this only
- * decides whether to ask the user before starting.
- */
-export function declaresNothingDeployable(project: Project): boolean {
-  const { spec } = project;
-  const collections = [
-    spec.runtimes,
-    spec.memories,
-    spec.knowledgeBases,
-    spec.credentials,
-    spec.evaluators,
-    spec.onlineEvalConfigs,
-    spec.agentCoreGateways,
-    spec.policyEngines,
-    spec.configBundles,
-    spec.harnesses,
-    spec.toolRuntimes ?? [],
-    spec.payments ?? [],
-  ];
-  return collections.every((collection) => collection.length === 0);
 }
 
 /**

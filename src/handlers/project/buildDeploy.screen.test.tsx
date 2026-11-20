@@ -4,7 +4,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
-import { CommandRunMetricEventKey } from "../../router";
+import { DEFAULT_GLOBAL_CONFIG } from "../../globalConfig";
+import { CommandRunMetricEventKey, GlobalConfigAccessorKey, type Context } from "../../router";
 import {
   assertMetricEmitted,
   cleanupScreens,
@@ -15,11 +16,12 @@ import {
   inTempDirectory,
   renderScreen,
   TestCoreClient,
+  TestGlobalConfigAccessor,
   waitFor,
   waitForFlatText,
   waitForText,
 } from "../../testing";
-import type { DeployResult, Project, ProjectEvent } from "./types";
+import type { BuildProjectInput, DeployResult, Project, ProjectEvent } from "./types";
 import { ProjectKey } from "../../router";
 import { TuiHandoffKey } from "../../tui/handoff";
 
@@ -42,8 +44,10 @@ type FakeBackendOptions = {
 
 function fakeBackend(options: FakeBackendOptions = {}) {
   const deploys: { project: Project; input: DeployBackendInput; confirmed?: boolean }[] = [];
+  const builds: (BuildProjectInput | undefined)[] = [];
   const backend: ProjectBackend = {
-    async *build() {
+    async *build(_project, input) {
+      builds.push(input);
       yield* options.events ?? EVENTS;
       if (options.failure) throw options.failure;
     },
@@ -68,7 +72,17 @@ function fakeBackend(options: FakeBackendOptions = {}) {
       return [];
     },
   };
-  return { backend, deploys };
+  return { backend, deploys, builds };
+}
+
+/** The global config accessor the TUI's command context carries, with dependency management off. */
+function optedOut(ctx: Context): Context {
+  return ctx.withValue(
+    GlobalConfigAccessorKey,
+    new TestGlobalConfigAccessor({
+      initialConfigData: { ...DEFAULT_GLOBAL_CONFIG, disableDependencyManagement: true },
+    }),
+  );
 }
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -159,6 +173,20 @@ describe("project build screen", () => {
     // Enter stays in the TUI: back to the root menu.
     await r.press("return");
     await waitForText(r.lastFrame, "the platform for production AI agents");
+    r.unmount();
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the build", async () => {
+    const { backend, builds } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const r = renderScreen("/agentcore/build", {
+      core,
+      withContext: optedOut,
+    });
+
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
+    expect(builds).toEqual([{ disableDependencyManagement: true }]);
     r.unmount();
   });
 
@@ -282,6 +310,20 @@ describe("project deploy screen", () => {
       project_gateway_count: 0,
       project_harness_count: 0,
     });
+    r.unmount();
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the deploy", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: optedOut,
+    });
+
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
+    expect(deploys[0]!.input.disableDependencyManagement).toBe(true);
     r.unmount();
   });
 
