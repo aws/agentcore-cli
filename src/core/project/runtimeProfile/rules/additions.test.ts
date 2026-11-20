@@ -84,6 +84,7 @@ function contextOf(
     },
     hosts: [],
     telemetry: options.telemetry ?? [],
+    ruleIds: new Set(),
     places: new Map(),
   });
 }

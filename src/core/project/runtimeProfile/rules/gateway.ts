@@ -43,6 +43,7 @@ interface GatewayRoute {
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const routes = gatewayRoutes(context);
+  const keys = routeKeys(routes, context);
   const written = new Set<string>();
 
   const egress: TomlTable = {};
@@ -55,7 +56,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       host.sources.some((source) => source.kind === "entry" && source.egressEntry === name),
     );
     for (const route of routesOf(hosts, routes)) {
-      egress[routeKey(route, routes, context)] = egressRoute(entry, route);
+      egress[keys.get(route.target)!] = egressRoute(entry, route);
       written.add(route.target);
     }
   }
@@ -77,7 +78,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (route.server) {
       mcp[route.server.mcpEntry] = mcpServer({}, route, route.server);
     } else {
-      egress[routeKey(route, routes, context)] = egressRoute({}, route);
+      egress[keys.get(route.target)!] = egressRoute({}, route);
     }
   }
 
@@ -169,6 +170,31 @@ function routeKey(
   if (first?.target !== route.target) return route.target;
   if (name !== route.target && routes.some(({ target }) => target === name)) return route.target;
   return name;
+}
+
+/**
+ * The `[egress]` key of each route that serves no HTTP MCP server, by its target: its
+ * {@link routeKey}, or that key with `-2`, `-3`, and so on after it when box would add a route rule
+ * with the `@id` of a rule of the policy. A key that another route has stays that route's.
+ */
+function routeKeys(
+  routes: readonly GatewayRoute[],
+  context: RuntimeProfileContext,
+): Map<string, string> {
+  const named = routes
+    .filter((route) => route.server === undefined)
+    .map((route) => ({ route, key: routeKey(route, routes, context) }));
+  const used = new Set(named.map(({ key }) => key));
+  const taken = (key: string) =>
+    context.ruleIds.has(`route_${key}_connect`) || context.ruleIds.has(`route_${key}_request`);
+  const keys = new Map<string, string>();
+  for (const { route, key } of named) {
+    let free = key;
+    for (let n = 2; taken(free) || (free !== key && used.has(free)); n++) free = `${key}-${n}`;
+    used.add(free);
+    keys.set(route.target, free);
+  }
+  return keys;
 }
 
 /** The routes of `hosts`, in the order of the hosts; a host with no route has none. */

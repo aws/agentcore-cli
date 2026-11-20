@@ -68,6 +68,12 @@ export interface RuntimeProfileContext {
   readonly hosts: readonly BoxNetworkHost[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */
   readonly telemetry: readonly CloudWatchTelemetry[];
+  /**
+   * The `@id` of each rule of the local policy that box does not add for a route or a server. Box
+   * adds `route_<name>_connect` and `route_<name>_request` for each route, and refuses a second
+   * rule with the same `@id`.
+   */
+  readonly ruleIds: ReadonlySet<string>;
   readonly paths: RuntimePaths;
   /**
    * The profile that `agentcore create` writes for this runtime, `local`, and its Runtime form,

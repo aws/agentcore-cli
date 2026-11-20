@@ -208,6 +208,14 @@ export function buildBoxNetwork(
       gateway: { name: project.gateway, targets: project.targets },
       hosts: targets.hosts,
       telemetry: telemetry?.telemetry ?? [],
+      ruleIds: new Set(
+        parsed.statements
+          .filter(
+            ({ id, span }) =>
+              placeOf(parsed, span) !== undefined || ruleOrigin(parsed, id).by !== "box",
+          )
+          .map(({ id }) => id),
+      ),
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
