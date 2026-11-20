@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
-import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
+import { renderAgentCorePack } from "../templates/boxProfile";
+import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
-/** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
+/** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
 
 const directories: string[] = [];
@@ -75,21 +76,30 @@ describe("stageBoxContainers", () => {
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
     const { releaseFor, versions } = releaseOf();
 
-    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual(["agent"]);
+    expect(await stageBoxContainers(demo, [model([])], releaseFor)).toEqual(["agent"]);
 
     expect(versions).toEqual(["2.0.0"]);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    // The Runtime profile is rendered from agentcore.json.
+    // The Runtime profile is the one build derived from the local profile.
+    const { runtimeProfile, runtimeProfileHeader } = model([]);
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
-      renderRuntimeBoxProfile(demo.spec, demo.spec.runtimes[0]!),
+      serializeRuntimeProfile(runtimeProfile!, runtimeProfileHeader),
     );
     expect(await readFile(join(dist, "box-release.env"), "utf8")).toBe(
       `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
-    // The container also stages the box/agentcore pack, beside box's own packs in the image.
+    // The container also stages the @box/agentcore pack, beside box's own packs in the image.
     expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
+    // The runtime's .box/agent/aws/ holds a copy of what the profile writer stages, and no box.
+    const aws = join(demo.rootPath, ".box", "agent", "aws");
+    expect(await Bun.file(join(aws, "box-release.env")).exists()).toBe(false);
+    for (const file of ["profile.toml", PACK_PATH]) {
+      expect(await readFile(join(aws, file), "utf8")).toBe(
+        await readFile(join(dist, file), "utf8"),
+      );
+    }
   });
 
   test("replaces what an earlier build staged", async () => {
@@ -99,7 +109,7 @@ describe("stageBoxContainers", () => {
     await writeFile(join(dist, "box"), "old");
     await writeFile(join(dist, "stale.dw"), "old");
 
-    await stageBoxContainers(demo, [], releaseOf().releaseFor);
+    await stageBoxContainers(demo, [model([])], releaseOf().releaseFor);
 
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
@@ -109,7 +119,7 @@ describe("stageBoxContainers", () => {
     delete demo.spec.runtimes[0]!.box;
 
     const { releaseFor, versions } = releaseOf();
-    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual([]);
+    expect(await stageBoxContainers(demo, [model([])], releaseFor)).toEqual([]);
     expect(versions).toEqual([]);
   });
 
@@ -117,7 +127,7 @@ describe("stageBoxContainers", () => {
     const demo = await project("FROM scratch\n");
 
     const { releaseFor, versions } = releaseOf();
-    expect(await stageBoxContainers(demo, [], releaseFor)).toEqual([]);
+    expect(await stageBoxContainers(demo, [model([])], releaseFor)).toEqual([]);
     expect(versions).toEqual([]);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
@@ -153,7 +163,10 @@ const TEMPLATE_DOCKERFILE = readFileSync(
   "utf8",
 );
 
-/** A model of runtime `agent` with no host and the policy files given. */
+/**
+ * A model of runtime `agent` with no host and the policy files given, with the Runtime profile build
+ * derived from its local profile.
+ */
 function model(policyFiles: string[]): BoxNetwork {
   return {
     runtime: "agent",
@@ -162,6 +175,12 @@ function model(policyFiles: string[]): BoxNetwork {
     hosts: [],
     envRoutes: [],
     policyFiles,
+    runtimeProfile: {
+      packs: ["@box/base", "@box/agentcore"],
+      ...(policyFiles.length > 0 && { policies: policyFiles }),
+      profile: { name: "demo" },
+    },
+    runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
     failures: [],

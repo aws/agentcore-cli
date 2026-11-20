@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { FsReadWriteJson } from "../../../../io";
 import { createSilentLogger } from "../../../../testing";
-import { countDeployableResources, stackArtifactForTarget } from "./assembly";
+import { assertPrivateVpcs, countDeployableResources, stackArtifactForTarget } from "./assembly";
 
 const temporaryDirectories: string[] = [];
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
@@ -93,6 +93,46 @@ describe("stackArtifactForTarget", () => {
 
     await expect(stackArtifactForTarget(json, directory, "prod")).rejects.toThrow(
       /No synthesized cloud assembly was found/,
+    );
+  });
+});
+
+describe("assertPrivateVpcs", () => {
+  const artifact = { id: "Stack", stackName: "Stack", templateFile: TEMPLATE_FILE };
+  const vpc = (tag?: string) => ({
+    Type: "AWS::EC2::VPC",
+    Properties: { Tags: tag ? [{ Key: "agentcore:secure-vpc", Value: tag }] : [] },
+  });
+
+  test.each([
+    [
+      "a private VPC tagged for the runtime",
+      { Vpc: vpc("AgentCore-App-default/agent") },
+      ["agent"],
+    ],
+    ["no PRIVATE_VPC runtime", { Runtime: { Type: "AWS::BedrockAgentCore::Runtime" } }, []],
+  ])("accepts %s", async (_name, resources, runtimeNames) => {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, resources);
+
+    await expect(
+      assertPrivateVpcs(json, directory, artifact, runtimeNames),
+    ).resolves.toBeUndefined();
+  });
+
+  test.each([
+    ["no VPC, as a CDK library from before containment synthesizes", {}],
+    ["a VPC tagged for another runtime", { Vpc: vpc("AgentCore-App-default/other") }],
+    ["an untagged VPC", { Vpc: vpc() }],
+  ])("refuses %s", async (_name, resources) => {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeTemplate(directory, {
+      Runtime: { Type: "AWS::BedrockAgentCore::Runtime" },
+      ...resources,
+    });
+
+    await expect(assertPrivateVpcs(json, directory, artifact, ["agent"])).rejects.toThrow(
+      'Runtime \'agent\' has "containment": "PRIVATE_VPC", but the synthesized stack builds no private VPC for it',
     );
   });
 });

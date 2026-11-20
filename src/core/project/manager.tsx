@@ -64,13 +64,16 @@ import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
   boxAwsDir,
+  boxLocalProfileFile,
   boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
+  runsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
 import { validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -550,7 +553,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, privateVpc: input.containment === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -628,6 +631,7 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
+    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes);
     if (isBoxProject(project.spec)) yield* boxGatewayLogsWarnings(project.spec.agentCoreGateways);
     return project;
   }
@@ -1088,6 +1092,17 @@ export class FsProjectManager implements ProjectManager {
         }),
       ]);
       throw err;
+    }
+    // After the write, so a failed write gives no notice for a runtime that was not written.
+    if (input.resourceType === "runtime") {
+      const added = input.resourceConfig.name;
+      yield* defaultLogTargetNotices(
+        newProjectSpec,
+        newProjectSpec.runtimes.filter(({ name }) => name === added),
+      );
+      yield* boxGatewayLogsWarnings(
+        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
+      );
     }
 
     return {
@@ -1643,10 +1658,11 @@ export class FsProjectManager implements ProjectManager {
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
    * (`box profile show --format json --full`) for `region`, then writes what the Box network
-   * writers derive from it, before synth reads agentcore.json and staging renders each Runtime
-   * profile's routes from its Box gateway's targets: agentcore.json once, patched in the raw file
-   * so unknown fields and key order survive and checked against the schema first, then the files,
-   * then `.env.local`. A failure of any model stops `command` before anything is written.
+   * writers derive from it, before synth reads agentcore.json and staging writes the Runtime
+   * profile that each model derives (`BoxNetwork.runtimeProfile`): agentcore.json once, patched in
+   * the raw file so unknown fields and key order survive and checked against the schema first,
+   * then the files, then `.env.local`. A failure of any model stops `command` before anything is
+   * written.
    */
   private async applyBoxNetwork(
     project: Project,
@@ -1701,7 +1717,8 @@ export class FsProjectManager implements ProjectManager {
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {
-      const { written } = await envLocal.insertIfNew([...edits.envLocal]);
+      // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
+      const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
     const warnings = networks.flatMap((network) => [
@@ -2122,8 +2139,7 @@ export class FsProjectManager implements ProjectManager {
     runtime.box = { version: BOX_RELEASE.version };
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    const gateway = AgentCoreGatewaySchema.parse(boxGatewaySpec(name));
-    projectSpec.agentCoreGateways.push(gateway);
+    projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
 
     const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
     const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
@@ -2146,7 +2162,6 @@ export class FsProjectManager implements ProjectManager {
     const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
     if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
     yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
-    yield* boxGatewayLogsWarnings([gateway]);
   }
 
   /**
@@ -2170,8 +2185,9 @@ export class FsProjectManager implements ProjectManager {
 
   /**
    * Writes the box profile that runs the scaffolded agent into the agent's
-   * `.box/<agentName>/local/` folder, named after the project, calling Bedrock in
-   * `region`. An existing profile is the user's, so it is never overwritten.
+   * `.box/<runtime>/local/` folder, named after the project and the runtime,
+   * calling Bedrock in `region`. An existing profile is the user's, so it is
+   * never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
@@ -2401,6 +2417,22 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
 /** The port of the first `[[agent.ingress]] listen` in the box profile `text`, if it names one. */
 function ingressPort(text: string): string | undefined {
   return /^\s*listen\s*=\s*"[^"]*:(\d+)"/m.exec(text)?.[1];
+}
+
+/**
+ * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
+ * runs in a box in `spec`, and that does not turn observability off.
+ */
+function defaultLogTargetNotices(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  runtimes: readonly z.infer<typeof ProjectSpecSchema>["runtimes"][number][],
+): ProjectEvent[] {
+  return runtimes
+    .filter((runtime) => runsInBox(isBoxProject(spec), runtime) && !observabilityOff(runtime))
+    .map((runtime) => ({
+      type: "warning",
+      message: defaultLogTargetNotice(runtime.name, boxLocalProfileFile(runtime.name)),
+    }));
 }
 
 /**

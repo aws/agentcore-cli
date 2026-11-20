@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, type ProcessEvent, type StreamProcessOptions } from "../../io";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { BoxCliProfileResolver, parseBoxProfileShow } from "./boxProfileResolver";
 import { boxNetworkRules, boxReachRules } from "./boxProfileResolver-test-support";
 
@@ -19,7 +20,7 @@ const SHOWN = String.raw`{
   "profile": ".box/profile.toml",
   "packs": [
     {
-      "name": "box/base",
+      "name": "@box/base",
       "version": "1"
     }
   ],
@@ -95,15 +96,19 @@ const SHOWN_POLICY =
   boxReachRules("route", "keyed", ["k.example.com:8443"]) +
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
-const PINNED =
-  "box 0.1.11-linux-preview.6 or a later release " +
-  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6)";
+/** The last sentence of each error that says to install another box: the pinned release. */
+const INSTALL =
+  `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
+  "When that release has no build for your machine, use box 0.1.11-linux-preview.7 " +
+  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a later " +
+  "release that has one.";
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
  * with no secret, the route `keyed` with one, and {@link POLICY}, as box prints it, with HOME at
  * /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations of an open route into one
- * string, and later boxes give a list.
+ * string, and 0.1.11-linux-preview.7 prints the second, a list. preview.6 printed the first for the
+ * same profile with its pack named box/base, the name it had before `@box/`.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(
@@ -133,7 +138,7 @@ describe("parseBoxProfileShow", () => {
       },
       policy: SHOWN_POLICY,
       openRoutes: [],
-      packs: [{ name: "box/base", version: "1" }],
+      packs: [{ name: "@box/base", version: "1" }],
       warnings: [],
     });
     expect(Object.keys(resolved.boxToml)).toEqual([
@@ -151,7 +156,7 @@ describe("parseBoxProfileShow", () => {
   test("refuses output that is not one JSON document, such as the text that `show` prints", () => {
     expect(() =>
       parseBoxProfileShow(
-        "profile .box/profile.toml resolves for this directory\n  packs    box/base 1\n",
+        "profile .box/profile.toml resolves for this directory\n  packs    @box/base 1\n",
         ".box/profile.toml",
       ),
     ).toThrow(
@@ -190,7 +195,7 @@ describe("parseBoxProfileShow", () => {
       { ...noBoxToml, box_toml: [], policy: undefined },
       "a box.toml table or the policy.dw text",
     ],
-    ["packs as text", { ...document, packs: "box/base 1" }, "a list of packs"],
+    ["packs as text", { ...document, packs: "@box/base 1" }, "a list of packs"],
     [
       "a destination that is not text",
       { ...document, open_routes: [{ route: "auth", destinations: ["login.example.com", 443] }] },
@@ -205,8 +210,7 @@ describe("parseBoxProfileShow", () => {
   ])("refuses a document with %s, and names what it lacks", (_, shown, lacks) => {
     expect(() => parseBoxProfileShow(JSON.stringify(shown), ".box/profile.toml")).toThrow(
       new InvalidEnvironmentError(
-        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. Install ` +
-          `${PINNED}, then retry.`,
+        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. ` + INSTALL,
       ),
     );
   });
@@ -264,6 +268,28 @@ describe("BoxCliProfileResolver", () => {
     ]);
   });
 
+  test("runs box in the start folder, with the profile path from there", async () => {
+    const fake = streamer(stdout(SHOWN));
+    const resolver = new BoxCliProfileResolver({ env: { PATH: "/bin" }, ...fake });
+
+    await resolver.resolve("/work/demo", ".box/agent/local/profile.toml", "app/agent");
+
+    expect(fake.calls).toEqual([
+      {
+        command: [
+          "box",
+          "profile",
+          "show",
+          "../../.box/agent/local/profile.toml",
+          "--format",
+          "json",
+          "--full",
+        ],
+        options: { cwd: join("/work/demo", "app", "agent"), env: { PATH: "/bin", NO_COLOR: "1" } },
+      },
+    ]);
+  });
+
   const COMMAND = ["box", "profile", "show", ".box/profile.toml", "--format", "json", "--full"];
   const refusal = (lines: string[], exitCode: number | null = 1) =>
     streamer(
@@ -290,6 +316,25 @@ describe("BoxCliProfileResolver", () => {
         "  box: error: /work/demo/.box/profile.toml:4: a profile holds no `policy`; list authored " +
         "files in `policies`\n" +
         "Fix what Box reports, then retry.",
+    );
+  });
+
+  test("says to install the pinned box when a box older than preview.7 refuses an @box/ pack", async () => {
+    // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
+    const error = await failure(
+      refusal([
+        'box: error: /work/demo/.box/profile.toml: "@box/base" is',
+        "            not a pack name",
+        "Usage: box profile show [OPTIONS] <NAME>",
+      ]),
+    );
+
+    expect((error as Error).message).toBe(
+      "Box refused the profile .box/profile.toml:\n" +
+        '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
+        "              not a pack name\n" +
+        "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
+        `@box/<name>. ${INSTALL}`,
     );
   });
 
@@ -327,11 +372,7 @@ describe("BoxCliProfileResolver", () => {
         ".box/profile.toml",
       ),
     ).rejects.toThrow(
-      new InvalidEnvironmentError(
-        "Box is not installed or not on PATH. Install box 0.1.11-linux-preview.6 " +
-          "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.6), " +
-          "then retry.",
-      ),
+      new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL}`),
     );
   });
 
@@ -366,8 +407,8 @@ describe("BoxCliProfileResolver", () => {
 
       expect(error).toBeInstanceOf(InvalidEnvironmentError);
       expect((error as Error).message).toBe(
-        "This Box cannot print the profile .box/profile.toml as JSON, which build reads. Install " +
-          `${PINNED}, then retry.`,
+        "This Box cannot print the profile .box/profile.toml as JSON, which build reads. " +
+          INSTALL,
       );
     },
   );
@@ -414,7 +455,7 @@ describe("the box on PATH", () => {
       await mkdir(join(root, ".box"), { recursive: true });
       await writeFile(
         join(root, ".box", "profile.toml"),
-        'packs = ["box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
+        'packs = ["@box/base"]\npolicies = ["policy.dw"]\n\n[profile]\nname = "resolver-test"\n\n' +
           '[agent]\ncommand = ["/bin/sh"]\n\n[egress.github]\ndestinations = ["api.github.com"]\n\n' +
           '[egress.keyed]\ndestinations = ["k.example.com:8443"]\nsecret.ref = "env://KEY"\n\n' +
           '[mcp.docs]\ntype = "http"\ndestinations = ["docs.example.com"]\n',

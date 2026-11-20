@@ -49,6 +49,7 @@ import {
   type DeployedCredentials,
 } from "./cdk/credentials";
 import {
+  assertPrivateVpcs,
   countDeployableResources,
   stackArtifactForTarget,
   synthCommand,
@@ -158,6 +159,22 @@ export type CdkBackendConfig = {
   processEnv?: NodeJS.ProcessEnv;
 };
 
+/**
+ * A warning for each runtime of `spec` that runs its agent in a box with OTEL on: the agent in the
+ * box does not run under opentelemetry-instrument, CodeZip or container, so it sends no traces.
+ */
+export function boxOtelWarnings(spec: Project["spec"]): string[] {
+  return spec.runtimes
+    .filter(
+      (runtime) => runtimeRunsInBox(spec, runtime) && (runtime.instrumentation?.enableOtel ?? true),
+    )
+    .map(
+      (runtime) =>
+        `Runtime '${runtime.name}' runs its agent in a box, where the agent does not run under ` +
+        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+    );
+}
+
 /** Builds and deploys projects through the scaffolded CDK app. */
 export class CdkBackend implements ProjectBackend {
   private readonly logger: Logger;
@@ -227,7 +244,7 @@ export class CdkBackend implements ProjectBackend {
     // the code. The box release downloads only when a CodeZip runtime runs in a box.
     const events: ProjectEvent[] = [];
     const box = async (version: string | undefined) => {
-      const release = await boxReleaseFor(version, this.processEnv, { runner: this.runner });
+      const release = await boxReleaseFor(version);
       return resolveBoxLinuxBuild(this.processEnv, {
         runner: this.runner,
         release,
@@ -239,9 +256,7 @@ export class CdkBackend implements ProjectBackend {
       });
     };
     await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, (version) =>
-      boxReleaseFor(version, this.processEnv, { runner: this.runner }),
-    );
+    await stageBoxContainers(project, boxNetworks, boxReleaseFor);
     return events;
   }
 
@@ -252,20 +267,7 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, void> {
     yield* await this.ensureCdkDependencies(project, boxNetworks);
 
-    for (const runtime of project.spec.runtimes) {
-      if (
-        runtime.build === "Container" &&
-        runtimeRunsInBox(project.spec, runtime) &&
-        (runtime.instrumentation?.enableOtel ?? true)
-      ) {
-        yield {
-          type: "warning",
-          message:
-            `Runtime '${runtime.name}' runs its agent in a box, whose image does not run ` +
-            `opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.`,
-        };
-      }
-    }
+    for (const message of boxOtelWarnings(project.spec)) yield { type: "warning", message };
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
@@ -355,6 +357,14 @@ export class CdkBackend implements ProjectBackend {
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
       return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
     }
+    await assertPrivateVpcs(
+      this.json,
+      assemblyDirectory,
+      artifact,
+      project.spec.runtimes
+        .filter((runtime) => runtime.containment === "PRIVATE_VPC")
+        .map((runtime) => runtime.name),
+    );
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns
     // above, so a destroy is never blocked by Transaction Search. Never fail the

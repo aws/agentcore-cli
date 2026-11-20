@@ -4,12 +4,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
+import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
+import { boxStartFolder } from "./templates/boxProfile";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
 /**
@@ -30,13 +33,14 @@ afterEach(async () => {
   );
 });
 
-function subject(): FsProjectManager {
+function subject(json?: ReadWriteJson): FsProjectManager {
   return new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
     enableTransactionSearch: async () => {},
     runner: async () => {},
     checkTool: async () => {},
+    ...(json && { json }),
   });
 }
 
@@ -242,6 +246,34 @@ describe("agentcore create", () => {
     });
   });
 
+  test.each([
+    ["no containment", undefined, undefined, undefined],
+    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["private-vpc", "private-vpc" as const, "PRIVATE_VPC", { mode: "CONTAINED" }],
+  ])("with %s writes containment %p on the runtime", async (_name, containment, value, network) => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        containment,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    const [runtime] = (await specOnDisk(project)).runtimes as {
+      containment?: string;
+      network?: unknown;
+    }[];
+    expect(runtime?.containment).toBe(value);
+    expect(runtime?.network).toEqual(network);
+  });
+
   test("templates that are not Box templates write no projectType and no gateway", () => {
     const spec = newProjectSpec("example", [{ runtimes: [{ name: "agent" } as never] }]);
     expect("projectType" in spec).toBe(false);
@@ -349,10 +381,23 @@ describe("gateway targets in a Box project", () => {
       expect.objectContaining(boxGatewaySpec("search")),
     );
     const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
-    expect(await readFile(profile, "utf8")).toContain("${{ workspace }}/app/search");
+    // dev starts this profile's box in app/search, the runtime's own folder.
+    expect(boxStartFolder(search)).toBe("app/search");
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${profile}` });
     expect(existsSync(join(project.rootPath, "app", "search", "start.py"))).toBe(true);
     expect(existsSync(join(project.rootPath, "app", "search", ".venv"))).toBe(true);
+    // The notice of the default log target comes after agentcore.json is written.
+    const notice = {
+      type: "warning",
+      message: defaultLogTargetNotice("search", ".box/search/local/profile.toml"),
+    };
+    const written = events.findIndex((event) =>
+      (event as { message?: string }).message?.startsWith("updating project spec file"),
+    );
+    expect(
+      events.indexOf(events.find((event) => JSON.stringify(event) === JSON.stringify(notice))),
+    ).toBeGreaterThan(written);
+    expect(events).toContainEqual(notice);
     // The first runtime keeps its own profile folder and gateway.
     expect(spec.agentCoreGateways.map(({ boundRuntime }) => boundRuntime)).toEqual([
       "agent",
@@ -566,6 +611,34 @@ describe("gateway targets in a Box project", () => {
     expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
     // The file was there before the add, so it stays.
     expect(await readFile(blocked, "utf8")).toBe("not a folder\n");
+  });
+
+  test("a failed write of agentcore.json gives no notice of the default log target", async () => {
+    const project = await createdProject(subject());
+    const specFile = join(project.rootPath, "agentcore", "agentcore.json");
+    // The write of agentcore.json fails for each user, root too; each other file is written.
+    const files = new FsReadWriteJson({ logger: createSilentLogger() });
+    const json: ReadWriteJson = {
+      read: (path, schema) => files.read(path, schema),
+      write: async (path, data) => {
+        if (path === specFile) throw new Error(`the test refuses the write of ${path}`);
+        return files.write(path, data);
+      },
+    };
+    const generator = subject(json).addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    const events: unknown[] = [];
+
+    await expect(
+      (async () => {
+        for (let next = await generator.next(); !next.done; next = await generator.next()) {
+          events.push(next.value);
+        }
+      })(),
+    ).rejects.toThrow(`the test refuses the write of ${specFile}`);
+    expect(events.some((event) => (event as { type?: string }).type === "warning")).toBe(false);
   });
 
   test("add runtime warns when the kept box profile is for another protocol", async () => {

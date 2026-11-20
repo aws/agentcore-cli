@@ -172,6 +172,28 @@ describe("project create", () => {
     expect(spec.runtimes[0].box).toEqual(box);
   });
 
+  test.each(["agent-python-strands", "empty"])(
+    "create --template %s --containment private-vpc is refused and writes nothing",
+    async (template) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await expect(
+        run([
+          "create",
+          "--name",
+          "VpcApp",
+          "--template",
+          template,
+          "--containment",
+          "private-vpc",
+          "--skip-install",
+          "--skip-git",
+        ]),
+      ).rejects.toThrow("--containment private-vpc needs a box template");
+      expect(existsSync(join(directory, "VpcApp"))).toBe(false);
+    },
+  );
+
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
       resolveScaffoldHarnessInput({

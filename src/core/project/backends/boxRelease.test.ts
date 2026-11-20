@@ -1,18 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
 import {
+  BOX_INSTALL_HINT,
+  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
-  FFI_RELEASE,
+  BOX_RELEASE_PAGE,
   type BoxRelease,
-  type FfiRelease,
   boxReleaseFor,
+  publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
 
@@ -32,7 +34,6 @@ async function temp(prefix: string): Promise<string> {
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
 const VERSION = "9.9.9-linux-preview.1";
-const FFI_VERSION = "3.0.0";
 
 /** A tarball of `files` (relative path to content), and its SHA-256. */
 async function tarball(name: string, files: Record<string, string>) {
@@ -58,9 +59,6 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
   const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
-  const ffi = await tarball("box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz", {
-    "libffi.so.8": "ffi",
-  });
   const release: BoxRelease = {
     repo: "owner/box-releases",
     version: VERSION,
@@ -70,21 +68,7 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
       sha256: box.sha256,
     },
   };
-  // The ffi shim ships from its own repository and version.
-  const ffiRelease: FfiRelease = {
-    repo: "other/ffi-releases",
-    version: FFI_VERSION,
-    pythons: {
-      PYTHON_3_14: {
-        asset: "box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz",
-        sha256: ffi.sha256,
-      },
-    },
-  };
-  const assets: Record<string, string> = {
-    [release.linux.asset]: box.archive,
-    [ffiRelease.pythons.PYTHON_3_14!.asset]: ffi.archive,
-  };
+  const assets: Record<string, string> = { [release.linux.asset]: box.archive };
   const commands: string[][] = [];
   // curl writes the asset its URL names to -o; tar runs for real. The tests pass an empty
   // environment, which on Windows leaves no PATH to find tar by, so tar gets this process's.
@@ -97,77 +81,99 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     const output = command[command.indexOf("-o") + 1]!;
     await writeFile(output, await readFile(assets[url.slice(url.lastIndexOf("/") + 1)]!));
   };
-  return { release, ffi: ffiRelease, runner, commands };
+  return { release, runner, commands };
 }
 
 describe("resolveBoxLinuxBuild from the box release", () => {
-  test("downloads box and the ffi shim, each from its own release, checks them, and caches each on its own", async () => {
+  test("downloads box, checks it, and caches it", async () => {
     const home = await temp("box-home-");
-    const { release, ffi, runner, commands } = await fakeRelease();
+    const { release, runner, commands } = await fakeRelease();
     const downloads: string[] = [];
 
     const build = await resolveBoxLinuxBuild(
       {},
-      { runner, home, release, ffi, onDownload: ({ name }) => downloads.push(name) },
+      { runner, home, release, onDownload: ({ name }) => downloads.push(name) },
     );
 
     const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
-    const shim = join(home, ".agentcore", "box-ffi", FFI_VERSION, "PYTHON_3_14");
     expect(build.binaries).toBe(root);
     expect(build.resources).toBe(join(root, "resources"));
-    expect(build.ffi).toEqual({ PYTHON_3_14: shim });
+    expect(build).toEqual({ binaries: root, resources: join(root, "resources") });
     // Windows has no mode bits.
     if (process.platform !== "win32") {
       for (const binary of BINARIES) {
         expect((await stat(join(root, binary))).mode & 0o777).toBe(0o755);
       }
     }
-    expect(await readFile(join(shim, "libffi.so.8"), "utf8")).toBe("ffi");
-    expect(downloads).toEqual(["box", "the box ffi shim for PYTHON_3_14"]);
+    expect(downloads).toEqual(["box"]);
     expect(
       commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
     ).toEqual([
       `https://github.com/owner/box-releases/releases/download/v${VERSION}/${release.linux.asset}`,
-      `https://github.com/other/ffi-releases/releases/download/v${FFI_VERSION}/box-ffi-python3.14-aarch64-unknown-linux-gnu.tar.gz`,
     ]);
   });
 
-  test("downloads only the ffi shim when its pin changes and box is cached", async () => {
+  test("keeps the release another process installed while this one downloaded it", async () => {
+    // Concurrent builds and deploys share the cache: each downloads into its own work folder, and
+    // one may finish while another is still downloading. The loser keeps the winner's folder, so a
+    // command already copying out of it does not lose files under it.
+    const { release, runner } = await fakeRelease();
+    const winner = await resolveBoxLinuxBuild(
+      {},
+      { runner, home: await temp("box-home-"), release },
+    );
     const home = await temp("box-home-");
-    const { release, ffi, runner, commands } = await fakeRelease();
-    await resolveBoxLinuxBuild({}, { runner, home, release, ffi });
-    commands.length = 0;
-    // A shim pinned with another checksum is not the cached one, so it downloads again.
-    const repinned = {
-      ...ffi,
-      pythons: { PYTHON_3_14: { ...ffi.pythons.PYTHON_3_14!, sha256: "0".repeat(64) } },
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    let installedMeanwhile: bigint | undefined;
+    const racing: ProcessRunner = async (command, options) => {
+      if (command[0] === "curl" && command.at(-1)!.endsWith(release.linux.asset)) {
+        cpSync(winner.binaries, root, { recursive: true });
+        installedMeanwhile = (await stat(join(root, "box"), { bigint: true })).ino;
+      }
+      return runner(command, options);
     };
 
-    await expect(
-      resolveBoxLinuxBuild({}, { runner, home, release, ffi: repinned }),
-    ).rejects.toThrow(/not the pinned 0{64}/);
+    const build = await resolveBoxLinuxBuild({}, { runner: racing, home, release });
 
-    expect(commands.filter((command) => command[0] === "curl")).toHaveLength(1);
-    expect(commands[0]!.at(-1)).toContain("other/ffi-releases");
+    expect(build.binaries).toBe(root);
+    expect(installedMeanwhile).toBeDefined();
+    expect((await stat(join(root, "box"), { bigint: true })).ino).toBe(installedMeanwhile!);
+    expect(await readFile(join(root, "strands-box-contain-trampoline"), "utf8")).toBe(
+      "#!strands-box-contain-trampoline\n",
+    );
+  });
+
+  test("replaces the incomplete folder an interrupted install left", async () => {
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "box"), "partial");
+    const { release, runner } = await fakeRelease();
+
+    const build = await resolveBoxLinuxBuild({}, { runner, home, release });
+
+    expect(build.binaries).toBe(root);
+    expect(await readFile(join(root, "box"), "utf8")).toBe("#!box\n");
+    expect(existsSync(join(root, "release.json"))).toBe(true);
   });
 
   test("reuses an installed release without downloading again", async () => {
     const home = await temp("box-home-");
-    const { release, ffi, runner, commands } = await fakeRelease();
-    await resolveBoxLinuxBuild({}, { runner, home, release, ffi });
+    const { release, runner, commands } = await fakeRelease();
+    await resolveBoxLinuxBuild({}, { runner, home, release });
     commands.length = 0;
 
-    await resolveBoxLinuxBuild({}, { runner, home, release, ffi });
+    await resolveBoxLinuxBuild({}, { runner, home, release });
 
     expect(commands).toEqual([]);
   });
 
   test("installs nothing when an asset's checksum is not the pinned one", async () => {
     const home = await temp("box-home-");
-    const { release, ffi, runner } = await fakeRelease();
+    const { release, runner } = await fakeRelease();
     const pinned = { ...release, linux: { ...release.linux, sha256: "0".repeat(64) } };
 
-    const result = resolveBoxLinuxBuild({}, { runner, home, release: pinned, ffi });
+    const result = resolveBoxLinuxBuild({}, { runner, home, release: pinned });
 
     await expect(result).rejects.toThrow(InvalidEnvironmentError);
     await expect(result).rejects.toThrow(/not the pinned 0{64}\. Nothing was installed/);
@@ -204,59 +210,90 @@ describe("resolveBoxLinuxBuild from the box release", () => {
 });
 
 describe("boxReleaseFor a runtime's box.version", () => {
-  /** A runner whose curl serves SHA256SUMS.txt with `text`, and records each URL. */
-  function sumsServer(text: string) {
-    const urls: string[] = [];
-    const runner: ProcessRunner = async (command) => {
-      urls.push(command.at(-1)!);
-      await writeFile(command[command.indexOf("-o") + 1]!, text);
-    };
-    return { runner, urls };
+  test("is the pinned release for no version or the pinned one", async () => {
+    expect(await boxReleaseFor(undefined)).toBe(BOX_RELEASE);
+    expect(await boxReleaseFor(BOX_RELEASE.version)).toBe(BOX_RELEASE);
+  });
+
+  test.each(["0.1.11-linux-preview.6", "2.0.0"])(
+    "refuses %s, a box this CLI does not pin, and says to set the pinned one",
+    async (version) => {
+      await expect(boxReleaseFor(version)).rejects.toThrow(
+        new InvalidEnvironmentError(
+          `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
+            `${BOX_RELEASE.version}, the one box it pins. Set box.version to ` +
+            `${BOX_RELEASE.version}, then retry.`,
+        ),
+      );
+    },
+  );
+});
+
+describe("publishInstall", () => {
+  /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
+  async function folders(rootText?: string) {
+    const parent = await temp("box-publish-");
+    const payload = join(parent, "payload");
+    const root = join(parent, "root");
+    await mkdir(payload);
+    await writeFile(join(payload, "box"), "mine");
+    if (rootText !== undefined) {
+      await mkdir(root);
+      await writeFile(join(root, "box"), rootText);
+    }
+    return { payload, root };
   }
 
-  test("is the pinned release, with no download, for no version or a pinned one", async () => {
-    const { runner, urls } = sumsServer("");
+  test("keeps the install another process renamed in after the first check, before the rename", async () => {
+    // `root` is complete only by the time the rename fails: the other process won in between.
+    const { payload, root } = await folders("theirs");
+    let checks = 0;
 
-    expect(await boxReleaseFor(undefined, {}, { runner })).toBe(BOX_RELEASE);
-    expect(await boxReleaseFor(BOX_RELEASE.version, {}, { runner })).toBe(BOX_RELEASE);
-    expect(urls).toEqual([]);
+    publishInstall(payload, root, () => checks++ > 0);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("theirs");
+    expect(checks).toBe(2);
   });
 
-  test("takes another version's checksums from its release's SHA256SUMS.txt", async () => {
-    const home = await temp("box-home-");
-    const linux = "a".repeat(64);
-    const mac = "c".repeat(64);
-    const { runner, urls } = sumsServer(
-      `${linux}  box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz\n` +
-        `${mac}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`,
-    );
+  test("replaces an incomplete folder an interrupted install left", async () => {
+    const { payload, root } = await folders("partial");
 
-    const release = await boxReleaseFor("2.0.0", {}, { runner, home });
+    publishInstall(payload, root, () => false);
 
-    expect(urls).toEqual([
-      `https://github.com/${BOX_RELEASE.repo}/releases/download/v2.0.0/SHA256SUMS.txt`,
-    ]);
-    expect(release.version).toBe("2.0.0");
-    expect(release.linux).toEqual({
-      target: "aarch64-unknown-linux-gnu",
-      asset: "box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz",
-      sha256: linux,
-    });
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
+    expect(existsSync(payload)).toBe(false);
   });
 
-  test("refuses a version whose release lists no Linux box", async () => {
-    const home = await temp("box-home-");
-    const { runner } = sumsServer(`${"c".repeat(64)}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`);
+  test("renames the payload in when no install is there", async () => {
+    const { payload, root } = await folders();
 
-    await expect(boxReleaseFor("2.0.0", {}, { runner, home })).rejects.toThrow(
-      /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
-    );
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
   });
 });
 
 describe("the pinned releases", () => {
-  test("box and the ffi shim are pinned on their own, with a shim for each Python box runs", () => {
-    expect(BOX_RELEASE.linux.asset).toContain(BOX_RELEASE.version);
-    expect(Object.keys(FFI_RELEASE.pythons)).toContain("PYTHON_3_14");
+  test("pins one box, with the asset of its own version and a SHA-256", () => {
+    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
+    expect(BOX_RELEASE.linux.asset).toBe(
+      `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
+    );
+    expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(BOX_RELEASE_PAGE).toBe(
+      `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+    );
+  });
+
+  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
+    // 0.1.11-mquang.preview.9 has only the Linux arm64 build; 0.1.11-linux-preview.7 has macOS too.
+    expect(BOX_INSTALL_HINT).toBe(
+      "Install box: download the build for your machine from " +
+        `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
+        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
+        "release has no build for your machine, use box 0.1.11-linux-preview.7 " +
+        "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a " +
+        "later release that has one.",
+    );
   });
 });

@@ -9,14 +9,17 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type { ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
+  BOX_BEDROCK_PACK,
   boxLocalDir,
   boxLocalProfileFile,
   boxLocalProfilePath,
+  boxStartFolder,
   runtimeRunsInBox,
 } from "./templates/boxProfile";
 import {
@@ -32,6 +35,8 @@ import {
   type PolicyFileText,
 } from "./boxNetwork";
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
+import { profileKeyPlaces } from "./runtimeProfile/context";
+import type { TomlTable } from "./runtimeProfile/types";
 
 /** The policy of an agent that has no local box profile at `profilePath`. */
 const noPolicy = (profilePath: string): ParsedPolicy => ({
@@ -43,7 +48,7 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
 /**
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
  * own local box profile as `resolver` resolves it for a build in `region`. A project with no box
- * runtime resolves nothing, and an agent with no local box profile resolves no profile.
+ * runtime resolves nothing. Throws, naming the file, for a box runtime with no local box profile.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,
@@ -53,11 +58,13 @@ export async function readBoxNetworks(
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
+  assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
+  const keys: SharedKeys = new Map();
   for (const runtime of runtimes) {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
     const entry = boxGatewayOf(withDefaults, runtime.name);
@@ -65,7 +72,7 @@ export async function readBoxNetworks(
     // Each boxed agent reads its own .box/<name>/local profile and policy files.
     const { parsed, failures: found } = await readResolvedPolicy(
       projectRoot,
-      runtime.name,
+      runtime,
       resolver,
       region,
     );
@@ -78,9 +85,78 @@ export async function readBoxNetworks(
       targets: entry.targets,
       grantedActions: granted.actions,
     });
-    networks.push({ ...network, warnings: [...network.warnings, ...granted.warnings] });
+    networks.push({
+      ...network,
+      warnings: [...network.warnings, ...granted.warnings],
+      failures: [...network.failures, ...sharedKeyFailures(network, parsed, keys)],
+    });
   }
   return networks;
+}
+
+/**
+ * Throws, naming each profile to create, when a runtime that runs its agent in a box has no local
+ * box profile of its own: build has nothing to derive its AgentCore Runtime profile from.
+ */
+function assertBoxRuntimesHaveProfiles(
+  projectRoot: string,
+  runtimes: readonly ProjectSpec["runtimes"][number][],
+): void {
+  const missing = runtimes.filter(
+    ({ name }) => !existsSync(boxLocalProfilePath(projectRoot, name)),
+  );
+  if (missing.length === 0) return;
+  throw new ProjectStateError(
+    missing
+      .map(
+        ({ name }) =>
+          `runtime "${name}" runs its agent in a box (it has box.version in agentcore.json), but ` +
+          `${boxLocalProfileFile(name)} does not exist. Create that box profile for the runtime, ` +
+          "or remove its box.version, then retry.",
+      )
+      .join("\n"),
+  );
+}
+
+/** By API key credential, the variable and the runtime of the first entry that takes it. */
+type SharedKeys = Map<string, { readonly variable: string; readonly runtime: string }>;
+
+/**
+ * A failure for each `[egress]` entry of `network` whose API key credential an entry of an earlier
+ * box runtime takes for another variable, as `keys` records them. Each runtime has its own
+ * profile, but agentcore.json has one credential of each name, and one credential holds one key.
+ */
+function sharedKeyFailures(
+  network: BoxNetwork,
+  parsed: ParsedPolicy,
+  keys: SharedKeys,
+): BoxNetworkFailure[] {
+  const failures: BoxNetworkFailure[] = [];
+  for (const { outboundAuth: auth, sources } of network.hosts) {
+    if (auth.kind !== "apiKey") continue;
+    const holder = keys.get(auth.credentialName);
+    if (holder === undefined) {
+      keys.set(auth.credentialName, { variable: auth.variable, runtime: network.runtime });
+      continue;
+    }
+    // hostTargets already refuses two entries of one profile that share a credential.
+    if (holder.variable === auth.variable || holder.runtime === network.runtime) continue;
+    const source = sources.find((candidate) => candidate.kind === "entry");
+    const entry = source?.kind === "entry" ? source.egressEntry : undefined;
+    failures.push({
+      code: "API_KEY_CREDENTIAL_SHARED",
+      ...(entry !== undefined && { egressEntry: entry }),
+      reason:
+        `${entry === undefined ? "An entry" : `[egress.${entry}]`} needs the API key credential ` +
+        `'${auth.credentialName}' for env://${auth.variable}, and runtime '${holder.runtime}' ` +
+        `takes that credential for env://${holder.variable}. One credential holds one key. ` +
+        "Rename the entry in one of the two profiles.",
+      place:
+        (entry === undefined ? undefined : parsed.profile.places?.entries.get(`egress.${entry}`)) ??
+        parsed.profile.path,
+    });
+  }
+  return failures;
 }
 
 /**
@@ -110,16 +186,17 @@ export function boxPolicyFileCopies(projectRoot: string, agentName: string): Pol
 }
 
 /**
- * Box's resolution of the local box profile of `agentName` for a build in `region`, parsed, with
+ * Box's resolution of the local box profile of `runtime` for a build in `region`, parsed, with
  * the profile's own policy files to place its rules and to stage; nothing when the agent has no
  * local box profile.
  */
 async function readResolvedPolicy(
   projectRoot: string,
-  agentName: string,
+  runtime: ProjectRuntime,
   resolver: BoxProfileResolver,
   region: string,
 ): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
+  const agentName = runtime.name;
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
   if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
@@ -132,16 +209,22 @@ async function readResolvedPolicy(
     places.policies,
   );
   // The Runtime profile sets `[options] bedrock.region` to the region build builds for, so Box
-  // resolves box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
+  // resolves @box/bedrock's route for that region, not the one `agentcore dev` uses. A profile with
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
+  const startFolder = boxStartFolder(runtime);
   const resolved =
     forRegion === undefined
-      ? await resolver.resolve(projectRoot, profileFile)
-      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts);
+      ? await resolver.resolve(projectRoot, profileFile, startFolder)
+      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
-  const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
+  const source = profileSource(text, profileFile);
+  const policy = parseResolvedPolicy(
+    { ...profile.profile, places, ...(source && { source }) },
+    resolved.policy,
+    files.texts,
+  );
   return {
     parsed: policy.parsed,
     failures: [
@@ -153,14 +236,25 @@ async function readResolvedPolicy(
   };
 }
 
+/**
+ * The box profile `text` at `profileFile` as a TOML table, with where it sets each key, or
+ * `undefined` when it is not TOML; the profile parser stops build for that.
+ */
+function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
+  try {
+    return { table: parseToml(text) as TomlTable, places: profileKeyPlaces(text, profileFile) };
+  } catch {
+    return undefined;
+  }
+}
+
+type ParsedProfileSource = NonNullable<ParsedPolicy["profile"]["source"]>;
+
 /** The text of the local box profile of `agentName`, or `undefined` when the agent has none. */
 function profileText(projectRoot: string, agentName: string): string | undefined {
   const path = boxLocalProfilePath(projectRoot, agentName);
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
-
-/** The pack whose `[options] bedrock.region` the AgentCore Runtime profile sets. */
-const BOX_BEDROCK_PACK = "box/bedrock";
 
 const isTable = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -175,7 +269,7 @@ function bedrockRegionOf(table: Record<string, unknown>): unknown {
 
 /**
  * The box profile `text` with `[options] bedrock.region` set to `region`, as the AgentCore Runtime
- * profile sets it, or `undefined` when the profile imports no box/bedrock or already has that
+ * profile sets it, or `undefined` when the profile imports no @box/bedrock or already has that
  * region. An edit of the line that sets the region keeps every other line where it is.
  */
 function profileForRegion(text: string, region: string): string | undefined {
@@ -211,6 +305,7 @@ async function resolveCopy(
   resolver: BoxProfileResolver,
   text: string,
   policies: readonly PolicyFileText[],
+  startFolder: string,
 ): Promise<ResolvedBoxProfile> {
   const localDir = boxLocalDir(agentName);
   const folder = realpathSync(await mkdtemp(join(tmpdir(), "agentcore-box-profile-")));
@@ -222,7 +317,7 @@ async function resolveCopy(
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, policy.text);
     }
-    return await resolver.resolve(projectRoot, copy);
+    return await resolver.resolve(projectRoot, copy, startFolder);
   } catch (error) {
     if (!(error instanceof InvalidEnvironmentError)) throw error;
     throw new InvalidEnvironmentError(
@@ -271,8 +366,8 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "strands-box-sock-alias",
   "strands-box-contain-trampoline",
   "resources",
-  "ffi",
   "profile.toml",
+  ".gitignore",
 ]);
 
 /**

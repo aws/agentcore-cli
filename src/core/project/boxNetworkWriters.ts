@@ -38,10 +38,14 @@ import {
   AGENTCORE_PACK_PATH,
   boxAwsDir,
   boxLocalDir,
+  boxLocalProfileFile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
-  renderRuntimeBoxProfile,
 } from "./templates/boxProfile";
+import { isTable } from "./runtimeProfile/projectPaths";
+import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+import { RUNTIME_INPUTS, type TomlTable } from "./runtimeProfile/types";
+import { ProjectStateError } from "../../errors/errors";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
@@ -66,7 +70,7 @@ export interface BoxNetworkEdits {
   /** Changes to the copy of agentcore.json, in order; each returns its step messages. */
   readonly spec?: readonly ((spec: ProjectSpec) => string[])[];
   readonly files?: readonly BoxNetworkFile[];
-  /** Entries for `.env.local`, which keep any value it holds already. */
+  /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
 }
 
@@ -366,8 +370,8 @@ export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
   /**
-   * How the runtime deploys. Both kinds stage the `box/agentcore` pack; a CodeZip deploy also
-   * stages the `box/agentcore-codezip` pack.
+   * How the runtime deploys. Both kinds stage the `@box/agentcore` pack; a CodeZip deploy also
+   * stages the `@box/agentcore-codezip` pack.
    */
   readonly kind: "container" | "codezip";
 }
@@ -398,9 +402,8 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
     edits: (networks, { spec }) => ({
       files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
-        const entry = spec.runtimes.find(({ name }) => name === runtime)!;
         return [
-          { path: `${dist}/profile.toml`, text: renderRuntimeBoxProfile(spec, entry, network) },
+          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
           { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) },
           ...(kind === "codezip"
             ? [
@@ -418,6 +421,64 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
       }),
     }),
   };
+}
+
+/**
+ * The text of the AgentCore Runtime profile of `runtime`, which build derived from its local box
+ * profile into the Box network model (`BoxNetwork.runtimeProfile`).
+ */
+function runtimeProfileText(
+  runtime: string,
+  network: BoxNetwork | undefined,
+  spec: ProjectSpec,
+): string {
+  if (network?.runtimeProfile === undefined) {
+    throw new ProjectStateError(
+      `runtime "${runtime}" runs its agent in a box, but build has no AgentCore Runtime profile ` +
+        `for it: it derives that profile from ${boxLocalProfileFile(runtime)}, and found no ` +
+        "Box network for the runtime, or a Box network with no derived profile. Check that its " +
+        "Box gateway is in agentcore.json and that the profile is there, then retry.",
+    );
+  }
+  return serializeRuntimeProfile(
+    withoutUnsentRoutes(network.runtimeProfile, network, spec),
+    network.runtimeProfileHeader,
+  );
+}
+
+/**
+ * `profile` with no `[egress]` route and no `[mcp]` server to the target of a host that sends an
+ * API key that agentcore.json holds no credential for: the gateway targets writer writes no such
+ * target (writeGatewayTargets), and says so.
+ */
+function withoutUnsentRoutes(
+  profile: Readonly<TomlTable>,
+  network: BoxNetwork,
+  spec: ProjectSpec,
+): TomlTable {
+  const unsent = new Set(
+    network.hosts.flatMap((host) =>
+      host.target !== undefined && undeclaredKey(spec, host) !== undefined
+        ? [`${RUNTIME_INPUTS.gatewayUrl}/${host.target}`]
+        : [],
+    ),
+  );
+  const result: TomlTable = { ...profile };
+  if (unsent.size === 0) return result;
+  const routesToUnsent = (entry: unknown) =>
+    isTable(entry) &&
+    Array.isArray(entry.backends) &&
+    entry.backends.some((backend) => isTable(backend) && unsent.has(backend.url as string));
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    const kept = Object.fromEntries(
+      Object.entries(table).filter(([, entry]) => !routesToUnsent(entry)),
+    );
+    if (Object.keys(kept).length > 0) result[key] = kept;
+    else delete result[key];
+  }
+  return result;
 }
 
 /** The writers that build and deploy run before synth, in order. */

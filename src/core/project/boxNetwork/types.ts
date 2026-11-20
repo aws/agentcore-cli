@@ -1,3 +1,4 @@
+import { RUNTIME_PROFILE_PROBLEM_CODES } from "../runtimeProfile/types";
 import type { SourceSpan } from "./dogwood";
 
 /** AgentCore's limit on the targets of one gateway. */
@@ -44,6 +45,7 @@ export const FAILURE_CODES = [
   "TARGET_NAME_INVALID",
   "TARGET_NAME_COLLISION",
   "TOO_MANY_TARGETS",
+  ...RUNTIME_PROFILE_PROBLEM_CODES,
 ] as const;
 export type FailureCode = (typeof FAILURE_CODES)[number];
 

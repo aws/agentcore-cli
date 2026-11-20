@@ -75,6 +75,7 @@ function harness(
     awsDirectory?: string;
     processEnv?: NodeJS.ProcessEnv;
     resolveAwsCredentials?: ResolveAwsCredentials;
+    platform?: NodeJS.Platform;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -129,6 +130,7 @@ function harness(
       },
       // Never the real chain in a test: none unless the test gives some.
       resolveAwsCredentials: config.resolveAwsCredentials ?? (async () => undefined),
+      ...(config.platform && { platform: config.platform }),
     }),
   };
 }
@@ -860,6 +862,19 @@ describe("ContainerDevRunner", () => {
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
     });
 
+    test("stages the runtime's own box profile, not the profile of another runtime", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      await mkdir(join(root, ".box", "other", "local"), { recursive: true });
+      await writeFile(join(root, ".box", "other", "local", "profile.toml"), "# other\n");
+      const { runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# local profile\n",
+      );
+    });
+
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { calls, runner } = harness({ processEnv: credentials });
@@ -975,6 +990,94 @@ describe("ContainerDevRunner", () => {
       expect(calls.map(({ command }) => command[1])).not.toContain("build");
       expect(calls.map(({ command }) => command[1])).not.toContain("run");
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
+    });
+
+    test("hands box in the container the profile's env:// key from the shell, through the run's env file", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell", UNRELATED: "x" },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      const forwarded = parseEnv(run.envFile!.contents);
+      expect(forwarded.GITHUB_TOKEN).toBe("ghp_shell");
+      // Only the keys the profile names, not the rest of the shell.
+      expect(forwarded.UNRELATED).toBeUndefined();
+      // Passed through the env file, never on the command line, and written to no .env.local.
+      expect(run.command.join(" ")).not.toContain("ghp_shell");
+      expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
+    });
+
+    test("hands box in the container the shell's env:// key over .env.local's", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell" },
+      });
+      // input.env is what dev read from agentcore/.env.local.
+      const fromFile = input(root, projectRuntime);
+
+      await collect(runner.run({ ...fromFile, env: { GITHUB_TOKEN: "ghp_file" } }));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_shell");
+    });
+
+    test("warns when the profile's env:// key is not set, before the container's box reports it", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message: expect.stringContaining(
+          "reads GITHUB_TOKEN for [egress.github], but it is not set",
+        ),
+      });
+      expect(commandCall(calls, "run")).toBeDefined();
+    });
+
+    test("warns before the image build, as the lookup needs only the profile and the env", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+      const messages = events.map((event) => ("message" in event ? event.message : ""));
+
+      const warning = messages.findIndex((message) => message.includes("reads GITHUB_TOKEN"));
+      const build = messages.findIndex((message) => message.startsWith("Building image with"));
+      expect(warning).toBeGreaterThanOrEqual(0);
+      expect(warning).toBeLessThan(build);
+    });
+
+    test("hands the container a Windows shell's variable in another case, under its name", async () => {
+      // process.env is case-insensitive on Windows, so an exported Github_Token sets GITHUB_TOKEN.
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, Github_Token: "ghp_win" },
+        platform: "win32",
+      });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_win");
+      expect(JSON.stringify(events)).not.toContain("reads GITHUB_TOKEN for [egress.github]");
     });
 
     test("stages box of the runtime's box.version", async () => {
