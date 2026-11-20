@@ -235,9 +235,8 @@ How each command uses it:
   with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
-another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
-publish it as a pre-release with the same file names and set `box.version` to it.
+which `agentcore create` writes. It must be the pinned version, whose checksums `boxRelease.json`
+keeps; build, deploy and container `dev` stop on any other version and say to set the pinned one.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

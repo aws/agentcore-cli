@@ -291,59 +291,16 @@ async function download(
 }
 
 /**
- * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
- * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE.
+ * The box release that `version`, a runtime's `box.version`, names. It must be the pinned one,
+ * BOX_RELEASE, whose checksums `boxRelease.json` pins: another box is untested with this CLI (box
+ * 0.1.11-linux-preview.6, for one, refuses the `@box/` packs the CLI writes), and build cannot
+ * see that, since it checks the profile with the box on PATH. No version means BOX_RELEASE.
  */
-export async function boxReleaseFor(
-  version: string | undefined,
-  env: NodeJS.ProcessEnv,
-  options: { runner?: ProcessRunner; home?: string } = {},
-): Promise<BoxRelease> {
+export async function boxReleaseFor(version: string | undefined): Promise<BoxRelease> {
   if (version === undefined || version === BOX_RELEASE.version) return BOX_RELEASE;
-  const target = BOX_RELEASE.linux.target;
-  const linux = `box-v${version}-${target}.tar.gz`;
-  const release = { repo: BOX_RELEASE.repo, version };
-  const sums = await releaseChecksums(release, env, options.runner ?? runProcess, options.home);
-  const linuxSha = sums.get(linux);
-  if (!linuxSha) {
-    throw new InvalidEnvironmentError(
-      `box ${version}, which agentcore.json names under box.version, has no ${linux} in the ` +
-        `SHA256SUMS.txt of its release at github.com/${release.repo}. Name a box version that ` +
-        `release has, or remove box.version to use box ${BOX_RELEASE.version}.`,
-    );
-  }
-  return { ...release, linux: { target, asset: linux, sha256: linuxSha } };
-}
-
-/** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
-async function releaseChecksums(
-  release: Pick<BoxRelease, "repo" | "version">,
-  env: NodeJS.ProcessEnv,
-  runner: ProcessRunner,
-  home: string | undefined,
-): Promise<Map<string, string>> {
-  const cache = boxCache(home ?? env.HOME ?? homedir());
-  mkdirSync(cache, { recursive: true });
-  const work = mkdtempSync(join(cache, ".download-"));
-  try {
-    await download(
-      release,
-      "SHA256SUMS.txt",
-      work,
-      env,
-      runner,
-      (url) =>
-        `agentcore.json names box ${release.version} under box.version, whose checksums ` +
-        `download from ${url}, which failed. Check the version and your network, then retry.`,
-    );
-    const sums = new Map<string, string>();
-    for (const line of readFileSync(join(work, "SHA256SUMS.txt"), "utf8").split("\n")) {
-      const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
-      if (match) sums.set(match[2]!, match[1]!);
-    }
-    return sums;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
+  throw new InvalidEnvironmentError(
+    `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
+      `${BOX_RELEASE.version}, the one box it pins. Set box.version to ${BOX_RELEASE.version}, ` +
+      "then retry.",
+  );
 }

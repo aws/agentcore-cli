@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { gte } from "semver";
 import {
   BOX_INSTALL_HINT,
   BOX_MINIMUM_VERSION,
@@ -211,54 +210,23 @@ describe("resolveBoxLinuxBuild from the box release", () => {
 });
 
 describe("boxReleaseFor a runtime's box.version", () => {
-  /** A runner whose curl serves SHA256SUMS.txt with `text`, and records each URL. */
-  function sumsServer(text: string) {
-    const urls: string[] = [];
-    const runner: ProcessRunner = async (command) => {
-      urls.push(command.at(-1)!);
-      await writeFile(command[command.indexOf("-o") + 1]!, text);
-    };
-    return { runner, urls };
-  }
-
-  test("is the pinned release, with no download, for no version or a pinned one", async () => {
-    const { runner, urls } = sumsServer("");
-
-    expect(await boxReleaseFor(undefined, {}, { runner })).toBe(BOX_RELEASE);
-    expect(await boxReleaseFor(BOX_RELEASE.version, {}, { runner })).toBe(BOX_RELEASE);
-    expect(urls).toEqual([]);
+  test("is the pinned release for no version or the pinned one", async () => {
+    expect(await boxReleaseFor(undefined)).toBe(BOX_RELEASE);
+    expect(await boxReleaseFor(BOX_RELEASE.version)).toBe(BOX_RELEASE);
   });
 
-  test("takes another version's checksums from its release's SHA256SUMS.txt", async () => {
-    const home = await temp("box-home-");
-    const linux = "a".repeat(64);
-    const mac = "c".repeat(64);
-    const { runner, urls } = sumsServer(
-      `${linux}  box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz\n` +
-        `${mac}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`,
-    );
-
-    const release = await boxReleaseFor("2.0.0", {}, { runner, home });
-
-    expect(urls).toEqual([
-      `https://github.com/${BOX_RELEASE.repo}/releases/download/v2.0.0/SHA256SUMS.txt`,
-    ]);
-    expect(release.version).toBe("2.0.0");
-    expect(release.linux).toEqual({
-      target: "aarch64-unknown-linux-gnu",
-      asset: "box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz",
-      sha256: linux,
-    });
-  });
-
-  test("refuses a version whose release lists no Linux box", async () => {
-    const home = await temp("box-home-");
-    const { runner } = sumsServer(`${"c".repeat(64)}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`);
-
-    await expect(boxReleaseFor("2.0.0", {}, { runner, home })).rejects.toThrow(
-      /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
-    );
-  });
+  test.each(["0.1.11-linux-preview.6", "2.0.0"])(
+    "refuses %s, a box this CLI does not pin, and says to set the pinned one",
+    async (version) => {
+      await expect(boxReleaseFor(version)).rejects.toThrow(
+        new InvalidEnvironmentError(
+          `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
+            `${BOX_RELEASE.version}, the one box it pins. Set box.version to ` +
+            `${BOX_RELEASE.version}, then retry.`,
+        ),
+      );
+    },
+  );
 });
 
 describe("publishInstall", () => {
@@ -306,9 +274,8 @@ describe("publishInstall", () => {
 });
 
 describe("the pinned releases", () => {
-  test("box is at least the first release that reads the profiles the CLI writes", () => {
+  test("pins one box, with the asset of its own version and a SHA-256", () => {
     expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
-    expect(gte(BOX_RELEASE.version, BOX_MINIMUM_VERSION)).toBe(true);
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );

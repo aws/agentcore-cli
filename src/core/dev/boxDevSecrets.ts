@@ -25,7 +25,7 @@ export type BoxDevSecrets = {
  * ({@link BoxKeySources}): the shell's when it is set and not blank, else `.env.local`'s. On
  * Windows, where variable names are case-insensitive, the shell's `Github_Token` sets
  * `GITHUB_TOKEN`. Dev hands these to `box run` as they are and writes none of them anywhere. Only
- * the profile's own tables count: a pack's variable, such as box/bedrock's
+ * the profile's own tables count: a pack's variable, such as @box/bedrock's
  * `AWS_BEARER_TOKEN_BEDROCK`, is not the profile author's to pass. A profile that does not parse
  * has none here; `box run` reports it.
  */

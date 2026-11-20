@@ -48,7 +48,7 @@ describe("boxDevSecrets", () => {
 
   test("leaves out a pack's variable, a secret that is not env://, and a blank name", () => {
     const profile =
-      'packs = ["box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n' +
+      'packs = ["@box/bedrock"]\n[egress.s3]\ndestinations = ["s3.amazonaws.com"]\nsecret.ref = "aws://default"\n' +
       '[egress.blank]\ndestinations = ["blank.example.com"]\nsecret.ref = "env://  "\n';
     expect(fromShell(profile, { AWS_BEARER_TOKEN_BEDROCK: "token", default: "x" })).toEqual({
       env: {},

@@ -137,7 +137,7 @@ export class ContainerDevRunner implements DevRunner {
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
-    this.releaseFor = config.releaseFor ?? ((version) => boxReleaseFor(version, this.processEnv));
+    this.releaseFor = config.releaseFor ?? boxReleaseFor;
     this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
     this.platform = config.platform ?? process.platform;
   }
