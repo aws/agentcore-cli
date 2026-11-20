@@ -1647,13 +1647,13 @@ export class FsProjectManager implements ProjectManager {
 
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --format json --full`), then writes what the Box network writers derive from it, before
-   * synth reads agentcore.json and build renders each Runtime profile's routes from its Box
-   * gateway's targets: agentcore.json once, patched in the raw file so unknown fields and key order
-   * survive and checked against the schema first, then the files, then `.env.local`. The Bedrock
-   * and Memory targets, and Box's resolution of the profile, are for `region`, and a CloudWatch
-   * target with no region gets `deployRegion`. A failure of any model stops `command` before
-   * anything of the box profile is written.
+   * (`box profile show --format json --full`), then writes what the Box network writers derive from
+   * it, before synth reads agentcore.json and staging writes the Runtime profile that each model
+   * derives (`BoxNetwork.runtimeProfile`): agentcore.json once, patched in the raw file so unknown
+   * fields and key order survive and checked against the schema first, then the files, then
+   * `.env.local`. The Bedrock and Memory targets, and Box's resolution of the profile, are for
+   * `region`, and a CloudWatch target with no region gets `deployRegion`. A failure of any model
+   * stops `command` before anything of the box profile is written.
    */
   private async applyBoxNetwork(
     project: Project,

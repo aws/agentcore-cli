@@ -392,7 +392,8 @@ function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): s
     throw new ProjectStateError(
       `runtime "${runtime}" runs its agent in a box, but build has no AgentCore Runtime profile ` +
         `for it: it derives that profile from ${boxLocalProfileFile(runtime)}, and found no ` +
-        "Box network for the runtime. Check that its Box gateway is in agentcore.json, then retry.",
+        "Box network for the runtime, or a Box network with no derived profile. Check that its " +
+        "Box gateway is in agentcore.json and that the profile is there, then retry.",
     );
   }
   return serializeRuntimeProfile(network.runtimeProfile, network.runtimeProfileHeader);

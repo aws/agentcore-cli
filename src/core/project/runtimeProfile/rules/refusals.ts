@@ -206,7 +206,7 @@ function notFound(program: string, paths: RuntimeProfileContext["paths"]): strin
   );
 }
 
-/** `problems` in the order of their places in the profile, and each problem of one place once. */
+/** `problems` in the order of their places in the profile, and each identical problem once. */
 function inProfileOrder(problems: readonly RuntimeProfileProblem[]): RuntimeProfileProblem[] {
   const position = ({ place }: RuntimeProfileProblem) => {
     const match = /:(\d+):(\d+)$/.exec(place);
