@@ -628,13 +628,7 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
-    if (isBoxProject(project.spec)) {
-      for (const gateway of project.spec.agentCoreGateways) {
-        if (isBoundGateway(gateway) && gateway.enableApplicationLogs) {
-          yield { type: "warning", message: boxGatewayLogsNotice(gateway.name) };
-        }
-      }
-    }
+    if (isBoxProject(project.spec)) yield* boxGatewayLogsWarnings(project.spec.agentCoreGateways);
     return project;
   }
 
@@ -2128,7 +2122,8 @@ export class FsProjectManager implements ProjectManager {
     runtime.box = { version: BOX_RELEASE.version };
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
+    const gateway = AgentCoreGatewaySchema.parse(boxGatewaySpec(name));
+    projectSpec.agentCoreGateways.push(gateway);
 
     const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
     const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
@@ -2151,6 +2146,7 @@ export class FsProjectManager implements ProjectManager {
     const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
     if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
     yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
+    yield* boxGatewayLogsWarnings([gateway]);
   }
 
   /**
@@ -2369,7 +2365,7 @@ function isInside(path: string, dir: string): boolean {
   );
 }
 
-/** What `create` tells the user about the `APPLICATION_LOGS` of a new Box gateway. */
+/** What the CLI tells the user about the `APPLICATION_LOGS` of a Box gateway that it writes. */
 export function boxGatewayLogsNotice(gatewayName: string): string {
   return (
     `the Box gateway '${gatewayName}' sends its APPLICATION_LOGS to CloudWatch Logs, which keeps ` +
@@ -2377,6 +2373,18 @@ export function boxGatewayLogsNotice(gatewayName: string): string {
     `completions included. To stop them, set "enableApplicationLogs": false on that gateway in ` +
     "agentcore/agentcore.json"
   );
+}
+
+/**
+ * A warning for each gateway of `gateways` that is a Box gateway and sends its `APPLICATION_LOGS`.
+ * Each command that writes a new Box gateway gives these warnings: `create` and `add runtime`.
+ */
+function boxGatewayLogsWarnings(
+  gateways: readonly { name: string; boundRuntime?: string; enableApplicationLogs?: boolean }[],
+): ProjectEvent[] {
+  return gateways
+    .filter((gateway) => isBoundGateway(gateway) && gateway.enableApplicationLogs)
+    .map((gateway) => ({ type: "warning", message: boxGatewayLogsNotice(gateway.name) }));
 }
 
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */

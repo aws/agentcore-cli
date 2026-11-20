@@ -8,7 +8,7 @@ import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
-import { FsProjectManager } from "./manager";
+import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
@@ -198,14 +198,18 @@ describe("agentcore create", () => {
     tempDirectories.push(directory);
     process.chdir(directory);
 
-    const project = await drain(
-      manager.create({
-        name: "example",
-        skipInstall: true,
-        skipGit: true,
-        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
-      }),
-    );
+    const warnings: string[] = [];
+    const generator = manager.create({
+      name: "example",
+      skipInstall: true,
+      skipGit: true,
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+    });
+    let next = await generator.next();
+    for (; !next.done; next = await generator.next()) {
+      if (next.value.type === "warning") warnings.push(next.value.message);
+    }
+    const project = next.value;
 
     // Only a box template runs its agent in a box, so only it makes a Box project.
     const spec = await specOnDisk(project);
@@ -213,6 +217,7 @@ describe("agentcore create", () => {
     expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
       projectType ? ["agent-box-egress"] : [],
     );
+    expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
@@ -353,6 +358,24 @@ describe("gateway targets in a Box project", () => {
       "agent",
       "search",
     ]);
+  });
+
+  test("add runtime says that the new Box gateway sends its logs, and how to stop them", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+
+    const warnings: string[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      const event = next.value as { type: string; message?: string };
+      if (event.type === "warning") warnings.push(event.message!);
+    }
+
+    const notices = warnings.filter((warning) => warning.includes("APPLICATION_LOGS"));
+    expect(notices).toEqual([boxGatewayLogsNotice(boxGatewaySpec("search").name)]);
   });
 
   test("add runtime refuses a Bedrock Agent import in a Box project, and changes nothing", async () => {
