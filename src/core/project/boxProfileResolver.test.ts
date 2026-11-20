@@ -206,8 +206,7 @@ describe("parseBoxProfileShow", () => {
   ])("refuses a document with %s, and names what it lacks", (_, shown, lacks) => {
     expect(() => parseBoxProfileShow(JSON.stringify(shown), ".box/profile.toml")).toThrow(
       new InvalidEnvironmentError(
-        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. ` +
-          INSTALL,
+        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. ` + INSTALL,
       ),
     );
   });
