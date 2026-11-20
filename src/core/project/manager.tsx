@@ -71,10 +71,7 @@ import {
   renderBoxProfile,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
-import {
-  assertBoxCodeZipRuntimesStartBox,
-  assertBoxRuntimesHaveBoxVersion,
-} from "./backends/boxContainer";
+import { validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -854,6 +851,7 @@ export class FsProjectManager implements ProjectManager {
               `overlaps the files of ${owner}. Choose a different --name.`,
           );
         }
+        if (boxInput) await this.assertNoOtherStartScript(outputPath, input.resourceConfig.name);
         // Rollback removes only what this add created, never a folder the user already had.
         const folderExisted = existsSync(outputPath);
         if (isRuntimeDocsConfig(input.resourceConfig)) {
@@ -884,7 +882,20 @@ export class FsProjectManager implements ProjectManager {
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
           if (boxInput) {
-            yield* this.addBoxRuntime(project.rootPath, projectSpec, boxInput, scaffoldedPaths);
+            // A failure here comes before the spec write, whose catch removes what this add
+            // created, so the box scaffold removes it itself.
+            try {
+              yield* this.addBoxRuntime(
+                project.rootPath,
+                projectSpec,
+                boxInput,
+                scaffoldedPaths,
+                options.region ?? (await this.boxBuildRegion()),
+              );
+            } catch (err) {
+              await this.discardStaged(scaffoldedPaths);
+              throw err;
+            }
           }
           break;
         }
@@ -1086,8 +1097,17 @@ export class FsProjectManager implements ProjectManager {
 
   /** Best-effort removal of paths an add created; failures are logged, not thrown. */
   private async discardStaged(paths: string[]): Promise<void> {
+    // A path inside another one goes with it. Removing both at the same time races: the
+    // recursive remove of the folder can stop on a child the other remove took first.
+    const inside = (child: string, parent: string) => {
+      const path = relative(parent, child);
+      return path !== "" && !path.startsWith("..") && !isAbsolute(path);
+    };
+    const outermost = [...new Set(paths)].filter(
+      (path) => !paths.some((other) => inside(path, other)),
+    );
     await Promise.all(
-      paths.map((p) =>
+      outermost.map((p) =>
         rm(p, { recursive: true, force: true }).catch((e) => {
           const error = AgentCoreCLIError.fromError(e);
           this.logger
@@ -1597,6 +1617,8 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
     const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
@@ -1630,9 +1652,6 @@ export class FsProjectManager implements ProjectManager {
     command: "build" | "deploy",
     region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    // Every runtime of a Box project runs in a box, so stop before anything is written.
-    assertBoxRuntimesHaveBoxVersion(project.spec);
-    assertBoxCodeZipRuntimesStartBox(project.spec);
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
@@ -1704,7 +1723,9 @@ export class FsProjectManager implements ProjectManager {
     const runtimes = input.runtimeNames
       ? project.spec.runtimes.filter((runtime) => input.runtimeNames!.includes(runtime.name))
       : project.spec.runtimes;
-    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose);
+    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose, {
+      boxProject: isBoxProject(project.spec),
+    });
     if (prepared.changed.length === 0) {
       return { project, messages: prepared.messages, written: false };
     }
@@ -1793,6 +1814,8 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
     const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
@@ -2090,6 +2113,7 @@ export class FsProjectManager implements ProjectManager {
     projectSpec: z.infer<typeof ProjectSpecSchema>,
     boxInput: ScaffoldRuntimeInput,
     scaffoldedPaths: string[],
+    region: string,
   ): AsyncGenerator<ProjectEvent, void> {
     const name = boxInput.runtimeName;
     const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
@@ -2119,11 +2143,25 @@ export class FsProjectManager implements ProjectManager {
     }
     const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
     if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
-    yield* this.writeBoxProfile(
-      projectRoot,
-      projectSpec.name,
-      boxInput,
-      await this.boxBuildRegion(),
+    yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
+  }
+
+  /**
+   * Throws when `appDir` already holds a start.py that is not the one that starts box. A box
+   * runtime runs start.py as its entry point, so AgentCore Runtime would run the user's file with
+   * no box, while build still writes the runtime's box profile and Box gateway.
+   */
+  private async assertNoOtherStartScript(appDir: string, runtimeName: string): Promise<void> {
+    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
+    if (!existsSync(startScript)) return;
+    const boxStart = await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`);
+    if ((await readFile(startScript, "utf8")) === boxStart) return;
+    const shown = `app/${runtimeName}/${BOX_CODEZIP_ENTRYPOINT}`;
+    throw new InputValidationError(
+      `cannot add runtime '${runtimeName}' to a Box project: ${shown} exists, and it is not the ` +
+        `${BOX_CODEZIP_ENTRYPOINT} that starts box. A box runtime runs ${BOX_CODEZIP_ENTRYPOINT} as ` +
+        `its entry point, so AgentCore Runtime would run your file with no box. Rename ${shown}, ` +
+        "then retry.",
     );
   }
 
@@ -2143,6 +2181,17 @@ export class FsProjectManager implements ProjectManager {
     const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
       yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
+      const kept = ingressPort(await readFile(path, "utf8"));
+      const wanted = ingressPort(text);
+      if (kept !== undefined && wanted !== undefined && kept !== wanted) {
+        yield {
+          type: "warning",
+          message:
+            `box profile ${path} is for another protocol: it listens on port ${kept}, and a ` +
+            `${runtime.protocol ?? "HTTP"} runtime listens on port ${wanted}. Remove ` +
+            `${dirname(path)}, then add the runtime again, or edit the profile.`,
+        };
+      }
       return;
     }
     yield { type: "step", message: `writing box profile ${path}` };
@@ -2322,6 +2371,11 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/** The port of the first `[[agent.ingress]] listen` in the box profile `text`, if it names one. */
+function ingressPort(text: string): string | undefined {
+  return /^\s*listen\s*=\s*"[^"]*:(\d+)"/m.exec(text)?.[1];
 }
 
 /**

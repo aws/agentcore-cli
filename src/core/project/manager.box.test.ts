@@ -452,6 +452,125 @@ describe("gateway targets in a Box project", () => {
     ]);
   });
 
+  test("add runtime refuses a start.py of the user's own, and changes nothing", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const app = join(project.rootPath, "app", "mine");
+    await mkdir(app, { recursive: true });
+    await writeFile(join(app, "start.py"), "print('mine')\n");
+    const before = await specText(project);
+
+    const add = drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "mine", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    await expect(add).rejects.toThrow(
+      new InputValidationError(
+        "cannot add runtime 'mine' to a Box project: app/mine/start.py exists, and it is not the " +
+          "start.py that starts box. A box runtime runs start.py as its entry point, so AgentCore " +
+          "Runtime would run your file with no box. Rename app/mine/start.py, then retry.",
+      ),
+    );
+    expect(await specText(project)).toBe(before);
+    expect(await readFile(join(app, "start.py"), "utf8")).toBe("print('mine')\n");
+    expect(existsSync(join(project.rootPath, ".box", "mine"))).toBe(false);
+  });
+
+  test("add runtime keeps a start.py that is the one that starts box", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const app = join(project.rootPath, "app", "mine");
+    await mkdir(app, { recursive: true });
+    const boxStart = await readFile(
+      join(import.meta.dir, "..", "..", "assets", "templates", "box-codezip", "start.py"),
+      "utf8",
+    );
+    await writeFile(join(app, "start.py"), boxStart);
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "mine", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    const spec = await parsedSpec(project);
+    expect(spec.runtimes.find(({ name }) => name === "mine")?.entrypoint).toBe("start.py");
+  });
+
+  test("add runtime writes the Bedrock region of the command into the box profile", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+
+    await drain(
+      manager.addResource(
+        project,
+        {
+          resourceType: "runtime",
+          resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+        } as never,
+        { region: "eu-west-1" },
+      ),
+    );
+
+    const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
+    expect(await readFile(profile, "utf8")).toContain('bedrock.region = "eu-west-1"');
+  });
+
+  test("a failed box profile write removes what add runtime made", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    // A file where the box folder of "search" goes makes the profile write fail.
+    const blocked = join(project.rootPath, ".box", "search");
+    await mkdir(dirname(blocked), { recursive: true });
+    await writeFile(blocked, "not a folder\n");
+    const before = await specText(project);
+
+    await expect(
+      drain(
+        manager.addResource(project, {
+          resourceType: "runtime",
+          resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+        } as never),
+      ),
+    ).rejects.toThrow();
+
+    expect(await specText(project)).toBe(before);
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+    // The file was there before the add, so it stays.
+    expect(await readFile(blocked, "utf8")).toBe("not a folder\n");
+  });
+
+  test("add runtime warns when the kept box profile is for another protocol", async () => {
+    const manager = subject();
+    let project = await createdProject(manager, ["agent", "search"]);
+    const local = join(project.rootPath, ".box", "search", "local", "profile.toml");
+    await mkdir(dirname(local), { recursive: true });
+    await writeFile(local, '[[agent.ingress]]\nlisten = "127.0.0.1:8080"\n');
+    project = (await manager.removeResource(project, { resourceType: "runtime", name: "search" }))
+      .project;
+
+    const events: unknown[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "MCP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      events.push(next.value);
+    }
+
+    expect(events).toContainEqual({
+      type: "warning",
+      message:
+        `box profile ${local} is for another protocol: it listens on port 8080, and a MCP ` +
+        `runtime listens on port 8000. Remove ${dirname(local)}, then add the runtime again, or ` +
+        "edit the profile.",
+    });
+  });
+
   test("add runtime refuses a TypeScript runtime in a Box project, and changes nothing", async () => {
     const manager = subject();
     const project = await createdProject(manager);

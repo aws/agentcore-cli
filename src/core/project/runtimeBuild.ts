@@ -9,7 +9,11 @@ import {
   type RuntimeVersion,
 } from "../../projectSchemas/constants";
 import { EntrypointSchema, type ProjectRuntime } from "../../projectSchemas/runtime";
-import { BOX_CODEZIP_ENTRYPOINT } from "./templates/boxProfile";
+import {
+  assertNoBoxContainerSwitch,
+  keptBoxEntrypointWarning,
+  syncKeepsBoxEntrypoint,
+} from "./boxValidation";
 
 /**
  * Re-derives a runtime's build settings (`build`, `dockerfile`, `runtimeVersion`,
@@ -75,8 +79,19 @@ function codeZipRevertEdits(runtime: ProjectRuntime): string {
     : `${edits.slice(0, -1).join(", ")}, and ${edits[edits.length - 1]}`;
 }
 
+/** How the project of the runtimes being synced runs them. */
+export interface SyncOptions {
+  /** Whether the project is a Box project, so the box rules of boxValidation.ts apply. */
+  boxProject?: boolean;
+}
+
 /** Re-derives a runtime's build settings. Throws a {@link ProjectStateError} when they cannot be. */
-export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): RuntimeSync {
+export function syncRuntimeBuild(
+  runtime: ProjectRuntime,
+  projectRoot: string,
+  options: SyncOptions = {},
+): RuntimeSync {
+  const boxProject = options.boxProject ?? false;
   const next: ProjectRuntime = { ...runtime };
   const reasons: Partial<Record<SyncedField, string>> = {};
   const warnings: string[] = [];
@@ -88,6 +103,7 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
   // Dockerfile is a precheck error, so deleting one by accident cannot silently
   // change how the runtime deploys.
   if (runtime.build === "CodeZip" && hasDockerfile(context)) {
+    assertNoBoxContainerSwitch(boxProject, runtime, contextLabel);
     next.build = "Container";
     next.dockerfile = DOCKERFILE_NAME;
     reasons.build = reasons.dockerfile = `${DOCKERFILE_NAME} in ${contextLabel}`;
@@ -106,19 +122,9 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
       : next.build === "CodeZip"
         ? nodeEntrypoint(runtime, projectRoot, warnings)
         : undefined;
-  // A CodeZip runtime that runs in a box starts box with start.py, and its box profile runs the
-  // agent, so the manifest's entrypoint names the agent, not the Runtime's entry point.
-  const startsBox =
-    runtime.box !== undefined &&
-    next.build === "CodeZip" &&
-    runtime.entrypoint === BOX_CODEZIP_ENTRYPOINT;
-  if (entrypoint !== undefined && startsBox) {
-    if (entrypoint.value !== BOX_CODEZIP_ENTRYPOINT) {
-      warnings.push(
-        `runtime "${runtime.name}" runs its agent in a box, so its entrypoint stays ` +
-          `${BOX_CODEZIP_ENTRYPOINT}, which starts box, and its box profile runs the agent. ` +
-          `${entrypoint.reason} names ${entrypoint.value}, which is not used.`,
-      );
+  if (entrypoint !== undefined && syncKeepsBoxEntrypoint(boxProject, runtime)) {
+    if (entrypoint.value !== runtime.entrypoint) {
+      warnings.push(keptBoxEntrypointWarning(runtime.name, entrypoint.reason, entrypoint.value));
     }
   } else if (entrypoint !== undefined) {
     next.entrypoint = entrypoint.value;
@@ -531,6 +537,7 @@ export function prepareRuntimes(
   projectRoot: string,
   runtimes: ProjectRuntime[],
   purpose: "dev" | "deploy",
+  options: SyncOptions = {},
 ): PreparedRuntimes {
   const prepared: ProjectRuntime[] = [];
   const changed: RuntimeSync[] = [];
@@ -549,7 +556,7 @@ export function prepareRuntimes(
     }
     let sync: RuntimeSync;
     try {
-      sync = syncRuntimeBuild(runtime, projectRoot);
+      sync = syncRuntimeBuild(runtime, projectRoot, options);
     } catch (error) {
       if (!(error instanceof ProjectStateError)) throw error;
       pointAtReadme([error.message]);

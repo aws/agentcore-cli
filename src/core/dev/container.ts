@@ -348,7 +348,7 @@ export class ContainerDevRunner implements DevRunner {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
           `but its box profile ${profile} does not exist. Restore the profile that ` +
-          "`agentcore create` wrote.",
+          "`agentcore create` or `agentcore add runtime` wrote.",
       );
     }
     const profileText = readFileSync(profile, "utf8");

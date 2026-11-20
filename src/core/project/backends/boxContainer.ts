@@ -1,15 +1,18 @@
 import { readFileSync } from "node:fs";
-import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { ProjectStateError } from "../../../errors/errors";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
-import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
+import {
+  boxNetworkEdits,
+  runtimeProfileWriter,
+  writeBoxNetworkFiles,
+  writeRenderedBoxFiles,
+} from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
-import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
-import { BOX_CODEZIP_ENTRYPOINT, boxAwsDir, runtimeRunsInBox } from "../templates/boxProfile";
-import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
+import { runtimeRunsInBox } from "../templates/boxProfile";
+import type { BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
@@ -107,11 +110,11 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime that runs in a box
- * ({@link runtimeRunsInBox}). It generates the canonical AWS tree in `.box/<name>/aws/`: the box
- * release its `box.version` names, and what the runtime profile writer writes from the runtime's
- * Box network model (the Runtime profile and a byte copy of each policy file it names). It then
- * copies that tree into the build context's `.box-dist/`, so the image copies it. Returns the names
- * of the runtimes it staged.
+ * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the box release its
+ * `box.version` names, and what the runtime profile writer writes from the runtime's Box network
+ * model (the Runtime profile and a byte copy of each policy file it names). `.box/<name>/aws/`
+ * gets only what the writer writes, for people to read. Returns the names of the runtimes it
+ * staged.
  */
 export async function stageBoxContainers(
   project: Project,
@@ -124,7 +127,7 @@ export async function stageBoxContainers(
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
-    dist: boxAwsDir(runtime.name),
+    dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
     kind: "container" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
@@ -150,47 +153,7 @@ export async function stageBoxContainers(
     const release = await releaseFor(runtime.box?.version);
     await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
-    // Copy the canonical AWS tree into the build context's .box-dist so the image copies it.
-    const contextDist = join(containerBuildContext(project.rootPath, runtime), BOX_IMAGE_DIST);
-    await rm(contextDist, { recursive: true, force: true });
-    await cp(folder, contextDist, { recursive: true });
+    writeRenderedBoxFiles(project.rootPath, runtime.name, dist, filesOf(dist));
   }
   return runtimes.map((runtime) => runtime.name);
-}
-
-/**
- * Throws for a runtime of a Box project with no `box.version`. Every runtime of a Box project runs
- * in a box, and only `box.version` makes it do so, so without it build would stage no box and the
- * agent could not start on AgentCore Runtime. `agentcore create` writes it with the box release
- * this CLI pins.
- */
-export function assertBoxRuntimesHaveBoxVersion(spec: ProjectSpec): void {
-  if (!isBoxProject(spec)) return;
-  for (const runtime of spec.runtimes) {
-    if (runtime.box !== undefined) continue;
-    throw new ProjectStateError(
-      `runtime "${runtime.name}" has no box.version in agentcore.json, but every runtime of a Box ` +
-        `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
-        "runtime in agentcore.json, then retry.",
-    );
-  }
-}
-
-/**
- * Throws for a CodeZip runtime that runs in a box ({@link runtimeRunsInBox}) but whose entrypoint
- * is not start.py. Only start.py starts box on AgentCore Runtime, so another entrypoint would run
- * the agent with no box, while build still writes its box profile and Box gateway.
- */
-export function assertBoxCodeZipRuntimesStartBox(spec: ProjectSpec): void {
-  for (const runtime of spec.runtimes) {
-    if (runtime.build !== "CodeZip" || !runtimeRunsInBox(spec, runtime)) continue;
-    const [file = ""] = runtime.entrypoint.split(":");
-    if (file === BOX_CODEZIP_ENTRYPOINT) continue;
-    throw new ProjectStateError(
-      `runtime "${runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
-        `but its entrypoint is ${runtime.entrypoint}, so AgentCore Runtime would run the agent ` +
-        `with no box. Set "entrypoint": "${BOX_CODEZIP_ENTRYPOINT}" for the runtime in ` +
-        `agentcore.json, and keep ${BOX_CODEZIP_ENTRYPOINT} in ${runtime.codeLocation}, then retry.`,
-    );
-  }
 }

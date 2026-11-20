@@ -816,6 +816,24 @@ describe("FsProjectManager.create", () => {
 
 describe("FsProjectManager.create box profile", () => {
   test.each([
+    ["a Box project gets the Box lines", AGENT_PYTHON_STRANDS_BOX, true],
+    ["a project with no box matches v1.x", AGENT_PYTHON, false],
+  ])("writes .gitignore: %s", async (_label, scaffoldRuntimeInput, boxed) => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const gitignore = await readFile(join(directory, "example", ".gitignore"), "utf8");
+    for (const line of [".box/*/aws/", ".box-dist/", ".box-dev/"]) {
+      expect(gitignore.split("\n").includes(line)).toBe(boxed);
+    }
+  });
+
+  test.each([
     ["after installing", false],
     ["with --skip-install", true],
   ])(
@@ -2109,14 +2127,16 @@ describe("FsProjectManager.build", () => {
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
-    // Build generates the canonical AWS tree under .box/<agent>/aws.
-    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
-    expect(existsSync(join(aws, "box"))).toBe(true);
-    expect(existsSync(join(aws, "profile.toml"))).toBe(true);
-    // The zip carries box and the Runtime profile, copied into the code folder's .box-dist.
+    // The zip carries box and the Runtime profile in the code folder's .box-dist.
     const dist = join(directory, "example", "app", "agent_python_strands_box", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
-    expect(existsSync(join(dist, "profile.toml"))).toBe(true);
+    // .box/<agent>/aws has only the rendered Runtime profile, for people to read: box is staged once.
+    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
+    expect(await readFile(join(aws, "profile.toml"), "utf8")).toBe(
+      await readFile(join(dist, "profile.toml"), "utf8"),
+    );
+    expect(existsSync(join(aws, "box"))).toBe(false);
+    expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
   });
 
   test("downloads box from the public box release when it is not cached", async () => {

@@ -18,6 +18,11 @@ import {
 } from "../../../../components/wizard";
 import { docsRuntimeEntrypoint } from "../../../../core/project/templates/runtimeDocs";
 import {
+  BOX_CODEZIP_ENTRYPOINT,
+  boxLocalProfileFile,
+} from "../../../../core/project/templates/boxProfile";
+import { isBoxProject } from "../../../../projectSchemas/project";
+import {
   RUNTIME_LANGUAGES,
   runtimeDocsAddedMessage,
   toAddRuntimeInput,
@@ -35,6 +40,15 @@ const LANGUAGE_CHOICES: Choice<RuntimeLanguageFlag>[] = [
     value: "typescript",
     label: "typescript",
     description: "main.ts, dependencies in package.json (npm)",
+  },
+];
+
+/** A Box project runs every runtime in a box, and add runtime adds a box runtime only in Python. */
+const BOX_LANGUAGE_CHOICES: Choice<RuntimeLanguageFlag>[] = [
+  {
+    value: "python",
+    label: "python",
+    description: "main.py in a box: start.py starts box, and its box profile runs main.py",
   },
 ];
 
@@ -66,14 +80,22 @@ export function toRuntimeInput(values: RuntimeFormValues): RuntimeInput {
   };
 }
 
-function summaryOf(values: RuntimeFormValues): Record<string, string> {
+export function summaryOf(values: RuntimeFormValues, boxProject = false): Record<string, string> {
   const language = RUNTIME_LANGUAGES[values.language];
-  return {
+  const summary: Record<string, string> = {
     runtime: values.name,
     language,
     protocol: values.protocol,
     folder: `app/${values.name}/ (README.md, AGENTS.md)`,
     entrypoint: docsRuntimeEntrypoint(language),
+  };
+  if (!boxProject) return summary;
+  // add runtime gives a runtime of a Box project the start.py that starts box.
+  return {
+    ...summary,
+    folder: `app/${values.name}/ (README.md, AGENTS.md, ${BOX_CODEZIP_ENTRYPOINT})`,
+    entrypoint: BOX_CODEZIP_ENTRYPOINT,
+    "box profile": boxLocalProfileFile(values.name),
   };
 }
 
@@ -112,6 +134,7 @@ function AddRuntimeWizard({
   });
   const set = (update: Partial<RuntimeFormValues>) =>
     setValues((current) => ({ ...current, ...update }));
+  const boxProject = isBoxProject(project.spec);
 
   return (
     <Wizard
@@ -152,7 +175,7 @@ function AddRuntimeWizard({
       <Step stepKey="language" prompt="which language will you write it in?">
         <ChoiceField<RuntimeLanguageFlag>
           help="app/<name>/ gets a README.md and AGENTS.md describing what your code needs"
-          choices={LANGUAGE_CHOICES}
+          choices={boxProject ? BOX_LANGUAGE_CHOICES : LANGUAGE_CHOICES}
           value={values.language}
           onChange={(language) => set({ language })}
         />
@@ -168,7 +191,7 @@ function AddRuntimeWizard({
       </Step>
 
       <Step stepKey="review" prompt="this runtime will be added to agentcore.json">
-        <Summary items={summaryOf(values)} />
+        <Summary items={summaryOf(values, boxProject)} />
       </Step>
     </Wizard>
   );

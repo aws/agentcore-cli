@@ -626,7 +626,7 @@ describe("entrypoint of a CodeZip runtime that runs in a box", () => {
       ),
     });
 
-    const sync = syncRuntimeBuild(boxed(), root);
+    const sync = syncRuntimeBuild(boxed(), root, { boxProject: true });
 
     expect(sync.runtime.entrypoint).toBe("start.py");
     expect(sync.changes.map(({ field }) => field)).not.toContain("entrypoint");
@@ -637,11 +637,29 @@ describe("entrypoint of a CodeZip runtime that runs in a box", () => {
     ]);
   });
 
-  test("still takes the pyproject.toml entrypoint for a runtime with no box", async () => {
+  test.each([
+    ["a runtime with no box", runtime(), true],
+    ["a box runtime outside a Box project", boxed(), false],
+  ])("still takes the pyproject.toml entrypoint for %s", async (_, synced, boxProject) => {
     const root = await project({
       "app/search/pyproject.toml": pyproject(">=3.12", '[tool.agentcore]\nentrypoint = "app.py"\n'),
     });
 
-    expect(syncRuntimeBuild(runtime(), root).runtime.entrypoint).toBe("app.py");
+    expect(syncRuntimeBuild(synced, root, { boxProject }).runtime.entrypoint).toBe("app.py");
+  });
+
+  test("refuses the switch to a container build when a Dockerfile appears", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(">=3.12"),
+      "app/search/start.py": "",
+      "app/search/Dockerfile": "FROM python:3.12\n",
+    });
+
+    expect(() => prepareRuntimes(root, [boxed()], "deploy", { boxProject: true })).toThrow(
+      'runtime "search" runs its agent in a box as a CodeZip agent, but app/search has a ' +
+        "Dockerfile",
+    );
+    // Outside a Box project the Dockerfile still makes it a container build.
+    expect(syncRuntimeBuild(boxed(), root).runtime.build).toBe("Container");
   });
 });

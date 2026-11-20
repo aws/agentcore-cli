@@ -62,7 +62,7 @@ export class BoxDevRunner implements DevRunner {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +
           `agentcore.json), but ${profile} does not exist. ` +
-          "Restore the profile that `agentcore create` wrote.",
+          "Restore the profile that `agentcore create` or `agentcore add runtime` wrote.",
       );
     }
     const listen = boxIngressPort(input.runtime.protocol);
