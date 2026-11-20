@@ -313,8 +313,6 @@ describe("build writes the Box network of the box profile", () => {
     expect(await targetNames(root)).toContain("egress-github");
     expect((await boxGateway(root)).enableApplicationLogs).toBe(false);
 
-    // Without the field the gateway sends no logs, and a build that changes the targets does not
-    // add the field back.
     await editGateway(root, (gateway) => {
       delete (gateway as { enableApplicationLogs?: boolean }).enableApplicationLogs;
     });

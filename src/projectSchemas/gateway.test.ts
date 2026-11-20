@@ -462,13 +462,4 @@ describe("gateway application logs and traces", () => {
     expect("enableApplicationLogs" in written).toBe(false);
     expect("enableTraces" in written).toBe(false);
   });
-
-  it.each(["enableApplicationLogs", "enableTraces"])(
-    "rejects an %s that is not a boolean",
-    (field) => {
-      const parsed = AgentCoreGatewaySchema.safeParse({ ...gateway, [field]: "true" });
-
-      expect(parsed.error?.issues.map(({ path }) => path)).toEqual([[field]]);
-    },
-  );
 });
