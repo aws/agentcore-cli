@@ -181,6 +181,20 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     );
   });
 
+  test("replaces the incomplete folder an interrupted install left", async () => {
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "box"), "partial");
+    const { release, ffi, runner } = await fakeRelease();
+
+    const build = await resolveBoxLinuxBuild({}, { runner, home, release, ffi });
+
+    expect(build.binaries).toBe(root);
+    expect(await readFile(join(root, "box"), "utf8")).toBe("#!box\n");
+    expect(existsSync(join(root, "release.json"))).toBe(true);
+  });
+
   test("reuses an installed release without downloading again", async () => {
     const home = await temp("box-home-");
     const { release, ffi, runner, commands } = await fakeRelease();

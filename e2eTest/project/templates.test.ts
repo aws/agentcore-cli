@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import spawn from "cross-spawn";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +23,8 @@ type RuntimeTemplateTestCase = {
   skip?: boolean;
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime, so the test checks the
-   * Runtime's logs for box starting it. Create needs `box` on PATH. `agentcore dev` runs box on the
+   * Runtime's logs for box starting it, and installs the AGENTCORE_E2E_BOX_CDK build to deploy it.
+   * `agentcore dev` runs box on the
    * protocol's fixed ingress port (8080, 8000 or 9000), so the concurrent Runtime tests skip it; the
    * sequential dev tests below cover it.
    */
@@ -69,6 +71,20 @@ const AGUI_RUN_PAYLOAD = {
   forwardedProps: {},
 };
 
+/**
+ * Whether a `box` runs from PATH. Create checks for it for a CodeZip box template, and build and
+ * deploy of every Box template run `box profile show`, so the Box tests skip without one.
+ */
+const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
+/**
+ * The opt-in for the Box tests that deploy: an `@aws/agentcore-cdk` version or `file:` tarball
+ * that deploys Box projects, which the pinned release does not yet. It replaces the pin in each
+ * Box project's agentcore/cdk/package.json, so with it unset (as in CI) those tests skip.
+ */
+const BOX_CDK = process.env.AGENTCORE_E2E_BOX_CDK?.trim() || undefined;
+/** Whether the Box tests that deploy run. */
+const BOX_DEPLOYS = BOX_CDK !== undefined && BOX_ON_PATH;
+
 const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal",
@@ -92,8 +108,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
     skip: process.env.CI === "true" && process.platform !== "linux",
   },
   // The box templates run their agent in Strands Box on AgentCore Runtime; the cases test create,
-  // deploy and invoke, not `agentcore dev`. CI deploys with the released @aws/agentcore-cdk, which
-  // has no Box support yet, so they run only outside CI for now.
+  // deploy and invoke, not `agentcore dev`. They run only with the AGENTCORE_E2E_BOX_CDK opt-in.
   // The CodeZip box template on each other Python the CodeZip Runtime supports; it defaults to 3.14,
   // which the Box describe below covers, as it does the box container template.
   ...(["PYTHON_3_10", "PYTHON_3_11", "PYTHON_3_12", "PYTHON_3_13"] as const).map(
@@ -105,8 +120,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
       skipDev: true,
       runtimeVersion,
       box: true,
-      // CI deploys with the released @aws/agentcore-cdk, which has no Box support, and has no box.
-      skip: process.env.CI === "true",
+      skip: !BOX_DEPLOYS,
     }),
   ),
   {
@@ -241,12 +255,6 @@ const LOCAL_DEV_PORT_BASE = 18080;
  * tests run one at a time.
  */
 const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
-/**
- * Whether a `box` runs from PATH. Create, build and deploy of a Box template run it, and box ships
- * only arm64 builds, so the Box tests are optional: they skip on a machine without one, such as
- * the x86_64 Linux CI runner.
- */
-const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
 
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
@@ -337,10 +345,10 @@ describe(
 
 // The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
 // deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
-// `agentcore dev`, which the sequential tests below cover. They need `box` on PATH: create checks
-// for it. Run them with `bun run test:e2e -- --tagsFilter='box'`. CI skips them too: it deploys
-// with the released @aws/agentcore-cdk, which has no Box support.
-describe.skipIf(process.env.CI === "true" || !BOX_ON_PATH)(
+// `agentcore dev`, which the sequential tests below cover. They need `box` on PATH and the
+// AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable @aws/agentcore-cdk build, so CI skips them. Run them
+// with `bun run test:e2e -- --tagsFilter='box'`.
+describe.skipIf(!BOX_DEPLOYS)(
   "create, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
@@ -472,15 +480,16 @@ describe.skipIf(!BOX_ON_PATH)(
   () => {
     const cli = new CliRunner();
     const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+    if (!runtime) throw new Error("BOX_TEMPLATES has no agent-python-minimal-box case");
 
-    test.skipIf(!runtime)(
+    test(
       "allows the profile's host and blocks any other",
       {
         retry: 2,
         timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE,
       },
       async () => {
-        const template = runtime!;
+        const template = runtime;
         const projectDir = await createTemplateProject(cli, template);
         await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
         const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
@@ -561,7 +570,34 @@ async function createTemplateProject(
     for (const entry of spec.runtimes) entry.runtimeVersion = runtime.runtimeVersion;
     await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
   }
+  if (runtime.box && BOX_CDK) {
+    // The pinned @aws/agentcore-cdk cannot deploy a Box project yet; use the opted-in build.
+    const installed = await runCommand(
+      "npm",
+      ["install", "--no-audit", "--no-fund", `@aws/agentcore-cdk@${BOX_CDK}`],
+      join(created.project.path, "agentcore", "cdk"),
+    );
+    if (installed.exitCode !== 0) {
+      throw new Error(
+        `npm could not install @aws/agentcore-cdk@${BOX_CDK} (AGENTCORE_E2E_BOX_CDK).\n` +
+          `stdout: ${installed.stdout}\nstderr: ${installed.stderr}`,
+      );
+    }
+  }
   return created.project.path;
+}
+
+/** Given a command, its arguments and a working directory, runs it and captures its result. */
+function runCommand(executable: string, args: string[], cwd: string): Promise<RunResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout!.on("data", (chunk) => (stdout += chunk));
+    child.stderr!.on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (exitCode) => resolve({ stdout, stderr, exitCode: exitCode ?? -1 }));
+  });
 }
 
 /**

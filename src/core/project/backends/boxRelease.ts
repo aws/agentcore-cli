@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -305,18 +306,28 @@ async function installFfi(
 /**
  * Moves the checked `payload` into the cache folder `root`, where another process may be
  * installing the same release at the same time: several concurrent build or deploy commands each
- * download into their own work folder. `root` only ever appears through a rename of a complete
- * payload, so once `installed()` holds it is never removed; a process that loses the race keeps
- * the winner's copy and drops its own.
+ * download into their own work folder. A complete `root` only ever appears through a rename of a
+ * complete payload, and a process that loses the race keeps the winner's copy and drops its own.
+ * `root` is removed only when the rename fails and `installed()` does not hold, as for a folder an
+ * interrupted install left. Another process can finish its install between that check and the
+ * removal; the removal then takes a complete install away, and the next command downloads again.
  */
 function publishInstall(payload: string, root: string, installed: () => boolean): void {
   if (installed()) return;
-  // An incomplete folder from an interrupted install; a concurrent process may remove it too.
+  try {
+    renameSync(payload, root);
+    return;
+  } catch (error) {
+    // `root` exists: EEXIST or ENOTEMPTY, or EPERM on Windows. It holds the install of a process
+    // that renamed its payload first, or an incomplete folder from an interrupted install.
+    if (installed()) return;
+    if (!existsSync(root)) throw error;
+  }
+  // A concurrent process may remove the incomplete folder too.
   rmSync(root, { recursive: true, force: true });
   try {
     renameSync(payload, root);
   } catch (error) {
-    // EEXIST or ENOTEMPTY: another process renamed its payload into `root` first.
     if (!installed()) throw error;
   }
 }
