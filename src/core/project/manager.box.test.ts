@@ -9,7 +9,7 @@ import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
-import { FsProjectManager } from "./manager";
+import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import { boxStartFolder } from "./templates/boxProfile";
@@ -42,6 +42,18 @@ function subject(json?: ReadWriteJson): FsProjectManager {
     checkTool: async () => {},
     ...(json && { json }),
   });
+}
+
+/** A JSON reader and writer that refuses each write of `specFile`, for each user, root too. */
+function refusingSpecWrites(specFile: string): ReadWriteJson {
+  const files = new FsReadWriteJson({ logger: createSilentLogger() });
+  return {
+    read: (path, schema) => files.read(path, schema),
+    write: async (path, data) => {
+      if (path === specFile) throw new Error(`the test refuses the write of ${path}`);
+      return files.write(path, data);
+    },
+  };
 }
 
 async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
@@ -202,14 +214,18 @@ describe("agentcore create", () => {
     tempDirectories.push(directory);
     process.chdir(directory);
 
-    const project = await drain(
-      manager.create({
-        name: "example",
-        skipInstall: true,
-        skipGit: true,
-        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
-      }),
-    );
+    const warnings: string[] = [];
+    const generator = manager.create({
+      name: "example",
+      skipInstall: true,
+      skipGit: true,
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+    });
+    let next = await generator.next();
+    for (; !next.done; next = await generator.next()) {
+      if (next.value.type === "warning") warnings.push(next.value.message);
+    }
+    const project = next.value;
 
     // Only a box template runs its agent in a box, so only it makes a Box project.
     const spec = await specOnDisk(project);
@@ -217,6 +233,7 @@ describe("agentcore create", () => {
     expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
       projectType ? ["agent-box-egress"] : [],
     );
+    expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
@@ -236,6 +253,7 @@ describe("agentcore create", () => {
       protocolType: "None",
       boundRuntime: "my_agent",
       discoveryPrefix: "AGENTCORE_GATEWAY_BOX",
+      enableApplicationLogs: true,
       targets: [],
     });
   });
@@ -397,6 +415,24 @@ describe("gateway targets in a Box project", () => {
       "agent",
       "search",
     ]);
+  });
+
+  test("add runtime says that the new Box gateway sends its logs, and how to stop them", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+
+    const warnings: string[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      const event = next.value as { type: string; message?: string };
+      if (event.type === "warning") warnings.push(event.message!);
+    }
+
+    const notices = warnings.filter((warning) => warning.includes("APPLICATION_LOGS"));
+    expect(notices).toEqual([boxGatewayLogsNotice(boxGatewaySpec("search").name)]);
   });
 
   test("add runtime refuses a Bedrock Agent import in a Box project, and changes nothing", async () => {
@@ -592,16 +628,7 @@ describe("gateway targets in a Box project", () => {
   test("a failed write of agentcore.json gives no notice of the default log target", async () => {
     const project = await createdProject(subject());
     const specFile = join(project.rootPath, "agentcore", "agentcore.json");
-    // The write of agentcore.json fails for each user, root too; each other file is written.
-    const files = new FsReadWriteJson({ logger: createSilentLogger() });
-    const json: ReadWriteJson = {
-      read: (path, schema) => files.read(path, schema),
-      write: async (path, data) => {
-        if (path === specFile) throw new Error(`the test refuses the write of ${path}`);
-        return files.write(path, data);
-      },
-    };
-    const generator = subject(json).addResource(project, {
+    const generator = subject(refusingSpecWrites(specFile)).addResource(project, {
       resourceType: "runtime",
       resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
     } as never);
@@ -615,6 +642,30 @@ describe("gateway targets in a Box project", () => {
       })(),
     ).rejects.toThrow(`the test refuses the write of ${specFile}`);
     expect(events.some((event) => (event as { type?: string }).type === "warning")).toBe(false);
+  });
+
+  test("a failed write of agentcore.json gives no notice that the new Box gateway sends its logs", async () => {
+    const project = await createdProject(subject());
+    const specFile = join(project.rootPath, "agentcore", "agentcore.json");
+    const before = await specText(project);
+    const generator = subject(refusingSpecWrites(specFile)).addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    const messages: (string | undefined)[] = [];
+
+    await expect(
+      (async () => {
+        for (let next = await generator.next(); !next.done; next = await generator.next()) {
+          messages.push((next.value as { message?: string }).message);
+        }
+      })(),
+    ).rejects.toThrow(`the test refuses the write of ${specFile}`);
+    // The add wrote the box profile of the new runtime, and then the write of agentcore.json failed.
+    const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
+    expect(messages).toContain(`writing box profile ${profile}`);
+    expect(messages).not.toContain(boxGatewayLogsNotice(boxGatewaySpec("search").name));
+    expect(await specText(project)).toBe(before);
   });
 
   test("add runtime warns when the kept box profile is for another protocol", async () => {

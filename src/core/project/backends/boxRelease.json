@@ -1,11 +1,11 @@
 {
   "box": {
     "repo": "mquang-amazon/box-releases",
-    "version": "0.1.11-mquang.preview.9",
+    "version": "0.1.11-preview.10",
     "linux": {
       "target": "aarch64-unknown-linux-gnu",
-      "asset": "box-v0.1.11-mquang.preview.9-aarch64-unknown-linux-gnu.tar.gz",
-      "sha256": "5b0f8802fb1c5cbc22db4bfcefc9061e048e931c972584350ebce6c1b15da884"
+      "asset": "box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "45740d3ea768783b9a8939111ea0a26efd2dacf27ffa86104a4634ce1c2dc583"
     }
   }
 }
