@@ -141,7 +141,10 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     const stderr: string[] = [];
     try {
       const events = this.streamProcess(command, {
-        cwd: join(projectRoot, ...startFolder.split("/").filter(Boolean)),
+        cwd:
+          startFolder === ""
+            ? projectRoot
+            : join(projectRoot, ...startFolder.split("/").filter(Boolean)),
         env: { ...this.env, NO_COLOR: "1" },
       });
       for await (const event of events) {

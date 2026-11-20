@@ -264,6 +264,28 @@ describe("BoxCliProfileResolver", () => {
     ]);
   });
 
+  test("runs box in the start folder, with the profile path from there", async () => {
+    const fake = streamer(stdout(SHOWN));
+    const resolver = new BoxCliProfileResolver({ env: { PATH: "/bin" }, ...fake });
+
+    await resolver.resolve("/work/demo", ".box/agent/local/profile.toml", "app/agent");
+
+    expect(fake.calls).toEqual([
+      {
+        command: [
+          "box",
+          "profile",
+          "show",
+          "../../.box/agent/local/profile.toml",
+          "--format",
+          "json",
+          "--full",
+        ],
+        options: { cwd: join("/work/demo", "app", "agent"), env: { PATH: "/bin", NO_COLOR: "1" } },
+      },
+    ]);
+  });
+
   const COMMAND = ["box", "profile", "show", ".box/profile.toml", "--format", "json", "--full"];
   const refusal = (lines: string[], exitCode: number | null = 1) =>
     streamer(
