@@ -223,10 +223,5 @@ bun run "$CLI" deploy
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.
-- **`agentcore dev` uses an old key when the shell sets none.** Earlier builds of the
-  box-integration branches copied each box variable into `agentcore/.env.local`, under a
-  `# Key for box egress '<route>' (env://<VAR>), read by box under agentcore dev` comment, and
-  dev still reads it there. Delete those lines (the comment and the `<VAR>=` line under it), then
-  export the variable in your shell instead.
 - **The CDK app uses the published constructs, not yours.** Redo step 5. Confirm with
   `cat agentcore/cdk/node_modules/@aws/agentcore-cdk/package.json`.
