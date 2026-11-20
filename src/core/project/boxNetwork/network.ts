@@ -229,6 +229,16 @@ export function buildBoxNetwork(
       }),
     grantedActions: project.grantedActions,
     warnings: [
+      ...map.hosts.flatMap(({ authority, uncheckedBy }) =>
+        uncheckedBy.map((ruleId) => {
+          const { place, subject } = describeRule(parsed, ruleId);
+          return (
+            `${place}: ${subject} has more path conditions than build can check together, so ` +
+            `build cannot tell whether your policy allows a request to ${authority}. Build gives ` +
+            "the host a gateway target, and Box still applies the rule."
+          );
+        }),
+      ),
       ...hostWarnings(targets.hosts),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);

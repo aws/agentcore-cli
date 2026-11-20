@@ -63,6 +63,49 @@ describe("the policy decision on each host", () => {
     expect(host(result, "y.example.com")?.reachable).toBe(true);
   });
 
+  test("finds a host reachable when two path patterns of one permit hold on one path", () => {
+    const both = 'context.input.path like "/v1/*" && context.input.path like "*/items"';
+    const result = map(reach("items", "x.example.com", both));
+    expect(host(result, "x.example.com")).toMatchObject({
+      reachable: true,
+      enforcedByBox: ["items"],
+      uncheckedBy: [],
+    });
+    expect(host(result, "x.example.com")?.decision.allowed.map((s) => s.path)).toContain(
+      "/v1/items",
+    );
+  });
+
+  test("finds a path of a permit that a forbid of one path leaves open", () => {
+    const both = 'context.input.path like "/v1/*" && context.input.path like "*/items"';
+    const result = map(
+      reach("items", "x.example.com", both) +
+        forbid("no_list", on("x.example.com", 'context.input.path == "/v1/items"')),
+    );
+    const decided = host(result, "x.example.com");
+    expect(decided?.reachable).toBe(true);
+    expect(decided?.decision.allowed.map((s) => s.path)).not.toContain("/v1/items");
+  });
+
+  test("finds no path when the path patterns of a permit never hold together", () => {
+    const never = 'context.input.path like "/v1/*" && context.input.path like "/v2/*"';
+    expect(host(map(reach("never", "x.example.com", never)), "x.example.com")).toMatchObject({
+      reachable: false,
+      uncheckedBy: [],
+    });
+  });
+
+  test("keeps a host reachable, and names the permit, when its path tests are too many to check", () => {
+    const many = [..."abcdefghijklm"].map((c) => `context.input.path like "*${c}*"`).join(" && ");
+    const result = map(reach("many", "x.example.com", many));
+    expect(result.failures).toEqual([]);
+    expect(host(result, "x.example.com")).toMatchObject({
+      reachable: true,
+      uncheckedBy: ["many"],
+      enforcedByBox: ["many"],
+    });
+  });
+
   test("names the limited permits and the forbids Box enforces on its own, in policy order", () => {
     const result = map(
       forbid("no_admin", on("x.example.com", 'context.input.path like "/admin/*"')) +

@@ -1010,6 +1010,18 @@ describe("warnings", () => {
     ]);
   });
 
+  test("names a permit whose path tests build cannot check together, and keeps its host", () => {
+    const many = [..."abcdefghijklm"].map((c) => `context.input.path like "*${c}*"`).join(" && ");
+    const r = model(reach("many", "x.example.com", many));
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual(["x.example.com -> egress-x-example-com"]);
+    expect(r.network.warnings[0]).toBe(
+      '.box/agent/local/policy.dw:2:1: The rule "many" has more path conditions than build can ' +
+        "check together, so build cannot tell whether your policy allows a request to " +
+        "x.example.com. Build gives the host a gateway target, and Box still applies the rule.",
+    );
+  });
+
   test("names an entry whose host gets no target, and the forbids that deny it", () => {
     expect(
       model(forbid("no_github", on("api.github.com")), { github: GITHUB }).network.warnings,
