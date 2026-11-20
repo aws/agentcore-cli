@@ -45,6 +45,8 @@ function boxPython(executable: string): string {
     "python3",
     [
       "-I",
+      // No __pycache__ in src/assets, which build copies into the package.
+      "-B",
       "-c",
       "import sys; sys.path.insert(0, sys.argv[1]); import start; " +
         "print(start.box_python(sys.argv[2], (3, 12)))",
