@@ -85,7 +85,7 @@ const ABSOLUTE_PATH_PATTERN = "(/[.]{0,2}[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)+";
 /**
  * The tools of @box/base that get the project's write grant: box gives each one its own grant,
  * so each lists the agent's `deny_write` folders as well. Taken from @box/base in the box release
- * that `boxRelease.json` pins (0.1.11-mquang.preview.9). When the pin moves, check the tools of
+ * that `boxRelease.json` pins (0.1.11-preview.10). When the pin moves, check the tools of
  * @box/base: box refuses a CodeZip box profile if a tool it misses gets the project write grant.
  */
 const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];

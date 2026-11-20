@@ -13,7 +13,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
-import { FsProjectManager } from "./manager";
+import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -163,7 +163,7 @@ async function strandsProject(
     boxProfileResolver: box,
     ...(options.backends && { backends: options.backends }),
   });
-  const { value: created } = await drain(
+  const { value: created, warnings: createWarnings } = await drain(
     manager.create({
       name: "demo",
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
@@ -176,7 +176,7 @@ async function strandsProject(
   const root = created.rootPath;
   await mkdir(join(root, "agentcore", "cdk", "node_modules"), { recursive: true });
   counter.specWrites = 0;
-  return { manager, root, counter, box };
+  return { manager, root, counter, box, createWarnings };
 }
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
@@ -206,6 +206,7 @@ async function boxGateway(root: string) {
   const spec = JSON.parse(await text(root, SPEC));
   return spec.agentCoreGateways.find(({ name }: { name: string }) => name === GATEWAY) as {
     targets: Record<string, unknown>[];
+    enableApplicationLogs?: boolean;
   };
 }
 
@@ -310,6 +311,34 @@ describe("build writes the Box network of the box profile", () => {
     expect(await targetNames(root)).toContain("egress-github");
     // The Box gateway gets only the fields build changed.
     expect(Object.keys(await boxGateway(root))).not.toContain("enableSemanticSearch");
+  });
+
+  test("create says that the Box gateway sends its logs, and how to stop them", async () => {
+    const { createWarnings } = await strandsProject();
+
+    expect(createWarnings).toContain(boxGatewayLogsNotice(GATEWAY));
+  });
+
+  test("keeps the enableApplicationLogs of the Box gateway as the user wrote it", async () => {
+    const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    expect((await boxGateway(root)).enableApplicationLogs).toBe(true);
+
+    await editGateway(root, (gateway) => Object.assign(gateway, { enableApplicationLogs: false }));
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-github");
+    expect((await boxGateway(root)).enableApplicationLogs).toBe(false);
+
+    await editGateway(root, (gateway) => {
+      delete (gateway as { enableApplicationLogs?: boolean }).enableApplicationLogs;
+    });
+    const profile = await text(root, PROFILE);
+    await writeFile(path(root, PROFILE), profile.replace(GITHUB_ROUTE, ""));
+    box.answer = shows();
+    await build(manager, root);
+    expect(await targetNames(root)).not.toContain("egress-github");
+    expect("enableApplicationLogs" in (await boxGateway(root))).toBe(false);
   });
 
   test("writes no target for an env:// route whose key build cannot find, and says what to set", async () => {

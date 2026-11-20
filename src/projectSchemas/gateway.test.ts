@@ -441,3 +441,25 @@ describe("gateway custom validation", () => {
     expect(imported.error?.issues[0]?.path).toEqual(["additionalPolicies"]);
   });
 });
+
+describe("gateway application logs and traces", () => {
+  const gateway = { name: "gateway", targets: [] };
+  // FsReadWriteJson writes the parsed spec with JSON.stringify, so this is what agentcore.json keeps.
+  const roundTrip = (input: object) =>
+    JSON.parse(JSON.stringify(AgentCoreGatewaySchema.parse(input))) as Record<string, unknown>;
+
+  it.each([true, false])("keeps enableApplicationLogs and enableTraces set to %p", (value) => {
+    const written = roundTrip({ ...gateway, enableApplicationLogs: value, enableTraces: value });
+
+    expect(written.enableApplicationLogs).toBe(value);
+    expect(written.enableTraces).toBe(value);
+    expect(roundTrip(written)).toEqual(written);
+  });
+
+  it("writes neither field back when the gateway does not set it", () => {
+    const written = roundTrip(gateway);
+
+    expect("enableApplicationLogs" in written).toBe(false);
+    expect("enableTraces" in written).toBe(false);
+  });
+});

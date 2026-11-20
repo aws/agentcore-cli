@@ -38,7 +38,7 @@ to it.
 ## Prerequisites
 
 - A local checkout of the CLI and of `@aws/agentcore-cdk`.
-- `box` `0.1.11-mquang.preview.9` on your `PATH`, the release the CLI pins. The oldest box that
+- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. The oldest box that
   works is `0.1.11-linux-preview.7`, the first release with
   [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
   the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
@@ -62,21 +62,21 @@ Download the archive for your machine, check it, and unpack it into a versioned 
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-mquang.preview.9 && cd ~/.local/share/box/0.1.11-mquang.preview.9
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-mquang.preview.9/box-v0.1.11-mquang.preview.9-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-mquang.preview.9/SHA256SUMS.txt
+mkdir -p ~/.local/share/box/0.1.11-preview.10 && cd ~/.local/share/box/0.1.11-preview.10
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/SHA256SUMS.txt
 grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-v0.1.11-mquang.preview.9-aarch64-apple-darwin.tar.gz
+tar -xzf box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-mquang.preview.9 && cd ~/.local/share/box/0.1.11-mquang.preview.9
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-mquang.preview.9/box-v0.1.11-mquang.preview.9-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-mquang.preview.9/SHA256SUMS.txt
+mkdir -p ~/.local/share/box/0.1.11-preview.10 && cd ~/.local/share/box/0.1.11-preview.10
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/SHA256SUMS.txt
 grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-v0.1.11-mquang.preview.9-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
@@ -84,8 +84,8 @@ The check must print `OK`.
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
 
 ```
-export PATH="$HOME/.local/share/box/0.1.11-mquang.preview.9:$PATH"
-grep -q 'share/box/0.1.11-mquang.preview.9' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-mquang.preview.9:$PATH"' >> ~/.zshrc
+export PATH="$HOME/.local/share/box/0.1.11-preview.10:$PATH"
+grep -q 'share/box/0.1.11-preview.10' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-preview.10:$PATH"' >> ~/.zshrc
 ```
 
 The `grep -q ... ||` adds the line only once, so running it again does not repeat it. When you move
@@ -100,11 +100,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` must print `box 0.1.11-mquang.preview.9`, the release the CLI pins in
+- `box --version` must print `box 0.1.11-preview.10`, the release the CLI pins in
   `src/core/project/backends/boxRelease.json`. The oldest box that build, deploy and dev accept is
   `0.1.11-linux-preview.7`.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-mquang.preview.9"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-preview.10"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
 to that folder.

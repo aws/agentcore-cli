@@ -654,6 +654,14 @@ export class CdkBackend implements ProjectBackend {
     const asArn = (value: string | undefined) => (value ? { arn: value } : undefined);
     const asId = (value: string | undefined) => (value ? { id: value } : undefined);
 
+    // The L3 joins a target name that two or more gateways have to its gateway with a colon.
+    const gatewaysByTargetName = new Map<string, number>();
+    for (const gateway of spec.agentCoreGateways) {
+      for (const name of new Set((gateway.targets ?? []).map((target) => target.name))) {
+        gatewaysByTargetName.set(name, (gatewaysByTargetName.get(name) ?? 0) + 1);
+      }
+    }
+
     const identifierOf = (
       resourceType: DeployableResource,
       name: string,
@@ -675,8 +683,12 @@ export class CdkBackend implements ProjectBackend {
         case "gateway":
           return asArn(byExportName("Gateway", name, "Arn"));
         case "gateway-target":
-          // The L3 exports an id for targets and never an ARN
-          return asId(byExportName("GatewayTarget", name, "Id"));
+          // The L3 exports an id for targets and never an ARN.
+          return asId(
+            (gatewaysByTargetName.get(name) ?? 0) > 1
+              ? byExportName("GatewayTarget", `${owner ?? ""}:${name}`, "Id")
+              : byExportName("GatewayTarget", name, "Id"),
+          );
         case "policy":
           // ExportName: <StackName>-Policy-<engineName>-<policyName>-Arn
           return asArn(byExportName("Policy", owner ?? "", name, "Arn"));
@@ -742,13 +754,21 @@ export class CdkBackend implements ProjectBackend {
       ...spec.credentials.map(({ name }) => resolve("credential", name)),
       ...spec.evaluators.map(({ name }) => resolve("evaluator", name)),
       ...spec.onlineEvalConfigs.map(({ name }) => resolve("online-eval", name)),
-      ...spec.agentCoreGateways.map((gateway) =>
-        resolve("gateway", gateway.name, {
+      ...spec.agentCoreGateways.map((gateway) => {
+        // A target of a gateway that is not deployed has no id, even when an export has its name.
+        const deployed = identifierOf("gateway", gateway.name) !== undefined;
+        return resolve("gateway", gateway.name, {
           children: (gateway.targets ?? []).map(({ name }) =>
-            resolve("gateway-target", name, { owner: gateway.name }),
+            deployed
+              ? resolve("gateway-target", name, { owner: gateway.name })
+              : {
+                  resourceType: "gateway-target" as const,
+                  name,
+                  deploymentState: "local-only" as const,
+                },
           ),
-        }),
-      ),
+        });
+      }),
       ...spec.policyEngines.map((engine) =>
         resolve("policy-engine", engine.name, {
           children: (engine.policies ?? []).map(({ name }) =>
