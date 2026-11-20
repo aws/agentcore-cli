@@ -589,6 +589,25 @@ describe("the additions rule", () => {
       });
     });
 
+    test("gives a list no Runtime grant of the template when the user removed a grant of the template from it", () => {
+      const local = createdProfile(CODEZIP);
+      const filesystem = agentOf(local).filesystem;
+      // The user keeps the code folder, and removes the venv and the uv Pythons.
+      filesystem.read = ["${{ workspace }}/app/agent"];
+      filesystem.exec = [];
+
+      expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
+        read: ["${{ workspace }}/app/agent"],
+      });
+    });
+
+    test("gives an [agent] with no filesystem table no grant", () => {
+      const local = createdProfile(CODEZIP);
+      delete agentOf(local).filesystem;
+
+      expect(agentOf(apply(local, contextOf(CODEZIP)).table)).not.toHaveProperty("filesystem");
+    });
+
     test("leaves out a grant that the user removed from a container's template", () => {
       const local = createdProfile(CONTAINER);
       const filesystem = agentOf(local).filesystem;

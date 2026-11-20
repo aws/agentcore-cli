@@ -270,9 +270,12 @@ function runtimeEnv(
 }
 
 /**
- * `[agent.filesystem]` for the Runtime. In each list, the template's Runtime grants come first:
- * each one that only the Runtime has, and each one that the template has under dev too and the
- * local profile keeps. Each grant of the user follows in its order. A list that ends empty goes.
+ * `[agent.filesystem]` for the Runtime. In each list, the template's Runtime grants come first, and
+ * each grant of the user follows in its order. When the local list keeps each grant of the
+ * template, the list gets each Runtime grant of the template. When the user removed a grant of the
+ * template, the list gets only the Runtime grants that it names, so the Runtime gets no grant that
+ * the local profile does not give. A grant is the same as another when its path is, whether it is
+ * optional or not. A list that ends empty goes.
  */
 function runtimeFilesystem(
   filesystem: unknown,
@@ -291,20 +294,30 @@ function runtimeFilesystem(
     }
     const grants = (own ?? []) as unknown[];
     const localGrants = listOf(templateLocal[name]);
-    const kept = listOf(templateRuntime[name]).filter(
-      (grant) => !includes(localGrants, grant) || includes(grants, grant),
-    );
+    const runtimeGrants = listOf(templateRuntime[name]);
+    const keepsTemplate = localGrants.every((grant) => includesPath(grants, grant));
+    const kept = keepsTemplate
+      ? runtimeGrants
+      : runtimeGrants.filter((grant) => includesPath(grants, grant));
     const users = grants.filter(
       (grant, index) =>
-        !includes(localGrants, grant) &&
-        !includes(kept, grant) &&
-        !includes(grants.slice(0, index), grant),
+        !includesPath(localGrants, grant) &&
+        !includesPath(kept, grant) &&
+        !includesPath(grants.slice(0, index), grant),
     );
     const list = [...structuredClone(kept), ...users];
     if (list.length > 0) result[name] = list;
   }
   return filesystem !== undefined || Object.keys(result).length > 0 ? result : undefined;
 }
+
+/** The path of a filesystem grant: the string, or the `path` of a grant table. */
+const pathOf = (grant: unknown): unknown =>
+  isTable(grant) && typeof grant.path === "string" ? grant.path : grant;
+
+/** Whether `list` holds a grant of the path of `grant`, optional or not. */
+const includesPath = (list: readonly unknown[], grant: unknown) =>
+  list.some((other) => sameValue(pathOf(other), pathOf(grant)));
 
 /**
  * Each `[[agent.ingress]]` for the Runtime: the template's own ingress becomes its Runtime ingress,
@@ -389,10 +402,6 @@ const tableOf = (value: unknown): TomlTable => (isTable(value) ? value : {});
 
 /** `value` when it is a list, or an empty list. */
 const listOf = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
-
-/** Whether `list` holds a value equal to `value`. */
-const includes = (list: readonly unknown[], value: unknown) =>
-  list.some((other) => sameValue(other, value));
 
 /** Whether two TOML values are equal: tables by their keys in any order, lists in order. */
 function sameValue(left: unknown, right: unknown): boolean {
