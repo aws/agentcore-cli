@@ -279,13 +279,14 @@ describe("build writes the Box network of the box profile", () => {
     expect(profile.policies).toEqual(["policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
     const egress = profile.egress as Record<string, unknown>;
+    // The route of [egress.github] keeps the name of its entry, and goes to its target.
     expect(Object.keys(egress).sort()).toEqual([
       "agentcore",
       "bedrock",
-      "egress-github",
       "egress-httpbin-org",
+      "github",
     ]);
-    expect(egress["egress-github"]).toEqual(gatewayRoute("egress-github", "api.github.com"));
+    expect(egress.github).toEqual(gatewayRoute("egress-github", "api.github.com"));
     expect(egress["egress-httpbin-org"]).toEqual(gatewayRoute("egress-httpbin-org", "httpbin.org"));
     expect(egress.bedrock).toEqual(
       gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
@@ -401,7 +402,7 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["gh", "weather", "bedrock", "agentcore"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(egress.gh).toMatchObject({ destinations: ["api.github.com"] });
+    expect(egress.github).toEqual(gatewayRoute("gh", "api.github.com"));
   });
 
   test("removes a target it added when the profile no longer allows its host, and only that one", async () => {
@@ -440,7 +441,11 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual(["bedrock", "agentcore"]);
+    // The route of [egress.memory] keeps the name of its entry, and goes to the agentcore target.
+    expect(Object.keys(egress)).toEqual(["bedrock", "memory"]);
+    expect(egress.memory).toEqual(
+      gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
+    );
   });
 
   test("on a first build, stops with every problem, where it is, and writes nothing", async () => {

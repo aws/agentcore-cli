@@ -59,7 +59,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       host.sources.some((source) => source.kind === "entry" && source.egressEntry === name),
     );
     for (const route of routesOf(hosts, routes)) {
-      egress[route.target] = egressRoute(entry, route);
+      egress[routeKey(route, routes, context)] = egressRoute(entry, route);
       written.add(route.target);
     }
   }
@@ -81,7 +81,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (route.server) {
       mcp[route.server.mcpEntry] = mcpServer({}, route, route.server);
     } else {
-      egress[route.target] = egressRoute({}, route);
+      egress[routeKey(route, routes, context)] = egressRoute({}, route);
     }
   }
 
@@ -141,6 +141,33 @@ function gatewayRoutes(context: RuntimeProfileContext): GatewayRoute[] {
       .find((source) => source !== undefined);
     return { target: target.name, host: hostOf(target), ...(server && { server }) };
   });
+}
+
+/**
+ * The key of the `[egress]` route of `route`: the name of the one entry whose one host the route
+ * serves, else the name of the target. A pack that the profile imports keeps its own
+ * `[egress.<name>]` on the Runtime, and box merges it with the route of that name, as
+ * `[egress.bedrock]` of @box/bedrock does. A route under another name would be a second route to
+ * the host, which box refuses. A target of the same name for another host keeps its name.
+ */
+function routeKey(
+  route: GatewayRoute,
+  routes: readonly GatewayRoute[],
+  context: RuntimeProfileContext,
+): string {
+  const entriesOf = (host: BoxNetworkHost) => [
+    ...new Set(
+      host.sources.flatMap((source) => (source.kind === "entry" ? [source.egressEntry] : [])),
+    ),
+  ];
+  const served = context.hosts.filter((host) => host.target === route.target);
+  const entries = [...new Set(served.flatMap(entriesOf))];
+  if (entries.length !== 1) return route.target;
+  const name = entries[0]!;
+  const hosts = context.hosts.filter((host) => entriesOf(host).includes(name));
+  if (hosts.length !== 1) return route.target;
+  if (name !== route.target && routes.some(({ target }) => target === name)) return route.target;
+  return name;
 }
 
 /** The routes of `hosts`, in the order of the hosts; a host with no route has none. */
