@@ -127,8 +127,8 @@ export function clausesFor(statement: Statement, action: NetworkAction): ClauseS
     for (const condition of statement.conditions) {
       parts.push(conditionFormula(condition, action));
       // Box does not read a condition after one that an action test makes false.
-      const value = condition.body.kind === "cedar" && actionValue(condition.body.expr, action);
-      if (value === (condition.polarity !== "when")) break;
+      if (condition.body.kind !== "cedar") continue;
+      if (actionValue(condition.body.expr, action) === (condition.polarity !== "when")) break;
     }
     const clauses: Clause[] = [];
     const dead: DeadCause[] = [];
