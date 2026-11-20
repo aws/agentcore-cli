@@ -136,10 +136,13 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
 - **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
   profile. Each key of the local profile stays, and build changes
   only what must differ on AgentCore Runtime:
-  - each `[egress]` host with a gateway target becomes one `[egress.<target>]` route to
-    `<runtime>-box-egress`, and an HTTP `[mcp.<name>]` server gets the same gateway backend;
-  - the agent command, env, filesystem and ingress get their Runtime values (no `--reload`, no
-    `LOCAL_DEV`, the deployed region, listen on `0.0.0.0`);
+  - each `[egress]` host with a gateway target becomes one route to `<runtime>-box-egress`: the
+    first host of an entry keeps the name of the entry, so a pack's own entry of that name merges
+    with it, and each other host gets `[egress.<target>]`; an HTTP `[mcp.<name>]` server gets the
+    same gateway backend;
+  - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
+    `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
+    ingress on `0.0.0.0` on the port of the protocol;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
@@ -157,13 +160,19 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
   local profile. `agentcore create` and `agentcore add runtime` give this notice for each box
   runtime.
 
-  Build stops, and names the key and its line, for a value that cannot work on the Runtime: a path
-  of the project outside the code folder, a home path (`${{ home }}`, `~`, `/Users`, `/home`), a
-  CodeZip program of the agent, a stdio server, or a tool outside the code folder, a CodeZip write
-  grant in the code folder, `network.contain_egress = false`, or a telemetry target that is not
-  CloudWatch. The route of an `[egress]` entry with one host keeps the name of the entry, so a
-  pack's own entry of that name merges with it. Each policy file
+  Build stops, and names the key and its line, for a value that cannot work on the Runtime: a
+  required grant or a command path in the project outside the code folder, in the venv, or in a
+  home folder (`${{ home }}`, `~`, `/Users`, `/home`); a CodeZip program that `PATH` finds, such as
+  `npx`; a CodeZip write grant in the code folder; `network.contain_egress = false`; a CloudWatch
+  target that box refuses; or a telemetry target that is not CloudWatch or `file`. Build warns, and
+  goes on, for what the Runtime does without: a `deny` entry or an optional grant with no place
+  there, a `deny` entry on the venv (the venv is the code folder on the Runtime), a `file` telemetry
+  target, and a program at an absolute path of the system, which build cannot see. Each policy file
   is copied beside the profile, byte for byte.
+
+  Under `agentcore dev`, the CodeZip templates give the box `[project] access = "write"`, and box
+  then refuses a stdio server or a tool whose program is the venv's Python ("a link out of a folder
+  the box can write"). To run one, set `access = "read"` in `[project]` of the local profile.
 
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
