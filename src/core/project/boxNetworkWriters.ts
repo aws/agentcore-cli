@@ -486,7 +486,6 @@ function withoutUnsentRoutes(
   return result;
 }
 
-/** The writers that build and deploy run before synth, in order. */
 /**
  * Sets the `box.version` of each box runtime to the box this CLI pins, which build and deploy
  * stage: the box features and the profiles that the CLI writes change together, so a runtime runs
@@ -513,6 +512,7 @@ export const boxVersionWriter: BoxNetworkWriter = {
   }),
 };
 
+/** The writers that build and deploy run before synth, in order. */
 export const BOX_NETWORK_WRITERS: readonly BoxNetworkWriter[] = [
   boxVersionWriter,
   credentialsWriter,
