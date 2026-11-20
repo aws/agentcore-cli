@@ -16,7 +16,6 @@ function asStringArray(value: unknown, field: string, exampleId: string): string
 }
 
 export class PredefinedExample implements Example {
-  readonly schemaType = "AGENTCORE_EVALUATION_PREDEFINED_V1" as const;
   readonly turns: Turn[];
   readonly assertions?: string[];
   readonly expectedTrajectory?: string[];

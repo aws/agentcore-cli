@@ -10,7 +10,6 @@ interface DatasetRow extends Record<string, unknown> {
   datasetId: string;
   datasetName: string;
   status: string;
-  schemaType: string;
   exampleCount: string;
   updatedAt: string;
 }
@@ -18,7 +17,6 @@ interface DatasetRow extends Record<string, unknown> {
 export const datasetColumns = [
   { key: "datasetName", header: "name", flex: true },
   { key: "status", header: "status", width: 14 },
-  { key: "schemaType", header: "schema", width: 12 },
   { key: "exampleCount", header: "examples", width: 8 },
   {
     key: "updatedAt",
@@ -28,19 +26,12 @@ export const datasetColumns = [
   },
 ] satisfies DataTableColumn<DatasetRow>[];
 
-function displaySchemaType(schemaType: DatasetSummary["schemaType"]): string {
-  if (schemaType === "AGENTCORE_EVALUATION_PREDEFINED_V1") return "predefined";
-  if (schemaType === "AGENTCORE_EVALUATION_SIMULATED_V1") return "simulated";
-  return schemaType ?? "-";
-}
-
 function toRow(dataset: DatasetSummary): DatasetRow {
   const id = dataset.datasetId ?? "";
   return {
     datasetId: id,
     datasetName: dataset.datasetName ?? id,
     status: dataset.status ?? "-",
-    schemaType: displaySchemaType(dataset.schemaType),
     exampleCount: dataset.exampleCount?.toString() ?? "-",
     updatedAt: dataset.updatedAt?.toISOString() ?? "-",
   };

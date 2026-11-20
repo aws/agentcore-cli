@@ -20,7 +20,8 @@ function datasetSummary(overrides: Partial<DatasetSummary> = {}): DatasetSummary
     datasetName: "orders-regression",
     status: "ACTIVE",
     draftStatus: "MODIFIED",
-    schemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
+    // Removed from the GA API; delete when @aws-sdk drops the member.
+    schemaType: undefined,
     exampleCount: 2,
     createdAt: new Date("2026-08-01T01:02:03.000Z"),
     updatedAt: new Date("2026-08-02T12:34:56.000Z"),
@@ -37,7 +38,8 @@ function getDatasetResponse(overrides: Partial<GetDatasetResponse> = {}): GetDat
     description: "Regression tests for the order-support agent",
     status: "ACTIVE",
     draftStatus: "MODIFIED",
-    schemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
+    // Removed from the GA API; delete when @aws-sdk drops the member.
+    schemaType: undefined,
     exampleCount: 2,
     createdAt: new Date("2026-08-01T01:02:03.000Z"),
     updatedAt: new Date("2026-08-02T12:34:56.000Z"),
@@ -65,12 +67,11 @@ describe("dataset menu", () => {
 });
 
 describe("dataset picker", () => {
-  test("renders name, status, schema, example count, and update time", async () => {
+  test("renders name, status, example count, and update time", async () => {
     const core = coreWithDatasets([
       datasetSummary({
         datasetName: "staging-regression",
         status: "UPDATE_FAILED",
-        schemaType: "AGENTCORE_EVALUATION_SIMULATED_V1",
         exampleCount: 17,
         updatedAt: new Date("2026-08-03T02:03:04.000Z"),
       }),
@@ -80,7 +81,6 @@ describe("dataset picker", () => {
     await waitForText(screen.lastFrame, "staging-regression");
     const frame = screen.lastFrame()!;
     expect(frame).toContain("UPDATE_FAILED");
-    expect(frame).toContain("simulated");
     expect(frame).toMatch(/17\s+2026-08-03 02:03/);
   });
 

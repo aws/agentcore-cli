@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { InvokeHarnessResponse } from "@aws-sdk/client-bedrock-agentcore";
 import { type HttpRequestHandler, startHttpServer } from "../../../io/httpServer";
+import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { parseAgentEvent } from "./invocations";
 import { ServerFarm, fakeSupervisor, post, runningAgent } from "./testkit";
 import type { InspectorDeps } from "./types";
@@ -60,6 +62,42 @@ describe("upstream connection failures", () => {
     const body = (await response.json()) as { success: boolean; error: string };
     expect(body.success).toBe(false);
     expect(body.error).toContain(errorPrefix);
+  });
+});
+
+describe("harness invocations", () => {
+  // On Bun the SDK decodes an integer beyond 2^53 in a document member to BigInt.
+  test("a BigInt in a json tool-result chunk is forwarded with every digit", async () => {
+    const stream = [
+      {
+        contentBlockDelta: {
+          contentBlockIndex: 0,
+          delta: { toolResult: [{ json: { ts: 1750000000000000001n } }] },
+        },
+      },
+    ];
+    const { url } = await farm.inspector({
+      supervisor: fakeSupervisor(),
+      project: {
+        name: "Demo",
+        rootPath: "/workspace/demo",
+        spec: ProjectSpecSchema.parse({
+          name: "Demo",
+          version: 2,
+          managedBy: "CDK",
+          harnesses: [{ name: "support", path: "harness/support" }],
+        }),
+      },
+      invokeHarness: async () => ({ stream }) as unknown as InvokeHarnessResponse,
+    });
+    const response = await post(url, "/invocations", { harnessName: "support", prompt: "hi" });
+    expect(await response.text()).toBe(
+      `data: ${JSON.stringify({
+        type: "contentBlockDelta",
+        contentBlockIndex: 0,
+        delta: { type: "toolResult", results: [{ text: '{"ts":1750000000000000001}' }] },
+      })}\n\n`,
+    );
   });
 });
 

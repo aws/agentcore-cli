@@ -11,7 +11,7 @@ import {
   type RatingScale,
 } from "../../../../../projectSchemas/evaluator";
 import type { AddResourceInput } from "../../../types";
-import { parseJsonFlagWithSchema, parseTags, tagsFlag } from "../../../../utils";
+import { parseJsonFlag, parseTags, tagsFlag } from "../../../../utils";
 import type { AddProjectResourceConfig } from "../../types";
 import { addProjectResource, requireDeployedNameFits } from "../../shared";
 import {
@@ -85,7 +85,7 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       ),
       flag(
         "rating-scale",
-        `a rating scale preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or an inline JSON rating scale`,
+        `a rating scale preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or a JSON rating scale (inline, file://<path>, or - for stdin)`,
         z.string(),
       ),
       flag("description", "a description of what this evaluator measures", z.string().optional()),
@@ -108,8 +108,8 @@ export const createAddLlmAsAJudgeEvaluatorHandler = (config: AddProjectResourceC
       );
       const modelProvider = resolveModelProvider(flags["model-provider"]);
       validateModel(modelProvider, flags["model"]);
-      const ratingScale = resolveRatingScale(flags["rating-scale"]);
       const resolver = new SourceResolver({ stdin: config.io.stdin });
+      const ratingScale = await resolveRatingScale(flags["rating-scale"], resolver);
       const instructions = await resolver.resolveText("instructions", flags["instructions"]);
 
       await addProjectResource(
@@ -149,14 +149,41 @@ function validateModel(provider: EvaluatorModelProvider, model: string): void {
     );
 }
 
-// A preset name expands to a fresh copy of the shared table; anything else is
-// treated as an inline JSON rating scale and validated against the schema.
-function resolveRatingScale(value: string): RatingScale {
+// A preset name expands to a fresh copy of the shared table; anything else is a
+// JSON rating scale (inline, file://<path>, or - for stdin) validated against the schema.
+async function resolveRatingScale(value: string, resolver: SourceResolver): Promise<RatingScale> {
   if (isRatingScalePreset(value)) return expandRatingScalePreset(value);
-  if (!value.trim().startsWith("{")) {
+  const raw = await resolver.resolveText("rating-scale", value);
+  if (raw.trim().startsWith("[")) {
     throw new InputValidationError(
-      `invalid --rating-scale "${value}": expected a preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or an inline JSON rating scale`,
+      `invalid --rating-scale "${value}": got a JSON array; wrap a dimension list as {"multiDimensional": [...]}`,
     );
   }
-  return parseJsonFlagWithSchema("rating-scale", value, RatingScaleSchema)!;
+  if (!raw.trim().startsWith("{")) {
+    throw new InputValidationError(
+      `invalid --rating-scale "${value}": expected a preset (${RATING_SCALE_PRESET_NAMES.join(", ")}) or a JSON rating scale (inline, file://<path>, or - for stdin)`,
+    );
+  }
+  const result = RatingScaleSchema.safeParse(parseJsonFlag<unknown>("rating-scale", raw));
+  if (!result.success) {
+    throw new InputValidationError(
+      `Invalid value for option '--rating-scale': ${formatRatingScaleIssues(result.error)}`,
+      { cause: result.error },
+    );
+  }
+  return result.data;
+}
+
+// Prefixes each issue with its path.
+function formatRatingScaleIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path
+        .map((key, i) =>
+          typeof key === "number" ? `[${key}]` : `${i === 0 ? "" : "."}${String(key)}`,
+        )
+        .join("");
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join("; ");
 }

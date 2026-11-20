@@ -1,4 +1,3 @@
-import type { DatasetSchemaType } from "@aws-sdk/client-bedrock-agentcore-control";
 import type { InlineGroundTruth } from "@aws-sdk/client-bedrock-agentcore";
 
 export type TurnResult = { text: string };
@@ -10,7 +9,6 @@ export type RunContext = { invokeOnce: (payload: string) => Promise<TurnResult> 
 // An interface, not a base class: no shared state to inherit, and the machine dispatches
 // by calling run().
 export interface Example {
-  readonly schemaType: DatasetSchemaType;
   readonly exampleId: string;
   run(ctx: RunContext): Promise<InlineGroundTruth | undefined>;
 }
