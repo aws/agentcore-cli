@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, type ProcessEvent, type StreamProcessOptions } from "../../io";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { BoxCliProfileResolver, parseBoxProfileShow } from "./boxProfileResolver";
 import { boxNetworkRules, boxReachRules } from "./boxProfileResolver-test-support";
 
@@ -95,16 +96,15 @@ const SHOWN_POLICY =
   boxReachRules("route", "keyed", ["k.example.com:8443"]) +
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
-const PINNED =
-  "box 0.1.11-linux-preview.7 or a later release " +
-  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7)";
+/** The last sentence of each error that says to install another box: the pinned release. */
+const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry.`;
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
  * with no secret, the route `keyed` with one, and {@link POLICY}, as box prints it, with HOME at
  * /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations of an open route into one
- * string, and later boxes give a list. The first file is the output of preview.6, so its pack has
- * the name of that release, box/base; the second has the name of later releases, @box/base.
+ * string, and 0.1.11-linux-preview.7 prints the second, a list. preview.6 printed the first for the
+ * same profile with its pack named box/base, the name it had before `@box/`.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(
@@ -206,8 +206,7 @@ describe("parseBoxProfileShow", () => {
   ])("refuses a document with %s, and names what it lacks", (_, shown, lacks) => {
     expect(() => parseBoxProfileShow(JSON.stringify(shown), ".box/profile.toml")).toThrow(
       new InvalidEnvironmentError(
-        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. Install ` +
-          `${PINNED}, then retry.`,
+        `Box printed the profile .box/profile.toml without ${lacks}, which build reads. ` + INSTALL,
       ),
     );
   });
@@ -316,6 +315,25 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
+  test("says to install the pinned box when a box older than preview.7 refuses an @box/ pack", async () => {
+    // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
+    const error = await failure(
+      refusal([
+        'box: error: /work/demo/.box/profile.toml: "@box/base" is',
+        "            not a pack name",
+        "Usage: box profile show [OPTIONS] <NAME>",
+      ]),
+    );
+
+    expect((error as Error).message).toBe(
+      "Box refused the profile .box/profile.toml:\n" +
+        '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
+        "              not a pack name\n" +
+        "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
+        `@box/<name>. ${INSTALL}`,
+    );
+  });
+
   test("says to run uv sync in the agent's folder when Box refuses its missing .venv", async () => {
     const error = await failure(
       refusal([
@@ -350,11 +368,7 @@ describe("BoxCliProfileResolver", () => {
         ".box/profile.toml",
       ),
     ).rejects.toThrow(
-      new InvalidEnvironmentError(
-        "Box is not installed or not on PATH. Install box 0.1.11-linux-preview.7 " +
-          "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7), " +
-          "then retry.",
-      ),
+      new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL}`),
     );
   });
 
@@ -389,8 +403,8 @@ describe("BoxCliProfileResolver", () => {
 
       expect(error).toBeInstanceOf(InvalidEnvironmentError);
       expect((error as Error).message).toBe(
-        "This Box cannot print the profile .box/profile.toml as JSON, which build reads. Install " +
-          `${PINNED}, then retry.`,
+        "This Box cannot print the profile .box/profile.toml as JSON, which build reads. " +
+          INSTALL,
       );
     },
   );
