@@ -298,6 +298,16 @@ export const ContainmentSchema = z.enum(["SANDBOXED", "PRIVATE_VPC"]);
 export type Containment = z.infer<typeof ContainmentSchema>;
 export const PRIVATE_VPC_LIMIT =
   'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each contained runtime.';
+
+/**
+ * The AgentCore Runtime platform a runtime runs on, set as `PlatformVersion` on its
+ * `AWS::BedrockAgentCore::Runtime`. No field leaves the choice to the service.
+ */
+export const PlatformVersionSchema = z.enum(["V1", "V2"]);
+export type PlatformVersion = z.infer<typeof PlatformVersionSchema>;
+/** The platform a runtime of a Box project needs: Box runs only on AgentCore Runtime V2. */
+export const BOX_PLATFORM_VERSION: PlatformVersion = "V2";
+
 function isVpcCidr(value: string): boolean {
   const [address = "", prefix = "", ...rest] = value.split("/");
   const octets = address.split(".");
@@ -398,6 +408,8 @@ export const ProjectRuntimeSchema = z
     containment: ContainmentSchema.optional(),
     /** Only with `"containment": "PRIVATE_VPC"`. */
     network: ContainedNetworkSchema.optional(),
+    /** No default. Every runtime of a Box project needs `"V2"`; create writes it. */
+    platformVersion: PlatformVersionSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.network && data.containment !== "PRIVATE_VPC") {

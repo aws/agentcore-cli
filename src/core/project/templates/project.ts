@@ -16,6 +16,7 @@ import {
 } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import { boxGatewaySpec } from "../../../projectSchemas/project";
+import { BOX_PLATFORM_VERSION } from "../../../projectSchemas/runtime";
 import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
@@ -49,6 +50,11 @@ export async function createProjectTree(
         runtime.containment = "PRIVATE_VPC";
         runtime.network = { mode: "CONTAINED" };
       }
+    }
+    // Box runs only on AgentCore Runtime V2, so a box runtime pins it.
+    if (hasBoxProfile(options.runtime)) {
+      for (const runtime of template.spec.runtimes ?? [])
+        runtime.platformVersion = BOX_PLATFORM_VERSION;
     }
     // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
     // only it makes a Box project.

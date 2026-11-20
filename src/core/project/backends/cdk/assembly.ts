@@ -31,6 +31,13 @@ const AssemblyManifestSchema = z.object({
     .default({}),
 });
 
+/** A stack output that exports `Fn::GetAtt` of a resource, as each runtime's `RuntimeId` does. */
+const GetAttOutputSchema = z.object({
+  Value: z.object({ "Fn::GetAtt": z.tuple([z.string(), z.string()]) }),
+  Export: z.object({ Name: z.string() }),
+});
+const PlatformVersionPropertiesSchema = z.object({ PlatformVersion: z.string() });
+
 const StackTemplateSchema = z
   .object({
     Resources: z
@@ -42,6 +49,7 @@ const StackTemplateSchema = z
         z.object({ Type: z.string().optional() }).passthrough(),
       )
       .default({}),
+    Outputs: z.record(z.string(), z.unknown()).default({}),
   })
   .passthrough();
 
@@ -160,6 +168,48 @@ export async function assertPrivateVpcs(
       `Runtime ${missing.map((name) => `'${name}'`).join(", ")} has "containment": "PRIVATE_VPC", ` +
         "but the synthesized stack builds no private VPC for it. The @aws/agentcore-cdk in " +
         "agentcore/cdk is older than containment: update it, then deploy again.",
+    );
+  }
+}
+
+/**
+ * Refuses a stack in which a runtime of `runtimeNames` does not run on `platformVersion`. A CDK
+ * library from before `platformVersion` drops the field without an error, and the service would
+ * pick the platform. The CDK library exports each runtime's ID as `<stack>-<runtime>-RuntimeId`
+ * (`_` as `-`), from `Fn::GetAtt` of its `AWS::BedrockAgentCore::Runtime`.
+ */
+export async function assertPlatformVersions(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+  runtimeNames: readonly string[],
+  platformVersion: string,
+): Promise<void> {
+  if (runtimeNames.length === 0) return;
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  const logicalIdByExport = new Map(
+    Object.values(template.Outputs).flatMap((output) => {
+      const parsed = GetAttOutputSchema.safeParse(output).data;
+      return parsed ? [[parsed.Export.Name, parsed.Value["Fn::GetAtt"][0]] as const] : [];
+    }),
+  );
+  // The CDK library's exportName: each part with `_` as `-` and every other character but
+  // letters, digits, `:` and `-` removed, joined with `-`.
+  const exportName = (...parts: string[]) =>
+    parts.map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, "")).join("-");
+  const missing = runtimeNames.filter((name) => {
+    const logicalId = logicalIdByExport.get(exportName(artifact.stackName, name, "RuntimeId"));
+    const resource = logicalId === undefined ? undefined : template.Resources[logicalId];
+    return (
+      PlatformVersionPropertiesSchema.safeParse(resource?.Properties).data?.PlatformVersion !==
+      platformVersion
+    );
+  });
+  if (missing.length > 0) {
+    throw new ProjectStateError(
+      `Runtime ${missing.map((name) => `'${name}'`).join(", ")} has "platformVersion": ` +
+        `"${platformVersion}", but the synthesized stack does not set it. The @aws/agentcore-cdk ` +
+        "in agentcore/cdk is older than platformVersion: update it, then deploy again.",
     );
   }
 }

@@ -1522,6 +1522,7 @@ describe("FsProjectManager.addResource", () => {
           bedrockManagedAgents?: boolean;
           tags?: Record<string, string>;
           additionalPolicies?: string[];
+          platformVersion?: string;
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1565,6 +1566,45 @@ describe("FsProjectManager.addResource", () => {
       expect(String(error)).toContain("Cannot deploy to China region cn-north-1");
       expect(String(error)).toContain("'agent_python_minimal'");
       expect(deployCalls).toEqual([]);
+    });
+
+    test.each([
+      ["no platformVersion", undefined, "has no platformVersion"],
+      ["V1", "V1", 'has "platformVersion": "V1"'],
+    ])(
+      "deploy of a Box project whose runtime has %s fails before anything is written",
+      async (_name, platformVersion, detail) => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget(
+          "us-west-2",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        await editSpec(project, (spec) => {
+          if (platformVersion === undefined) delete spec.runtimes[0]!.platformVersion;
+          else spec.runtimes[0]!.platformVersion = platformVersion;
+        });
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const before = await readFile(specPath, "utf8");
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeInstanceOf(ProjectStateError);
+        expect(String(error)).toContain(
+          `runtime "agent_python_strands_box" ${detail} in agentcore.json, but every runtime of a ` +
+            'Box project runs on AgentCore Runtime V2. Set "platformVersion": "V2"',
+        );
+        expect(await readFile(specPath, "utf8")).toBe(before);
+        expect(deployCalls).toEqual([]);
+      },
+    );
+
+    test("deploy of a project that is not a Box project needs no platformVersion", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("us-west-2");
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
     });
 
     test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
@@ -2142,6 +2182,26 @@ describe("FsProjectManager.build", () => {
     );
     expect(existsSync(join(aws, "box"))).toBe(false);
     expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
+  });
+
+  test("refuses a Box runtime that is not on AgentCore Runtime V2, before anything is written", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager(await boxHome());
+    const project = await scaffolded(subject, directory);
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8"));
+    spec.runtimes[0].platformVersion = "V1";
+    await writeFile(specPath, JSON.stringify(spec, null, 2));
+    const before = await readFile(specPath, "utf8");
+    const edited = (await subject.resolve({ filePath: project.rootPath }))!;
+    commands.length = 0;
+
+    await expect(drain(subject.build(edited))).rejects.toThrow(
+      'has "platformVersion": "V1" in agentcore.json, but every runtime of a Box project runs on ' +
+        "AgentCore Runtime V2.",
+    );
+    expect(await readFile(specPath, "utf8")).toBe(before);
+    expect(commands).toEqual([]);
   });
 
   test("downloads box from the public box release when it is not cached", async () => {

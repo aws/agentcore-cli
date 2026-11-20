@@ -48,7 +48,9 @@ import {
   type CredentialRemover,
   type DeployedCredentials,
 } from "./cdk/credentials";
+import { BOX_PLATFORM_VERSION } from "../../../projectSchemas/runtime";
 import {
+  assertPlatformVersions,
   assertPrivateVpcs,
   countDeployableResources,
   stackArtifactForTarget,
@@ -364,6 +366,15 @@ export class CdkBackend implements ProjectBackend {
       project.spec.runtimes
         .filter((runtime) => runtime.containment === "PRIVATE_VPC")
         .map((runtime) => runtime.name),
+    );
+    await assertPlatformVersions(
+      this.json,
+      assemblyDirectory,
+      artifact,
+      project.spec.runtimes
+        .filter((runtime) => runtime.platformVersion === BOX_PLATFORM_VERSION)
+        .map((runtime) => runtime.name),
+      BOX_PLATFORM_VERSION,
     );
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns

@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { FsReadWriteJson } from "../../../../io";
 import { createSilentLogger } from "../../../../testing";
-import { assertPrivateVpcs, countDeployableResources, stackArtifactForTarget } from "./assembly";
+import {
+  assertPlatformVersions,
+  assertPrivateVpcs,
+  countDeployableResources,
+  stackArtifactForTarget,
+} from "./assembly";
 
 const temporaryDirectories: string[] = [];
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
@@ -134,6 +139,50 @@ describe("assertPrivateVpcs", () => {
     await expect(assertPrivateVpcs(json, directory, artifact, ["agent"])).rejects.toThrow(
       'Runtime \'agent\' has "containment": "PRIVATE_VPC", but the synthesized stack builds no private VPC for it',
     );
+  });
+});
+
+describe("assertPlatformVersions", () => {
+  const artifact = { id: "Stack", stackName: "AgentCore-App-default", templateFile: TEMPLATE_FILE };
+  /** A runtime resource, and the RuntimeId export the CDK library writes for runtime `name`. */
+  const runtime = (name: string, logicalId: string, properties: Record<string, unknown>) => ({
+    Resources: { [logicalId]: { Type: "AWS::BedrockAgentCore::Runtime", Properties: properties } },
+    Outputs: {
+      [`${logicalId}Id`]: {
+        Value: { "Fn::GetAtt": [logicalId, "AgentRuntimeId"] },
+        Export: { Name: `AgentCore-App-default-${name.replaceAll("_", "-")}-RuntimeId` },
+      },
+    },
+  });
+  async function check(template: Record<string, unknown>, runtimeNames: string[]) {
+    const directory = await assembly({ Stack: stackArtifact("prod") });
+    await writeFile(join(directory, TEMPLATE_FILE), JSON.stringify(template));
+    return assertPlatformVersions(json, directory, artifact, runtimeNames, "V2");
+  }
+
+  test("accepts a runtime that runs on the version", async () => {
+    await expect(
+      check(runtime("my_agent", "RuntimeMyAgent", { PlatformVersion: "V2" }), ["my_agent"]),
+    ).resolves.toBeUndefined();
+  });
+
+  test("accepts a stack with no runtime to check", async () => {
+    await expect(check({ Resources: {} }, [])).resolves.toBeUndefined();
+  });
+
+  test.each([
+    ["no PlatformVersion, as a CDK library from before platformVersion synthesizes", {}],
+    ["another PlatformVersion", { PlatformVersion: "V1" }],
+  ])("refuses %s", async (_name, properties) => {
+    await expect(check(runtime("agent", "RuntimeAgent", properties), ["agent"])).rejects.toThrow(
+      'Runtime \'agent\' has "platformVersion": "V2", but the synthesized stack does not set it.',
+    );
+  });
+
+  test("refuses a runtime the stack exports no RuntimeId for", async () => {
+    await expect(
+      check(runtime("other", "RuntimeOther", { PlatformVersion: "V2" }), ["agent"]),
+    ).rejects.toThrow('Runtime \'agent\' has "platformVersion": "V2"');
   });
 });
 
