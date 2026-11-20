@@ -74,6 +74,18 @@ export const VPC_ID_PATTERN = /^vpc-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
 export const SUBNET_ID_PATTERN = /^subnet-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
 export const SECURITY_GROUP_ID_PATTERN = /^sg-(?:[0-9a-f]{8}|[0-9a-f]{17})$/;
 export const MAX_CONTAINER_BUILD_SECURITY_GROUPS = 5;
+/** A private ECR (12-digit account) or public.ecr.aws image URI, with an optional tag and digest. */
+export const CONTAINER_URI_PATTERN =
+  /^(([0-9]{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?|public\.ecr\.aws)\/((?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)*[a-z0-9]+(?:[._-][a-z0-9]+)*)(?::([^:@]{1,300}))?(?:@(.+))?$/;
+export const MAX_CONTAINER_URI_LENGTH = 1024;
+export const ContainerUriSchema = z
+  .string()
+  .min(1)
+  .max(MAX_CONTAINER_URI_LENGTH)
+  .regex(
+    CONTAINER_URI_PATTERN,
+    "containerUri must be an ECR image URI (12-digit private ECR or public.ecr.aws)",
+  );
 export function isContainerBuild(spec: {
   build?: string;
   containerUri?: string;

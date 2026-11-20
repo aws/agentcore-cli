@@ -188,6 +188,7 @@ async function writeLocalImageManifest(p: Project): Promise<void> {
 }
 
 type HarnessOptions = {
+  assertCdkFeatures?: CdkBackendConfig["assertCdkFeatures"];
   deployedTemplate?: object | null;
   /** Thrown by GetTemplate instead of returning the deployed template. */
   getTemplateError?: Error;
@@ -241,7 +242,7 @@ function harness(options: HarnessOptions = {}) {
 
   const backend = new CdkBackend({
     logger: createSilentLogger(),
-    assertLocalCdkSupport: () => {},
+    assertCdkFeatures: options.assertCdkFeatures ?? (async () => {}),
     createCloudFormationClient: () =>
       ({
         send: async () => {
@@ -508,6 +509,31 @@ describe("CdkBackend.build", () => {
     expect(message).toContain("Build context: app/agent/");
     expect(message).toContain("Dockerfile: app/agent/Dockerfile.agent");
     expect(message).toContain("COPY requirements.txt: not found");
+  });
+  test("checks CDK support for a pre-built image Runtime and builds nothing locally", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "image",
+        build: "Container",
+        codeLocation: "app/image",
+        entrypoint: "main.py",
+        containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const probed: unknown[] = [];
+    const h = harness({
+      assertCdkFeatures: async (_directory, features) => {
+        probed.push(features);
+      },
+      resolveContainerExecutable: async () => {
+        throw new Error("must not detect a builder");
+      },
+    });
+    await collect(h.backend.build(p));
+    expect(probed).toEqual([["Runtime containerUri"]]);
+    expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
   });
   test("builds no images when no workload builds locally", async () => {
     const p = await project();
@@ -874,6 +900,34 @@ describe("CdkBackend.deploy", () => {
     );
     expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-default-0");
     expect(h.runs).toHaveLength(0);
+  });
+  test("checks CDK feature support before provisioning credentials", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "image",
+        build: "Container",
+        codeLocation: "app/image",
+        entrypoint: "main.py",
+        containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+      }),
+    );
+    let provisioned = false;
+    const h = harness({
+      assertCdkFeatures: async () => {
+        throw new Error("CDK package lacks Runtime containerUri");
+      },
+      provisionCredentials: async function* () {
+        provisioned = true;
+        yield { type: "step", message: "provisioning credentials" };
+        return {};
+      },
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "lacks Runtime containerUri",
+    );
+    expect(provisioned).toBe(false);
+    expect(h.commands).toHaveLength(0);
   });
   test("refuses an unavailable local builder before provisioning credentials or invoking Toolkit", async () => {
     const p = await project();

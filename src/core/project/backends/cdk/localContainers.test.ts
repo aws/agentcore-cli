@@ -153,6 +153,16 @@ describe("assertSupportedBuildTransitions", () => {
   test.each([
     ["CodeZip", "Container", 'delete the Dockerfile and set "build": "CodeZip" in agentcore.json'],
     ["Container", "CodeZip", 'set "build": "Container" and its "dockerfile" in agentcore.json'],
+    [
+      "CodeZip",
+      "ContainerUri",
+      'remove "containerUri" and set "build": "CodeZip" in agentcore.json',
+    ],
+    [
+      "ContainerUri",
+      "CodeZip",
+      'set "build": "Container" and its "containerUri" in agentcore.json',
+    ],
   ] as const)("rejects a deployed runtime %s to %s transition", (before, after, keep) => {
     expect(() =>
       assertSupportedBuildTransitions(
@@ -188,6 +198,40 @@ describe("assertSupportedBuildTransitions", () => {
       ),
     ).toThrow("Cannot change runtime/agent from CodeZip to Container");
   });
+  test("rejects a pre-feature CodeZip runtime becoming a pre-built image", () => {
+    const previous: DeployedTemplate = {
+      Resources: {
+        Runtime: {
+          Type: "AWS::BedrockAgentCore::Runtime",
+          Properties: {
+            AgentRuntimeName: "example_default_agent",
+            AgentRuntimeArtifact: { CodeConfiguration: { Code: {} } },
+          },
+        },
+      },
+    };
+    expect(() =>
+      assertSupportedBuildTransitions(
+        previous,
+        { "runtime/agent": "ContainerUri" },
+        "example",
+        "default",
+      ),
+    ).toThrow("Cannot change runtime/agent from CodeZip to ContainerUri");
+  });
+  test.each([
+    ["Container", "ContainerUri"],
+    ["ContainerUri", "Container"],
+  ] as const)("allows a deployed runtime %s to %s transition", (before, after) => {
+    expect(() =>
+      assertSupportedBuildTransitions(
+        { Metadata: { "agentcore:builds": { "runtime/agent": before } } },
+        { "runtime/agent": after },
+        "example",
+        "default",
+      ),
+    ).not.toThrow();
+  });
   test.each([
     ["Managed", "Container"],
     ["Container", "Managed"],
@@ -205,6 +249,7 @@ describe("assertSupportedBuildTransitions", () => {
     ["ContainerUri", "ContainerLocal"],
     ["ContainerLocal", "ContainerUri"],
     ["Managed", "ContainerUri"],
+    ["Container", "ContainerUri"],
   ] as const satisfies [string, WorkloadBuildMode][])(
     "allows a deployed %s to %s transition",
     (before, after) => {

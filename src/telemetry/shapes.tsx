@@ -79,6 +79,7 @@ export const commandRunSchema = safeSchema({
   project_runtime_codezip_count: z.number().int().nonnegative().optional(),
   project_runtime_container_count: z.number().int().nonnegative().optional(),
   project_runtime_container_local_count: z.number().int().nonnegative().optional(),
+  project_runtime_container_uri_count: z.number().int().nonnegative().optional(),
   project_harness_container_count: z.number().int().nonnegative().optional(),
   project_harness_container_local_count: z.number().int().nonnegative().optional(),
   project_payment_manager_count: z.number().int().nonnegative().optional(),

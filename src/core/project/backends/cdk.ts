@@ -14,7 +14,11 @@ import type {
   WorkloadBuilds,
   WorkloadKey,
 } from "../../../handlers/project/types";
-import { assertCdkLocalContainerSupport, cdkCompatibilityWarning } from "./cdk/compatibility";
+import {
+  assertCdkFeatureSupport,
+  cdkCompatibilityWarning,
+  cdkFeaturesFor,
+} from "./cdk/compatibility";
 import {
   assertSupportedBuildTransitions,
   byoExecutionRoleWarning,
@@ -166,7 +170,7 @@ export type CdkBackendConfig = {
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
   checkLocalBuilder?: typeof checkArm64Builder;
   resolveContainerExecutable?: () => Promise<string>;
-  assertLocalCdkSupport?: typeof assertCdkLocalContainerSupport;
+  assertCdkFeatures?: typeof assertCdkFeatureSupport;
 };
 
 // Stacks in these states hold no deployed workloads: deleted, rolled back after a
@@ -204,7 +208,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
   private readonly checkLocalBuilder: typeof checkArm64Builder;
   private readonly resolveContainerExecutable: () => Promise<string>;
-  private readonly assertLocalCdkSupport: typeof assertCdkLocalContainerSupport;
+  private readonly assertCdkFeatures: typeof assertCdkFeatureSupport;
   private readonly createCloudFormationClient: CreateCloudFormationClient;
 
   constructor(config: CdkBackendConfig) {
@@ -213,7 +217,7 @@ export class CdkBackend implements ProjectBackend {
     this.checkLocalBuilder = config.checkLocalBuilder ?? checkArm64Builder;
     this.resolveContainerExecutable =
       config.resolveContainerExecutable ?? (() => resolveCdkDockerExecutable());
-    this.assertLocalCdkSupport = config.assertLocalCdkSupport ?? assertCdkLocalContainerSupport;
+    this.assertCdkFeatures = config.assertCdkFeatures ?? assertCdkFeatureSupport;
     this.createCloudFormationClient =
       config.createCloudFormationClient ?? createCloudFormationClient;
     this.checkTool = config.checkTool ?? requireTool;
@@ -262,17 +266,19 @@ export class CdkBackend implements ProjectBackend {
     project: Project,
     explainUndeployedCredentials: boolean,
     builds: WorkloadBuilds,
+    checkCdkFeatures: boolean,
   ): AsyncGenerator<ProjectEvent, void> {
     await this.ensureCdkDependencies(project);
+    // An older CDK package would silently drop settings it does not know.
+    if (checkCdkFeatures) {
+      await this.assertCdkFeatures(this.cdkDirectory(project), cdkFeaturesFor(builds), this.runner);
+    }
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
       yield { type: "warning", message: compatibilityWarning };
     }
 
-    if (hasLocalContainerBuilds(builds)) {
-      this.assertLocalCdkSupport(this.cdkDirectory(project));
-    }
     yield { type: "step", message: "synthesizing CloudFormation templates" };
     try {
       yield* withOutputEvents((emit) => {
@@ -304,7 +310,7 @@ export class CdkBackend implements ProjectBackend {
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
     const { builds, local } = resolveWorkloads(project);
-    yield* this.synthesize(project, true, builds);
+    yield* this.synthesize(project, true, builds, true);
     yield* this.buildLocalImages(project, builds, local);
   }
 
@@ -386,8 +392,9 @@ export class CdkBackend implements ProjectBackend {
     // BUILDX_BUILDER chosen here, so the check runs on that same builder.
     let containerExecutable: string | undefined;
     let buildxBuilder: string | undefined;
+    // Before any AWS mutation: an older CDK package would silently drop settings.
+    await this.assertCdkFeatures(this.cdkDirectory(project), cdkFeaturesFor(builds), this.runner);
     if (hasLocalContainerBuilds(builds)) {
-      this.assertLocalCdkSupport(this.cdkDirectory(project));
       containerExecutable = await this.resolveContainerExecutable();
       yield {
         type: "step",
@@ -432,7 +439,8 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
-    yield* this.synthesize(project, false, builds);
+    // The CDK features were checked before provisioning, above.
+    yield* this.synthesize(project, false, builds, false);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     // Checked against the stack this deploy is about to update, before teardown
