@@ -100,6 +100,31 @@ const LEAVES_ON_RUNTIME = {
 };
 
 describe("the paths rule", () => {
+  test("leaves out a deny entry and an optional grant that are not on the Runtime, with a warning", () => {
+    const text = [
+      "[agent.filesystem]",
+      'read = ["${{ workspace }}/app/agent", { path = "${{ home }}/.aws", optional = true }]',
+      'deny = ["${{ home }}/.ssh", "${{ workspace }}/app/agent/secrets"]',
+    ].join("\n");
+
+    const { profile, problems, warnings } = deriveRuntimeProfile(
+      parse(text) as TomlTable,
+      contextOf(text),
+    );
+
+    expect(problems).toEqual([]);
+    expect((profile.agent as TomlTable).filesystem).toMatchObject({
+      read: expect.not.arrayContaining([expect.objectContaining({ path: "${{ home }}/.aws" })]),
+      deny: ["${{ inputs.code.dir }}/secrets"],
+    });
+    expect(warnings).toEqual([
+      '[agent.filesystem] read names "${{ home }}/.aws", which is not on AgentCore Runtime, so ' +
+        "build leaves it out of the Runtime profile.",
+      '[agent.filesystem] deny names "${{ home }}/.ssh", which is not on AgentCore Runtime, so ' +
+        "build leaves it out of the Runtime profile.",
+    ]);
+  });
+
   test("keeps each stdio [mcp] server and each [tool], with each key, in the Runtime profile", () => {
     // The renderer that the derivation replaced built the Runtime profile from agentcore.json, with
     // no [mcp.notes] and no [tool.lister]. The derived profile keeps both, as they work there.

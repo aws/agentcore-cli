@@ -53,10 +53,3 @@ export function deriveRuntimeProfile(
   }
   return { profile, problems, warnings };
 }
-
-/** A key as a message names it: `[mcp.notes] command`, `[agent.filesystem] read`, `packs`. */
-export function keyLabel(key: readonly string[]): string {
-  if (key.length === 1) return key[0]!;
-  const table = key.slice(0, -1).join(".");
-  return `[${table}] ${key[key.length - 1]}`;
-}

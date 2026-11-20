@@ -13,29 +13,36 @@
  * gives the Runtime grants of the template in the local paths, and this rule moves them too.
  */
 import {
+  grantPath,
+  isDroppableGrant,
   isTable,
+  keyLabel,
   mapProjectPaths,
   moveProjectPath,
+  pathProblem,
   processTables,
   programOf,
   runtimeFfiPath,
   runtimePythonPath,
   withOneGrantForEachPath,
 } from "../projectPaths";
-import type { RuleResult, RuntimeProfileContext, TomlTable } from "../types";
+import type { RuleResult, RuntimePaths, RuntimeProfileContext, TomlTable } from "../types";
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const { paths } = context;
   if (paths.build !== "CodeZip") {
     return { table: structuredClone(table) as TomlTable, problems: [], warnings: [] };
   }
+  const warnings: string[] = [];
   const moved = mapProjectPaths(table, (value) => {
     const result = moveProjectPath(value, paths);
     return typeof result === "string" ? result : value;
   });
-  for (const { table: process, leaf } of processTables(moved)) {
+  for (const { key, table: process, leaf } of processTables(moved)) {
     if (isTable(process.filesystem)) {
-      process.filesystem = withOneGrantForEachPath(process.filesystem);
+      process.filesystem = withOneGrantForEachPath(
+        withoutLostGrants(process.filesystem, key, paths, warnings),
+      );
     }
     if (!leaf || programOf(process) !== paths.runtimePython) continue;
     const env = isTable(process.env) ? process.env : {};
@@ -47,5 +54,37 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       process.env = { ...env, PYTHONPATH: `${ffi}:${own}` };
     }
   }
-  return { table: moved, problems: [], warnings: [] };
+  return { table: moved, problems: [], warnings };
+}
+
+/**
+ * `filesystem` with no deny entry and no optional grant whose path is not on the Runtime, with a
+ * warning for each. The refusals rule stops build for each other grant with no place there. A
+ * moved path names no `${{ workspace }}` or `${{ home }}`, so only a grant that did not move is
+ * left out.
+ */
+function withoutLostGrants(
+  filesystem: Readonly<TomlTable>,
+  key: readonly string[],
+  paths: RuntimePaths,
+  warnings: string[],
+): TomlTable {
+  const result: TomlTable = {};
+  for (const [list, grants] of Object.entries(filesystem)) {
+    if (!Array.isArray(grants)) {
+      result[list] = grants;
+      continue;
+    }
+    result[list] = grants.filter((grant) => {
+      const path = grantPath(grant);
+      if (path === undefined || pathProblem(path, paths) === undefined) return true;
+      if (!isDroppableGrant(list, grant)) return true;
+      warnings.push(
+        `${keyLabel([...key, "filesystem", list])} names ${JSON.stringify(path)}, which is not on ` +
+          "AgentCore Runtime, so build leaves it out of the Runtime profile.",
+      );
+      return false;
+    });
+  }
+  return result;
 }
