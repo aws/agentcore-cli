@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.1.0`.
+This reference was generated from `agentcore --help` for version `1.2.0`.
 
 ## Table of contents
 
@@ -160,6 +160,11 @@ This reference was generated from `agentcore --help` for version `1.1.0`.
       - [`agentcore eval dataset delete`](#agentcore-eval-dataset-delete)
       - [`agentcore eval dataset update`](#agentcore-eval-dataset-update)
       - [`agentcore eval dataset publish`](#agentcore-eval-dataset-publish)
+    - [`agentcore eval dataset-generation`](#agentcore-eval-dataset-generation)
+      - [`agentcore eval dataset-generation start`](#agentcore-eval-dataset-generation-start)
+      - [`agentcore eval dataset-generation get`](#agentcore-eval-dataset-generation-get)
+      - [`agentcore eval dataset-generation list`](#agentcore-eval-dataset-generation-list)
+      - [`agentcore eval dataset-generation delete`](#agentcore-eval-dataset-generation-delete)
     - [`agentcore eval batch-evaluation`](#agentcore-eval-batch-evaluation)
       - [`agentcore eval batch-evaluation evaluate`](#agentcore-eval-batch-evaluation-evaluate)
       - [`agentcore eval batch-evaluation simulate`](#agentcore-eval-batch-evaluation-simulate)
@@ -298,6 +303,7 @@ add a harness to the current project (not available in China regions)
 - `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
+- `--build-config <build-config>`: advanced build settings (JSON object): build (Container or ContainerLocal), dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
 
 #### `agentcore add runtime`
 
@@ -327,6 +333,7 @@ add a Runtime to the current project
 - `--agent-id <agent-id>`: Bedrock Agent ID to import; translates that agent version into runtime code instead of writing docs
 - `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --agent-id)
 - `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)
+- `--build-config <build-config>`: advanced build settings (JSON object): build (CodeZip, Container, or ContainerLocal), dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
 
 #### `agentcore add runtime-endpoint`
 
@@ -2319,13 +2326,12 @@ manage AgentCore evaluation datasets
 agentcore eval dataset create [options]
 ```
 
-create a dataset from JSONL examples
+create a dataset, optionally seeded from JSONL examples
 
 **Options**
 
 - `--name <name>`: the name of the dataset (required)
-- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin (required)
-- `--schema-type <schema-type>`: the structure of the dataset's examples, immutable after creation (predefined | simulated) (required)
+- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin; omit to create an empty dataset
 - `--description <description>`: a description of the dataset
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for dataset data
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
@@ -2394,6 +2400,70 @@ publish the current DRAFT as a new immutable version
 **Options**
 
 - `--id <id>`: the ID of the dataset to publish (required)
+
+#### `agentcore eval dataset-generation`
+
+```text
+agentcore eval dataset-generation [options] [command]
+```
+
+generate dataset examples from agent traces
+
+##### `agentcore eval dataset-generation start`
+
+```text
+agentcore eval dataset-generation start [options]
+```
+
+start an asynchronous generation into a dataset's DRAFT
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset to write examples into (required)
+- `--name <name>`: the name of the generation (required)
+- `--description <description>`: a description of the generation
+- `--scenario-type <scenario-type>`: the kind of example every scenario becomes (fixed | dynamic); service defaults to dynamic when omitted
+- `--generation-config <generation-config>`: where traces are read from and which become examples (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
+
+##### `agentcore eval dataset-generation get`
+
+```text
+agentcore eval dataset-generation get [options]
+```
+
+get a generation by ID
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--id <id>`: the ID of the generation (required)
+
+##### `agentcore eval dataset-generation list`
+
+```text
+agentcore eval dataset-generation list [options]
+```
+
+list a dataset's generations
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-100)
+
+##### `agentcore eval dataset-generation delete`
+
+```text
+agentcore eval dataset-generation delete [options]
+```
+
+delete a generation record (its examples stay in the DRAFT)
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--id <id>`: the ID of the generation (required)
 
 #### `agentcore eval batch-evaluation`
 
