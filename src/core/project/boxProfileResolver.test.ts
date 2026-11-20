@@ -338,19 +338,66 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
-  test("says to run uv sync in the agent's folder when Box refuses its missing .venv", async () => {
-    const error = await failure(
-      refusal([
-        "box: error: /work/demo/app/agent/.venv/bin/python lies under the write grant /work/demo, so the workload can replace it",
-      ]),
-    );
+  describe("the uv sync hint, when Box refuses a missing .venv under a write grant", () => {
+    /** A project folder with a space in its path, and the agent folders `agent` and `my agent`. */
+    const project = async () => {
+      const root = await mkdtemp(join(tmpdir(), "box uv "));
+      directories.push(root);
+      await mkdir(join(root, "app", "agent"), { recursive: true });
+      await mkdir(join(root, "app", "my agent"), { recursive: true });
+      return root;
+    };
+    /** The last line of the error, which gives the hint. */
+    const hint = async (root: string, lines: string[]) => {
+      const error = await new BoxCliProfileResolver(refusal(lines))
+        .resolve(root, ".box/profile.toml")
+        .catch((caught: unknown) => caught);
+      return (error as Error).message.split("\n").at(-1);
+    };
+    // Box 0.1.11-preview.10 wraps its error at 80 columns, at a space or inside a word, and
+    // indents each next line by 12 spaces.
+    const MORE = " ".repeat(12);
+    const grant = (root: string) => `lies under the write grant ${root} of \`[agent]\``;
 
-    expect((error as Error).message).toBe(
-      "Box refused the profile .box/profile.toml:\n" +
-        "  box: error: /work/demo/app/agent/.venv/bin/python lies under the write grant " +
-        "/work/demo, so the workload can replace it\n" +
-        "Run 'uv sync' in app/agent, then retry.",
-    );
+    test("names the agent's folder", async () => {
+      const root = await project();
+      const error = await new BoxCliProfileResolver(
+        refusal([`box: error: ${root}/app/agent/.venv/bin/python ${grant(root)}`]),
+      )
+        .resolve(root, ".box/profile.toml")
+        .catch((caught: unknown) => caught);
+
+      expect((error as Error).message).toBe(
+        "Box refused the profile .box/profile.toml:\n" +
+          `  box: error: ${root}/app/agent/.venv/bin/python ${grant(root)}\n` +
+          "Run 'uv sync' in app/agent, then retry.",
+      );
+    });
+
+    test("quotes a folder with a space, which Box wraps at that space", async () => {
+      const root = await project();
+      const lines = [`box: error: ${root}/app/my`, `${MORE}agent/.venv/bin/python ${grant(root)}`];
+      expect(await hint(root, lines)).toBe(`Run 'uv sync' in "app/my agent", then retry.`);
+    });
+
+    test("names the whole folder when Box wraps the path before the agent's folder", async () => {
+      const root = await project();
+      const lines = [`box: error: ${root}/app`, `${MORE}/agent/.venv/bin/python lies under the`];
+      lines.push(`${MORE}write grant ${root} of \`[agent]\``);
+      expect(await hint(root, lines)).toBe("Run 'uv sync' in app/agent, then retry.");
+    });
+
+    test("names the whole folder when Box wraps the path inside a word", async () => {
+      const root = await project();
+      const lines = [`box: error: ${root}/app/ag`, `${MORE}ent/.venv/bin/python ${grant(root)}`];
+      expect(await hint(root, lines)).toBe("Run 'uv sync' in app/agent, then retry.");
+    });
+
+    test("names no folder when the path names no folder of the project", async () => {
+      const root = await project();
+      const lines = [`box: error: ${root}/app/gone/.venv/bin/python ${grant(root)}`];
+      expect(await hint(root, lines)).toBe("Fix what Box reports, then retry.");
+    });
   });
 
   test("says how to see why when Box fails and prints no error", async () => {

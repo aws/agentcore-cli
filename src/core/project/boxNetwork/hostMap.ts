@@ -206,10 +206,6 @@ class HostMapBuilder {
     return { hosts, failures: this.failures, websocketOnly: this.websocketOnly };
   }
 
-  // ---------------------------------------------------------------------------
-  // Sources
-  // ---------------------------------------------------------------------------
-
   /** Adds the entry's nodes, or records why it fails and returns the destinations it names. */
   private addEgressEntry(name: string, raw: unknown): Destination[] | undefined {
     const problems: { code: FailureCode; reason: string }[] = [];
@@ -401,10 +397,6 @@ class HostMapBuilder {
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Rules
-  // ---------------------------------------------------------------------------
 
   /** The statement's network clauses, or `undefined` for a rule that decides no host. */
   private classify(statement: Statement, order: number): Rule | undefined {
