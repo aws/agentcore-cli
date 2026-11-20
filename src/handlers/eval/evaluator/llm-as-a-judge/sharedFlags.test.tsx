@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { SourceResolver } from "../../../../io";
 import { testIO } from "../../../../testing";
 import { ratingScaleFromPreset } from "../../ratingScale";
-import { buildEvaluatorModelConfig, resolveRatingScale } from "./sharedFlags";
+import { buildEvaluatorModelConfig, inferenceFromFlags, resolveRatingScale } from "./sharedFlags";
 
 // resolveRatingScale is the only branching logic behind --rating-scale: a value is
 // either a known preset id or a source-aware JSON RatingScale. These cases never
@@ -83,5 +83,47 @@ describe("buildEvaluatorModelConfig", () => {
       (config as { responsesEvaluatorModelConfig: { topP?: number } }).responsesEvaluatorModelConfig
         .topP,
     ).toBeUndefined();
+  });
+
+  test("Bedrock puts the inference settings in inferenceConfig", () => {
+    expect(
+      buildEvaluatorModelConfig("Bedrock", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", {
+        maxTokens: 1024,
+        temperature: 0.3,
+      }),
+    ).toEqual({
+      bedrockEvaluatorModelConfig: {
+        modelId: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        inferenceConfig: { maxTokens: 1024, temperature: 0.3 },
+      },
+    });
+  });
+
+  test("OpenResponses overrides only the defaults the settings name", () => {
+    expect(
+      buildEvaluatorModelConfig("OpenResponses", "openai.gpt-5.4", { maxTokens: 8192 }),
+    ).toEqual({
+      responsesEvaluatorModelConfig: {
+        modelId: "openai.gpt-5.4",
+        maxOutputTokens: 8192,
+        temperature: 0,
+      },
+    });
+  });
+});
+
+describe("inferenceFromFlags", () => {
+  // The absent case is the one that matters: returning undefined keeps the
+  // request identical to one sent before these flags existed.
+  test("returns undefined when no inference flag is passed", () => {
+    expect(inferenceFromFlags({})).toBeUndefined();
+  });
+
+  test("keeps a zero value, which is a valid temperature and top-p", () => {
+    expect(inferenceFromFlags({ temperature: 0, "top-p": 0 })).toEqual({
+      maxTokens: undefined,
+      temperature: 0,
+      topP: 0,
+    });
   });
 });
