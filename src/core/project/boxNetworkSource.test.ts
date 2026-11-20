@@ -533,6 +533,33 @@ describe("the IAM policy files of the Box gateway", () => {
     ]);
   });
 
+  test("counts the actions of an Allow statement in each form IAM takes, and of no other", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    const files: Record<string, unknown> = {
+      one: { Statement: { Effect: "Allow", Action: "lambda:InvokeFunctionUrl" } },
+      mixed: { Statement: [{ Effect: "Deny", Action: "s3:*" }, null, "text", { Effect: "Allow" }] },
+      none: { Version: "2012-10-17" },
+    };
+    for (const [name, document] of Object.entries(files)) {
+      await writeFile(join(root, "agentcore", `${name}.json`), JSON.stringify(document));
+    }
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [
+        {
+          ...boxGatewaySpec("agent"),
+          additionalPolicies: Object.keys(files).map((name) => `agentcore/${name}.json`),
+        },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+
+    expect(network?.grantedActions).toEqual(["lambda:InvokeFunctionUrl"]);
+    expect(network?.warnings).toEqual([]);
+  });
+
   test("gives no warning for the Memory policy file that build writes before it writes it", async () => {
     const root = await project([]);
     const spec = {

@@ -594,6 +594,55 @@ describe("Box project gateways", () => {
   });
 });
 
+describe("Box runtimes and the folder build stages box in", () => {
+  const boxed = (name: string, rest: Record<string, unknown> = {}) => ({
+    ...runtime,
+    name,
+    box: { version: "0.1.11-preview.10" },
+    ...rest,
+  });
+  const parse = (runtimes: { name: string }[]) =>
+    ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      projectType: "box",
+      runtimes,
+      agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name)),
+    });
+  const messages = (result: ReturnType<typeof parse>) =>
+    result.success ? [] : result.error.issues.map(({ message }) => message);
+
+  test("rejects two box runtimes in one folder, however the path is written", () => {
+    expect(
+      messages(
+        parse([
+          boxed("agent", { codeLocation: "./app/agent" }),
+          boxed("search", { codeLocation: "app/agent/" }),
+        ]),
+      ),
+    ).toEqual([
+      'Runtimes "agent" and "search" both run in a box from the folder app/agent, and build ' +
+        "stages the box of each in app/agent/.box-dist. Give each runtime its own folder.",
+    ]);
+  });
+
+  test("rejects a container runtime whose build context is the code folder of another", () => {
+    const container = boxed("image", {
+      build: "Container",
+      codeLocation: "./image",
+      buildContextPath: "./app/agent",
+    });
+    expect(messages(parse([boxed("agent", { codeLocation: "app/agent" }), container]))).toEqual([
+      'Runtimes "agent" and "image" both run in a box from the folder app/agent, and build ' +
+        "stages the box of each in app/agent/.box-dist. Give each runtime its own folder.",
+    ]);
+  });
+
+  test("accepts one folder for a box runtime and a runtime that runs in no box", () => {
+    const plain = { ...runtime, name: "plain", codeLocation: "app/agent" };
+    expect(parse([boxed("agent", { codeLocation: "app/agent" }), plain]).success).toBe(true);
+  });
+});
+
 describe("gateway variable prefixes", () => {
   const parse = (agentCoreGateways: unknown[]) =>
     ProjectSpecSchema.safeParse({ ...minimalProject, runtimes: [runtime], agentCoreGateways });

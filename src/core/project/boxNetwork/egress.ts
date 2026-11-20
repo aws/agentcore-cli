@@ -134,6 +134,11 @@ const AWS_ENDPOINTS = [
   },
 ] as const;
 
+/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
+export function boxGatewayAgentCoreHost(region: string): string {
+  return `bedrock-agentcore.${region}.amazonaws.com`;
+}
+
 /** The API of an AWS endpoint that the gateway signs for. */
 export type AwsEndpointApi = (typeof AWS_ENDPOINTS)[number]["api"];
 

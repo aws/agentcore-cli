@@ -4,7 +4,6 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
@@ -16,6 +15,7 @@ import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
   awsEndpoint,
+  boxGatewayAgentCoreHost,
   outboundAuthFor,
   parseEndpoint,
   targetNameFor,

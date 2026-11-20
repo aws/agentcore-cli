@@ -5,6 +5,7 @@ import {
   defaultMemoryName,
   type Memory,
 } from "../../projectSchemas/memory";
+import { boxGatewayAgentCoreHost } from "../../core/project/boxNetwork/egress";
 import { InputValidationError } from "../../errors";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
@@ -58,11 +59,6 @@ export function getBoxGatewayBedrockTargetSpec(
  * for a boxed agent's default Memory; also the name of the box route to it.
  */
 export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
-
-/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
-export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-agentcore.${region}.amazonaws.com`;
-}
 
 /**
  * The Box gateway's passthrough target for the AgentCore data plane (Memory),
