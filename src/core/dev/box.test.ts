@@ -210,15 +210,26 @@ describe("BoxDevRunner", () => {
       );
     });
 
-    test("prefers the shell's value to .env.local's", async () => {
+    test("prefers the shell's value to .env.local's, and says which, with no value", async () => {
+      // A wide-scope GITHUB_TOKEN in a shell profile would otherwise silently replace a narrow
+      // project token in .env.local.
       const { projectRoot, calls, runner } = await scene(true, true, {
         profile: GITHUB_PROFILE,
         processEnv: { GITHUB_TOKEN: "ghp_shell" },
       });
 
-      await collect(runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }));
+      const events = await collect(
+        runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }),
+      );
 
       expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_shell");
+      expect(events).toContainEqual({
+        type: "status",
+        message:
+          "GITHUB_TOKEN, which [egress.github] of the box profile reads, is set in this shell and " +
+          `in ${ENV_LOCAL_RELATIVE_PATH} to different values; box uses the shell's`,
+      });
+      expect(JSON.stringify(events)).not.toMatch(/ghp_shell|ghp_file/);
     });
 
     test("uses .env.local's value when the shell has none", async () => {

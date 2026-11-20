@@ -5,7 +5,7 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import { streamProcess, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
-import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
+import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
 import {
   BOX_PROFILE_FILE,
   boxIngressPort,
@@ -23,26 +23,29 @@ type BoxDevRunnerConfig = {
   checkTool?: (tool: string, installHint: string) => Promise<void>;
   /** The environment `box run` starts from, the shell's by default; tests inject one. */
   processEnv?: NodeJS.ProcessEnv;
+  /** The platform, whose rules for variable names apply to `processEnv`; tests inject one. */
+  platform?: NodeJS.Platform;
 };
 
 /**
- * Runs a CodeZip agent with `box run .box/profile.toml` in the project folder
- * when the project has that box profile, the one `agentcore create` writes,
- * and with the fallback runner otherwise. `box` is the one on PATH, which the
- * user installs from the box release. The box listens on the profile's
- * ingress port and relays to the agent, so the dev port must be that port.
+ * Runs a CodeZip agent with `box run` in the runtime's folder when the project has the box
+ * profile `agentcore create` writes, and with the fallback runner otherwise. `box` is the one on
+ * PATH, which the user installs from the box release. The box listens on the profile's ingress
+ * port and relays to the agent, so the dev port must be that port.
  */
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
   private readonly checkTool: NonNullable<BoxDevRunnerConfig["checkTool"]>;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly platform: NodeJS.Platform;
 
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.processEnv = config.processEnv ?? process.env;
+    this.platform = config.platform ?? process.platform;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -96,12 +99,16 @@ export class BoxDevRunner implements DevRunner {
     const fileEnv = credentialEnvironment(input.env);
     // box reads each env:// key of the profile from its own environment, picked as build picks it:
     // the shell's value when set and not blank, else agentcore/.env.local's. Dev writes neither.
-    const secrets = await boxDevSecrets(input.projectRoot, {
-      env: this.processEnv,
-      envLocal: fileEnv,
-    });
+    const secrets = boxDevSecrets(
+      profileText,
+      { env: this.processEnv, envLocal: fileEnv },
+      this.platform,
+    );
     for (const missing of secrets.missing) {
       yield { type: "status", message: missingBoxSecretWarning(missing) };
+    }
+    for (const shadowed of secrets.shadowed) {
+      yield { type: "status", message: shadowedBoxSecretNote(shadowed) };
     }
     // box starts in the folder the profile names, the runtime's own for a CodeZip profile, so the
     // agent reaches no other folder of the project; box finds the profile from there.

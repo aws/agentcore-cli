@@ -10,7 +10,7 @@ import {
   ResourceNotFoundError,
 } from "../../errors";
 import { notBoxProjectMessage } from "./box";
-import { boxDevSecrets, missingBoxSecretWarning } from "./boxDevSecrets";
+import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -115,6 +115,8 @@ type ContainerDevRunnerConfig = {
   releaseFor?: (version: string | undefined) => Promise<BoxRelease>;
   /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
   resolveAwsCredentials?: ResolveAwsCredentials;
+  /** The platform, whose rules for variable names apply to `processEnv`; tests inject one. */
+  platform?: NodeJS.Platform;
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -124,6 +126,7 @@ export class ContainerDevRunner implements DevRunner {
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly releaseFor: (version: string | undefined) => Promise<BoxRelease>;
   private readonly resolveAwsCredentials: ResolveAwsCredentials;
+  private readonly platform: NodeJS.Platform;
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
@@ -132,6 +135,7 @@ export class ContainerDevRunner implements DevRunner {
     this.processEnv = config.processEnv ?? process.env;
     this.releaseFor = config.releaseFor ?? ((version) => boxReleaseFor(version, this.processEnv));
     this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
+    this.platform = config.platform ?? process.platform;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -189,8 +193,25 @@ export class ContainerDevRunner implements DevRunner {
       "--build-arg",
       `${key}=<redacted>`,
     ]);
-    const boxDist = await this.stageBox(input, context);
-    const boxed = boxDist !== undefined;
+    const staged = await this.stageBox(input, context);
+    const boxDist = staged?.folder;
+    const boxed = staged !== undefined;
+    // The container gets none of the host's environment, so box in it gets each env:// key of the
+    // profile here, picked as build picks it: the shell's when set and not blank, else
+    // agentcore/.env.local's. Looked up before the image build, so its warnings come first.
+    const secrets = staged
+      ? boxDevSecrets(
+          staged.profileText,
+          { env: this.processEnv, envLocal: input.env ?? {} },
+          this.platform,
+        )
+      : undefined;
+    for (const missing of secrets?.missing ?? []) {
+      yield { type: "status", message: missingBoxSecretWarning(missing) };
+    }
+    for (const shadowed of secrets?.shadowed ?? []) {
+      yield { type: "status", message: shadowedBoxSecretNote(shadowed) };
+    }
     // The folder dev staged, for a Dockerfile that takes it as a build argument.
     const boxDistFlags =
       boxDist === BOX_DEV_DIST ? ["--build-arg", `${BOX_DIST_ARG}=${BOX_DEV_DIST}`] : [];
@@ -244,17 +265,8 @@ export class ContainerDevRunner implements DevRunner {
       PORT: String(containerPort),
       LOCAL_DEV: "1",
     });
-    if (boxed) {
-      // The container gets none of the host's environment, so box in it gets each env:// key of
-      // the profile here. The shell's value wins over agentcore/.env.local's, and dev writes
-      // neither anywhere but the run's own env file, removed when the run ends.
-      const secrets = await boxDevSecrets(input.projectRoot, {
-        env: this.processEnv,
-        envLocal: input.env ?? {},
-      });
-      for (const missing of secrets.missing) {
-        yield { type: "status", message: missingBoxSecretWarning(missing) };
-      }
+    if (secrets) {
+      // dev writes the keys nowhere but the run's own env file, removed when the run ends.
       Object.assign(forwardedEnv, secrets.env);
     }
     if (input.runtime.protocol === "MCP") {
@@ -348,7 +360,10 @@ export class ContainerDevRunner implements DevRunner {
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
    */
-  private async stageBox(input: DevServerInput, context: string): Promise<string | undefined> {
+  private async stageBox(
+    input: DevServerInput,
+    context: string,
+  ): Promise<{ folder: string; profileText: string } | undefined> {
     // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
     if (!runsInBox(input.boxProject, input.runtime)) {
       // A box runtime's image installs box and starts `box run`, which needs the Box project.
@@ -383,7 +398,7 @@ export class ContainerDevRunner implements DevRunner {
       await this.releaseFor(input.runtime.box?.version),
       folder,
     );
-    return folder;
+    return { folder, profileText };
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {

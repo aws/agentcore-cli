@@ -75,6 +75,7 @@ function harness(
     awsDirectory?: string;
     processEnv?: NodeJS.ProcessEnv;
     resolveAwsCredentials?: ResolveAwsCredentials;
+    platform?: NodeJS.Platform;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -129,6 +130,7 @@ function harness(
       },
       // Never the real chain in a test: none unless the test gives some.
       resolveAwsCredentials: config.resolveAwsCredentials ?? (async () => undefined),
+      ...(config.platform && { platform: config.platform }),
     }),
   };
 }
@@ -1047,6 +1049,39 @@ describe("ContainerDevRunner", () => {
         ),
       });
       expect(commandCall(calls, "run")).toBeDefined();
+    });
+
+    test("warns before the image build, as the lookup needs only the profile and the env", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+      const messages = events.map((event) => ("message" in event ? event.message : ""));
+
+      const warning = messages.findIndex((message) => message.includes("reads GITHUB_TOKEN"));
+      const build = messages.findIndex((message) => message.startsWith("Building image with"));
+      expect(warning).toBeGreaterThanOrEqual(0);
+      expect(warning).toBeLessThan(build);
+    });
+
+    test("hands the container a Windows shell's variable in another case, under its name", async () => {
+      // process.env is case-insensitive on Windows, so an exported Github_Token sets GITHUB_TOKEN.
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, Github_Token: "ghp_win" },
+        platform: "win32",
+      });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_win");
+      expect(JSON.stringify(events)).not.toContain("reads GITHUB_TOKEN for [egress.github]");
     });
 
     test("stages box of the runtime's box.version", async () => {
