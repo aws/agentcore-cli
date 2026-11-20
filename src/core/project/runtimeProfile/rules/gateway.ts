@@ -8,7 +8,8 @@
  *
  * | Local profile | Runtime profile |
  * | --- | --- |
- * | `[egress.<name>]`, for each of its hosts with a target | `[egress.<target>]`, the other keys kept, no `secret` |
+ * | `[egress.<name>]` with one host that has a target | `[egress.<name>]`, the other keys kept, no `secret`, a backend to its target |
+ * | `[egress.<name>]` with several hosts, or whose name a target of another host has | `[egress.<target>]` for each host with a target, the other keys kept, no `secret` |
  * | HTTP `[mcp.<name>]` | `[mcp.<name>]`, the other keys kept, only an `env://` secret |
  * | a target that no entry of the profile names | `[egress.<target>]`, or the `[mcp]` server it serves |
  * | an entry whose hosts the policy denies | removed; the Box network model warns for it |
