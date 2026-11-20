@@ -609,18 +609,20 @@ describe("renderAgentCoreCodeZipPack", () => {
     expect(toml().pack).toEqual({ name: "@box/agentcore-codezip", version: 1, kind: "support" });
   });
 
-  test("declares the Runtime Python and code directory from the environment start.py exports", () => {
+  test("declares the Runtime Python, its standard library, and the code directory from the environment start.py exports", () => {
     const { inputs } = toml();
     expect(inputs.python.path.from).toBe("env:BOX_PYTHON");
-    expect(inputs.python.prefix.from).toBe("env:BOX_PYTHON_PREFIX");
+    expect(inputs.python.stdlib.from).toBe("env:BOX_PYTHON_STDLIB");
     expect(inputs.code.dir.from).toBe("env:BOX_CODE");
+    // The prefix of the Runtime's Python is /usr, which box refuses as a grant.
+    expect(inputs.python.prefix).toBeUndefined();
   });
 
   test("bounds the inputs that reach the agent command or a filesystem grant with a pattern", () => {
     const { inputs } = toml();
-    // The Python path (command element 0) and the code dir (--app-dir) reach `command`; the prefix
-    // reaches the read and exec grants.
-    for (const input of [inputs.python.path, inputs.code.dir, inputs.python.prefix]) {
+    // The Python path (command element 0) and the code dir (--app-dir) reach `command`; the
+    // standard library reaches the read and exec grants.
+    for (const input of [inputs.python.path, inputs.code.dir, inputs.python.stdlib]) {
       const pattern = new RegExp(`^${input.pattern}$`);
       expect(pattern.test("/var/lang")).toBe(true);
       // Neither an empty value nor / may widen a grant to the whole filesystem.

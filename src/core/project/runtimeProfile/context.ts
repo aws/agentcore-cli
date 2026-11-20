@@ -34,7 +34,7 @@ export function runtimePaths(
       localPythons: "/usr/local",
       runtimeCode: WORKSPACE,
       runtimePython: `${WORKSPACE}/.venv/bin/python`,
-      runtimePythonPrefix: "/usr/local",
+      runtimePythonStdlib: "/usr/local",
       otelInstrument: [`${WORKSPACE}/.venv/bin/opentelemetry-instrument`],
       shownCode: "/app/",
     };
@@ -50,7 +50,7 @@ export function runtimePaths(
     localPythons: `${HOME}/.local/share/uv/python`,
     runtimeCode: RUNTIME_INPUTS.codeDir,
     runtimePython: RUNTIME_INPUTS.pythonPath,
-    runtimePythonPrefix: RUNTIME_INPUTS.pythonPrefix,
+    runtimePythonStdlib: RUNTIME_INPUTS.pythonStdlib,
     otelInstrument: [
       RUNTIME_INPUTS.pythonPath,
       `${RUNTIME_INPUTS.codeDir}/bin/opentelemetry-instrument`,

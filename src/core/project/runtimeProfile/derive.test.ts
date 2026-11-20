@@ -81,7 +81,7 @@ describe("runtimePaths", () => {
       localPythons: "${{ home }}/.local/share/uv/python",
       runtimeCode: "${{ inputs.code.dir }}",
       runtimePython: "${{ inputs.python.path }}",
-      runtimePythonPrefix: "${{ inputs.python.prefix }}",
+      runtimePythonStdlib: "${{ inputs.python.stdlib }}",
       otelInstrument: [
         "${{ inputs.python.path }}",
         "${{ inputs.code.dir }}/bin/opentelemetry-instrument",
