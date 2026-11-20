@@ -145,7 +145,10 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   },
 ].filter((r) => !r.skip);
 
-/** The Strands Box templates, which run their agent in a box on AgentCore Runtime. */
+/**
+ * The Strands Box templates, which run their agent in a box on AgentCore Runtime. The describe's
+ * `skipIf` is their only skip: a `skip` on an entry here has no effect.
+ */
 const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal_box",
@@ -412,7 +415,10 @@ async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void
     10 * 1000,
   );
   // `--query` is a CloudWatch filter pattern, so it returns only the matching events: the error
-  // lines need their own query. These are the ones the README says a working box agent never logs.
+  // lines need their own query. These are the ones the root README.md says a working box agent
+  // never logs. box logs `running profile` when it starts, before the invoke, so the check waits
+  // for log lines from the invoke to reach CloudWatch first.
+  await new Promise((resolve) => setTimeout(resolve, 30 * 1000));
   const errors = await logs('?ERROR ?"blocked by egress control" ?AccessDenied');
   expect(errors.exitCode).toBe(0);
   expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);

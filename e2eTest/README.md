@@ -29,3 +29,7 @@ Runtime. They need `box` on your PATH, because `agentcore create` checks for it,
 ```sh
 bun run test:e2e -- --tagsFilter='box'
 ```
+
+That runs each Box template on its default Python. The CodeZip box template on Python 3.10 to 3.13
+(`py_strands_box_3_10` to `py_strands_box_3_13`) is in the runtime templates describe, so it runs
+with `--tagsFilter='runtime'` or a full run, outside CI.
