@@ -7,6 +7,7 @@
  * | --- | --- |
  * | `network.contain_egress = false` on `[agent]`, a stdio `[mcp.<name>]`, or a `[tool.<name>]` | RUNTIME_EGRESS_NOT_CONTAINED |
  * | a `[telemetry.<name>]` that is not `cloudwatch_logs` or `cloudwatch_traces`, and that the Box network model does not carry (`context.thirdPartyTelemetry`) | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
+ * | a CloudWatch `[telemetry.<name>]` that box refuses when a run starts, so it is not in `context.telemetry` | RUNTIME_TELEMETRY_REFUSED |
  * | CodeZip: a path of the project outside the code folder, of the home folder (`${{ home }}`, `~`, `/Users`, `/home`), or in the venv | RUNTIME_PATH_NOT_FOUND |
  * | CodeZip: an `[agent]`, stdio server, or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
  * | CodeZip: a `write` or `write_file` grant in the code folder, which the agent runs files from on the Runtime | RUNTIME_WRITE_IN_CODE |
@@ -65,7 +66,20 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const telemetry = isTable(table.telemetry) ? table.telemetry : {};
   for (const [name, target] of Object.entries(telemetry)) {
     const kind = isTable(target) ? target.kind : undefined;
-    if (typeof kind === "string" && RUNTIME_TELEMETRY_KINDS.has(kind)) continue;
+    if (typeof kind === "string" && RUNTIME_TELEMETRY_KINDS.has(kind)) {
+      // context.telemetry holds each CloudWatch target that box takes (cloudWatchTelemetry).
+      if (context.telemetry.some((resolved) => resolved.name === name)) continue;
+      problem(
+        "RUNTIME_TELEMETRY_REFUSED",
+        ["telemetry", name],
+        "is a CloudWatch target that box refuses when a run starts, under `agentcore dev` and " +
+          "on AgentCore Runtime. Give it a region of lower-case letters, digits, and -, and an " +
+          "include of one or more different words of deny, permit, trace, logs, and metrics. " +
+          "For cloudwatch_logs, give it a log_group of letters, digits, and . _ - / #, and a " +
+          "log_stream with no : or *.",
+      );
+      continue;
+    }
     // The additions rule carries each third-party target that the Box network model carries.
     if (context.thirdPartyTelemetry?.some((carried) => carried.name === name)) continue;
     // A table with no kind adds to the target of that name that a pack gives, which box resolves.

@@ -12,7 +12,7 @@
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
  * | `[tool.<name>]` | a table of the template becomes its Runtime table, or goes when the Runtime has none; a table of the user stays |
- * | `[telemetry.<name>]` | each CloudWatch target is signed with a bare `aws://`, in the deploy region when it names none |
+ * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
@@ -347,8 +347,9 @@ function onAllAddresses(entry: unknown): unknown {
 }
 
 /**
- * `[telemetry]` for the Runtime: each CloudWatch target of the local profile with its keys, signed
- * with a bare `aws://`, in the deploy region when it names none; then each CloudWatch target of the
+ * `[telemetry]` for the Runtime: each CloudWatch target of the local profile that box takes (the
+ * names of `context.telemetry`) with its keys, signed with a bare `aws://`, in the deploy region
+ * when it names none; one that box refuses goes; then each CloudWatch target of the
  * context that the local profile does not declare, as box resolves it. A target of another kind
  * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes last, as
  * `agentcore`, or as `agentcore_default` when a target has that name.
@@ -365,6 +366,8 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
       result[name] = entry;
       continue;
     }
+    // A CloudWatch target that box refuses gets no grant, and the refusals rule stops build for it.
+    if (!resolved.has(name)) continue;
     const { kind, region, ...rest } = entry;
     result[name] = {
       ...(kind !== undefined && { kind }),

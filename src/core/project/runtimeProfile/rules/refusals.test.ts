@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import type { ProjectSpec } from "../../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
+import { cloudWatchTelemetry, withDeployRegion } from "../../boxNetwork";
 import { profileKeyPlaces, runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import type { ThirdPartyTelemetry } from "../../boxNetwork";
@@ -20,6 +21,7 @@ const CODEZIP = {
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
 const PROFILE = ".box/agent/local/profile.toml";
 
+/** The context of the local profile `text`, with the CloudWatch targets that box takes from it. */
 const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
   runtimeProfileContext({
     spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
@@ -28,7 +30,8 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
     region: "us-west-2",
     gateway: { name: "agent-box-egress", targets: [] },
     hosts: [],
-    telemetry: [],
+    telemetry: withDeployRegion(cloudWatchTelemetry(parse(text) as TomlTable), "us-west-2", PROFILE)
+      .telemetry,
     policyFiles: [],
     places: profileKeyPlaces(text, PROFILE),
   });
@@ -260,6 +263,41 @@ describe("the refusals rule", () => {
       expect(problemsOf(text, CONTAINER)).toEqual([]);
     },
   );
+
+  test("stops for a CloudWatch target that box refuses when a run starts (RUNTIME_TELEMETRY_REFUSED)", () => {
+    const text = toml(
+      "[telemetry.logs]",
+      'kind = "cloudwatch_logs"',
+      'log_group = "/demo/agent"',
+      'log_stream = "a:b"',
+      "[telemetry.traces]",
+      'kind = "cloudwatch_traces"',
+      "include = []",
+      "[telemetry.kept]",
+      'kind = "cloudwatch_traces"',
+    );
+    const reason = (name: string) =>
+      `[telemetry] ${name} is a CloudWatch target that box refuses when a run starts, under \`agentcore ` +
+      "dev` and on AgentCore Runtime. Give it a region of lower-case letters, digits, and -, and " +
+      "an include of one or more different words of deny, permit, trace, logs, and metrics. For " +
+      "cloudwatch_logs, give it a log_group of letters, digits, and . _ - / #, and a log_stream " +
+      "with no : or *.";
+
+    expect(problemsOf(text)).toEqual([
+      {
+        code: "RUNTIME_TELEMETRY_REFUSED",
+        key: ["telemetry", "logs"],
+        reason: reason("logs"),
+        place: `${PROFILE}:1:1`,
+      },
+      {
+        code: "RUNTIME_TELEMETRY_REFUSED",
+        key: ["telemetry", "traces"],
+        reason: reason("traces"),
+        place: `${PROFILE}:5:1`,
+      },
+    ]);
+  });
 
   test("takes a [telemetry] table with no kind that adds to a CloudWatch target of a pack", () => {
     const text = toml("[telemetry.logs]", 'include = ["deny"]');
