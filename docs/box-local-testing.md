@@ -144,8 +144,18 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
-    target signs with the execution role. With no `cloudwatch_logs` target, the box sends its
-    records to the runtime's own log group.
+    target signs with the execution role.
+
+  **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
+  `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
+  runtime, `/aws/bedrock-agentcore/runtimes/<runtime ID>-DEFAULT`, log stream `otel-rt-logs`. box
+  reads these two names from `OTEL_EXPORTER_OTLP_LOGS_HEADERS`, which the Runtime sets. If the
+  Runtime does not set it, box does not start. The Runtime makes that log group, so its retention
+  applies, and it stays after you remove the runtime. CloudWatch Logs charges for the records it
+  gets. To send none, set `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the `envVars` of the runtime
+  in `agentcore.json`. To send them to another log group, add a `cloudwatch_logs` target to the
+  local profile. `agentcore create` and `agentcore add runtime` give this notice for each box
+  runtime.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a path
   of the project outside the code folder, a home path (`${{ home }}`, `~`, `/Users`, `/home`), a

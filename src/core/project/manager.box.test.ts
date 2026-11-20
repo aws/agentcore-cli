@@ -10,6 +10,7 @@ import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
 /**
@@ -347,6 +348,18 @@ describe("gateway targets in a Box project", () => {
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${profile}` });
     expect(existsSync(join(project.rootPath, "app", "search", "start.py"))).toBe(true);
     expect(existsSync(join(project.rootPath, "app", "search", ".venv"))).toBe(true);
+    // The notice of the default log target comes after agentcore.json is written.
+    const notice = {
+      type: "warning",
+      message: defaultLogTargetNotice("search", ".box/search/local/profile.toml"),
+    };
+    const written = events.findIndex((event) =>
+      (event as { message?: string }).message?.startsWith("updating project spec file"),
+    );
+    expect(
+      events.indexOf(events.find((event) => JSON.stringify(event) === JSON.stringify(notice))),
+    ).toBeGreaterThan(written);
+    expect(events).toContainEqual(notice);
     // The first runtime keeps its own profile folder and gateway.
     expect(spec.agentCoreGateways.map(({ boundRuntime }) => boundRuntime)).toEqual([
       "agent",
@@ -542,6 +555,34 @@ describe("gateway targets in a Box project", () => {
     expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
     // The file was there before the add, so it stays.
     expect(await readFile(blocked, "utf8")).toBe("not a folder\n");
+  });
+
+  test("a failed write of agentcore.json gives no notice of the default log target", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const agentcore = join(project.rootPath, "agentcore");
+    const specFile = join(agentcore, "agentcore.json");
+    await chmod(specFile, 0o444);
+    await chmod(agentcore, 0o555);
+    const events: unknown[] = [];
+    try {
+      const generator = manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never);
+      await expect(
+        (async () => {
+          for (let next = await generator.next(); !next.done; next = await generator.next()) {
+            events.push(next.value);
+          }
+        })(),
+      ).rejects.toThrow();
+    } finally {
+      await chmod(agentcore, 0o755);
+      await chmod(specFile, 0o644);
+    }
+
+    expect(events.some((event) => (event as { type?: string }).type === "warning")).toBe(false);
   });
 
   test("add runtime warns when the kept box profile is for another protocol", async () => {

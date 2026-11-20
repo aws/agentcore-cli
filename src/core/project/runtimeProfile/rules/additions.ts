@@ -23,6 +23,7 @@ import {
   BOX_BEDROCK_PACK,
   BOX_CODEZIP_DIST,
 } from "../../templates/boxProfile";
+import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { isTable } from "../projectPaths";
 import {
   RUNTIME_AWS_SIGNER,
@@ -78,6 +79,34 @@ export const DEFAULT_TELEMETRY_TARGET = {
 export function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   const region = RUNTIME_INPUTS.awsRegion;
   return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
+}
+
+/**
+ * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
+ * of the runtime set it to `true`, the Runtime profile gets no default log target.
+ */
+export const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
+
+/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
+export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
+  return (runtime.envVars ?? []).some(
+    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
+  );
+}
+
+/**
+ * The notice that `agentcore create` and `agentcore add runtime` give for a box runtime: what the
+ * default log target sends, where, what it costs, and how to turn it off.
+ */
+export function defaultLogTargetNotice(runtimeName: string, profileFile: string): string {
+  return (
+    `runtime "${runtimeName}": when ${profileFile} has no cloudwatch_logs target, box on ` +
+    "AgentCore Runtime sends its deny, permit, and trace records to the log group of the " +
+    "runtime, /aws/bedrock-agentcore/runtimes/<runtime ID>-DEFAULT, log stream otel-rt-logs. The " +
+    "Runtime makes that log group, so its retention applies, and the log group stays after the " +
+    "runtime is removed. CloudWatch Logs charges for the records. To send none, set " +
+    `${OBSERVABILITY_OFF_ENV} to "true" in the envVars of the runtime in agentcore.json.`
+  );
 }
 
 /** The comment lines above `profile`, the Runtime profile of `context.runtime`. */
@@ -351,7 +380,8 @@ function onAllAddresses(entry: unknown): unknown {
  * when it names none; one that box refuses goes; then each CloudWatch target of the
  * context that the local profile does not declare, as box resolves it. A target of another kind
  * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes last, as
- * `agentcore`, or as `agentcore_default` when a target has that name.
+ * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
+ * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}).
  */
 function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): unknown {
   if (telemetry !== undefined && !isTable(telemetry)) return telemetry;
@@ -392,7 +422,7 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
     ([name, entry]) =>
       isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === "cloudwatch_logs",
   );
-  if (!logs) {
+  if (!logs && !observabilityOff(context.runtime)) {
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
     result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
   }

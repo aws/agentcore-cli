@@ -64,13 +64,16 @@ import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
   boxAwsDir,
+  boxLocalProfileFile,
   boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
+  runsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
 import { validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
@@ -628,6 +631,7 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
+    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes);
     return project;
   }
 
@@ -1087,6 +1091,13 @@ export class FsProjectManager implements ProjectManager {
         }),
       ]);
       throw err;
+    }
+    // After the write, so a failed write gives no notice for a runtime that was not written.
+    if (input.resourceType === "runtime") {
+      yield* defaultLogTargetNotices(
+        newProjectSpec,
+        newProjectSpec.runtimes.filter(({ name }) => name === input.resourceConfig.name),
+      );
     }
 
     return {
@@ -2384,6 +2395,22 @@ function ingressPort(text: string): string | undefined {
  * Refuses to export a harness as a runtime into a Box project. Every runtime of a Box project runs
  * in a box, and the exported harness runs its agent the usual way.
  */
+/**
+ * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
+ * runs in a box in `spec`, and that does not turn observability off.
+ */
+function defaultLogTargetNotices(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  runtimes: readonly z.infer<typeof ProjectSpecSchema>["runtimes"][number][],
+): ProjectEvent[] {
+  return runtimes
+    .filter((runtime) => runsInBox(isBoxProject(spec), runtime) && !observabilityOff(runtime))
+    .map((runtime) => ({
+      type: "warning",
+      message: defaultLogTargetNotice(runtime.name, boxLocalProfileFile(runtime.name)),
+    }));
+}
+
 function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
   if (!isBoxProject(spec)) return;
   throw new ProjectStateError(
