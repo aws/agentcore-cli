@@ -9,8 +9,8 @@
  * code folder when it sets none, and the `_ctypes` folder in front of a `PYTHONPATH` of its own, as
  * the additions rule does for `[agent]`. Each entry of a path list moves, and an entry that names a
  * Runtime input stays. The refusals rule stops build for a path that has no place on the
- * Runtime, so this rule keeps such a path as it is. It replaces the path moves of
- * runtimeCodeZipRunner (templates/boxProfile.ts).
+ * Runtime, so this rule keeps such a path as it is. runtimeCodeZipRunner (templates/boxProfile.ts)
+ * gives the Runtime grants of the template in the local paths, and this rule moves them too.
  */
 import {
   isTable,

@@ -54,7 +54,7 @@ const LEAVES = toml(
   'packs = ["@box/base"]',
   "",
   "[agent]",
-  'command = ["/bin/echo"]',
+  'command = ["${{ workspace }}/app/agent/run"]',
   "",
   "[mcp.notes]",
   'type = "stdio"',

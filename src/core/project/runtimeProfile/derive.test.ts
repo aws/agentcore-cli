@@ -54,7 +54,11 @@ describe("deriveRuntimeProfile", () => {
   test.each([CODEZIP, CONTAINER])(
     "carries each key that no rule changes as the local profile has it ($build)",
     (runtime) => {
-      const local = { packs: ["@box/base"], ...CARRIED, agent: { command: ["/bin/echo"] } };
+      const local = {
+        packs: ["@box/base"],
+        ...CARRIED,
+        agent: { command: ["${{ workspace }}/app/agent/run"] },
+      };
 
       const { profile, problems } = deriveRuntimeProfile(local, context(runtime));
 

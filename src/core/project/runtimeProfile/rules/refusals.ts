@@ -7,13 +7,13 @@
  * | --- | --- |
  * | `network.contain_egress = false` on `[agent]`, a stdio `[mcp.<name>]`, or a `[tool.<name>]` | RUNTIME_EGRESS_NOT_CONTAINED |
  * | a `[telemetry.<name>]` that is not `cloudwatch_logs` or `cloudwatch_traces`, and that the Box network model does not carry (`context.thirdPartyTelemetry`) | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
- * | CodeZip: a path of the project outside the code folder, of the home folder, or in the venv | RUNTIME_PATH_NOT_FOUND |
- * | CodeZip: a stdio server or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
+ * | CodeZip: a path of the project outside the code folder, of the home folder (`${{ home }}`, `~`, `/Users`, `/home`), or in the venv | RUNTIME_PATH_NOT_FOUND |
+ * | CodeZip: an `[agent]`, stdio server, or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
  * | CodeZip: a `write` or `write_file` grant in the code folder, which the agent runs files from on the Runtime | RUNTIME_WRITE_IN_CODE |
  *
  * A container image runs the same paths and programs under `agentcore dev` and on the Runtime, so
- * the last three do not apply to it. It replaces the CloudWatch-only filter of `cloudWatchTelemetry`
- * (boxNetwork/telemetry.ts), which leaves out each other target with no message.
+ * the last three do not apply to it. The rule reads only the text of the local profile: a key that
+ * a pack adds is not in that text, so the rule does not examine it.
  */
 import { keyLabel } from "../derive";
 import {
@@ -98,11 +98,10 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       return value;
     });
     for (const { key, table: process, leaf } of processTables(table)) {
-      // The additions rule writes the command of [agent], so this check is for a leaf only.
-      if (!leaf) continue;
+      // The command of the template moves to the Runtime's Python. A command of the user stays.
       const command = programOf(process);
       const moved = command === undefined ? undefined : moveProjectPath(command, paths);
-      const searched = typeof process.program === "string" ? process.program : undefined;
+      const searched = leaf && typeof process.program === "string" ? process.program : undefined;
       // A program with no place on the Runtime is a path problem of its command already.
       const program = typeof moved === "string" ? moved : undefined;
       if (program !== undefined && !isRuntimeProgram(program, paths)) {

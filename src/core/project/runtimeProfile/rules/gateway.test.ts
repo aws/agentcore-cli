@@ -458,7 +458,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
     'policies = ["policy.dw"]',
     "",
     "[agent]",
-    'command = ["/bin/echo"]',
+    'command = ["${{ workspace }}/app/agent/run"]',
     "",
     "[egress.bedrock]",
     'secret.ref = "aws://default"',

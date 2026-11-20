@@ -52,6 +52,9 @@ const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The end of a file name: no more of its letters follow. A `/` can follow. */
 const NAME_END = "(?![A-Za-z0-9_.+-])";
 
+/** A path in a home folder that names no `${{ home }}`: `~`, `~/...`, `/Users/...`, `/home/...`. */
+const HOST_HOME = /^(?:~(?:\/|$)|\/(?:Users|home)\/)/;
+
 /** The end of a path: no more of it follows, not even a `/`. */
 const PATH_END = "(?![A-Za-z0-9_.+/-])";
 
@@ -65,6 +68,8 @@ export function moveProjectPath(
   value: string,
   paths: RuntimePaths,
 ): string | { readonly problem: PathProblem } {
+  // box expands `~` to the home folder, and a host's own home is under /Users or /home.
+  if (HOST_HOME.test(value)) return { problem: "home" };
   const normal = value
     .replace(/\$\{\{\s*workspace\s*\}\}/g, () => WORKSPACE)
     .replace(/\$\{\{\s*home\s*\}\}/g, () => HOME);

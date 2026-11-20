@@ -233,6 +233,34 @@ describe("the refusals rule", () => {
     expect(problemsOf(text, CONTAINER)).toEqual([]);
   });
 
+  test("stops for an [agent] program of the user that build cannot find, on a CodeZip Runtime only", () => {
+    const text = toml("[agent]", 'command = ["/opt/homebrew/bin/python3", "main.py"]');
+
+    expect(problemsOf(text).map(({ code, key, place }) => [code, key, place])).toEqual([
+      ["RUNTIME_PROGRAM_NOT_FOUND", ["agent", "command"], `${PROFILE}:2:1`],
+    ]);
+    expect(problemsOf(text, CONTAINER)).toEqual([]);
+  });
+
+  test.each(["~", "~/data", "/Users/me/data", "/home/me/data"])(
+    "stops for the host home path %s, on a CodeZip Runtime only (RUNTIME_PATH_NOT_FOUND)",
+    (path) => {
+      const text = toml("[agent.filesystem]", `read = ["${APP}", "${path}"]`);
+
+      expect(problemsOf(text)).toEqual([
+        {
+          code: "RUNTIME_PATH_NOT_FOUND",
+          key: ["agent", "filesystem", "read"],
+          reason:
+            `[agent.filesystem] read names "${path}" in the home folder. The home folder on ` +
+            "AgentCore Runtime is empty. Move the file into app/agent/, or remove the path.",
+          place: `${PROFILE}:2:1`,
+        },
+      ]);
+      expect(problemsOf(text, CONTAINER)).toEqual([]);
+    },
+  );
+
   test("stops for a [tool] program that box finds on PATH, on a CodeZip Runtime only", () => {
     const text = toml("[tool.jq]", 'program = "jq"');
 
