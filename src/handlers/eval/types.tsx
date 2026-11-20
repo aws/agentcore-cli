@@ -337,6 +337,7 @@ export type EvaluateResult = {
   sessionsRequested: number;
   sessionsEvaluated: number;
   results: EvaluationResultContent[];
+  skippedSessionIds?: string[];
 };
 
 // DatasetUpdateResult reports what reconciling a DRAFT against a local file

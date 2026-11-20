@@ -59,6 +59,7 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
       }),
       flag("lookback-days", "evaluate sessions from the last N days", z.number().optional(), {
         group: SESSION_FILTERS,
+        help: "Sessions without supported agent spans are listed on stderr and skipped.",
       }),
       flag("start-time", "window start (ISO-8601, with --end-time)", z.string().optional(), {
         group: SESSION_FILTERS,
@@ -116,6 +117,13 @@ export const createEvaluateOnDemandHandler = (core: Core, io: AppIO) =>
         { traces, evaluatorIds: flags["evaluators"], groundTruth },
         opts,
       );
+      if (result.skippedSessionIds?.length) {
+        const ids = result.skippedSessionIds;
+        const sessions = ids.length === 1 ? "session" : "sessions";
+        io.stderr.write(
+          `Skipped ${ids.length} ${sessions} with no supported agent spans: ${ids.join(", ")}\n`,
+        );
+      }
       ctx.require(JsonRendererKey).renderJson(result);
     },
   });
