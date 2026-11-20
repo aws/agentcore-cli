@@ -18,12 +18,11 @@ export const BOX_DIST_GITIGNORE =
 /**
  * Stages box into each CodeZip runtime that runs in a box ({@link runtimeRunsInBox}),
  * so the zip carries it: `<codeLocation>/.box-dist/` gets box, its helpers, its
- * packs, the libffi shim built for the runtime's Python, and what the runtime
- * profile writer writes from the runtime's Box network model (the Runtime profile
- * and a byte copy of each policy file it names). `.box/<name>/aws/` gets only what
- * the writer writes, for people to read. Both folders are rewritten on every build
- * and deploy. `box` is asked for only when a runtime needs it. Returns the names
- * of the runtimes it staged.
+ * packs, and what the runtime profile writer writes from the runtime's Box network
+ * model (the Runtime profile and a byte copy of each policy file it names).
+ * `.box/<name>/aws/` gets only what the writer writes, for people to read. Both
+ * folders are rewritten on every build and deploy. `box` is asked for only when a
+ * runtime needs it. Returns the names of the runtimes it staged.
  */
 export async function stageBoxCodeZip(
   project: Project,
@@ -69,8 +68,6 @@ export async function stageBoxCodeZip(
       chmodSync(join(folder, binary), 0o755);
     }
     cpSync(build.resources, join(folder, "resources"), { recursive: true });
-    const ffi = entry.runtimeVersion ? build.ffi[entry.runtimeVersion] : undefined;
-    if (ffi) cpSync(ffi, join(folder, "ffi"), { recursive: true });
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     writeRenderedBoxFiles(project.rootPath, runtime, dist, filesOf(dist));
   }

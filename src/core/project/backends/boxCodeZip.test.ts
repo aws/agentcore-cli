@@ -36,23 +36,14 @@ const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoli
 
 /**
  * A Linux box build laid out as the release cache holds it, and as deploy resolves it: box, its
- * helpers and its packs in one folder, and optionally the Python 3.14 shim under ffi/.
+ * helpers and its packs in one folder.
  */
-async function linuxBuild(options: { ffi?: boolean } = {}): Promise<BoxLinuxBuild> {
+async function linuxBuild(): Promise<BoxLinuxBuild> {
   const root = await temp("box-build-");
   for (const binary of BINARIES) await writeFile(join(root, binary), `#!${binary}\n`);
   await mkdir(join(root, "resources", "shared", "base"), { recursive: true });
   await writeFile(join(root, "resources", "shared", "base", "pack.toml"), "[pack]\n");
-  const ffi = join(root, "ffi", "PYTHON_3_14");
-  if (options.ffi) {
-    await mkdir(ffi, { recursive: true });
-    await writeFile(join(ffi, "libffi.so.8"), "ffi");
-  }
-  return {
-    binaries: root,
-    resources: join(root, "resources"),
-    ffi: options.ffi ? { PYTHON_3_14: ffi } : {},
-  };
+  return { binaries: root, resources: join(root, "resources") };
 }
 
 async function project(
@@ -85,8 +76,8 @@ async function project(
 }
 
 describe("stageBoxCodeZip", () => {
-  test("stages box, its packs, the shim, and the Runtime profile into the code folder", async () => {
-    const build = await linuxBuild({ ffi: true });
+  test("stages box, its packs, and the Runtime profile into the code folder", async () => {
+    const build = await linuxBuild();
     const demo = await project("start.py");
 
     expect(await stageBoxCodeZip(demo, [model([])], async () => build)).toEqual(["agent"]);
@@ -102,7 +93,6 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",
     );
-    expect(await readFile(join(dist, "ffi", "libffi.so.8"), "utf8")).toBe("ffi");
     // The Runtime profile is the one build derived from the local profile.
     const { runtimeProfile, runtimeProfileHeader } = model([]);
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
@@ -129,7 +119,7 @@ describe("stageBoxCodeZip", () => {
   });
 
   test("asks for the box of the runtime's box.version", async () => {
-    const build = await linuxBuild({ ffi: true });
+    const build = await linuxBuild();
     const demo = await project("start.py");
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
     const versions: (string | undefined)[] = [];
@@ -140,17 +130,6 @@ describe("stageBoxCodeZip", () => {
     });
 
     expect(versions).toEqual(["2.0.0"]);
-  });
-
-  test("ships no shim to a runtime whose Python it was not built for", async () => {
-    const build = await linuxBuild({ ffi: true });
-    const demo = await project("start.py", "PYTHON_3_13");
-
-    await stageBoxCodeZip(demo, [model([])], async () => build);
-
-    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
-    expect(await Bun.file(join(dist, "box")).exists()).toBe(true);
-    expect(await Bun.file(join(dist, "ffi", "libffi.so.8")).exists()).toBe(false);
   });
 
   test.each([

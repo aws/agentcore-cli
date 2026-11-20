@@ -11,7 +11,6 @@
  * | the code folder and each path in it, `<code>[/...]` | `${{ inputs.code.dir }}[/...]` |
  * | another path of the project, of the home folder, or in the venv | none: a {@link PathProblem} |
  */
-import { BOX_CODEZIP_DIST } from "../templates/boxProfile";
 import type { RuntimePaths, TomlTable } from "./types";
 
 const WORKSPACE = "${{ workspace }}";
@@ -224,18 +223,12 @@ export function isRuntimeProgram(program: string, paths: RuntimePaths): boolean 
   return program === paths.runtimePython || program.startsWith(`${paths.runtimeCode}/`);
 }
 
-/** The folder of the `_ctypes` that deploy stages for the Runtime's Python. */
-export function runtimeFfiPath(paths: RuntimePaths): string {
-  return `${paths.runtimeCode}/${BOX_CODEZIP_DIST}/ffi`;
-}
-
 /**
- * The `PYTHONPATH` of a leaf that runs the Runtime's Python and sets none: the `_ctypes` that
- * deploy stages, then the code folder, where the Runtime installs the dependencies that the venv
- * held locally.
+ * The `PYTHONPATH` of a leaf that runs the Runtime's Python and sets none: the code folder, where
+ * the Runtime installs the dependencies that the venv held locally.
  */
 export function runtimePythonPath(paths: RuntimePaths): string {
-  return `${runtimeFfiPath(paths)}:${paths.runtimeCode}`;
+  return paths.runtimeCode;
 }
 
 /**

@@ -402,7 +402,6 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "strands-box-sock-alias",
   "strands-box-contain-trampoline",
   "resources",
-  "ffi",
   "profile.toml",
   ".gitignore",
 ]);

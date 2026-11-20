@@ -33,7 +33,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -112,7 +112,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -197,7 +197,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -280,7 +280,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -359,7 +359,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -444,7 +444,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -521,7 +521,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -595,7 +595,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -675,7 +675,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -753,7 +753,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -827,7 +827,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -907,7 +907,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -977,7 +977,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1044,7 +1044,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1117,7 +1117,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1188,7 +1188,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1255,7 +1255,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1328,7 +1328,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1399,7 +1399,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1466,7 +1466,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1539,7 +1539,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1610,7 +1610,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1677,7 +1677,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1750,7 +1750,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -1827,7 +1827,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -1900,7 +1900,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -1979,7 +1979,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2056,7 +2056,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2129,7 +2129,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2208,7 +2208,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2279,7 +2279,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2347,7 +2347,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2421,7 +2421,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2493,7 +2493,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2561,7 +2561,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2635,7 +2635,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -2713,7 +2713,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -2785,7 +2785,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -2863,7 +2863,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -2939,7 +2939,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3011,7 +3011,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3089,7 +3089,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3159,7 +3159,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3226,7 +3226,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3299,7 +3299,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3370,7 +3370,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3437,7 +3437,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -3510,7 +3510,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -5667,7 +5667,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -5759,7 +5759,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -5857,7 +5857,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -5953,7 +5953,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6062,7 +6062,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6177,7 +6177,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6284,7 +6284,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6371,7 +6371,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6464,7 +6464,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6555,7 +6555,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6659,7 +6659,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6769,7 +6769,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
           "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
@@ -6891,7 +6891,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -6989,7 +6989,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7093,7 +7093,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7195,7 +7195,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7310,7 +7310,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7431,7 +7431,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7550,7 +7550,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7648,7 +7648,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7752,7 +7752,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7854,7 +7854,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -7969,7 +7969,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8090,7 +8090,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8209,7 +8209,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8307,7 +8307,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8411,7 +8411,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8513,7 +8513,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8628,7 +8628,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8749,7 +8749,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
@@ -8862,7 +8862,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -8955,7 +8955,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -9054,7 +9054,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -9151,7 +9151,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -9261,7 +9261,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -9377,7 +9377,7 @@
         ],
         "env": {
           "PORT": "8081",
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
           "AWS_REGION": "${{ inputs.aws.region }}",
@@ -10873,7 +10873,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -10964,7 +10964,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11061,7 +11061,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11156,7 +11156,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11264,7 +11264,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11378,7 +11378,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11484,7 +11484,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11570,7 +11570,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11662,7 +11662,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11752,7 +11752,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11855,7 +11855,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -11964,7 +11964,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12071,7 +12071,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12157,7 +12157,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12249,7 +12249,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12339,7 +12339,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12442,7 +12442,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
@@ -12551,7 +12551,7 @@
           "main"
         ],
         "env": {
-          "PYTHONPATH": "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+          "PYTHONPATH": "${{ inputs.code.dir }}",
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
