@@ -101,6 +101,9 @@ cd "$DEMO"
 bun run "$CLI" create --name "$PROJECT" --template agent-python-strands-box-container
 ```
 
+Add `--containment private-vpc` to also run the runtime in its own private VPC with no internet
+path.
+
 ## 4. (Optional) add an egress credential to test
 
 This adds an `[egress]` entry for `api.github.com` with a `github` API key credential. An entry

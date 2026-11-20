@@ -387,6 +387,10 @@ export const PROJECT_TEMPLATE_NAMES = [
   EMPTY_TEMPLATE_NAME,
 ] as unknown as readonly [TemplateName, ...TemplateName[]];
 
+/** Whether a template runs its agent in Strands Box, the only case where `--containment` applies. */
+export const isBoxTemplate = (template: TemplateName): boolean =>
+  template !== EMPTY_TEMPLATE_NAME && RUNTIME_TEMPLATE_SHORTCUTS[template].box;
+
 /**
  * Long-form `--template` help generated from the same registry used to resolve
  * templates and populate the TUI. Project creation also offers the empty

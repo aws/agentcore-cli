@@ -252,6 +252,7 @@ create a new project
 
 - `--name <name>`: name of the project to create (required)
 - `--template <template>`: the template to scaffold the Runtime from (default: "empty")
+- `--containment <containment>`: how contained the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path) (default: "sandboxed")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
 

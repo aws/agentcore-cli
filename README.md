@@ -267,6 +267,11 @@ A Box project that an older CLI created still has `start.sh`, or a Dockerfile th
 and deploy now render profiles that those files cannot start. Create the project again, or copy
 `start.py` (CodeZip) or the `Dockerfile` (container) from a new `agentcore create` project.
 
+### Containment
+
+`agentcore create --containment private-vpc` with a box template also runs the runtime in its own
+private VPC with no internet path. It writes `"containment": "PRIVATE_VPC"` on the runtime.
+
 ### Troubleshooting
 
 - `ExpiredTokenException` from `aws` or `deploy`: your AWS credentials expired. Refresh them and

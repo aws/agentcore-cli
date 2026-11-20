@@ -8,6 +8,10 @@ const TARGET_TAG = "agentcore:target-name";
 const STACK_ARTIFACT = "aws:cloudformation:stack";
 /** The resource CDK adds to every stack of its own accord, which no user asked for. */
 const METADATA_RESOURCE_TYPE = "AWS::CDK::Metadata";
+const SECURE_VPC_TAG = "agentcore:secure-vpc";
+const SecureVpcTagsSchema = z.object({
+  Tags: z.array(z.object({ Key: z.string(), Value: z.string() })),
+});
 
 const AssemblyManifestSchema = z.object({
   artifacts: z
@@ -123,6 +127,48 @@ export async function countDeployableResources(
   assemblyDirectory: string,
   artifact: StackArtifact,
 ): Promise<number> {
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  return Object.values(template.Resources).filter(
+    (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
+  ).length;
+}
+
+/**
+ * Refuses a stack that leaves a `PRIVATE_VPC` runtime without its private VPC. A CDK library
+ * from before containment drops the field without an error and would deploy the runtime with an
+ * internet path. The CDK library tags each private VPC `agentcore:secure-vpc` with
+ * `<stack>/<runtime>`.
+ */
+export async function assertPrivateVpcs(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+  runtimeNames: readonly string[],
+): Promise<void> {
+  if (runtimeNames.length === 0) return;
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  const tagged = new Set(
+    Object.values(template.Resources)
+      .filter((resource) => resource.Type === "AWS::EC2::VPC")
+      .flatMap((resource) => SecureVpcTagsSchema.safeParse(resource.Properties).data?.Tags ?? [])
+      .filter((tag) => tag.Key === SECURE_VPC_TAG)
+      .map((tag) => tag.Value.slice(tag.Value.lastIndexOf("/") + 1)),
+  );
+  const missing = runtimeNames.filter((name) => !tagged.has(name));
+  if (missing.length > 0) {
+    throw new ProjectStateError(
+      `Runtime ${missing.map((name) => `'${name}'`).join(", ")} has "containment": "PRIVATE_VPC", ` +
+        "but the synthesized stack builds no private VPC for it. The @aws/agentcore-cdk in " +
+        "agentcore/cdk is older than containment: update it, then deploy again.",
+    );
+  }
+}
+
+async function readStackTemplate(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+): Promise<z.infer<typeof StackTemplateSchema>> {
   // The cloud assembly schema requires templateFile on a stack artifact, so its
   // absence is a malformed assembly rather than a stack to deploy unchecked.
   if (artifact.templateFile === undefined) {
@@ -139,8 +185,5 @@ export async function countDeployableResources(
     );
   }
 
-  const template = await json.read(templatePath, StackTemplateSchema);
-  return Object.values(template.Resources).filter(
-    (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
-  ).length;
+  return json.read(templatePath, StackTemplateSchema);
 }

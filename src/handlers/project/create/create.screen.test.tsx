@@ -1038,6 +1038,45 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
+  test("template flow: a box template asks for containment, and private VPC reaches the spec", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("VpcApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+
+    await waitForText(r.lastFrame, "how contained should the agent be?");
+    expect(r.lastFrame()).toContain("● sandboxed");
+    await r.press("down");
+    await waitForText(r.lastFrame, "● private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).toContain("private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./VpcApp", 5000);
+
+    expect(inputs[0]?.containment).toBe("private-vpc");
+    const spec = await Bun.file(join(directory, "VpcApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].containment).toBe("PRIVATE_VPC");
+    expect(spec.runtimes[0].network).toEqual({ mode: "CONTAINED" });
+    r.unmount();
+  }, 10000);
+
   test("template flow: the minimal template scaffolds without memory", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
