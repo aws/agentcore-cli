@@ -87,7 +87,7 @@ describe("renderBoxProfile", () => {
   test("names itself after the project, and the folder `agentcore dev` starts box in", () => {
     expect(profile("agent-python-minimal-box").profile).toEqual({ name: "V3Demo" });
     const text = renderBoxProfile("V3Demo", STRANDS)!;
-    expect(text).toContain("runs `box run ../../.box/profile.toml` there");
+    expect(text).toContain("runs `box run ../../.box/agent/local/profile.toml` there");
     expect(boxStartFolder(text)).toBe("app/agent");
   });
 
@@ -259,7 +259,7 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-strands-box", groq).egress).toBeUndefined();
     expect(boxProfileWarnings(template("agent-python-strands-box", groq))).toEqual([
       "the box profile has no route for the LiteLLM model 'groq/llama3': add an [egress.groq] " +
-        "section with its provider's host to .box/profile.toml, or the box blocks the agent's " +
+        "section with its provider's host to .box/agent/local/profile.toml, or the box blocks the agent's " +
         "model calls",
     ]);
   });
@@ -305,7 +305,7 @@ describe("renderBoxProfile", () => {
     });
     expect(boxProfileWarnings(runtime)).toEqual([
       "the box profile has no route for the LiteLLM model 'gpt-4o': add an [egress.<provider>] " +
-        "section with its provider's host to .box/profile.toml (or use an openai/, anthropic/ or " +
+        "section with its provider's host to .box/agent/local/profile.toml (or use an openai/, anthropic/ or " +
         "gemini/ model ID), or the box blocks the agent's model calls",
     ]);
   });
@@ -815,7 +815,8 @@ describe("renderRuntimeBoxProfile", () => {
         },
       });
       expect(text).toContain(
-        "\n# The [telemetry.logs] target of .box/profile.toml, signed with the execution role.\n" +
+        "\n# The [telemetry.logs] target of .box/agent/local/profile.toml, signed with the " +
+          "execution role.\n" +
           '[telemetry.logs]\nkind = "cloudwatch_logs"\nregion = "us-west-2"\n' +
           'log_group = "/aws/box"\nlog_stream = "agent"\ninclude = ["logs", "trace"]\n' +
           'secret.ref = "aws://"\n',

@@ -36,7 +36,7 @@ async function temp(prefix: string): Promise<string> {
   return directory;
 }
 
-/** A project named `Demo` that holds its box profile in .box/profile.toml when `profiled`. */
+/** A project named `Demo` that holds the agent's box profile in .box/agent/local when `profiled`. */
 async function scene(
   profiled: boolean,
   boxOnPath = true,
@@ -46,8 +46,9 @@ async function scene(
   await mkdir(join(projectRoot, "agentcore"));
   await writeFile(join(projectRoot, "agentcore", "agentcore.json"), '{"name":"Demo"}');
   if (profiled) {
-    await mkdir(join(projectRoot, ".box"));
-    await writeFile(join(projectRoot, ".box", "profile.toml"), options.profile ?? PROFILE);
+    const local = join(projectRoot, ".box", "agent", "local");
+    await mkdir(local, { recursive: true });
+    await writeFile(join(local, "profile.toml"), options.profile ?? PROFILE);
     await mkdir(join(projectRoot, "app", "agent", ".venv", "bin"), { recursive: true });
     await writeFile(join(projectRoot, "app", "agent", ".venv", "bin", "python"), "");
   }
@@ -137,13 +138,16 @@ describe("BoxDevRunner", () => {
     const events = await collect(runner.run(input(projectRoot)));
 
     expect(calls.map(({ command }) => command)).toEqual([
-      ["box", "run", ".box/profile.toml", "--no-banner"],
+      ["box", "run", ".box/agent/local/profile.toml", "--no-banner"],
     ]);
     expect(calls[0]!.options.cwd).toBe(projectRoot);
     expect(fallbackRuns).toEqual([]);
     expect(events).toEqual([
       TRACES_NOTICE,
-      { type: "status", message: "Starting the agent in a box (box run .box/profile.toml)" },
+      {
+        type: "status",
+        message: "Starting the agent in a box (box run .box/agent/local/profile.toml)",
+      },
       { type: "stdout", line: "Uvicorn running" },
     ]);
   });
@@ -161,12 +165,12 @@ describe("BoxDevRunner", () => {
     const events = await collect(runner.run(input(projectRoot)));
 
     expect(calls.map(({ command }) => command)).toEqual([
-      ["box", "run", "../../.box/profile.toml", "--no-banner"],
+      ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
     ]);
     expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
     expect(events).toContainEqual({
       type: "status",
-      message: "Starting the agent in a box (box run ../../.box/profile.toml)",
+      message: "Starting the agent in a box (box run ../../.box/agent/local/profile.toml)",
     });
   });
 
@@ -270,8 +274,8 @@ describe("BoxDevRunner", () => {
       expect(events).toContainEqual({
         type: "status",
         message:
-          "the box profile .box/profile.toml reads GITHUB_TOKEN for [egress.github], but it is " +
-          "not set, and box does not start without it. Export it in this shell " +
+          "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], " +
+          "but it is not set, and box does not start without it. Export it in this shell " +
           "(export GITHUB_TOKEN=...) or put it in " +
           `${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
       });
@@ -377,7 +381,7 @@ describe("BoxDevRunner", () => {
     expect(events).not.toContainEqual(TRACES_NOTICE);
   });
 
-  test("runs another runtime the usual way, since the profile is the first runtime's", async () => {
+  test("runs a runtime the usual way when it has no box profile of its own", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
     const second = input(projectRoot);
     // The second runtime was added without a box template, so it has no box.version.
@@ -388,13 +392,7 @@ describe("BoxDevRunner", () => {
 
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
-    expect(events).toEqual([
-      {
-        type: "status",
-        message: 'Running without a box: runtime "second" has no box.version in agentcore.json',
-      },
-      { type: "stdout", line: "fallback" },
-    ]);
+    expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 
   test.each([

@@ -642,13 +642,36 @@ describe("project dev Inspector UI mode", () => {
   test("leaves the box's agent port to the box when a CodeZip runtime runs in one", async () => {
     const root = await mkdtemp(join(tmpdir(), "agentcore-dev-box-ui-"));
     try {
-      await mkdir(join(root, ".box"));
-      await writeFile(join(root, ".box", "profile.toml"), "");
-      const subject = harness({ project: { ...project(runtime("search")), rootPath: root } });
+      const local = join(root, ".box", "search", "local");
+      await mkdir(local, { recursive: true });
+      await writeFile(join(local, "profile.toml"), "");
+      const base = project({ ...runtime("search"), box: { version: "1.0.0" } } as never);
+      const boxed = { ...base, rootPath: root, spec: { ...base.spec, projectType: "box" } };
+      const subject = harness({ project: boxed as never });
 
       const { pending } = await runUi(subject);
 
       expect(subject.ui.starts).toEqual([{ port: 8082 }]);
+
+      process.emit("SIGINT", "SIGINT");
+      await pending.catch(() => undefined);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("takes the box's agent port for the UI when a profile file is left outside a Box project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-dev-box-ui-"));
+    try {
+      // A leftover profile does not make the runtime boxed: BoxDevRunner runs it the usual way.
+      const local = join(root, ".box", "search", "local");
+      await mkdir(local, { recursive: true });
+      await writeFile(join(local, "profile.toml"), "");
+      const subject = harness({ project: { ...project(runtime("search")), rootPath: root } });
+
+      const { pending } = await runUi(subject);
+
+      expect(subject.ui.starts).toEqual([{ port: 8081 }]);
 
       process.emit("SIGINT", "SIGINT");
       await pending.catch(() => undefined);

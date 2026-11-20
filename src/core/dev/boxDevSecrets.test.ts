@@ -108,9 +108,14 @@ describe("boxDevSecrets picks each variable as build does", () => {
 
 describe("missingBoxSecretWarning", () => {
   test("names the profile, the variable, its table, and both ways to set it", () => {
-    expect(missingBoxSecretWarning({ variable: "GITHUB_TOKEN", table: "[egress.github]" })).toBe(
-      "the box profile .box/profile.toml reads GITHUB_TOKEN for [egress.github], but it is not " +
-        "set, and box does not start without it. Export it in this shell " +
+    expect(
+      missingBoxSecretWarning(".box/agent/local/profile.toml", {
+        variable: "GITHUB_TOKEN",
+        table: "[egress.github]",
+      }),
+    ).toBe(
+      "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], but it " +
+        "is not set, and box does not start without it. Export it in this shell " +
         `(export GITHUB_TOKEN=...) or put it in ${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
     );
   });

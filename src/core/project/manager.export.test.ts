@@ -488,7 +488,7 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     );
   });
 
-  test("refuses to export a harness into a Box project, which holds one runtime", async () => {
+  test("refuses to export a harness into a Box project, whose runtimes run in a box", async () => {
     const { manager: subject } = manager();
     // A box template makes a Box project.
     const project = await projectWithHarness(subject, {}, "agent-python-strands-box");
@@ -496,7 +496,8 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     const before = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text();
 
     await expect(drain(subject.exportHarness(project, exportInput()))).rejects.toThrow(
-      "cannot add the exported harness as a runtime: a Box project holds one runtime",
+      "cannot add the exported harness as a runtime: every runtime of a Box project runs in a " +
+        "box, and the exported harness does not.",
     );
     expect(await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text()).toBe(
       before,

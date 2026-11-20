@@ -7,10 +7,9 @@ import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
 import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
 import {
-  BOX_PROFILE_FILE,
   boxIngressPort,
-  boxProfileIsFor,
-  boxProfilePath,
+  boxLocalProfileFile,
+  boxLocalProfilePath,
   boxStartFolder,
   runsInBox,
 } from "../project/templates/boxProfile";
@@ -28,10 +27,10 @@ type BoxDevRunnerConfig = {
 };
 
 /**
- * Runs a CodeZip agent with `box run` in the runtime's folder when the project has the box
- * profile `agentcore create` writes, and with the fallback runner otherwise. `box` is the one on
- * PATH, which the user installs from the box release. The box listens on the profile's ingress
- * port and relays to the agent, so the dev port must be that port.
+ * Runs a CodeZip agent with `box run` in the runtime's folder when the project has the agent's
+ * box profile, `.box/<agentName>/local/profile.toml`, and with the fallback runner otherwise.
+ * `box` is the one on PATH, which the user installs from the box release. The box listens on the
+ * profile's ingress port and relays to the agent, so the dev port must be that port.
  */
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
@@ -49,7 +48,8 @@ export class BoxDevRunner implements DevRunner {
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
-    const profile = boxProfilePath(input.projectRoot);
+    const profileFile = boxLocalProfileFile(input.runtime.name);
+    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
     // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
     if (!runsInBox(input.boxProject, input.runtime)) {
       if (input.runtime.box !== undefined) {
@@ -67,16 +67,14 @@ export class BoxDevRunner implements DevRunner {
       yield* this.fallback.run(input);
       return;
     }
-    const hasProfile = existsSync(profile);
-    const profileText = hasProfile ? readFileSync(profile, "utf8") : "";
-    if (!hasProfile || !boxProfileIsFor(profileText, input.runtime)) {
+    if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +
-          `agentcore.json), but ${profile} ` +
-          (hasProfile ? "is the box profile of another runtime." : "does not exist.") +
-          " Restore the profile that `agentcore create` wrote.",
+          `agentcore.json), but ${profile} does not exist. ` +
+          "Restore the profile that `agentcore create` or `agentcore add runtime` wrote.",
       );
     }
+    const profileText = readFileSync(profile, "utf8");
     const listen = boxIngressPort(input.runtime.protocol);
     if (input.port !== listen) {
       throw new InputValidationError(
@@ -105,7 +103,7 @@ export class BoxDevRunner implements DevRunner {
       this.platform,
     );
     for (const missing of secrets.missing) {
-      yield { type: "status", message: missingBoxSecretWarning(missing) };
+      yield { type: "status", message: missingBoxSecretWarning(profileFile, missing) };
     }
     for (const shadowed of secrets.shadowed) {
       yield { type: "status", message: shadowedBoxSecretNote(shadowed) };
@@ -114,7 +112,7 @@ export class BoxDevRunner implements DevRunner {
     // agent reaches no other folder of the project; box finds the profile from there.
     const startFolder = boxStartFolder(profileText);
     const cwd = join(input.projectRoot, ...startFolder.split("/").filter(Boolean));
-    const profileArg = posix.relative(startFolder, BOX_PROFILE_FILE);
+    const profileArg = posix.relative(startFolder, profileFile);
     yield {
       type: "status",
       message: `Starting the agent in a box (box run ${profileArg})`,

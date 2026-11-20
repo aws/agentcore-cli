@@ -44,8 +44,8 @@ export async function createProjectTree(
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
     if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
-    // Only a box template (BOX_TEMPLATE_NAMES) runs its agent in a box, so only it makes a Box
-    // project.
+    // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
+    // only it makes a Box project.
     templates.push(
       hasBoxProfile(options.runtime)
         ? { ...template, spec: { ...template.spec, projectType: "box" } }
@@ -54,11 +54,13 @@ export async function createProjectTree(
   }
 
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
+  const boxProject = options?.runtime !== undefined && hasBoxProfile(options.runtime);
 
   const tree = FsTreeNode.createDirectory(".", [
-    FsTreeNode.createFile(".gitignore", () =>
-      config.assetSource.read("templates/shared/gitignore.template"),
-    ),
+    FsTreeNode.createFile(".gitignore", async () => {
+      const shared = await config.assetSource.read("templates/shared/gitignore.template");
+      return boxProject ? `${shared}${BOX_GITIGNORE}` : shared;
+    }),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
@@ -115,6 +117,17 @@ function withBoxContainerBoxVersion(template: Template): void {
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * The lines a Box project adds to its .gitignore, for every runtime it has or gets later: the
+ * Runtime profile build renders into `.box/<agent>/aws/`, and the box release build and dev stage
+ * into `.box-dist/` and `.box-dev/`. `.box/<agent>/local/` is the user's, and is committed.
+ */
+const BOX_GITIGNORE =
+  "\n# Box (written by agentcore build, deploy and dev; .box/<agent>/local is committed)\n" +
+  ".box/*/aws/\n" +
+  ".box-dist/\n" +
+  ".box-dev/\n";
 
 /**
  * The agentcore.json of a new project, from the spec entries of its templates. Only a Box template

@@ -3,7 +3,6 @@ import { BoxEgressSecretSchema } from "../project/boxNetwork/egress";
 import { hasValue } from "../project/boxProfileEgress";
 import type { BoxKeySources } from "../project/boxProfileCredentials";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
-import { BOX_PROFILE_FILE } from "../project/templates/boxProfile";
 
 const ENV_SCHEME = "env://";
 
@@ -63,10 +62,13 @@ export function boxDevSecrets(
   return { env: found, missing, shadowed };
 }
 
-/** The warning dev shows for a variable the box profile reads that is not set. */
-export function missingBoxSecretWarning({ variable, table }: BoxDevSecretVariable): string {
+/** The warning dev shows for a variable that `profileFile`, the agent's box profile, reads and that is not set. */
+export function missingBoxSecretWarning(
+  profileFile: string,
+  { variable, table }: BoxDevSecretVariable,
+): string {
   return (
-    `the box profile ${BOX_PROFILE_FILE} reads ${variable} for ${table}, but it is not set, and ` +
+    `the box profile ${profileFile} reads ${variable} for ${table}, but it is not set, and ` +
     `box does not start without it. Export it in this shell (export ${variable}=...) or put it ` +
     `in ${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`
   );

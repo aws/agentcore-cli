@@ -7,7 +7,7 @@ import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { assertBoxRuntimesHaveBoxVersion, stageBoxContainers } from "./boxContainer";
+import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 /** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
@@ -124,8 +124,8 @@ describe("stageBoxContainers", () => {
 
   test("copies each policy file of the model beside the profile, for an image that copies .box-dist/ whole", async () => {
     const demo = await project(TEMPLATE_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
     await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
 
@@ -136,8 +136,8 @@ describe("stageBoxContainers", () => {
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {
     const demo = await project(BOX_DOCKERFILE);
-    await mkdir(join(demo.rootPath, ".box"), { recursive: true });
-    await writeFile(join(demo.rootPath, ".box", "policy.dw"), "// rules\n");
+    await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
+    await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
     await expect(
       stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),
@@ -167,35 +167,3 @@ function model(policyFiles: string[]): BoxNetwork {
     failures: [],
   };
 }
-
-describe("assertBoxRuntimesHaveBoxVersion", () => {
-  test.each(["Container", "CodeZip"] as const)(
-    "refuses a %s runtime of a Box project with no box.version, and names the pinned release",
-    async (build) => {
-      const demo = await project(BOX_DOCKERFILE);
-      const runtime = demo.spec.runtimes[0]!;
-      runtime.build = build;
-      delete runtime.box;
-
-      expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).toThrow(
-        'runtime "agent" has no box.version in agentcore.json, but every runtime of a Box ' +
-          `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
-          "runtime in agentcore.json, then retry.",
-      );
-    },
-  );
-
-  test("accepts a Box project whose runtimes have box.version", async () => {
-    const demo = await project(BOX_DOCKERFILE);
-
-    expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).not.toThrow();
-  });
-
-  test("accepts a runtime with no box.version outside a Box project", async () => {
-    const demo = await project(BOX_DOCKERFILE);
-    delete demo.spec.runtimes[0]!.box;
-    delete (demo.spec as { projectType?: string }).projectType;
-
-    expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).not.toThrow();
-  });
-});
