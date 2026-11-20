@@ -4,7 +4,6 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -62,13 +61,78 @@ function boxPython(executable: string): string {
   return out.stdout.trim();
 }
 
-describe("start.py BOX_PYTHON", () => {
-  test("exports the Python of box_python to box, not sys.executable", () => {
-    const text = readFileSync(join(START_PY, "start.py"), "utf8");
-
-    expect(text).toContain('"BOX_PYTHON": box_python(sys.executable, sys.version_info),');
+/**
+ * What start.py's main() does in `root`, with its folders there and os.execve replaced: the box it
+ * runs, its arguments, the BOX_PYTHON it exports and what box_python gives, and the files it copies
+ * into the profile folder. `withTomllib` false runs it as Python 3.10 does, with no tomllib.
+ */
+function startRun(root: string, withTomllib: boolean) {
+  const script = [
+    "import json, os, sys",
+    "sys.path.insert(0, sys.argv[1]); import start",
+    "root = sys.argv[2]",
+    "start.DIST = os.path.join(root, 'dist'); start.BOX = os.path.join(start.DIST, 'box')",
+    "start.HOME = os.path.join(root, 'home'); start.WORKSPACE = os.path.join(root, 'ws')",
+    "start.PROFILE_DIR = os.path.join(root, 'profile')",
+    "start.PROFILE = os.path.join(start.PROFILE_DIR, 'profile.toml')",
+    ...(withTomllib ? [] : ["start.tomllib = None"]),
+    "def execve(path, argv, env):",
+    "    copied = sorted(os.path.relpath(os.path.join(d, f), start.PROFILE_DIR)",
+    "                    for d, _, fs in os.walk(start.PROFILE_DIR) for f in fs)",
+    "    print(json.dumps({'path': path, 'argv': argv, 'python': env['BOX_PYTHON'],",
+    "                      'expected': start.box_python(sys.executable, sys.version_info),",
+    "                      'copied': copied}))",
+    "    sys.exit(0)",
+    "start.os.execve = execve",
+    "start.main()",
+  ].join("\n");
+  const out = spawnSync("python3", ["-I", "-B", "-c", script, START_PY, root], {
+    encoding: "utf8",
   });
+  expect(out.stderr).toBe("");
+  return JSON.parse(out.stdout) as {
+    path: string;
+    argv: string[];
+    python: string;
+    expected: string;
+    copied: string[];
+  };
+}
 
+describe("start.py main", () => {
+  test.skipIf(skipped).each([
+    ["with tomllib", true],
+    ["as Python 3.10 does, with no tomllib", false],
+  ])(
+    "copies the profile and each policy file, and exports the Python of box_python (%s)",
+    (_label, withTomllib) => {
+      const root = mkdtempSync(join(tmpdir(), "box-start-main-"));
+      directories.push(root);
+      mkdirSync(join(root, "dist", "rules"), { recursive: true });
+      // As the runtime profile writer writes it: policies on one line.
+      writeFileSync(
+        join(root, "dist", "profile.toml"),
+        'packs = [ "@box/base" ]\npolicies = [ "policy.dw", "rules/extra.dw" ]\n\n[profile]\nname = "demo"\n',
+      );
+      writeFileSync(join(root, "dist", "policy.dw"), "// rules\n");
+      writeFileSync(join(root, "dist", "rules", "extra.dw"), "// extra\n");
+
+      const run = startRun(root, withTomllib);
+
+      expect(run.path).toBe(join(root, "dist", "box"));
+      expect(run.argv).toEqual([
+        "box",
+        "run",
+        join(root, "profile", "profile.toml"),
+        "--no-banner",
+      ]);
+      expect(run.python).toBe(run.expected);
+      expect(run.copied).toEqual(["policy.dw", "profile.toml", join("rules", "extra.dw")]);
+    },
+  );
+});
+
+describe("start.py BOX_PYTHON", () => {
   test.skipIf(skipped)("keeps a Python whose name box does not alias", () => {
     const bin = binFolder(["python3.12"]);
 

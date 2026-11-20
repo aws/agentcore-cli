@@ -172,4 +172,14 @@ describe("serializeRuntimeProfile", () => {
     expect(text.startsWith("# Rendered by agentcore build.\n")).toBe(true);
     expect(parse(text)).toEqual(profile);
   });
+
+  test("writes policies on one line, which start.py reads as a JSON list on Python 3.10", () => {
+    const policies = Array.from({ length: 30 }, (_, index) => `rules/policy-file-${index}.dw`);
+
+    const text = serializeRuntimeProfile({ packs: ["@box/base"], policies });
+
+    const line = /^policies = (\[.*\])$/m.exec(text);
+    expect(line).not.toBeNull();
+    expect(JSON.parse(line![1]!)).toEqual(policies);
+  });
 });
