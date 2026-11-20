@@ -26,7 +26,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string },
+  input: { projectName: string; secureVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -68,6 +68,7 @@ export async function createProjectTree(
           newProjectSpec(
             input.projectName,
             templates.map(({ spec }) => spec),
+            { secureVpc: input.secureVpc },
           ),
         ),
       ),
@@ -132,9 +133,15 @@ const BOX_GITIGNORE =
 /**
  * The agentcore.json of a new project, from the spec entries of its templates. Only a Box template
  * (one with `projectType: "box"`) makes a Box project: it gets `projectType` and one Box gateway
- * for each runtime. No other command adds `projectType`.
+ * for each runtime. No other command adds `projectType`. `secureVpc` writes `"secureVpc": "ENABLED"`
+ * and `"network": { "mode": "CONTAINED" }`, so the CDK library runs every runtime in a private VPC
+ * with no internet path. The schema accepts it only in a Box project.
  */
-export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
+export function newProjectSpec(
+  projectName: string,
+  entries: SpecEntries[],
+  options?: { secureVpc?: boolean },
+) {
   const { projectType, ...merged } = mergeSpecEntries(entries);
   const boxGateways =
     projectType === "box" ? (merged.runtimes ?? []).map(({ name }) => boxGatewaySpec(name)) : [];
@@ -143,6 +150,7 @@ export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
     version: 2,
     managedBy: "CDK",
     ...(projectType && { projectType }),
+    ...(options?.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
     ...merged,
     ...(boxGateways.length > 0 && { agentCoreGateways: boxGateways }),
   };

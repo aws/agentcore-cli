@@ -31,6 +31,92 @@ describe("project custom validation", () => {
     }
   });
 
+  const secure = { ...minimalProject, projectType: "box", secureVpc: "ENABLED" };
+  test.each([
+    ["ENABLED in a Box project", secure],
+    [
+      "ENABLED with every network field",
+      {
+        ...secure,
+        network: {
+          mode: "CONTAINED",
+          cidr: "10.8.0.0/20",
+          availabilityZoneIds: ["usw2-az1", "usw2-az3"],
+          ipAddressType: "DUAL_STACK",
+        },
+      },
+    ],
+    ["DISABLED", { ...minimalProject, secureVpc: "DISABLED" }],
+    ["an empty string", { ...minimalProject, secureVpc: "" }],
+  ])("accepts secureVpc %s, with no default", (_name, project) => {
+    expect(ProjectSpecSchema.safeParse(project).success).toBe(true);
+  });
+
+  test("secureVpc has no default", () => {
+    expect("secureVpc" in ProjectSpecSchema.parse(minimalProject)).toBe(false);
+  });
+
+  test.each([
+    [
+      "ENABLED without projectType box",
+      { ...minimalProject, secureVpc: "ENABLED" },
+      'requires "projectType": "box"',
+    ],
+    [
+      "network without ENABLED",
+      { ...minimalProject, network: { cidr: "10.0.0.0/16" } },
+      '"network" is only allowed',
+    ],
+    ["an unknown network mode", { ...secure, network: { mode: "EXISTING" } }, "mode"],
+    ["a /25 CIDR", { ...secure, network: { cidr: "10.0.0.0/25" } }, "/16 to /24"],
+    ["a CIDR with host bits set", { ...secure, network: { cidr: "10.0.5.0/16" } }, "/16 to /24"],
+    ["a CIDR with a leading zero", { ...secure, network: { cidr: "010.0.0.0/16" } }, "/16 to /24"],
+    [
+      "an AZ name",
+      { ...secure, network: { availabilityZoneIds: ["us-west-2a", "us-west-2b"] } },
+      "Availability Zone ID",
+    ],
+    [
+      "a runtime with its own network",
+      { ...secure, runtimes: [{ ...runtime, networkMode: "PUBLIC" }] },
+      "networkMode or networkConfig",
+    ],
+    [
+      "a harness",
+      { ...secure, harnesses: [{ name: "support", path: "app/support" }] },
+      "harnesses.0",
+    ],
+    [
+      "a tool runtime",
+      {
+        ...secure,
+        toolRuntimes: [
+          {
+            name: "search",
+            toolDefinition: {
+              name: "search",
+              description: "Search",
+              inputSchema: { type: "object" },
+            },
+            compute: {
+              host: "Lambda",
+              implementation: { language: "Python", path: "tools/search", handler: "handler.main" },
+            },
+          },
+        ],
+      },
+      "toolRuntimes.0",
+    ],
+  ])("rejects secureVpc with %s", (_name, project, message) => {
+    const result = ProjectSpecSchema.safeParse(project);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.map((issue) => `${issue.path.join(".")} ${issue.message}`).join("\n"),
+      ).toContain(message);
+    }
+  });
+
   test("requires an explicit project version", () => {
     expect(ProjectSpecSchema.safeParse({ name: "project" }).success).toBe(false);
   });

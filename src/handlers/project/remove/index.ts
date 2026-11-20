@@ -8,7 +8,12 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
-import { APP_CODE_RETAINED_NOTICE, removedGatewayLines, shouldShowAppCodeNotice } from "./notice";
+import {
+  APP_CODE_RETAINED_NOTICE,
+  SECURE_VPC_REMOVED_NOTICE,
+  removedGatewayLines,
+  shouldShowAppCodeNotice,
+} from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -106,6 +111,9 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           () => {
             config.io.stderr.write("removed all resources from project\n");
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
+            if (project.spec.secureVpc === "ENABLED") {
+              config.io.stderr.write(`${SECURE_VPC_REMOVED_NOTICE}\n`);
+            }
           },
         );
         return;

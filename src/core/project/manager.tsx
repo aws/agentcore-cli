@@ -550,7 +550,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, secureVpc: input.isolation === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -1311,8 +1311,11 @@ export class FsProjectManager implements ProjectManager {
     // `projectType` stays: a Box project with no runtimes has no Box gateways, so the next deploy
     // still reaches the teardown confirmation. A runtime added later gets its Box gateway back
     // under the same name, so a deploy updates that gateway in place and does not delete it.
+    // The private VPC goes, though: with "secureVpc": "ENABLED" the CDK library builds the VPC
+    // even with no runtimes, and the next deploy would not tear the stack down.
+    const { secureVpc: _secureVpc, network: _network, ...rest } = existingProjectSpec;
     const newSpec = {
-      ...existingProjectSpec,
+      ...rest,
       runtimes: [],
       memories: [],
       knowledgeBases: [],

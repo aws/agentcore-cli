@@ -216,6 +216,32 @@ describe("agentcore create", () => {
     );
   });
 
+  test.each([
+    ["no isolation", undefined, undefined, undefined],
+    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["private-vpc", "private-vpc" as const, "ENABLED", { mode: "CONTAINED" }],
+  ])("a box template with %s writes secureVpc %p", async (_name, isolation, secureVpc, network) => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+
+    const project = await drain(
+      subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        isolation,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    const spec = await specOnDisk(project);
+    expect(spec.secureVpc).toBe(secureVpc);
+    expect(spec.network).toEqual(network);
+  });
+
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
     const runtime = (name: string) =>
       ({ name, build: "CodeZip", entrypoint: "main.py", codeLocation: `app/${name}` }) as never;
@@ -752,6 +778,32 @@ describe("gateway targets in a Box project", () => {
     const spec = await specOnDisk(result.project);
     expect(spec.projectType).toBe("box");
     expect(spec.agentCoreGateways).toEqual([]);
+  });
+
+  test("remove all removes secureVpc and network, and keeps projectType", async () => {
+    const manager = subject();
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        isolation: "private-vpc",
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+    expect((await specOnDisk(project)).secureVpc).toBe("ENABLED");
+
+    const result = await manager.removeAllResources(project);
+
+    const spec = await specOnDisk(result.project);
+    expect(spec.projectType).toBe("box");
+    expect("secureVpc" in spec).toBe(false);
+    expect("network" in spec).toBe(false);
   });
 
   test("remove all, then add runtime, adds a box runtime, as the project is still a Box project", async () => {

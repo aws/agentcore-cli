@@ -15,6 +15,7 @@ import {
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
+import { PRIVATE_VPC_NOTE } from "./types";
 import { readEnvFile } from "../../io/envFile";
 import { BOX_RELEASE } from "../../core/project/backends/boxRelease";
 
@@ -538,6 +539,38 @@ describe("project create", () => {
   test("rejects an invalid --name", async () => {
     cleanups.push((await inTempDirectory()).cleanup);
     await expect(run(["create", "--name", "1-bad"])).rejects.toThrow();
+  });
+
+  test.each([[[]], [["--template", "agent-python-strands"]]])(
+    "--isolation private-vpc refuses a template that is not a box template: %p",
+    async (template) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await expect(
+        run(["create", "--name", "Vpc", "--isolation", "private-vpc", ...template]),
+      ).rejects.toThrow("--isolation private-vpc needs a box template: ");
+      expect(existsSync(join(directory, "Vpc"))).toBe(false);
+    },
+  );
+
+  test("--isolation private-vpc with a box template prints the private VPC note", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "create",
+      "--name",
+      "Vpc",
+      "--template",
+      "agent-python-strands-box",
+      "--isolation",
+      "private-vpc",
+      "--skip-install",
+      "--skip-git",
+    ]);
+    expect(io.stderr()).toContain(PRIVATE_VPC_NOTE);
+    const spec = await Bun.file(join(directory, "Vpc", "agentcore", "agentcore.json")).json();
+    expect(spec.secureVpc).toBe("ENABLED");
+    expect(spec.network).toEqual({ mode: "CONTAINED" });
   });
 
   test("rejects a reserved --name", async () => {
