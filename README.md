@@ -247,7 +247,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.6`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-mquang.preview.9`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.

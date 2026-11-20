@@ -298,15 +298,15 @@ describe("BoxCliProfileResolver", () => {
     // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
     const error = await failure(
       refusal([
-        'box: error: /work/demo/.box/agent/local/profile.toml: "@box/base" is',
+        'box: error: /work/demo/.box/profile.toml: "@box/base" is',
         "            not a pack name",
         "Usage: box profile show [OPTIONS] <NAME>",
       ]),
     );
 
     expect((error as Error).message).toBe(
-      "Box refused the profile .box/agent/local/profile.toml:\n" +
-        '  box: error: /work/demo/.box/agent/local/profile.toml: "@box/base" is\n' +
+      "Box refused the profile .box/profile.toml:\n" +
+        '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
         "              not a pack name\n" +
         "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
         `@box/<name>. ${INSTALL}`,
