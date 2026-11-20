@@ -52,20 +52,22 @@ describe("readBoxEnvRoutes", () => {
     await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })));
   });
 
-  test("reads the project's .box/profile.toml, or is undefined with no profile", async () => {
+  test("reads the agent's .box/<agent>/local/profile.toml, or is undefined with none", async () => {
     const root = await mkdtemp(join(tmpdir(), "box-profile-egress-"));
     directories.push(root);
-    expect(readBoxEnvRoutes(root)).toBeUndefined();
+    expect(readBoxEnvRoutes(root, "agent")).toBeUndefined();
 
-    await mkdir(join(root, ".box"));
+    await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
     await writeFile(
-      join(root, ".box", "profile.toml"),
+      join(root, ".box", "agent", "local", "profile.toml"),
       '[egress.github]\nsecret.ref = "env://GITHUB_TOKEN"\n',
     );
 
-    expect(readBoxEnvRoutes(root)).toEqual({
+    expect(readBoxEnvRoutes(root, "agent")).toEqual({
       routes: [{ route: "github", variable: "GITHUB_TOKEN" }],
     });
+    // The profile of one agent is not the profile of another agent.
+    expect(readBoxEnvRoutes(root, "second")).toBeUndefined();
   });
 });
 
