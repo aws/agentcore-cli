@@ -92,6 +92,7 @@ jobs:
         || matrix.name == 'Windows' &&
           format('["codebuild-agentcore-e2e-{0}-{1}","image:windows-1.0","e2e-windows"]', github.run_id, github.run_attempt)
         || matrix.name == 'macOS' && '["macos-latest"]'
+        || matrix.name == 'Linux-arm64' && '["ubuntu-24.04-arm"]'
       ) }}
     permissions:
       id-token: write
@@ -99,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Windows","macOS"]') }}
+        name: ${{ fromJSON(inputs.linuxOnly && '["Linux","Linux-arm64"]' || '["Linux","Linux-arm64","Windows","macOS"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -125,14 +126,16 @@ jobs:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
-      # box ships only arm64 builds, so only the macOS runner (Apple silicon) can run the Box tests.
-      # They skip on a runner with no box on PATH.
+      # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
+      # the Box tests. They skip on a runner with no box on PATH.
       - name: Install box
-        if: matrix.name == 'macOS'
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        env:
+          TARGET: ${{ matrix.name == 'macOS' && 'aarch64-apple-darwin' || 'aarch64-unknown-linux-gnu' }}
         run: |
           REPO=$(jq -r .box.repo src/core/project/backends/boxRelease.json)
           VER=$(jq -r .box.version src/core/project/backends/boxRelease.json)
-          ASSET="box-v${VER}-aarch64-apple-darwin.tar.gz"
+          ASSET="box-v${VER}-${TARGET}.tar.gz"
           URL="https://github.com/${REPO}/releases/download/v${VER}"
           WORK=$(mktemp -d)
           curl -fsSL --retry 3 -o "${WORK}/${ASSET}" "${URL}/${ASSET}"
@@ -143,6 +146,11 @@ jobs:
           sudo tar -xzf "${WORK}/${ASSET}" -C /opt/box
           sudo ln -sf /opt/box/box /usr/local/bin/box
           box --version
+      # Ubuntu 24.04 lets AppArmor stop an unprivileged process from making a user namespace, which
+      # `box run` needs for its sandbox. The runner is a throwaway VM.
+      - name: Allow user namespaces for box
+        if: matrix.name == 'Linux-arm64'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build CLI
         if: inputs.npmVersion == ''
         run: bun run build
@@ -154,14 +162,22 @@ jobs:
           npm install --global "@aws/agentcore@${NPM_VERSION}"
           agentcore --version
       - name: Run all E2E tests
-        if: inputs.tags == ''
+        if: inputs.tags == '' && matrix.name != 'Linux-arm64'
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e
       - name: Run tagged E2E tests
-        if: inputs.tags != ''
+        if: inputs.tags != '' && matrix.name != 'Linux-arm64'
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"
+      # The Linux x86_64 job runs every other test, so the Linux arm64 job runs only the Box tests.
+      - name: Run Box E2E tests
+        if: matrix.name == 'Linux-arm64' && (inputs.tags == '' || contains(inputs.tags, 'box'))
+        env:
+          AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
+          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+          TAGS: ${{ inputs.tags || 'box' }}
+        run: bun run test:e2e -- --tagsFilter="$TAGS"
