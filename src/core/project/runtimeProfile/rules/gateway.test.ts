@@ -216,6 +216,32 @@ describe("the gateway rule", () => {
     },
   );
 
+  test("names the route of the first host of an entry of a pack after the entry, and each other after its target", () => {
+    const { table } = gateway(
+      'packs = ["@box/base", "@box/anthropic"]\n' +
+        '[egress.anthropic]\ndestinations = ["api.anthropic.com", "statsig.anthropic.com"]\n',
+      [
+        host("api.anthropic.com", entry("anthropic", "api.anthropic.com"), "egress-anthropic-api"),
+        host(
+          "statsig.anthropic.com",
+          entry("anthropic", "statsig.anthropic.com"),
+          "egress-anthropic-statsig",
+        ),
+      ],
+    );
+
+    // box merges the [egress.anthropic] of the pack with the route of that name, and takes the
+    // destinations of the profile, so api.anthropic.com gets no second route.
+    expect(table.egress).toEqual(
+      parse(
+        '[egress.anthropic]\ndestinations = ["api.anthropic.com"]\n' +
+          backendText("egress.anthropic", "egress-anthropic-api") +
+          '[egress.egress-anthropic-statsig]\ndestinations = ["statsig.anthropic.com"]\n' +
+          backendText("egress.egress-anthropic-statsig", "egress-anthropic-statsig"),
+      ).egress,
+    );
+  });
+
   test("names a route after its target when a target of the entry's name serves another host", () => {
     const { table } = gateway(
       '[egress.orders]\ndestinations = ["api.example.com"]\n',
@@ -246,8 +272,9 @@ describe("the gateway rule", () => {
 
     expect(table.egress).toEqual(
       parse(
-        '[egress.egress-models-one]\ndestinations = ["api.one.example.com"]\n' +
-          backendText("egress.egress-models-one", "egress-models-one") +
+        // The first host keeps the name of the entry; its backend names the target.
+        '[egress.models]\ndestinations = ["api.one.example.com"]\n' +
+          backendText("egress.models", "egress-models-one") +
           // The route keeps the port of the target's endpoint, and no path.
           '[egress.egress-models-two]\ndestinations = ["api.two.example.com:8443"]\n' +
           backendText("egress.egress-models-two", "egress-models-two"),
@@ -440,13 +467,14 @@ function rendered(label: string): TomlTable {
 
 /**
  * The `[egress]` routes of the old renderer under the keys that the gateway rule gives them: the
- * old renderer named each route after its target, and the rule names the route of an entry with one
- * host after the entry, so that a pack table of that name merges with it. The routes are the same.
+ * old renderer named each route after its target, and the rule names the route of the first host of
+ * an entry after the entry, so that a pack table of that name merges with it. The routes are the
+ * same.
  */
 const withEntryKeys = (egress: unknown) =>
   Object.fromEntries(
     Object.entries(egress as TomlTable).map(([key, route]) => [
-      key === "egress-github" ? "github" : key,
+      { "egress-github": "github", "egress-models-api-one-example-com": "models" }[key] ?? key,
       route,
     ]),
   );
