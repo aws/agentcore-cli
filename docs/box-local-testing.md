@@ -152,8 +152,10 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 Export `GITHUB_TOKEN` before build. Build reads it and writes its value into
 `agentcore/.env.local` under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`.
 On a later build it replaces that value when `GITHUB_TOKEN` holds a different key, as after a
-rotation, so deploy provisions the key `agentcore dev` uses. A build with `GITHUB_TOKEN` unset
-keeps the stored key.
+rotation, so deploy provisions the key `agentcore dev` uses. Build reads `GITHUB_TOKEN` as dev
+does: from your shell, or from `agentcore/.env.local` when the shell has none. So a
+`GITHUB_TOKEN` line in `agentcore/.env.local` replaces the stored key too, even with an older
+key; keep the key in one place. With `GITHUB_TOKEN` in neither, build keeps the stored key.
 
 ```
 cd "$DEMO/$PROJECT"
@@ -222,10 +224,5 @@ bun run "$CLI" deploy
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.
-- **`agentcore dev` uses an old key when the shell sets none.** Earlier builds of the
-  box-integration branches copied each box variable into `agentcore/.env.local`, under a
-  `# Key for box egress '<route>' (env://<VAR>), read by box under agentcore dev` comment, and
-  dev still reads it there. Delete those lines (the comment and the `<VAR>=` line under it), then
-  export the variable in your shell instead.
 - **The CDK app uses the published constructs, not yours.** Redo step 5. Confirm with
   `cat agentcore/cdk/node_modules/@aws/agentcore-cdk/package.json`.

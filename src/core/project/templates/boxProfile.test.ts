@@ -88,7 +88,14 @@ describe("renderBoxProfile", () => {
     expect(profile("agent-python-minimal-box").profile).toEqual({ name: "V3Demo" });
     const text = renderBoxProfile("V3Demo", STRANDS)!;
     expect(text).toContain("runs `box run ../../.box/agent/local/profile.toml` there");
-    expect(boxStartFolder(text)).toBe("app/agent");
+  });
+
+  // The folder comes from agentcore.json, never from the profile, which a user may edit.
+  test("starts a CodeZip runtime's box in its code folder, and a container's in the project root", () => {
+    expect(boxStartFolder({ build: "CodeZip", codeLocation: "app/agent/" })).toBe("app/agent");
+    expect(boxStartFolder({ build: "CodeZip", codeLocation: "./app/agent" })).toBe("app/agent");
+    // A container profile describes the image's /app.
+    expect(boxStartFolder({ build: "Container", codeLocation: "app/agent" })).toBe("");
   });
 
   // agentcore dev starts box in app/<runtime>, so ${{ workspace }} and the project grant are that

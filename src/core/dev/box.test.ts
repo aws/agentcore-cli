@@ -132,35 +132,8 @@ describe("BoxDevRunner", () => {
     expect(fallbackRuns).toHaveLength(1);
   });
 
-  test("runs a profile written before from the project folder", async () => {
+  test("runs the agent's box profile from the runtime's code folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
-
-    const events = await collect(runner.run(input(projectRoot)));
-
-    expect(calls.map(({ command }) => command)).toEqual([
-      ["box", "run", ".box/agent/local/profile.toml", "--no-banner"],
-    ]);
-    expect(calls[0]!.options.cwd).toBe(projectRoot);
-    expect(fallbackRuns).toEqual([]);
-    expect(events).toEqual([
-      TRACES_NOTICE,
-      {
-        type: "status",
-        message: "Starting the agent in a box (box run .box/agent/local/profile.toml)",
-      },
-      { type: "stdout", line: "Uvicorn running" },
-    ]);
-  });
-
-  test("starts box in the runtime's folder for a profile create writes now", async () => {
-    // So the agent's workspace, and the project grant, are app/agent and nothing else of the
-    // project: not agentcore/.env.local, which holds the model's key.
-    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
-      runtimeName: "agent",
-    });
-    const { projectRoot, calls, runner } = await scene(true, true, {
-      profile: renderBoxProfile("Demo", runtime)!,
-    });
 
     const events = await collect(runner.run(input(projectRoot)));
 
@@ -168,10 +141,36 @@ describe("BoxDevRunner", () => {
       ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
     ]);
     expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
-    expect(events).toContainEqual({
-      type: "status",
-      message: "Starting the agent in a box (box run ../../.box/agent/local/profile.toml)",
+    expect(fallbackRuns).toEqual([]);
+    expect(events).toEqual([
+      TRACES_NOTICE,
+      {
+        type: "status",
+        message: "Starting the agent in a box (box run ../../.box/agent/local/profile.toml)",
+      },
+      { type: "stdout", line: "Uvicorn running" },
+    ]);
+  });
+
+  test("starts box in the runtime's folder for a profile create writes, whatever it says", async () => {
+    // So the agent's workspace, and the project grant, are app/agent and nothing else of the
+    // project: not agentcore/.env.local, which holds the model's key. The folder comes from
+    // agentcore.json, so a profile without its header comment starts there too.
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+      runtimeName: "agent",
     });
+    const noComments = renderBoxProfile("Demo", runtime)!
+      .split("\n")
+      .filter((line) => !line.startsWith("#"))
+      .join("\n");
+    const { projectRoot, calls, runner } = await scene(true, true, { profile: noComments });
+
+    await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
+    ]);
+    expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
   });
 
   test("hands box run the .env.local values, so it can attach the API key, and not dev's OTEL ones", async () => {

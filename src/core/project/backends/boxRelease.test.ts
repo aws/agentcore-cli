@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ import {
   BOX_RELEASE_PAGE,
   type BoxRelease,
   boxReleaseFor,
+  publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
 
@@ -111,6 +112,50 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     ]);
   });
 
+  test("keeps the release another process installed while this one downloaded it", async () => {
+    // Concurrent builds and deploys share the cache: each downloads into its own work folder, and
+    // one may finish while another is still downloading. The loser keeps the winner's folder, so a
+    // command already copying out of it does not lose files under it.
+    const { release, runner } = await fakeRelease();
+    const winner = await resolveBoxLinuxBuild(
+      {},
+      { runner, home: await temp("box-home-"), release },
+    );
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    let installedMeanwhile: bigint | undefined;
+    const racing: ProcessRunner = async (command, options) => {
+      if (command[0] === "curl" && command.at(-1)!.endsWith(release.linux.asset)) {
+        cpSync(winner.binaries, root, { recursive: true });
+        installedMeanwhile = (await stat(join(root, "box"), { bigint: true })).ino;
+      }
+      return runner(command, options);
+    };
+
+    const build = await resolveBoxLinuxBuild({}, { runner: racing, home, release });
+
+    expect(build.binaries).toBe(root);
+    expect(installedMeanwhile).toBeDefined();
+    expect((await stat(join(root, "box"), { bigint: true })).ino).toBe(installedMeanwhile!);
+    expect(await readFile(join(root, "strands-box-contain-trampoline"), "utf8")).toBe(
+      "#!strands-box-contain-trampoline\n",
+    );
+  });
+
+  test("replaces the incomplete folder an interrupted install left", async () => {
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "box"), "partial");
+    const { release, runner } = await fakeRelease();
+
+    const build = await resolveBoxLinuxBuild({}, { runner, home, release });
+
+    expect(build.binaries).toBe(root);
+    expect(await readFile(join(root, "box"), "utf8")).toBe("#!box\n");
+    expect(existsSync(join(root, "release.json"))).toBe(true);
+  });
+
   test("reuses an installed release without downloading again", async () => {
     const home = await temp("box-home-");
     const { release, runner, commands } = await fakeRelease();
@@ -181,6 +226,50 @@ describe("boxReleaseFor a runtime's box.version", () => {
       );
     },
   );
+});
+
+describe("publishInstall", () => {
+  /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
+  async function folders(rootText?: string) {
+    const parent = await temp("box-publish-");
+    const payload = join(parent, "payload");
+    const root = join(parent, "root");
+    await mkdir(payload);
+    await writeFile(join(payload, "box"), "mine");
+    if (rootText !== undefined) {
+      await mkdir(root);
+      await writeFile(join(root, "box"), rootText);
+    }
+    return { payload, root };
+  }
+
+  test("keeps the install another process renamed in after the first check, before the rename", async () => {
+    // `root` is complete only by the time the rename fails: the other process won in between.
+    const { payload, root } = await folders("theirs");
+    let checks = 0;
+
+    publishInstall(payload, root, () => checks++ > 0);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("theirs");
+    expect(checks).toBe(2);
+  });
+
+  test("replaces an incomplete folder an interrupted install left", async () => {
+    const { payload, root } = await folders("partial");
+
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
+    expect(existsSync(payload)).toBe(false);
+  });
+
+  test("renames the payload in when no install is there", async () => {
+    const { payload, root } = await folders();
+
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
+  });
 });
 
 describe("the pinned releases", () => {

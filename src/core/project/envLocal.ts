@@ -88,30 +88,38 @@ export class EnvLocalFile {
     }
     await this.enforcePermissions();
     const values = new Map(entries.map((entry) => [entry.key, entry.value ?? ""]));
+    const encrypted = await this.secrets.encrypt(Object.fromEntries(values));
     const updated: string[] = [];
     const lines: string[] = [];
     for (const line of existing.split("\n")) {
       const key = KEY_LINE.exec(line)?.[1];
-      if (key === undefined || !values.has(key) || updated.includes(key)) {
+      if (key === undefined || !values.has(key)) {
         lines.push(line);
         continue;
       }
-      const encrypted = await this.secrets.encrypt({ [key]: values.get(key)! });
-      lines.push(`${key}=${formatValue(encrypted[key])}`);
-      updated.push(key);
+      // Every line of the key gets the value: the parser keeps the last, so replacing only the
+      // first would leave an older one in force. An `export` line stays one.
+      const exported = /^\s*export\s+/.exec(line)?.[0] ?? "";
+      lines.push(`${exported}${key}=${formatValue(encrypted[key] ?? "")}`);
+      if (!updated.includes(key)) updated.push(key);
     }
+    // Keep the earliest snapshot, as removeKeys does, so rollback undoes this whole call even when
+    // insertIfNew, which snapshots the file it starts from, fails after the in-place write.
+    const snapshot = this.snapshot === undefined ? existing : this.snapshot;
     if (updated.length > 0) {
-      this.snapshot = existing;
+      this.snapshot = snapshot;
       await atomicWrite(this.path, await this.encryptContent(lines.join("\n")), {
         mode: SECRET_FILE_MODE,
       });
     }
-    const { written } = await this.insertIfNew(
-      entries.filter((entry) => !updated.includes(entry.key)),
-    );
-    // insertIfNew snapshots what this call wrote; rollback restores the file from before it.
-    if (updated.length > 0) this.snapshot = existing;
-    return { written, updated };
+    try {
+      const { written } = await this.insertIfNew(
+        entries.filter((entry) => !updated.includes(entry.key)),
+      );
+      return { written, updated };
+    } finally {
+      if (updated.length > 0) this.snapshot = snapshot;
+    }
   }
 
   /**
