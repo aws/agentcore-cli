@@ -2,7 +2,7 @@ import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
 import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
-import { isBoxedContainer } from "./boxProfile";
+import { hasBoxProfile } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
 import type {
@@ -132,8 +132,10 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(scaffoldRuntimeInput.framework === "bma" && {
       bedrockManagedAgents: true,
     }),
-    // The boxed container's image does not run opentelemetry-instrument, so say so in agentcore.json.
-    ...(isBoxedContainer(scaffoldRuntimeInput) && { instrumentation: { enableOtel: false } }),
+    // The agent in a box does not run under opentelemetry-instrument: a container's image does not
+    // run it, and on CodeZip it wraps start.py, which hands over to box run. So say so in
+    // agentcore.json until traces work in a box.
+    ...(hasBoxProfile(scaffoldRuntimeInput) && { instrumentation: { enableOtel: false } }),
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),

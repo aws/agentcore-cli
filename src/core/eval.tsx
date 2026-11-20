@@ -59,8 +59,15 @@ import {
   type UpdateConfigurationBundleResponse,
   type UpdateEvaluatorResponse,
   type UpdateOnlineEvaluationConfigResponse,
+  GetAgentInsightStoreCommand,
+  ListAgentInsightStoresCommand,
+  UpdateAgentInsightStoreCommand,
+  type GetAgentInsightStoreResponse,
+  type ListAgentInsightStoresResponse,
+  type UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import {
+  DeleteDatasetGenerationCommand,
   DeleteRecommendationCommand,
   EvaluateCommand,
   CreateABTestCommand,
@@ -69,12 +76,16 @@ import {
   UpdateABTestCommand,
   DeleteABTestCommand,
   GetBatchEvaluationCommand,
+  GetDatasetGenerationCommand,
   GetRecommendationCommand,
   ListBatchEvaluationsCommand,
+  ListDatasetGenerationsCommand,
   ListRecommendationsCommand,
   StartBatchEvaluationCommand,
+  StartDatasetGenerationCommand,
   StartRecommendationCommand,
   StopBatchEvaluationCommand,
+  type DeleteDatasetGenerationResponse,
   type DeleteRecommendationResponse,
   type EvaluationReferenceInput,
   type EvaluationResultContent,
@@ -86,15 +97,24 @@ import {
   type ABTestExecutionStatus,
   type UpdateABTestResponse,
   type DeleteABTestResponse,
+  type GetDatasetGenerationResponse,
   type GetRecommendationResponse,
   type ListBatchEvaluationsResponse,
+  type ListDatasetGenerationsResponse,
   type ListRecommendationsResponse,
   type RecommendationStatus,
   type StartBatchEvaluationResponse,
+  type StartDatasetGenerationResponse,
   type StartRecommendationResponse,
   type StopBatchEvaluationResponse,
   type DataSourceConfig as DataPlaneDataSourceConfig,
   type CloudWatchFilterConfig,
+  GetAgentInsightCommand,
+  ListAgentInsightsCommand,
+  UpdateAgentInsightCommand,
+  type GetAgentInsightResponse,
+  type ListAgentInsightsResponse,
+  type UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import { ResourceNotFoundException, type ResultField } from "@aws-sdk/client-cloudwatch-logs";
 import type { DocumentType } from "@smithy/types";
@@ -123,6 +143,7 @@ import {
   CloudWatchClient,
 } from "./observability/index";
 import type {
+  AgentInsightStoreUpdate,
   BatchEvaluationDetail,
   CodeBasedUpdate,
   DatasetUpdateProgressEvent,
@@ -137,6 +158,8 @@ import type {
   EvaluateResult,
   GetBatchEvaluationResult,
   GetTracesInput,
+  ListAgentInsightsInput,
+  UpdateAgentInsightInput,
   LlmAsAJudgeUpdate,
   SessionSourceValue,
   SessionTrace,
@@ -144,6 +167,7 @@ import type {
   InvokeDatasetResult,
   SpanRecord,
   StartBatchEvaluationInput,
+  StartDatasetGenerationInput,
   StartRecommendationInput,
   UpdateConfigurationBundleInput,
   UpdateOnlineEvalInput,
@@ -469,6 +493,46 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .data(toClientConfig(options))
       .send(new DeleteRecommendationCommand({ recommendationId: id }));
+  }
+
+  async startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new StartDatasetGenerationCommand(input));
+  }
+
+  async getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetDatasetGenerationCommand({ datasetId, generationId }));
+  }
+
+  async listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new ListDatasetGenerationsCommand({ datasetId, nextToken, maxResults }));
+  }
+
+  async deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new DeleteDatasetGenerationCommand({ datasetId, generationId }));
   }
 
   // getBatchEvaluation returns the service-side job (status + evaluator summaries
@@ -1183,6 +1247,59 @@ export class EvalClient implements CoreEvalClient {
     return this.clients
       .control(toClientConfig(options))
       .send(new DeleteOnlineEvaluationConfigCommand({ onlineEvaluationConfigId: id }));
+  }
+
+  async listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse> {
+    return this.clients.data(toClientConfig(options)).send(new ListAgentInsightsCommand(input));
+  }
+
+  async getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse> {
+    return this.clients
+      .data(toClientConfig(options))
+      .send(new GetAgentInsightCommand({ applicationName, agentInsightId }));
+  }
+
+  async updateAgentInsight(
+    input: UpdateAgentInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse> {
+    return this.clients.data(toClientConfig(options)).send(new UpdateAgentInsightCommand(input));
+  }
+
+  async listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new ListAgentInsightStoresCommand({ nextToken, maxResults }));
+  }
+
+  async getAgentInsightStore(
+    id: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightStoreResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new GetAgentInsightStoreCommand({ agentInsightStoreId: id }));
+  }
+
+  async updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse> {
+    return this.clients
+      .control(toClientConfig(options))
+      .send(new UpdateAgentInsightStoreCommand({ agentInsightStoreId: id, ...update }));
   }
 
   async createConfigurationBundle(

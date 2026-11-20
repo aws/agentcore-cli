@@ -7,6 +7,7 @@ import { runWithProgress } from "../../../tui/progress";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   formatTemplateParameterHelp,
   isBoxTemplate,
   resolveRuntimeTemplateShortcut,
@@ -154,7 +155,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
 
       if (flags["containment"] === "private-vpc" && !isBoxTemplate(template)) {
         throw new InputValidationError(
-          "--containment private-vpc needs a box template: agent-python-strands-box or agent-python-strands-box-container.",
+          `--containment private-vpc needs a box template: ${RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter(isBoxTemplate).join(", ")}.`,
         );
       }
 

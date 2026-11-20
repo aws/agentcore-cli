@@ -96,6 +96,22 @@ describe("runtime templates", () => {
     expect(await Bun.file(join(appDir, ".dockerignore")).exists()).toBe(isContainer);
   });
 
+  // The agent in a box does not run under opentelemetry-instrument, CodeZip or container, so a box
+  // template turns OTEL off; any other template keeps it on.
+  test.each<[RuntimeTemplateShortcutName, boolean]>([
+    ["agent-python-strands-box", false],
+    ["agent-python-strands-box-container", false],
+    ["agent-python-minimal-box", false],
+    ["agent-python-langchain-box", false],
+    ["a2a-python-strands-box", false],
+    ["agui-python-strands-box", false],
+    ["mcp-python-fastmcp-box", false],
+    ["agent-python-strands", true],
+  ])("%s writes enableOtel %p", async (template, enableOtel) => {
+    const { runtime } = await addTemplate("my_agent", template);
+    expect(runtime.instrumentation?.enableOtel ?? true).toBe(enableOtel);
+  });
+
   test("Bedrock Managed Agents keeps infrastructure overrides and its required policy", async () => {
     const { runtime, appDir, core } = await addTemplate("my_bma", "environment-python-bma", {
       infra: {

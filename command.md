@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.2`.
+This reference was generated from `agentcore --help` for version `1.1.0`.
 
 ## Table of contents
 
@@ -193,6 +193,14 @@ This reference was generated from `agentcore --help` for version `1.0.2`.
       - [`agentcore eval recommendation get`](#agentcore-eval-recommendation-get)
       - [`agentcore eval recommendation list`](#agentcore-eval-recommendation-list)
       - [`agentcore eval recommendation delete`](#agentcore-eval-recommendation-delete)
+    - [`agentcore eval insight`](#agentcore-eval-insight)
+      - [`agentcore eval insight list`](#agentcore-eval-insight-list)
+      - [`agentcore eval insight get`](#agentcore-eval-insight-get)
+      - [`agentcore eval insight update`](#agentcore-eval-insight-update)
+    - [`agentcore eval insight-store`](#agentcore-eval-insight-store)
+      - [`agentcore eval insight-store list`](#agentcore-eval-insight-store-list)
+      - [`agentcore eval insight-store get`](#agentcore-eval-insight-store-get)
+      - [`agentcore eval insight-store update`](#agentcore-eval-insight-store-update)
   - [`agentcore payment`](#agentcore-payment)
     - [`agentcore payment manager`](#agentcore-payment-manager)
       - [`agentcore payment manager get`](#agentcore-payment-manager-get)
@@ -533,7 +541,7 @@ add an LLM-as-a-Judge evaluator to the current project
 - `--model-provider <model-provider>`: model provider for the judge: Bedrock (default) or OpenResponses
 - `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID (required)
 - `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}' (required)
-- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
+- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or a JSON rating scale (inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--description <description>`: a description of what this evaluator measures
 - `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
@@ -2831,6 +2839,105 @@ delete a recommendation by ID
 **Options**
 
 - `--id <id>`: the ID of the recommendation to delete (required)
+
+#### `agentcore eval insight`
+
+```text
+agentcore eval insight [options] [command]
+```
+
+read and archive AgentCore Agent Insights
+
+##### `agentcore eval insight list`
+
+```text
+agentcore eval insight list [options]
+```
+
+list Agent Insights for an application or a batch evaluation
+
+**Options**
+
+- `--application-name <application-name>`: list the Insights of this application
+- `--batch-evaluation-id <batch-evaluation-id>`: list the Insights a batch evaluation produced
+- `--archive-status <archive-status>`: list only Insights in this archive state (ACTIVE | ARCHIVED)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-50)
+
+##### `agentcore eval insight get`
+
+```text
+agentcore eval insight get [options]
+```
+
+get an Agent Insight with its root causes and sample sessions
+
+**Options**
+
+- `--application-name <application-name>`: the application the Insight belongs to (required)
+- `--id <id>`: the ID of the Agent Insight (required)
+
+##### `agentcore eval insight update`
+
+```text
+agentcore eval insight update [options]
+```
+
+archive an Agent Insight, or restore an archived one
+
+**Options**
+
+- `--application-name <application-name>`: the application the Insight belongs to (required)
+- `--id <id>`: the ID of the Agent Insight (required)
+- `--archive-status <archive-status>`: the archive state to set (ACTIVE | ARCHIVED) (required)
+
+#### `agentcore eval insight-store`
+
+```text
+agentcore eval insight-store [options] [command]
+```
+
+manage the AgentCore Agent Insight Store
+
+##### `agentcore eval insight-store list`
+
+```text
+agentcore eval insight-store list [options]
+```
+
+list Agent Insight Stores
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-100)
+
+##### `agentcore eval insight-store get`
+
+```text
+agentcore eval insight-store get [options]
+```
+
+get an Agent Insight Store by ID
+
+**Options**
+
+- `--id <id>`: the ID of the Agent Insight Store (required)
+
+##### `agentcore eval insight-store update`
+
+```text
+agentcore eval insight-store update [options]
+```
+
+enable or disable an Agent Insight Store, or change its encryption key
+
+**Options**
+
+- `--id <id>`: the ID of the Agent Insight Store (required)
+- `--enablement-status <enablement-status>`: turn Insight generation on or off (ENABLED | DISABLED); DISABLED deletes the Store's Insights
+- `--encryption-mode <encryption-mode>`: the key that encrypts Insights (AWS\_OWNED\_KMS\_KEY | CUSTOMER\_MANAGED\_KMS)
+- `--kms-key-arn <kms-key-arn>`: the customer managed KMS key ARN (with --encryption-mode CUSTOMER\_MANAGED\_KMS)
 
 ### `agentcore payment`
 

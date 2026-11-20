@@ -1,0 +1,65 @@
+{
+  "agentInsights": [
+    {
+      "type": "FAILURE",
+      "name": "Gateway Timeout Failures",
+      "description": "Failures where the lookup_order tool call times out after approximately 30 seconds without completing, returning a 'Gateway timeout' error indicating the upstream service failed to respond within the expected timeframe. These represent infrastructure or service availability issues distinct from rate limiting, internal server errors, authentication failures, or malformed responses.",
+      "createdAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "agentInsightId": "ba72cefe89f01b27005b835835e12b36c",
+      "applicationName": "InsightsTestAgent_DO_NOT_DELETE.DEFAULT",
+      "customerMetadataStatus": "AVAILABLE",
+      "updatedAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "archiveStatus": "ACTIVE",
+      "affectedSessionCount": 1,
+      "batchEvaluationId": "insights_cli_fixture_fa3-73a1c1cb4b",
+      "lastSeenAt": {
+        "$date": "2026-11-10T20:51:17.000Z"
+      }
+    },
+    {
+      "type": "FAILURE",
+      "name": "Agent Capability Misrepresentation and Self-Correction",
+      "description": "Cluster captures instances where the agent initially makes false or misleading claims about its own capabilities (such as claiming ability to transfer to live agents) but then corrects itself by acknowledging the actual limitation. This differs from other failure clusters which involve fabricated escalations without correction, tool misuse, protocol violations, or backend service failures. The distinctive feature is the self-awareness and correction pattern—the agent states one thing, realizes it's incorrect, and explicitly admits the true constraint.",
+      "createdAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "agentInsightId": "bb884d6fdec1cdd5ac4c9d66250a03b6e",
+      "applicationName": "InsightsTestAgent_DO_NOT_DELETE.DEFAULT",
+      "customerMetadataStatus": "AVAILABLE",
+      "updatedAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "archiveStatus": "ACTIVE",
+      "affectedSessionCount": 1,
+      "batchEvaluationId": "insights_cli_fixture_fa3-73a1c1cb4b",
+      "lastSeenAt": {
+        "$date": "2026-11-10T20:51:17.000Z"
+      }
+    },
+    {
+      "type": "FAILURE",
+      "name": "lookup_order Backend Internal Server Errors",
+      "description": "The lookup_order tool consistently returns 'Internal server error' responses, indicating persistent failures in the backend service responsible for retrieving order information. These failures occur both on initial attempts and on user-requested retries, preventing the agent from accessing order details needed to proceed with user requests.",
+      "createdAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "agentInsightId": "bbcda12f962be0f7e78a7a2223e0641e5",
+      "applicationName": "InsightsTestAgent_DO_NOT_DELETE.DEFAULT",
+      "customerMetadataStatus": "AVAILABLE",
+      "updatedAt": {
+        "$date": "2026-11-10T20:57:56.000Z"
+      },
+      "archiveStatus": "ACTIVE",
+      "affectedSessionCount": 1,
+      "batchEvaluationId": "insights_cli_fixture_fa3-73a1c1cb4b",
+      "lastSeenAt": {
+        "$date": "2026-11-10T20:50:39.000Z"
+      }
+    }
+  ],
+  "nextToken": "eyJpbnNpZ2h0S2V5IjoiSU5TSUdIVCNiYmNkYTEyZjk2MmJlMGY3ZTc4YTdhMjIyM2UwNjQxZTUiLCJhcHBsaWNhdGlvbktleSI6IjQyOTU4MzI1MDgzNCNJbnNpZ2h0c1Rlc3RBZ2VudF9ET19OT1RfREVMRVRFLkRFRkFVTFQiLCJpbnNpZ2h0UmVjZW5jeUtleSI6IkFDVElWRSMyMDI2LTExLTEwVDIwOjUwOjM5LjAwMFoifQ=="
+}

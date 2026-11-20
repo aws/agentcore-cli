@@ -1,0 +1,12 @@
+{
+  "agentInsightStoreArn": "arn:aws:bedrock-agentcore:us-west-2:685197708687:agent-insight-store/default-insight-store",
+  "agentInsightStoreId": "default-insight-store",
+  "status": "ACTIVE",
+  "enablementStatus": "ENABLED",
+  "encryptionConfiguration": {
+    "mode": "AWS_OWNED_KMS_KEY"
+  },
+  "createdAt": "2026-11-18T16:04:21.388Z",
+  "updatedAt": "2026-11-18T16:05:25.813Z",
+  "failureReason": ""
+}

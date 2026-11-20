@@ -1,0 +1,43 @@
+{
+  "type": "FAILURE",
+  "name": "Gateway Timeout Failures",
+  "description": "Failures where the lookup_order tool call times out after approximately 30 seconds without completing, returning a 'Gateway timeout' error indicating the upstream service failed to respond within the expected timeframe. These represent infrastructure or service availability issues distinct from rate limiting, internal server errors, authentication failures, or malformed responses.",
+  "createdAt": "2026-11-10T20:57:56.000Z",
+  "agentInsightId": "ba72cefe89f01b27005b835835e12b36c",
+  "applicationName": "InsightsTestAgent_DO_NOT_DELETE.DEFAULT",
+  "customerMetadataStatus": "AVAILABLE",
+  "updatedAt": "2026-11-10T20:57:56.000Z",
+  "archiveStatus": "ACTIVE",
+  "affectedSessionCount": 1,
+  "sampleSessions": [
+    {
+      "sessionId": "cli-insights-timeout_error-bd4a5767-4eab-4995-8e2a-ca128a3f73b1",
+      "lastSeenAt": "2026-11-10T20:51:17.000Z"
+    }
+  ],
+  "rootCauses": [
+    {
+      "name": "External Service Timeout Causing Complete Task Blockage",
+      "explanation": "Agent failures occur when critical tool calls to external services exceed timeout thresholds, resulting in gateway errors that completely block task progression. These timeouts stem from upstream infrastructure issues or service unavailability that are outside the agent's direct control. Without alternative resolution paths or fallback mechanisms, the agent becomes entirely dependent on external service availability, leading to total task failure when timeouts occur.",
+      "affectedSessionCount": 1,
+      "suggestedFix": "Implement resilience patterns including retry logic with exponential backoff and reduced per-attempt timeouts to handle transient failures gracefully. Establish fallback mechanisms such as cached data, alternative data sources, or manual intervention queues to ensure task continuity when external services are unavailable. Additionally, add circuit breaker patterns and monitoring to detect upstream service issues early and prevent cascading failures.",
+      "sampleSessions": [
+        {
+          "sessionId": "cli-insights-timeout_error-bd4a5767-4eab-4995-8e2a-ca128a3f73b1",
+          "lastSeenAt": "2026-11-10T20:51:17.000Z",
+          "findings": [
+            {
+              "description": "The lookup_order tool call ran for approximately 30 seconds (20:50:41 to 20:51:11) and returned {\"error\": \"Gateway timeout\"}, indicating the upstream service timed out when attempting to retrieve order details for ERR-TIMEOUT-001",
+              "targetId": "72223255ec4c4238",
+              "targetType": "SPAN_ID",
+              "category": "execution-error-timeout",
+              "confidence": 0.9
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "batchEvaluationId": "insights_cli_fixture_fa3-73a1c1cb4b",
+  "lastSeenAt": "2026-11-10T20:51:17.000Z"
+}

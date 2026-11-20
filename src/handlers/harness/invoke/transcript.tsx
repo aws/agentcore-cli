@@ -3,6 +3,7 @@ import type {
   InvokeAgentRuntimeCommandStreamOutput,
   InvokeHarnessStreamOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
+import { stringifyJson } from "../../../io/jsonText";
 
 // The transcript reducer folds a harness invocation's stream events into a flat
 // list of display items. It is pure data-in/data-out (no React, no IO), so the
@@ -96,7 +97,7 @@ function appendResult(
     tool.result += chunk.text;
   } else if (chunk.json !== undefined) {
     if (tool.result !== "" && !tool.result.endsWith("\n")) tool.result += "\n";
-    tool.result += JSON.stringify(chunk.json) + "\n";
+    tool.result += stringifyJson(chunk.json) + "\n";
   }
 }
 
