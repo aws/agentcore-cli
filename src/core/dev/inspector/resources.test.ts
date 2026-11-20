@@ -108,8 +108,8 @@ function project(): Project {
 }
 
 describe("GET /api/resources", () => {
-  test("flattens the project spec into the resource graph", () => {
-    const response = handleResources(deps({ project: project() }));
+  test("flattens the project spec into the resource graph", async () => {
+    const response = await handleResources(deps({ project: project() }));
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body as string)).toEqual({
       success: true,
@@ -162,12 +162,48 @@ describe("GET /api/resources", () => {
     });
   });
 
-  test("returns 404 when there is no project", () => {
-    const response = handleResources(deps());
+  test("returns 404 when there is no project", async () => {
+    const response = await handleResources(deps());
     expect(response.status).toBe(404);
     expect(JSON.parse(response.body as string)).toEqual({
       success: false,
       error: "No agentcore project found",
     });
+  });
+  test("adds each resource's deploymentStatus from the lookup", async () => {
+    const statuses: Record<string, "deployed" | "local-only"> = {
+      "runtime/orders": "deployed",
+      "harness/support": "deployed",
+      "memory/chat": "local-only",
+      "gateway/gw": "deployed",
+    };
+    const response = await handleResources(
+      deps({
+        project: project(),
+        deploymentStatus: async () => (resourceType, name) => statuses[`${resourceType}/${name}`],
+      }),
+    );
+    const body = JSON.parse(response.body as string);
+    expect(body.agents[0].deploymentStatus).toBe("deployed");
+    expect(body.harnesses[0].deploymentStatus).toBe("deployed");
+    expect(body.memories[0].deploymentStatus).toBe("local-only");
+    expect(body.gateways[0].deploymentStatus).toBe("deployed");
+    // A resource the lookup does not know stays unbadged rather than "local-only".
+    expect(body.credentials[0]).not.toHaveProperty("deploymentStatus");
+  });
+
+  test("omits deploymentStatus when the lookup fails", async () => {
+    const response = await handleResources(
+      deps({
+        project: project(),
+        deploymentStatus: async () => {
+          throw new Error("No deployment targets are configured");
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.body as string);
+    expect(body.agents[0]).not.toHaveProperty("deploymentStatus");
+    expect(body.memories[0]).not.toHaveProperty("deploymentStatus");
   });
 });
