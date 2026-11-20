@@ -45,7 +45,7 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
  * own local box profile as `resolver` resolves it for a build in `region`. A CloudWatch target with
  * no region gets `deployRegion`, the region of the deploy target. A project with no box runtime
- * resolves nothing, and an agent with no local box profile resolves no profile.
+ * resolves nothing. Throws, naming the file, for a box runtime with no local box profile.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,

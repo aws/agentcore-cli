@@ -572,7 +572,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
    */
   function bothProfiles(spec: ProjectSpec, { text, egress, mcp, policy }: Fixture = FIXTURE) {
     const withDefaults = structuredClone(spec);
-    addBoxGatewayTargets(withDefaults, "us-west-2");
+    addBoxGatewayTargets(withDefaults, "/project", "us-west-2");
     const targets = withDefaults.agentCoreGateways[0]!.targets;
     const { parsed, failures } = parseResolvedPolicy(
       {

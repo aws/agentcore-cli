@@ -78,6 +78,11 @@ const GITHUB_KEY = {
   parameterName: "Authorization",
   prefix: "Bearer",
 };
+/** The Runtime route to `host` through the Box gateway target `target`. */
+const gatewayRoute = (target: string, host: string) => ({
+  destinations: [host],
+  backends: GATEWAY_BACKEND(target),
+});
 const GATEWAY_BACKEND = (target: string) => [
   {
     url: `\${{ inputs.gateway.url }}/${target}`,

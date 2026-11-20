@@ -412,7 +412,10 @@ describe("the telemetry of each box runtime", () => {
 });
 
 describe("two routes of one profile to one host", () => {
-  /** The Box network model of `agent` for the local profile `text`, which box resolves to `egress`. */
+  /**
+   * The Box network model of `agent` for the local profile `text`, which box resolves to `egress`.
+   * Each entry name is a valid API key credential name (3 or more characters), as dev requires.
+   */
   async function networkOf(text: string, egress: Record<string, unknown>) {
     const root = await project([]);
     await writeFile(join(root, ...LOCAL, "profile.toml"), text);
@@ -429,16 +432,16 @@ describe("two routes of one profile to one host", () => {
   test.each([
     [
       "two open routes",
-      '[egress.a]\ndestinations = ["api.example.com"]\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: open, b: open },
+      '[egress.api]\ndestinations = ["api.example.com"]\n' +
+        '[egress.bee]\ndestinations = ["api.example.com"]\n',
+      { api: open, bee: open },
       ".box/agent/local/profile.toml:3:1",
     ],
     [
       "a route with a secret and an open route",
-      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: keyed, b: open },
+      '[egress.api]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.bee]\ndestinations = ["api.example.com"]\n',
+      { api: keyed, bee: open },
       ".box/agent/local/profile.toml:4:1",
     ],
   ])(
@@ -449,7 +452,7 @@ describe("two routes of one profile to one host", () => {
       expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
         [
           "EGRESS_DESTINATION_OVERLAP",
-          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
+          "[egress.bee] names api.example.com, and [egress.api] names it too, but one host has only " +
             "one entry. Keep api.example.com in only one of the two.",
           place,
         ],
@@ -461,20 +464,20 @@ describe("two routes of one profile to one host", () => {
   test("gives an entry that names its host twice one target and one route", async () => {
     const twice = { destinations: ["api.example.com", "api.example.com:443"] };
     const network = await networkOf(
-      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+      '[egress.api]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
         'secret.ref = "env://A_TOKEN"\n',
-      { a: { ...twice, secret: keyed.secret } },
+      { api: { ...twice, secret: keyed.secret } },
     );
 
     expect(network.failures).toEqual([]);
     expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
-      ["api.example.com", "egress-a"],
+      ["api.example.com", "egress-api"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
       ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["a", ["api.example.com"]],
+      ["api", ["api.example.com"]],
     ]);
   });
 });
