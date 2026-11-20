@@ -83,6 +83,7 @@ export function createProjectHandlers(
     createProjectInvokeHandler(core, io),
     createStatusProjectHandler({
       projectManager,
+      io,
       middlewares: [withProjectMiddleware, withTuiWhenInteractive(core, io)],
     }),
     createProjectLogsHandler(core, io),
