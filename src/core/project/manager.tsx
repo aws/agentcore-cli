@@ -1657,7 +1657,8 @@ export class FsProjectManager implements ProjectManager {
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {
-      const { written } = await envLocal.insertIfNew([...edits.envLocal]);
+      // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
+      const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
     const warnings = networks.flatMap((network) => [
