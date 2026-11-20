@@ -22,8 +22,9 @@ container they write the release and its checksum into `.box-dist/box-release.en
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
 from the release, unpack it into a folder, and add that folder to your PATH. The pinned release,
-`0.1.11-mquang.preview.9`, has only the Linux arm64 build. On macOS, use the macOS build of
-`0.1.11-linux-preview.7`, the first box that reads the profiles the CLI writes, or of a later release.
+`0.1.11-preview.10`, has builds for macOS on an Apple chip and for Linux arm64. When it has no build
+for your machine, use the build of `0.1.11-linux-preview.7`, the first box that reads the profiles
+the CLI writes, or of a later release.
 No local box checkout is needed.
 
 Dev, build and deploy run a runtime's agent in a box only when `agentcore.json` has
