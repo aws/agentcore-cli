@@ -46,7 +46,7 @@ const APP = "${{ workspace }}/app/agent";
 const CODE = "${{ inputs.code.dir }}";
 const PYTHON = "${{ inputs.python.path }}";
 const PREFIX = "${{ inputs.python.prefix }}";
-const PYTHONPATH = `${CODE}/.box-dist/ffi:${CODE}`;
+const PYTHONPATH = CODE;
 
 /** A local profile with a stdio MCP server and a tool, each with a key build does not know. */
 const LEAVES = toml(
@@ -113,10 +113,10 @@ describe("the paths rule", () => {
 
     // The Runtime installs the dependencies in the code folder, so without it no import works.
     expect(((profile.agent as TomlTable).env as TomlTable).PYTHONPATH).toBe(
-      "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}/lib:${{ inputs.code.dir }}",
+      "${{ inputs.code.dir }}/lib:${{ inputs.code.dir }}",
     );
     expect((((profile.mcp as TomlTable).notes as TomlTable).env as TomlTable).PYTHONPATH).toBe(
-      "${{ inputs.code.dir }}/.box-dist/ffi:/opt/lib:${{ inputs.code.dir }}",
+      "/opt/lib:${{ inputs.code.dir }}",
     );
   });
 
@@ -236,7 +236,7 @@ describe("the paths rule", () => {
     });
   });
 
-  test("puts the _ctypes folder in front of a leaf's own PYTHONPATH, and adds none to [agent] or a leaf with no Python", () => {
+  test("ends a leaf's own PYTHONPATH with the code folder, and adds none to [agent] or a leaf with no Python", () => {
     const table = moved(
       toml(
         "[agent]",
@@ -256,37 +256,35 @@ describe("the paths rule", () => {
         notes: {
           type: "stdio",
           command: [PYTHON, "-m", "notes"],
-          env: { PYTHONPATH: `${CODE}/.box-dist/ffi:${CODE}/src:${CODE}` },
+          env: { PYTHONPATH: `${CODE}/src:${CODE}` },
         },
       },
       tool: { lister: { command: [`${CODE}/bin/lister`] } },
     });
   });
 
-  test("moves each project path of a path list behind the _ctypes entry, and keeps that entry", () => {
-    // The additions rule puts the _ctypes folder in front of the user's own [agent] PYTHONPATH.
-    const ffi = `${CODE}/.box-dist/ffi`;
+  test("moves each project path of a path list, and keeps an entry that names a Runtime input", () => {
     const text = toml(
       "[agent]",
       'command = ["${{ inputs.python.path }}", "-m", "main"]',
       "[agent.env]",
-      `PYTHONPATH = "${ffi}:${APP}/src:${APP}"`,
+      `PYTHONPATH = "${PREFIX}/lib:${APP}/src:${APP}"`,
       "[mcp.notes]",
       'type = "stdio"',
       `command = ["${APP}/.venv/bin/python3.15", "-m", "notes"]`,
-      `env = { PYTHONPATH = "${ffi}:${APP}/lib:${APP}" }`,
+      `env = { PYTHONPATH = "${PREFIX}/lib:${APP}/lib:${APP}" }`,
     );
 
     expect(moved(text)).toEqual({
       agent: {
         command: [PYTHON, "-m", "main"],
-        env: { PYTHONPATH: `${ffi}:${CODE}/src:${CODE}` },
+        env: { PYTHONPATH: `${PREFIX}/lib:${CODE}/src:${CODE}` },
       },
       mcp: {
         notes: {
           type: "stdio",
           command: [PYTHON, "-m", "notes"],
-          env: { PYTHONPATH: `${ffi}:${CODE}/lib:${CODE}` },
+          env: { PYTHONPATH: `${PREFIX}/lib:${CODE}/lib:${CODE}` },
         },
       },
     });

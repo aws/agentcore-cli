@@ -6,9 +6,9 @@
  * in each key that can hold a path (projectPaths.ts): the `[agent]` command, env, and filesystem
  * lists, and each key of each stdio `[mcp.<name>]` and `[tool.<name>]`. Then each filesystem list
  * has one grant for each path. A leaf that runs the Runtime's Python gets the `PYTHONPATH` of the
- * code folder when it sets none, and the `_ctypes` folder in front of a `PYTHONPATH` of its own, as
- * the additions rule does for `[agent]`. Each entry of a path list moves, and an entry that names a
- * Runtime input stays. The refusals rule stops build for a path that has no place on the
+ * code folder when it sets none, as the additions rule does for `[agent]`. A `PYTHONPATH` of its
+ * own, and the one of `[agent]`, keep each entry one time and end with the code folder. Each entry
+ * of a path list moves, and an entry that names a Runtime input stays. The refusals rule stops build for a path that has no place on the
  * Runtime, so this rule keeps such a path as it is. runtimeCodeZipRunner (templates/boxProfile.ts)
  * gives the Runtime grants of the template in the local paths, and this rule moves them too.
  */
@@ -22,7 +22,6 @@ import {
   pathProblem,
   processTables,
   programOf,
-  runtimeFfiPath,
   runtimePythonPath,
   withOneGrantForEachPath,
 } from "../projectPaths";
@@ -51,7 +50,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (own === undefined) {
       if (leaf) process.env = { ...env, PYTHONPATH: runtimePythonPath(paths) };
     } else if (typeof own === "string") {
-      process.env = { ...env, PYTHONPATH: withRuntimePythonPath(own, paths, leaf) };
+      process.env = { ...env, PYTHONPATH: withRuntimePythonPath(own, paths) };
     }
   }
   return { table: moved, problems: [], warnings };
@@ -60,14 +59,11 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 /**
  * The `PYTHONPATH` `own` of a process that runs the Runtime's Python, with each entry one time in
  * its order, and the code folder, where the Runtime installs the dependencies, at the end when
- * `own` does not name it. For a leaf, the `_ctypes` folder that deploy stages comes first; the
- * additions rule puts it first for `[agent]`.
+ * `own` does not name it.
  */
-function withRuntimePythonPath(own: string, paths: RuntimePaths, leaf: boolean): string {
-  const ffi = runtimeFfiPath(paths);
+function withRuntimePythonPath(own: string, paths: RuntimePaths): string {
   const entries = [...new Set(own.split(":").filter((entry) => entry !== ""))];
-  const ordered = leaf ? [ffi, ...entries.filter((entry) => entry !== ffi)] : entries;
-  return [...ordered, ...(ordered.includes(paths.runtimeCode) ? [] : [paths.runtimeCode])].join(
+  return [...entries, ...(entries.includes(paths.runtimeCode) ? [] : [paths.runtimeCode])].join(
     ":",
   );
 }

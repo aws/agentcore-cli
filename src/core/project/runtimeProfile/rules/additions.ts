@@ -8,7 +8,7 @@
  * | `[profile] name` | the project's name |
  * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
- * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) the ffi `PYTHONPATH` come in; each other value of the user stays |
+ * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
@@ -21,7 +21,6 @@ import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
-  BOX_CODEZIP_DIST,
   boxIngressPort,
   boxWorkloadPort,
   RUNTIME_LOGS_HEADERS_ENV,
@@ -269,8 +268,8 @@ function withoutReload(command: unknown): unknown {
  * `[agent.env]` for the Runtime. A variable of the template that the local profile keeps with the
  * template's value gets its Runtime value, or goes when the Runtime has none. A variable that only
  * the Runtime has comes in, unless the user sets it. A variable of the user stays. `LOCAL_DEV`
- * goes, whatever its value. This rule sets the region and the AWS stand-ins itself. On CodeZip,
- * `PYTHONPATH` starts with the ffi shim.
+ * goes, whatever its value. This rule sets the region and the AWS stand-ins itself. On CodeZip, an
+ * agent with no `PYTHONPATH` gets the code folder, where the Runtime installs the dependencies.
  */
 function runtimeEnv(
   env: unknown,
@@ -319,15 +318,8 @@ function runtimeEnv(
     if (Object.hasOwn(result, name) || ofTemplate(name)) continue;
     result[name] = value;
   }
-  if (context.paths.build === "CodeZip") {
-    // The ffi shim that deploy stages: its libffi uses static trampolines, which W^X allows.
-    const code = context.paths.runtimeCode;
-    const shim = `${code}/${BOX_CODEZIP_DIST}/ffi`;
-    const path = result.PYTHONPATH;
-    if (path === undefined) result.PYTHONPATH = `${shim}:${code}`;
-    else if (typeof path === "string" && path.split(":")[0] !== shim) {
-      result.PYTHONPATH = `${shim}:${path}`;
-    }
+  if (context.paths.build === "CodeZip" && result.PYTHONPATH === undefined) {
+    result.PYTHONPATH = context.paths.runtimeCode;
   }
   return result;
 }

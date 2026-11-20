@@ -463,7 +463,7 @@ describe("the additions rule", () => {
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).env).toEqual({
         PORT: "8081",
-        PYTHONPATH: "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+        PYTHONPATH: "${{ inputs.code.dir }}",
         PYTHONUTF8: "1",
         PYTHONUNBUFFERED: "1",
         AWS_DEFAULT_REGION: "${{ inputs.aws.region }}",
@@ -534,31 +534,26 @@ describe("the additions rule", () => {
       expect(other.AWS_DEFAULT_REGION).toBe("${{ inputs.aws.region }}");
     });
 
-    test("puts the ffi shim first in a PYTHONPATH of the user on CodeZip, and not on a container", () => {
+    test("keeps a PYTHONPATH of the user as it is, on CodeZip and on a container", () => {
       const env = { PYTHONPATH: "${{ workspace }}/app/agent/lib" };
 
-      expect(agentOf(apply({ agent: { env } }, contextOf(CODEZIP)).table).env.PYTHONPATH).toBe(
-        "${{ inputs.code.dir }}/.box-dist/ffi:${{ workspace }}/app/agent/lib",
-      );
-      expect(agentOf(apply({ agent: { env } }, contextOf(CONTAINER)).table).env.PYTHONPATH).toBe(
-        "${{ workspace }}/app/agent/lib",
-      );
-    });
-
-    test("adds no second ffi entry to a PYTHONPATH that starts with the ffi shim", () => {
-      for (const path of [
-        "${{ inputs.code.dir }}/.box-dist/ffi",
-        "${{ inputs.code.dir }}/.box-dist/ffi:${{ workspace }}/app/agent/lib",
-      ]) {
-        const env = { PYTHONPATH: path };
-
-        expect(agentOf(apply({ agent: { env } }, contextOf(CODEZIP)).table).env.PYTHONPATH).toBe(
-          path,
+      for (const runtime of [CODEZIP, CONTAINER]) {
+        expect(agentOf(apply({ agent: { env } }, contextOf(runtime)).table).env.PYTHONPATH).toBe(
+          "${{ workspace }}/app/agent/lib",
         );
       }
     });
 
-    test("sets the region, the AWS stand-ins, and the ffi PYTHONPATH whatever the template's Runtime env", () => {
+    test("gives an [agent] with no PYTHONPATH the code folder on CodeZip, and none on a container", () => {
+      expect(agentOf(apply({ agent: {} }, contextOf(CODEZIP)).table).env.PYTHONPATH).toBe(
+        "${{ inputs.code.dir }}",
+      );
+      expect(agentOf(apply({ agent: {} }, contextOf(CONTAINER)).table).env).not.toHaveProperty(
+        "PYTHONPATH",
+      );
+    });
+
+    test("sets the region, the AWS stand-ins, and the PYTHONPATH of the code folder whatever the template's Runtime env", () => {
       const openAi = runtimeOf("CodeZip", "HTTP", "OpenAI");
       const context = contextOf(openAi);
       const runtime = structuredClone(context.template.runtime);
@@ -574,7 +569,7 @@ describe("the additions rule", () => {
         AWS_DEFAULT_REGION: "${{ inputs.aws.region }}",
         AWS_ACCESS_KEY_ID: "box-stand-in",
         AWS_SECRET_ACCESS_KEY: "box-stand-in",
-        PYTHONPATH: "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}",
+        PYTHONPATH: "${{ inputs.code.dir }}",
       });
     });
   });
