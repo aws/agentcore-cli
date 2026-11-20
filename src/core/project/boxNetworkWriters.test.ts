@@ -12,8 +12,10 @@ import {
   gatewayTargetsWriter,
   runtimeProfileWriter,
   telemetryPolicyWriter,
+  unsentTargetWarnings,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
+import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
 
@@ -217,9 +219,10 @@ describe("gatewayTargetsWriter", () => {
         "sends the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential " +
         "'github' to hold it",
     ]);
+    // A target that was never written changes nothing; unsentTargetWarnings says why it is not.
     const fresh = run([gatewayTargetsWriter], models);
     expect(fresh.specChanged).toBe(false);
-    expect(fresh.messages[0]).toStartWith("not adding gateway target 'egress-github'");
+    expect(fresh.messages).toEqual([]);
   });
 
   test("writes to the gateway bound to the runtime, whatever its name", () => {
@@ -234,6 +237,45 @@ describe("gatewayTargetsWriter", () => {
 
     expect(edits.messages).toEqual([
       "adding gateway target 'egress-a' to 'renamed' for a.example.com",
+    ]);
+  });
+});
+
+describe("unsentTargetWarnings", () => {
+  const github = (envRoutes: BoxNetwork["envRoutes"]) =>
+    network({
+      hosts: [
+        host("api.github.com", "egress-github", {
+          outboundAuth: GITHUB_AUTH,
+          sources: [{ kind: "entry", egressEntry: "github", destinations: ["api.github.com"] }],
+        }),
+      ],
+      envRoutes,
+    });
+
+  test("warns for no host whose credential the credentials writer adds", () => {
+    const routes = [{ route: "github", variable: "GITHUB_TOKEN" }];
+    expect(unsentTargetWarnings([github(routes)], contextFor())).toEqual([]);
+  });
+
+  test("says why a host gets no target, and what to do, from the credentials writer", () => {
+    const routes = [{ route: "github", variable: "GITHUB_TOKEN" }];
+    expect(
+      unsentTargetWarnings([github(routes)], { ...contextFor(), env: {} }).map((w) =>
+        w.replace(ENV_LOCAL_RELATIVE_PATH, ".env.local"),
+      ),
+    ).toEqual([
+      "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
+        "this host on AgentCore Runtime. GITHUB_TOKEN is not set here or in .env.local. Set " +
+        "GITHUB_TOKEN, or AGENTCORE_CREDENTIAL_GITHUB, and build again.",
+    ]);
+  });
+
+  test("names the credential and the variable when the credentials writer gives no reason", () => {
+    expect(unsentTargetWarnings([github([])], contextFor())).toEqual([
+      "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
+        "this host on AgentCore Runtime. agentcore.json has no API key credential 'github' to " +
+        "hold the key of env://GITHUB_TOKEN.",
     ]);
   });
 });

@@ -257,17 +257,55 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     messages.push(`adding gateway target '${host.target}' to ${gatewayName} for ${host.authority}`);
   }
   for (const host of unsent) {
+    if (!existing.some(({ name }) => name === host.target)) continue;
     const auth = undeclaredKey(spec, host)!;
-    const removed = existing.some(({ name }) => name === host.target);
     messages.push(
-      `${removed ? "removing" : "not adding"} gateway target '${host.target}' of ${gatewayName} ` +
-        `for ${host.authority}: it sends the key of env://${auth.variable}, and agentcore.json ` +
-        `has no API key credential '${auth.credentialName}' to hold it`,
+      `removing gateway target '${host.target}' of ${gatewayName} for ${host.authority}: it ` +
+        `sends the key of env://${auth.variable}, and agentcore.json has no API key credential ` +
+        `'${auth.credentialName}' to hold it`,
     );
   }
   if (isDeepStrictEqual(targets, existing)) return messages;
   gateway.targets = targets;
   return messages;
+}
+
+/**
+ * A warning for each host of `networks` that gets no gateway target because no API key credential
+ * of agentcore.json, once the credentials writer runs, holds the key its target sends: the agent
+ * cannot reach the host on AgentCore Runtime. It says why, and what to do.
+ */
+export function unsentTargetWarnings(
+  networks: readonly BoxNetwork[],
+  context: BoxNetworkWriteContext,
+): string[] {
+  const { spec, env, envLocal } = context;
+  const plan = planBoxProfileCredentials(structuredClone(spec), uniqueRoutes(networks), {
+    env,
+    envLocal,
+  });
+  const after = { ...spec, credentials: [...spec.credentials, ...plan.added] };
+  const warnings: string[] = [];
+  for (const host of networks.flatMap((network) => network.hosts)) {
+    if (host.target === undefined || !isManagedTarget({ name: host.target })) continue;
+    const auth = undeclaredKey(after, host);
+    const source = host.sources.find(
+      (candidate): candidate is Exclude<typeof candidate, { kind: "rule" }> =>
+        candidate.kind !== "rule",
+    );
+    if (auth === undefined || source === undefined) continue;
+    const [table, route] =
+      source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
+    const why =
+      plan.unprovisioned.get(route) ??
+      `agentcore.json has no API key credential '${auth.credentialName}' to hold the key of ` +
+        `env://${auth.variable}.`;
+    warnings.push(
+      `${host.authority}: build gives [${table}.${route}] no gateway target, so the agent ` +
+        `cannot reach this host on AgentCore Runtime. ${why}`,
+    );
+  }
+  return warnings;
 }
 
 /** The API key that a host's target sends, when agentcore.json declares no credential for it. */
