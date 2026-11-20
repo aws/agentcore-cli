@@ -338,7 +338,10 @@ describe("gateway targets in a Box project", () => {
     await expect(add).rejects.toBeInstanceOf(ProjectStateError);
     await expect(add).rejects.toThrow(
       "cannot add runtime 'search': a Box project holds one runtime, which `agentcore create` " +
-        "makes from a box template",
+        "makes from a box template (agent-python-strands-box, agent-python-strands-box-container, " +
+        "agent-python-langchain-box, agent-python-minimal-box, a2a-python-strands-box, " +
+        "agui-python-strands-box, mcp-python-fastmcp-box), and every runtime of a Box project " +
+        "runs in a box. Create a separate project for this runtime.",
     );
     expect(await specText(project)).toBe(before);
     expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);

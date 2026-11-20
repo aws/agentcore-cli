@@ -387,6 +387,10 @@ export const PROJECT_TEMPLATE_NAMES = [
   EMPTY_TEMPLATE_NAME,
 ] as unknown as readonly [TemplateName, ...TemplateName[]];
 
+/** The box templates, which run their agent in a box, in `--template` order. */
+export const BOX_TEMPLATE_NAMES: readonly RuntimeTemplateShortcutName[] =
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter((name) => RUNTIME_TEMPLATE_SHORTCUTS[name].box);
+
 /**
  * Long-form `--template` help generated from the same registry used to resolve
  * templates and populate the TUI. Project creation also offers the empty

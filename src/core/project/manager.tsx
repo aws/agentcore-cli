@@ -70,6 +70,7 @@ import {
 } from "./templates/boxProfile";
 import { assertBoxRuntimesHaveBoxVersion } from "./backends/boxContainer";
 import { BOX_INSTALL_HINT } from "./backends/boxRelease";
+import { BOX_TEMPLATE_NAMES } from "../../handlers/project/shortcuts";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -2261,9 +2262,8 @@ function assertNoSecondBoxRuntime(spec: z.infer<typeof ProjectSpecSchema>, what:
   if (!isBoxProject(spec)) return;
   throw new ProjectStateError(
     `cannot add ${what}: a Box project holds one runtime, which \`agentcore ` +
-      "create` makes from a box template (agent-python-strands-box or " +
-      "agent-python-strands-box-container), and every runtime of a Box project runs in a box. " +
-      "Create a separate project for this runtime.",
+      `create\` makes from a box template (${BOX_TEMPLATE_NAMES.join(", ")}), and every runtime ` +
+      "of a Box project runs in a box. Create a separate project for this runtime.",
   );
 }
 
