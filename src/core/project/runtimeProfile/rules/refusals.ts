@@ -64,6 +64,9 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   for (const [name, target] of Object.entries(telemetry)) {
     const kind = isTable(target) ? target.kind : undefined;
     if (typeof kind === "string" && RUNTIME_TELEMETRY_KINDS.has(kind)) continue;
+    // A table with no kind adds to the target of that name that a pack gives, which box resolves.
+    if (kind === undefined && context.telemetry.some((resolved) => resolved.name === name))
+      continue;
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
