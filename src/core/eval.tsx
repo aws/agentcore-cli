@@ -70,6 +70,7 @@ import {
   DeleteDatasetGenerationCommand,
   DeleteRecommendationCommand,
   EvaluateCommand,
+  ValidationException,
   CreateABTestCommand,
   GetABTestCommand,
   ListABTestsCommand,
@@ -917,25 +918,40 @@ export class EvalClient implements CoreEvalClient {
     // Sessions that actually produced Evaluate results — distinct from the sessions
     // handed in, since a TRACE/TOOL_CALL session with no matching ids makes no call.
     const evaluatedSessions = new Set<string>();
+    const skippedSessionIds = new Set<string>();
     for (const evaluatorId of input.evaluatorIds) {
       const level = levels.get(evaluatorId) ?? "SESSION";
       for (const trace of input.traces) {
+        if (skippedSessionIds.has(trace.sessionId)) continue;
         // TRACE/TOOL_CALL sessions with no ids at that level contribute no calls
         // (empty batch list); SESSION always makes one call with no target.
         for (const target of targetBatches(level, trace)) {
-          const response = await data.send(
-            new EvaluateCommand({
-              evaluatorId,
-              // SpanRecord is Record<string, unknown> for ergonomic reads; the API
-              // wants DocumentType[] (assignable to it, so a single cast suffices).
-              evaluationInput: { sessionSpans: trace.spans as DocumentType[] },
-              evaluationTarget: target,
-              evaluationReferenceInputs: refsBySession.get(trace.sessionId),
-            }),
-          );
-          const evaluationResults = response.evaluationResults ?? [];
-          if (evaluationResults.length > 0) evaluatedSessions.add(trace.sessionId);
-          results.push(...evaluationResults);
+          try {
+            const response = await data.send(
+              new EvaluateCommand({
+                evaluatorId,
+                // SpanRecord is Record<string, unknown> for ergonomic reads; the API
+                // wants DocumentType[] (assignable to it, so a single cast suffices).
+                evaluationInput: { sessionSpans: trace.spans as DocumentType[] },
+                evaluationTarget: target,
+                evaluationReferenceInputs: refsBySession.get(trace.sessionId),
+              }),
+            );
+            const evaluationResults = response.evaluationResults ?? [];
+            if (evaluationResults.length > 0) evaluatedSessions.add(trace.sessionId);
+            results.push(...evaluationResults);
+          } catch (error) {
+            // The service owns the supported scopes, and every request for this
+            // session submits the same spans even when evaluator targets vary.
+            if (
+              !(error instanceof ValidationException) ||
+              !error.message.startsWith("Provided input has no spans with supported scope")
+            ) {
+              throw error;
+            }
+            skippedSessionIds.add(trace.sessionId);
+            break;
+          }
         }
       }
     }
@@ -943,6 +959,7 @@ export class EvalClient implements CoreEvalClient {
       sessionsRequested: input.traces.length,
       sessionsEvaluated: evaluatedSessions.size,
       results,
+      ...(skippedSessionIds.size > 0 && { skippedSessionIds: [...skippedSessionIds] }),
     };
   }
 
