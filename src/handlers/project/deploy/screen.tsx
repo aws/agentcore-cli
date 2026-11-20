@@ -14,6 +14,7 @@ import {
   declaresNothingDeployable,
   DEPLOY_NEXT_STEP,
   deployedMessage,
+  recordBuildTypeCounts,
   recordProjectResourceCounts,
   teardownQuestion,
 } from "./index";
@@ -117,6 +118,7 @@ function DeployConfirm({
           region,
           confirmTeardown: async () => teardown,
           transactionSearch: globalConfig?.transactionSearch,
+          onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
         });
         // The title follows the result, not the preflight heuristic, which
         // synthesis can disagree with. Outputs are not listed: the command

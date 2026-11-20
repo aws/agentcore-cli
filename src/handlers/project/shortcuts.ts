@@ -183,7 +183,11 @@ const FRAMEWORK_ORDER: Record<ScaffoldRuntimeInput["framework"], number> = {
   bma: 3,
   none: 4,
 };
-const BUILD_ORDER: Record<ScaffoldRuntimeInput["build"], number> = { CodeZip: 0, Container: 1 };
+const BUILD_ORDER: Record<ScaffoldRuntimeInput["build"], number> = {
+  CodeZip: 0,
+  Container: 1,
+  ContainerLocal: 2,
+};
 
 function templateSortKey(template: RuntimeTemplateShortcut): number[] {
   return [

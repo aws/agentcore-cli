@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -417,6 +418,11 @@ describe("project deploy handler", () => {
       project_memory_count: 0,
       project_gateway_count: 0,
       project_harness_count: 0,
+      project_runtime_codezip_count: 1,
+      project_runtime_container_count: 0,
+      project_runtime_container_local_count: 0,
+      project_harness_container_count: 0,
+      project_harness_container_local_count: 0,
     });
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(DEFAULT_TARGET);
@@ -427,6 +433,90 @@ describe("project deploy handler", () => {
     expect(subject.io.stderr()).toContain("next step:\n  agentcore invoke");
     // Stack outputs are rendered only with --json; without it stdout stays empty.
     expect(subject.io.stdout()).toBe("");
+  });
+
+  test("counts runtimes and harnesses by build type", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    const projectRoot = await inProjectWithTargets();
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await writeFile(dockerfile, "FROM scratch\n");
+    const add = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+    });
+    for (const args of [
+      ["runtime", "--name", "local_rt", "--language", "python", "--build-config"],
+      ["harness", "--name", "local_h", "--dockerfile", dockerfile, "--build-config"],
+    ]) {
+      const config =
+        args[0] === "runtime"
+          ? { build: "ContainerLocal", dockerfile }
+          : { build: "ContainerLocal" };
+      await add.route(["node", "agentcore", "add", ...args, JSON.stringify(config)]);
+    }
+    await add.route([
+      "node",
+      "agentcore",
+      "add",
+      "harness",
+      "--name",
+      "cb_h",
+      "--dockerfile",
+      dockerfile,
+    ]);
+
+    // Telemetry and the deploy share one resolution of harness.yaml.
+    const reads = spyOn(fs, "readFileSync");
+    try {
+      await subject.run();
+      const harnessReads = reads.mock.calls.filter(([path]) =>
+        String(path).endsWith("harness.yaml"),
+      );
+      expect(harnessReads).toHaveLength(2); // one per harness
+    } finally {
+      reads.mockRestore();
+    }
+    expect(subject.calls[0]?.input.workloadBuilds).toEqual({
+      "runtime/agent": "CodeZip",
+      "runtime/local_rt": "ContainerLocal",
+      "harness/local_h": "ContainerLocal",
+      "harness/cb_h": "Container",
+    });
+
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      project_runtime_count: 2,
+      project_harness_count: 2,
+      project_runtime_codezip_count: 1,
+      project_runtime_container_count: 0,
+      project_runtime_container_local_count: 1,
+      project_harness_container_count: 1,
+      project_harness_container_local_count: 1,
+    });
+  });
+
+  test("counts the build type a runtime deploys with after Dockerfile auto-detection", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    const projectRoot = await inProjectWithTargets();
+    const spec = JSON.parse(
+      await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
+    );
+    expect(spec.runtimes[0]).toMatchObject({ name: "agent", build: "CodeZip" });
+    // A Dockerfile added to a CodeZip runtime's code switches it to Container at deploy.
+    await writeFile(
+      join(projectRoot, spec.runtimes[0].codeLocation, "Dockerfile"),
+      "FROM scratch\n",
+    );
+
+    await subject.run();
+
+    expect(subject.calls[0]?.input.workloadBuilds).toEqual({ "runtime/agent": "Container" });
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      project_runtime_codezip_count: 0,
+      project_runtime_container_count: 1,
+    });
   });
 
   test("passes the global config's transactionSearch flag into the deploy", async () => {

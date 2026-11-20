@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { cdkCompatibilityWarning, MINIMUM_COMPATIBLE_CDK_VERSION } from "./compatibility";
+import {
+  assertCdkLocalContainerSupport,
+  cdkCompatibilityWarning,
+  MINIMUM_COMPATIBLE_CDK_VERSION,
+} from "./compatibility";
 
 const tempDirectories: string[] = [];
 
@@ -22,6 +26,25 @@ async function cdkDirectoryWith(version: unknown): Promise<string> {
 }
 
 describe("cdkCompatibilityWarning", () => {
+  test("rejects an older package that would ignore a local harness build selection", async () => {
+    const directory = await cdkDirectoryWith("1.0.1");
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await writeFile(
+      join(packageDirectory, "index.js"),
+      "exports.BuildTypeSchema = { safeParse: () => ({ success: false }) };",
+    );
+    expect(() => assertCdkLocalContainerSupport(directory)).toThrow('supports "ContainerLocal"');
+  });
+
+  test("accepts a supporting local or prerelease CDK package by capability", async () => {
+    const directory = await cdkDirectoryWith("1.0.2-rc.1");
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await writeFile(
+      join(packageDirectory, "index.js"),
+      'exports.BuildTypeSchema = { safeParse: value => ({ success: value === "ContainerLocal" }) }; exports.LocalContainerImageAsset = class {};',
+    );
+    expect(() => assertCdkLocalContainerSupport(directory)).not.toThrow();
+  });
   test.each(["0.0.0-0", "1.0.0-rc.1", "1.0.0-rc.2"])(
     "warns for incompatible version %s",
     async (version) => {
