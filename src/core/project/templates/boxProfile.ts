@@ -171,6 +171,18 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
 }
 
+/** The header line of a CodeZip profile that names the folder `agentcore dev` starts box in. */
+const START_FOLDER_LINE =
+  /^# Written by `agentcore create` or `agentcore add runtime` for (\S+?): /m;
+
+/**
+ * The folder, from the project root, that box starts a run or a resolution of the profile in: the
+ * runtime's code folder for a CodeZip profile, so the agent's grants reach no further than it, and
+ * the project root ("") for the container profile and for profiles written before.
+ */
+export function boxStartFolder(profileText: string): string {
+  return START_FOLDER_LINE.exec(profileText)?.[1] ?? "";
+}
 /** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (
@@ -309,6 +321,7 @@ function serve(
   workloadPort: number,
   reload: boolean,
   python = `${appDir}/.venv/bin/python`,
+  cardUrl = `http://localhost:${boxIngressPort(protocol)}/`,
 ): { command: string[]; env: Record<string, string> } {
   if (protocol === "HTTP") {
     return {
@@ -331,15 +344,13 @@ function serve(
   // The box starts the agent in the project folder, and boxy refuses a script path inside it,
   // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
-  // serve_a2a puts its listen port in the agent card's URL, but callers reach the agent only
-  // through box's ingress port, so the card names that port instead.
-  const cardUrl: Record<string, string> =
-    protocol === "A2A"
-      ? { AGENTCORE_RUNTIME_URL: `http://localhost:${boxIngressPort(protocol)}/` }
-      : {};
+  // serve_a2a puts its listen port in the agent card's URL, and AGENTCORE_RUNTIME_URL takes
+  // precedence. Locally, callers reach the agent only through box's ingress port, so the card names
+  // that port; on the Runtime, `cardUrl` is the Runtime's own value (see renderAgentCorePack).
+  const card: Record<string, string> = protocol === "A2A" ? { AGENTCORE_RUNTIME_URL: cardUrl } : {};
   return {
     command: [python, "-m", "main"],
-    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...cardUrl },
+    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...card },
   };
 }
 
@@ -411,7 +422,14 @@ function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner 
   const code = "${{ inputs.code.dir }}";
   const python = "${{ inputs.python.path }}";
   const pythonPrefix = "${{ inputs.python.prefix }}";
-  const { command, env } = serve(protocol, code, workloadPort, false, python);
+  const { command, env } = serve(
+    protocol,
+    code,
+    workloadPort,
+    false,
+    python,
+    "${{ inputs.runtime.url }}",
+  );
   return {
     command,
     env: {
@@ -460,7 +478,11 @@ export function renderBoxProfile(
   if (!hasBoxProfile(runtime)) return undefined;
 
   const protocol = runtime.protocol ?? "HTTP";
-  const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
+  // `agentcore dev` starts box in the runtime's folder, so the agent can read and write that folder
+  // and nothing else of the project: not agentcore/.env.local, with the model's key, nor .git or
+  // agentcore/cdk, which run outside the box.
+  const codeFolder = `app/${runtime.runtimeName}`;
+  const appDir = "${{ workspace }}";
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
@@ -497,7 +519,9 @@ export function renderBoxProfile(
       ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-        : `# Written by \`agentcore create\` or \`agentcore add runtime\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
+        : `# Written by \`agentcore create\` or \`agentcore add runtime\` for ${codeFolder}: ` +
+          `\`agentcore dev\` runs \`box run ${posix.relative(codeFolder, boxLocalProfileFile(runtime.runtimeName))}\` ` +
+          "there, so the agent can reach no other folder of the project.";
   const regionComment = onRuntime
     ? ""
     : "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
@@ -854,7 +878,14 @@ pattern = ${str(GATEWAY_URL_PATTERN)}
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
-pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
+pattern = ${str(AWS_REGION_PATTERN)}
+
+# The URL an A2A agent card advertises. Outside a box, serve_a2a reads AGENTCORE_RUNTIME_URL itself
+# and otherwise names the contract port; the agent in the box gets the same value through this.
+[inputs.runtime.url]
+description = "The URL an A2A agent card advertises on the Runtime."
+from = "env:AGENTCORE_RUNTIME_URL"
+default = "http://localhost:9000/"${memoryInputs}
 ${agentEnv}`;
 }
 

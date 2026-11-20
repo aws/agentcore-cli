@@ -158,6 +158,22 @@ export type CdkBackendConfig = {
   processEnv?: NodeJS.ProcessEnv;
 };
 
+/**
+ * A warning for each runtime of `spec` that runs its agent in a box with OTEL on: the agent in the
+ * box does not run under opentelemetry-instrument, CodeZip or container, so it sends no traces.
+ */
+export function boxOtelWarnings(spec: Project["spec"]): string[] {
+  return spec.runtimes
+    .filter(
+      (runtime) => runtimeRunsInBox(spec, runtime) && (runtime.instrumentation?.enableOtel ?? true),
+    )
+    .map(
+      (runtime) =>
+        `Runtime '${runtime.name}' runs its agent in a box, where the agent does not run under ` +
+        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+    );
+}
+
 /** Builds and deploys projects through the scaffolded CDK app. */
 export class CdkBackend implements ProjectBackend {
   private readonly logger: Logger;
@@ -252,20 +268,7 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, void> {
     yield* await this.ensureCdkDependencies(project, boxNetworks);
 
-    for (const runtime of project.spec.runtimes) {
-      if (
-        runtime.build === "Container" &&
-        runtimeRunsInBox(project.spec, runtime) &&
-        (runtime.instrumentation?.enableOtel ?? true)
-      ) {
-        yield {
-          type: "warning",
-          message:
-            `Runtime '${runtime.name}' runs its agent in a box, whose image does not run ` +
-            `opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.`,
-        };
-      }
-    }
+    for (const message of boxOtelWarnings(project.spec)) yield { type: "warning", message };
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
