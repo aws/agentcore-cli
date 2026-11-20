@@ -284,7 +284,9 @@ describe("build", () => {
       "search: build CodeZip -> Container (Dockerfile in app/search). It now builds and " +
         "deploys as a container image from that Dockerfile; to go back, delete the Dockerfile, " +
         'then in agentcore.json set "build": "CodeZip", remove "dockerfile", and add back the ' +
-        '"runtimeVersion" removed below.',
+        '"runtimeVersion" removed below. Container images are built by CodeBuild; a local ' +
+        "build (ContainerLocal) can only be chosen when adding a workload, with --build-config, " +
+        "and a workload cannot be switched to it later.",
     );
   });
 

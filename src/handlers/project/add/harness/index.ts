@@ -204,6 +204,15 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
           "--dockerfile and --build-config dockerfile both set the Dockerfile; pass only one",
         );
       }
+      const needsDockerfile = (
+        ["build", "buildContextPath", "customDockerBuildArgs"] as const
+      ).find((field) => buildConfig?.[field] !== undefined);
+      if (needsDockerfile && buildConfig?.dockerfile === undefined && !flags.dockerfile) {
+        throw new InputValidationError(
+          `Invalid value for option '--build-config': ${needsDockerfile} requires a Dockerfile; ` +
+            'set "dockerfile" in --build-config or pass --dockerfile',
+        );
+      }
       if (buildConfig?.buildContextPath !== undefined && flags.dockerfile !== undefined) {
         throw new InputValidationError(
           "--dockerfile cannot be combined with --build-config buildContextPath: with a build " +

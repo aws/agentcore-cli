@@ -242,6 +242,17 @@ export type WorkloadBuildMode =
 export type WorkloadKey = `runtime/${string}` | `harness/${string}`;
 /** Build mode of every runtime and harness in a project. */
 export type WorkloadBuilds = Record<WorkloadKey, WorkloadBuildMode>;
+/** Where a ContainerLocal workload is built from, as agentcore.json or harness.yaml sets it. */
+export type LocalWorkloadSource = {
+  /** Project-relative build context: buildContextPath, else the workload's directory. */
+  context: string;
+  /** The Dockerfile, relative to the build context. */
+  dockerfile: string;
+  /** The bring-your-own execution role, when one is set. */
+  executionRoleArn?: string;
+};
+/** Each ContainerLocal workload's build source, by workload key. */
+export type LocalWorkloadSources = Map<WorkloadKey, LocalWorkloadSource>;
 
 export type DeployResult = {
   /**

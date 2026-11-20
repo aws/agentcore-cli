@@ -36,6 +36,27 @@ describe("cdkCompatibilityWarning", () => {
     expect(() => assertCdkLocalContainerSupport(directory)).toThrow('supports "ContainerLocal"');
   });
 
+  test("asks to update the dependency when the package is not installed", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-compatibility-"));
+    tempDirectories.push(directory);
+    expect(() => assertCdkLocalContainerSupport(directory)).toThrow('supports "ContainerLocal"');
+  });
+
+  test("reports a package that fails to load with its own error", async () => {
+    const directory = await cdkDirectoryWith("1.0.2");
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await writeFile(join(packageDirectory, "index.js"), 'throw new Error("corrupt install");');
+    let message = "";
+    try {
+      assertCdkLocalContainerSupport(directory);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("Cannot load @aws/agentcore-cdk");
+    expect(message).toContain("corrupt install");
+    expect(message).not.toContain('supports "ContainerLocal"');
+  });
+
   test("accepts a supporting local or prerelease CDK package by capability", async () => {
     const directory = await cdkDirectoryWith("1.0.2-rc.1");
     const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");

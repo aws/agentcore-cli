@@ -5,15 +5,18 @@
  * worse, publishes an image that cannot start. The check never installs emulation
  * or provisions a builder; it only reports what to fix.
  *
- * In order, the first that succeeds wins:
- *  1. `<builder> info`: a native linux/arm64 daemon builds ARM64 directly. Docker
- *     and Finch report OSType/Architecture; Podman reports host.os/host.arch.
- *     Unreadable info is not fatal: the later checks decide.
- *  2. `<builder> buildx inspect`: the active builder lists linux/arm64.
- *  3. An execution probe: build a scratch image whose only step runs a tiny ARM64
- *     program. This covers builders without buildx (Finch, Podman) and proves
- *     emulation (binfmt/QEMU) actually executes ARM64 code, not just that it is
- *     advertised. It uses --network none and --no-cache, so it downloads nothing.
+ * In order:
+ *  1. `<builder> info`: a native linux/arm64 daemon builds ARM64 directly, and
+ *     the check passes. Docker and Finch report OSType/Architecture; Podman
+ *     reports host.os/host.arch. Unreadable info is not fatal: the probe decides.
+ *  2. `<builder> buildx inspect`: read for the active builder's name, driver, and
+ *     platforms, which go into warnings and the error message. A listed
+ *     linux/arm64 is not proof: a builder can keep advertising a platform whose
+ *     emulation is gone (binfmt lost after a reboot, a builder cached in CI).
+ *  3. An execution probe, on every non-ARM64 daemon: build a scratch image whose
+ *     only step runs a tiny ARM64 program. This covers builders without buildx
+ *     (Finch, Podman) and proves emulation (binfmt/QEMU) actually executes ARM64
+ *     code. It uses --network none and --no-cache, so it downloads nothing.
  *
  * The probe's build context lives in the project's agentcore/.cli/ directory, not
  * the OS temp directory: VM-backed builders (Finch, Podman machine, Docker Desktop)
@@ -52,6 +55,7 @@ async function probeArm64Execution(
   runner: ProcessRunner,
   cwd: string,
   executable: string,
+  env: NodeJS.ProcessEnv | undefined,
 ): Promise<void> {
   const parent = join(cwd, "agentcore", ".cli");
   mkdirSync(parent, { recursive: true });
@@ -82,6 +86,7 @@ async function probeArm64Execution(
       ],
       {
         cwd: context,
+        ...(env && { env }),
         signal: AbortSignal.timeout(60_000),
         onOutput: (chunk) => {
           output += chunk;
@@ -97,10 +102,16 @@ async function probeArm64Execution(
 
 const QUERY_TIMEOUT_MS = 30_000;
 
-async function capture(runner: ProcessRunner, command: string[], cwd: string): Promise<string> {
+async function capture(
+  runner: ProcessRunner,
+  command: string[],
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<string> {
   let output = "";
   await runner(command, {
     cwd,
+    ...(env && { env }),
     signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
     onOutput: (chunk) => {
       output += chunk;
@@ -141,6 +152,14 @@ export type BuildxBuilder = { name?: string; driver?: string };
 /** What the check learned about the builder, for the image build and its warnings. */
 export type Arm64BuilderReport = { buildx?: BuildxBuilder };
 
+export type Arm64BuilderCheckOptions = {
+  /**
+   * Set as BUILDX_BUILDER for every command the check runs, so `buildx inspect`
+   * and the probe describe the builder the deploy hands to CDK.
+   */
+  buildxBuilder?: string;
+};
+
 function parseBuildx(output: string): BuildxBuilder {
   // The first Name: line is the builder; later ones name its nodes.
   return {
@@ -170,10 +189,14 @@ export async function checkArm64Builder(
   runner: ProcessRunner,
   cwd: string,
   executable: string,
+  options: Arm64BuilderCheckOptions = {},
 ): Promise<Arm64BuilderReport> {
+  const env = options.buildxBuilder
+    ? { ...process.env, BUILDX_BUILDER: options.buildxBuilder }
+    : undefined;
   let info: string;
   try {
-    info = await capture(runner, [executable, "info", "--format", "{{json .}}"], cwd);
+    info = await capture(runner, [executable, "info", "--format", "{{json .}}"], cwd, env);
   } catch {
     throw new ProjectStateError(
       `Cannot access the container builder '${executable}'. Check that it is installed and ` +
@@ -187,7 +210,7 @@ export async function checkArm64Builder(
   let platforms: string[] = [];
   if (!basename(executable).startsWith("podman")) {
     try {
-      const output = await capture(runner, [executable, "buildx", "inspect"], cwd);
+      const output = await capture(runner, [executable, "buildx", "inspect"], cwd, env);
       buildx = parseBuildx(output);
       platforms = [...output.matchAll(/^\s*Platforms:\s*(.+)$/gm)].flatMap((match) =>
         match[1]!.split(",").map((platform) => platform.trim().replace(/\*$/, "")),
@@ -198,17 +221,17 @@ export async function checkArm64Builder(
   }
   const report = { ...(buildx && { buildx }) };
   if (daemon?.os === "linux" && ["arm64", "aarch64"].includes(daemon.arch)) return report;
-  if (platforms.includes("linux/arm64") || platforms.includes("linux/arm64/v8")) return report;
+  const listsArm64 = platforms.includes("linux/arm64") || platforms.includes("linux/arm64/v8");
 
   try {
-    await probeArm64Execution(runner, cwd, executable);
+    await probeArm64Execution(runner, cwd, executable, env);
     return report;
   } catch (error) {
     const found = [
       daemon ? `daemon ${daemon.os}/${daemon.arch}` : "daemon architecture unknown",
       buildx
         ? `buildx builder '${buildx.name ?? "unknown"}' (driver ${buildx.driver ?? "unknown"}) ` +
-          "does not list linux/arm64"
+          (listsArm64 ? "lists linux/arm64 but cannot run ARM64 code" : "does not list linux/arm64")
         : "no buildx",
       `ARM64 test build failed: ${probeFailureReason(error)}`,
     ].join("; ");
@@ -221,16 +244,109 @@ export async function checkArm64Builder(
 }
 
 /**
+ * Whether ContainerLocal deploys must redirect Docker to a docker-driver builder.
+ * CDK publishes with a plain `docker build` (no --load), so a builder whose driver
+ * is not `docker` (docker-container, kubernetes, remote; what
+ * docker/setup-buildx-action creates) keeps the image out of the local store and
+ * the push fails with "No such image". Only Docker reads BUILDX_BUILDER.
+ */
+export function needsDockerDriverBuilder(
+  executable: string,
+  builder: BuildxBuilder | undefined,
+): boolean {
+  const driver = builder?.driver;
+  return basename(executable).startsWith("docker") && !!driver && driver !== "docker";
+}
+
+function driverWarningPrefix(builder: BuildxBuilder): string {
+  return (
+    `The active buildx builder '${builder.name ?? "unknown"}' uses the ${builder.driver} driver, ` +
+    "which does not load the images it builds into the local Docker image store that CDK pushes from."
+  );
+}
+
+/** The BUILDX_BUILDER a ContainerLocal deploy builds with, and a warning to show. */
+export type BuildxBuilderSelection = { buildxBuilder?: string; warning?: string };
+
+// Docker context names: a letter or digit, then letters, digits, `_`, `.`, `+`, `-`.
+const CONTEXT_NAME = /^[A-Za-z0-9][A-Za-z0-9_.+-]*$/;
+
+/**
+ * Chooses the builder a ContainerLocal deploy builds and publishes with, before the
+ * ARM64 check runs on it. When the executable is Docker and the active buildx
+ * builder's driver is not `docker`, the deploy is redirected to the docker-driver
+ * builder of the active Docker context: every context has one, named after the
+ * context (`docker context show`). BUILDX_BUILDER=default would instead select the
+ * `default` context's builder, which on Docker Desktop, Colima, Rancher Desktop,
+ * or an ssh context is a different daemon. If the context cannot be read, nothing
+ * is redirected and the warning says so.
+ */
+export async function selectBuildxBuilder(
+  runner: ProcessRunner,
+  cwd: string,
+  executable: string,
+): Promise<BuildxBuilderSelection> {
+  if (!basename(executable).startsWith("docker")) return {};
+  let active: BuildxBuilder;
+  try {
+    active = parseBuildx(await capture(runner, [executable, "buildx", "inspect"], cwd));
+  } catch {
+    // Without buildx, plain `docker build` uses the daemon's builder; nothing to redirect.
+    return {};
+  }
+  if (!needsDockerDriverBuilder(executable, active)) return {};
+
+  let context: string | undefined;
+  let reason = "it printed no context name";
+  try {
+    const output = await capture(runner, [executable, "context", "show"], cwd);
+    const last = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .pop();
+    if (last && CONTEXT_NAME.test(last)) context = last;
+    else if (last) reason = `it printed '${last.length > 80 ? `${last.slice(0, 80)}…` : last}'`;
+  } catch (error) {
+    reason = error instanceof Error ? error.message : String(error);
+  }
+  if (!context) {
+    return {
+      warning:
+        `${driverWarningPrefix(active)} The deploy could not read the active Docker context ` +
+        `('${executable} context show' failed: ${reason}), so it builds with ` +
+        `'${active.name ?? "the active builder"}' unchanged and the CDK push can fail. ` +
+        "Run 'docker buildx use <context>' with the name 'docker context show' prints to " +
+        "switch to the docker driver.",
+    };
+  }
+  return {
+    buildxBuilder: context,
+    warning:
+      `${driverWarningPrefix(active)} ContainerLocal deploys therefore build and publish with ` +
+      `'${context}', the docker-driver builder of the active Docker context, by setting ` +
+      `BUILDX_BUILDER=${context} for the deploy.`,
+  };
+}
+
+/**
  * A warning when the active Docker buildx builder's driver is not `docker`: images
  * it builds may not be loaded into the local image store, so CDK's push can fail.
+ * For Docker, deploys avoid that by building with the active Docker context's
+ * docker-driver builder instead (see {@link selectBuildxBuilder}).
  */
-export function buildxDriverWarning(report: Arm64BuilderReport): string | undefined {
-  const driver = report.buildx?.driver;
-  if (!driver || driver === "docker") return undefined;
-  const name = report.buildx?.name ?? "the active builder";
-  return (
-    `The active buildx builder '${name}' uses the ${driver} driver, so images it builds may not ` +
-    "be loaded into the local Docker image store and the CDK push can fail. " +
-    "Run 'docker buildx use default' to switch to the docker driver."
-  );
+export function buildxDriverWarning(
+  report: Arm64BuilderReport,
+  executable = "docker",
+): string | undefined {
+  const builder = report.buildx;
+  if (!builder?.driver || builder.driver === "docker") return undefined;
+  const prefix = driverWarningPrefix(builder);
+  if (needsDockerDriverBuilder(executable, builder)) {
+    return (
+      `${prefix} ContainerLocal deploys therefore build and publish with the docker-driver ` +
+      "builder of the active Docker context instead, by setting BUILDX_BUILDER for the deploy."
+    );
+  }
+  return `${prefix} The CDK push can fail. Run 'docker buildx use default' to switch to the docker driver.`;
 }

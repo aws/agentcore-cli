@@ -16,9 +16,19 @@ export function assertCdkLocalContainerSupport(cdkDirectory: string): void {
     };
     if (cdk.BuildTypeSchema?.safeParse("ContainerLocal").success && cdk.LocalContainerImageAsset)
       return;
-  } catch {
-    // An old or unavailable package must never silently strip a harness build selection.
+  } catch (error) {
+    // A missing package falls through to "update the dependency". Anything else is a
+    // broken install, which that advice would hide.
+    const code = (error as { code?: unknown }).code;
+    if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") {
+      throw new ProjectStateError(
+        `Cannot load @aws/agentcore-cdk from ${cdkDirectory}: ` +
+          (error instanceof Error ? error.message : String(error)),
+        { cause: error },
+      );
+    }
   }
+  // An old or unavailable package must never silently strip a harness build selection.
   throw new ProjectStateError(
     'This project requires an @aws/agentcore-cdk package that supports "ContainerLocal". ' +
       `Update the dependency in ${cdkDirectory} and run npm install.`,

@@ -10,16 +10,19 @@ import type {
   DeployableResource,
   ResolvedDeployedResource,
   ResolvedProjectResource,
+  LocalWorkloadSources,
   WorkloadBuilds,
+  WorkloadKey,
 } from "../../../handlers/project/types";
 import { assertCdkLocalContainerSupport, cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   assertSupportedBuildTransitions,
+  byoExecutionRoleWarning,
   hasLocalContainerBuilds,
-  resolveWorkloadBuilds,
+  resolveWorkloads,
   type DeployedTemplate,
 } from "./cdk/localContainers";
-import { buildxDriverWarning, checkArm64Builder } from "./cdk/arm64Builder";
+import { buildxDriverWarning, checkArm64Builder, selectBuildxBuilder } from "./cdk/arm64Builder";
 import { localImageBuilds } from "./cdk/localImages";
 import { resolveCdkDockerExecutable } from "../../dev/containerTool";
 import {
@@ -300,9 +303,9 @@ export class CdkBackend implements ProjectBackend {
   }
 
   public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
-    const builds = resolveWorkloadBuilds(project);
+    const { builds, local } = resolveWorkloads(project);
     yield* this.synthesize(project, true, builds);
-    yield* this.buildLocalImages(project, builds);
+    yield* this.buildLocalImages(project, builds, local);
   }
 
   /**
@@ -313,6 +316,7 @@ export class CdkBackend implements ProjectBackend {
   private async *buildLocalImages(
     project: Project,
     builds: WorkloadBuilds,
+    local: LocalWorkloadSources,
   ): AsyncGenerator<ProjectEvent, void> {
     if (!hasLocalContainerBuilds(builds)) return;
     const images = await localImageBuilds(
@@ -325,23 +329,38 @@ export class CdkBackend implements ProjectBackend {
     const executable = await this.resolveContainerExecutable();
     yield { type: "step", message: `checking that ${executable} can build Linux ARM64 images` };
     const report = await this.checkLocalBuilder(this.runner, project.rootPath, executable);
-    const warning = buildxDriverWarning(report);
+    const warning = buildxDriverWarning(report, executable);
     if (warning) yield { type: "warning", message: warning };
     // Docker with buildx may build with a driver that keeps the image out of the
     // local store; --load keeps it there. Finch and Podman load by default.
     const load = report.buildx !== undefined;
     for (const image of images) {
       yield { type: "step", message: `building ${image.resource} image ${image.tag}` };
-      yield* withOutputEvents((emit) => {
-        const lines = createLineSplitter(emit);
-        return this.runner(image.command(executable, { load }), {
-          cwd: image.directory,
-          onOutput: (chunk) => {
-            this.logger.debug(chunk);
-            lines.push(chunk);
-          },
-        }).finally(() => lines.flush());
-      });
+      try {
+        yield* withOutputEvents((emit) => {
+          const lines = createLineSplitter(emit);
+          return this.runner(image.command(executable, { load }), {
+            cwd: image.directory,
+            onOutput: (chunk) => {
+              this.logger.debug(chunk);
+              lines.push(chunk);
+            },
+          }).finally(() => lines.flush());
+        });
+      } catch (error) {
+        // The failing command ran in the staged copy inside the assembly; name the
+        // project directory and Dockerfile the image is actually built from.
+        const source = local.get(image.resource as WorkloadKey);
+        const from = source
+          ? ` Build context: ${source.context}/ (COPY and ADD paths resolve against it); ` +
+            `Dockerfile: ${source.context}/${source.dockerfile}.`
+          : "";
+        throw new ProjectStateError(
+          `Building the ${image.resource} image failed.${from}\n\n` +
+            (error instanceof Error ? error.message : String(error)),
+          { cause: error },
+        );
+      }
     }
   }
 
@@ -357,13 +376,16 @@ export class CdkBackend implements ProjectBackend {
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
     await this.ensureCdkDependencies(project);
-    const builds = input.workloadBuilds ?? resolveWorkloadBuilds(project);
+    const { builds, local } = input.workloadBuilds
+      ? { builds: input.workloadBuilds, local: input.localWorkloads ?? new Map() }
+      : resolveWorkloads(project);
     const deployedState = (await readDeployedState(this.json, project.rootPath)).targets[
       target.name
     ];
-    // CDK builds and publishes ContainerLocal images with CDK_DOCKER, so check
-    // that same executable.
+    // CDK builds and publishes ContainerLocal images with CDK_DOCKER and the
+    // BUILDX_BUILDER chosen here, so the check runs on that same builder.
     let containerExecutable: string | undefined;
+    let buildxBuilder: string | undefined;
     if (hasLocalContainerBuilds(builds)) {
       this.assertLocalCdkSupport(this.cdkDirectory(project));
       containerExecutable = await this.resolveContainerExecutable();
@@ -371,13 +393,22 @@ export class CdkBackend implements ProjectBackend {
         type: "step",
         message: `checking that ${containerExecutable} can build Linux ARM64 images`,
       };
-      const report = await this.checkLocalBuilder(
+      const selection = await selectBuildxBuilder(
         this.runner,
         project.rootPath,
         containerExecutable,
       );
-      const warning = buildxDriverWarning(report);
+      buildxBuilder = selection.buildxBuilder;
+      const report = await this.checkLocalBuilder(
+        this.runner,
+        project.rootPath,
+        containerExecutable,
+        { ...(buildxBuilder && { buildxBuilder }) },
+      );
+      const warning = selection.warning ?? buildxDriverWarning(report, containerExecutable);
       if (warning) yield { type: "warning", message: warning };
+      const roleWarning = byoExecutionRoleWarning(local);
+      if (roleWarning) yield { type: "warning", message: roleWarning };
     }
 
     // Read before provisioning rewrites the credentials map: it is the only record
@@ -422,6 +453,7 @@ export class CdkBackend implements ProjectBackend {
       credentials,
       region: target.region,
       ...(containerExecutable && { containerExecutable }),
+      ...(buildxBuilder && { buildxBuilder }),
     };
 
     // Decided before the Toolkit is handed the assembly: it reads a template
@@ -833,7 +865,8 @@ export class CdkBackend implements ProjectBackend {
   }
 
   /**
-   * Rejects switching a deployed workload between Container and ContainerLocal.
+   * Rejects switching a deployed workload into or out of ContainerLocal, or a
+   * deployed Runtime between CodeZip and Container.
    * Reads the live template of the synthesized stack, looked up by name (never by
    * a recorded ARN, which can point at a deleted stack), after synthesis and
    * before the stack is touched. Credential providers are already provisioned.

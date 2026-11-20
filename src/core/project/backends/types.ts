@@ -1,4 +1,4 @@
-import type { WorkloadBuilds } from "../../../handlers/project/types";
+import type { LocalWorkloadSources, WorkloadBuilds } from "../../../handlers/project/types";
 import type {
   DeployResult,
   Project,
@@ -20,6 +20,8 @@ export type DeployBackendInput = {
   skipBootstrap?: boolean;
   /** Effective workload build modes the manager resolved; resolved here when absent. */
   workloadBuilds?: WorkloadBuilds;
+  /** Build sources of the ContainerLocal workloads, resolved with workloadBuilds. */
+  localWorkloads?: LocalWorkloadSources;
 };
 
 export type ResolveDeployedResourcesBackendInput = {

@@ -11,8 +11,8 @@ import {
 import { defaultMemoryName, memoryEnvVarName } from "../../../projectSchemas/memory";
 import { credentialProviderNameEnvVarName } from "../../../projectSchemas/credential";
 import { LATEST_NODE, LATEST_PYTHON } from "../runtimeBuild";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { InputValidationError, ResourceNotFoundError } from "../../../errors";
 
 /**
@@ -54,7 +54,7 @@ export function docsRuntimeEntrypoint(language: RuntimeDocsConfig["language"]): 
  * rendered for its language and protocol.
  */
 export async function runtimeDocsTree(
-  config: { assetSource: AssetSource; templateRenderer: TemplateRenderer; projectRoot?: string },
+  config: { assetSource: AssetSource; templateRenderer: TemplateRenderer; projectRoot: string },
   input: RuntimeDocsConfig,
 ): Promise<FsTreeNode> {
   const protocol = input.protocol ?? "HTTP";
@@ -96,11 +96,8 @@ export async function runtimeDocsTree(
     },
   );
   if (input.dockerfile) {
-    if (input.buildContextPath && !config.projectRoot) {
-      throw new InputValidationError("projectRoot is required for a build context override.");
-    }
     const dockerfile = input.buildContextPath
-      ? resolve(config.projectRoot!, input.buildContextPath, input.dockerfile)
+      ? resolve(config.projectRoot, input.buildContextPath, input.dockerfile)
       : input.dockerfile;
     if (!existsSync(dockerfile))
       throw new ResourceNotFoundError(`no dockerfile exists at ${dockerfile}`);
@@ -108,11 +105,22 @@ export async function runtimeDocsTree(
     // a Dockerfile-specific ignore file, which Docker reads instead of .dockerignore,
     // goes with it under the copied name.
     if (!input.buildContextPath) {
-      tree.children.push(FsTreeNode.fromTextFile("Dockerfile", dockerfile));
+      const copies: [string, string][] = [["Dockerfile", dockerfile]];
       if (existsSync(`${dockerfile}.dockerignore`)) {
-        tree.children.push(
-          FsTreeNode.fromTextFile("Dockerfile.dockerignore", `${dockerfile}.dockerignore`),
-        );
+        copies.push(["Dockerfile.dockerignore", `${dockerfile}.dockerignore`]);
+      }
+      for (const [name, source] of copies) {
+        // The resource directory is written without overwriting, so a different file
+        // already there would silently win over the one the user asked for.
+        const existing = join(config.projectRoot, "app", input.name, name);
+        if (existsSync(existing) && !readFileSync(existing).equals(readFileSync(source))) {
+          throw new InputValidationError(
+            `app/${input.name}/${name} already exists and differs from ${source}. Remove it, or ` +
+              `use it by passing "dockerfile": "app/${input.name}/Dockerfile" in --build-config, ` +
+              "then retry.",
+          );
+        }
+        tree.children.push(FsTreeNode.fromTextFile(name, source));
       }
     }
   }

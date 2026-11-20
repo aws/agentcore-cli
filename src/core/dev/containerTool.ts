@@ -1,3 +1,4 @@
+import { isAbsolute, resolve, sep } from "node:path";
 import { InvalidEnvironmentError } from "../../errors";
 import { MissingToolError, toolAvailable } from "../../io";
 
@@ -33,11 +34,17 @@ export async function resolveContainerTool(
 
 /**
  * The executable CDK uses to build and publish local container images. An explicit
- * CDK_DOCKER is honored as-is; otherwise the same detection as `agentcore dev` applies.
+ * CDK_DOCKER is honored; a relative path in it (one with a path separator, such as
+ * ./bin/docker) is resolved against the current directory, like --build-config
+ * paths, because image builds run from other directories. Without CDK_DOCKER the
+ * same detection as `agentcore dev` applies.
  */
 export async function resolveCdkDockerExecutable(
   env: NodeJS.ProcessEnv = process.env,
   available: ToolAvailable = toolAvailable,
 ): Promise<string> {
-  return env.CDK_DOCKER || resolveContainerTool(available);
+  const configured = env.CDK_DOCKER;
+  if (!configured) return resolveContainerTool(available);
+  const hasSeparator = configured.includes("/") || (sep === "\\" && configured.includes("\\"));
+  return hasSeparator && !isAbsolute(configured) ? resolve(configured) : configured;
 }

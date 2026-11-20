@@ -68,7 +68,8 @@ export class ContainerDevRunner implements DevRunner {
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
     input.signal.throwIfAborted();
-    const context = join(
+    // resolve, not join: an absolute buildContextPath must not be prefixed again.
+    const context = resolve(
       input.projectRoot,
       input.runtime.buildContextPath ?? input.runtime.codeLocation,
     );

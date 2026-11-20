@@ -550,12 +550,8 @@ export const HarnessSpecSchema = z
     if (data.build !== undefined && data.dockerfile === undefined) {
       ctx.addIssue({ code: "custom", message: "build requires a Dockerfile", path: ["build"] });
     }
-    for (const field of [
-      "build",
-      "dockerfile",
-      "buildContextPath",
-      "customDockerBuildArgs",
-    ] as const) {
+    // dockerfile is reported by the mutually-exclusive check below.
+    for (const field of ["build", "buildContextPath", "customDockerBuildArgs"] as const) {
       if (data.containerUri !== undefined && data[field] !== undefined) {
         ctx.addIssue({
           code: "custom",
@@ -569,8 +565,10 @@ export const HarnessSpecSchema = z
         ctx.addIssue({ code: "custom", message: `${field} requires a Dockerfile`, path: [field] });
       }
     }
+    // Reserved by the CodeBuild build environment; ContainerLocal builds locally.
+    // Keep in step with the @aws/agentcore-cdk schema.
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
-      if (isReservedBuildArgKey(key)) {
+      if (data.build !== "ContainerLocal" && isReservedBuildArgKey(key)) {
         ctx.addIssue({
           code: "custom",
           message: `customDockerBuildArgs key "${key}" is reserved by the build environment`,
