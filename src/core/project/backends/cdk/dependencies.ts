@@ -12,8 +12,6 @@ type Section = "dependencies" | "devDependencies";
 
 type Manifest = Partial<Record<Section, Record<string, string>>> & Record<string, unknown>;
 
-type Specifier = { kind: "exact" | "tilde" | "caret"; version: semver.SemVer };
-
 /** A managed dependency whose declared specifier is rewritten to the one this CLI vends. */
 type DependencyChange = { name: string; section: Section; from?: string; to: string };
 
@@ -29,25 +27,20 @@ const SECTIONS: Section[] = ["dependencies", "devDependencies"];
 
 const L3_LIBRARY = "@aws/agentcore-cdk";
 
-// node-semver's Range API expands ~ and ^ into comparators, which loses the distinction
-// the policy needs: a caret range is migrated, a tilde range keeps floating patches.
-function parseSpecifier(raw: string): Specifier | undefined {
+// node-semver's Range API expands ~ and ^ into comparators, so the base version is read
+// directly; anything that is not one version behind an optional prefix is unsupported.
+function parseSpecifier(raw: string): semver.SemVer | null {
   const trimmed = raw.trim();
-  const prefix = trimmed[0];
-  const kind = prefix === "~" ? "tilde" : prefix === "^" ? "caret" : "exact";
-  const version = semver.parse(/^[~^=]/.test(trimmed) ? trimmed.slice(1) : trimmed);
-  return version ? { kind, version } : undefined;
+  return semver.parse(/^[~^=]/.test(trimmed) ? trimmed.slice(1) : trimmed);
 }
 
-function isNewer(declared: Specifier, expected: Specifier): boolean {
+function isNewer(declared: semver.SemVer, expected: semver.SemVer, exact: boolean): boolean {
   // An exact pin (the L3 library) compares fully, prerelease included, so a project a
   // newer CLI moved to 1.2.0 is never silently put back on 1.1.0.
-  if (expected.kind === "exact") return semver.gt(declared.version, expected.version);
+  if (exact) return semver.gt(declared, expected);
   // Ranges float patches, so only a newer major.minor means a newer CLI wrote it.
-  if (declared.version.major !== expected.version.major) {
-    return declared.version.major > expected.version.major;
-  }
-  return declared.version.minor > expected.version.minor;
+  if (declared.major !== expected.major) return declared.major > expected.major;
+  return declared.minor > expected.minor;
 }
 
 /**
@@ -74,7 +67,7 @@ export function planDependencySync(vended: Manifest, project: Manifest): Depende
         plan.skipped.push({ name, declared: from });
         continue;
       }
-      if (isNewer(declared, expected)) {
+      if (isNewer(declared, expected, !/^[~^]/.test(to.trim()))) {
         plan.newer.push({ name, declared: from, expected: to });
         continue;
       }

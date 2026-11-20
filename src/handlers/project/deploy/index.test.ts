@@ -9,6 +9,7 @@ import {
 } from "../../../errors/errors";
 import { createRootHandler } from "../../index";
 import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { applyOverrides } from "../../../globalConfig/config";
 import { ValueContext } from "../../../router";
 import {
   assertMetricEmitted,
@@ -115,19 +116,12 @@ async function testDeployCommand(
     resolveAccount: options.resolveAccount,
   });
   const logger = createSilentLogger();
-  const globalConfigAccessor = new TestGlobalConfigAccessor(
-    options.transactionSearch === undefined && options.disableDependencyManagement === undefined
-      ? undefined
-      : {
-          initialConfigData: {
-            ...DEFAULT_GLOBAL_CONFIG,
-            transactionSearch: options.transactionSearch ?? DEFAULT_GLOBAL_CONFIG.transactionSearch,
-            disableDependencyManagement:
-              options.disableDependencyManagement ??
-              DEFAULT_GLOBAL_CONFIG.disableDependencyManagement,
-          },
-        },
-  );
+  const globalConfigAccessor = new TestGlobalConfigAccessor({
+    initialConfigData: applyOverrides(DEFAULT_GLOBAL_CONFIG, {
+      transactionSearch: options.transactionSearch,
+      disableDependencyManagement: options.disableDependencyManagement,
+    }),
+  });
   const { client, filePath, cleanup } = await getTestTelemetryClient();
   cleanups.push(cleanup);
   const root = createRootHandler(core, {

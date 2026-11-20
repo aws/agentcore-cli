@@ -4,6 +4,7 @@ import { GetTemplateCommand, type Stack } from "@aws-sdk/client-cloudformation";
 import { parse as parseYaml } from "yaml";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
+  BuildProjectInput,
   DeployResult,
   Project,
   ProjectEvent,
@@ -41,7 +42,6 @@ import { withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
-  BuildBackendInput,
   DeployBackendInput,
   ProjectBackend,
   ResolveDeployedResourcesBackendInput,
@@ -257,7 +257,7 @@ export class CdkBackend implements ProjectBackend {
   // toolchain or dependencies fails without having provisioned credentials.
   private async *ensureCdkDependencies(
     project: Project,
-    input: BuildBackendInput & { lenient?: boolean },
+    input: BuildProjectInput & { lenient?: boolean },
   ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
@@ -326,7 +326,7 @@ export class CdkBackend implements ProjectBackend {
 
   public async *build(
     project: Project,
-    input: BuildBackendInput = {},
+    input: BuildProjectInput = {},
   ): AsyncGenerator<ProjectEvent, void> {
     yield* this.ensureCdkDependencies(project, input);
     const { builds, local } = resolveWorkloads(project);

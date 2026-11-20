@@ -1,5 +1,6 @@
 import type { LocalWorkloadSources, WorkloadBuilds } from "../../../handlers/project/types";
 import type {
+  BuildProjectInput,
   DeployResult,
   Project,
   ProjectEvent,
@@ -9,12 +10,7 @@ import type {
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 
-export type BuildBackendInput = {
-  /** Leaves agentcore/cdk/package.json alone instead of syncing it to the CLI's pins (global config). */
-  disableDependencyManagement?: boolean;
-};
-
-export type DeployBackendInput = BuildBackendInput & {
+export type DeployBackendInput = BuildProjectInput & {
   /** Fully resolved account and region selected from aws-targets.json. */
   target: AwsDeploymentTarget;
   /** Requests approval after synthesis identifies a teardown. */
@@ -39,7 +35,7 @@ export type ResolveProjectResourcesBackendInput = {
 
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
-  build(project: Project, input?: BuildBackendInput): AsyncGenerator<ProjectEvent, void>;
+  build(project: Project, input?: BuildProjectInput): AsyncGenerator<ProjectEvent, void>;
   deploy(project: Project, input: DeployBackendInput): AsyncGenerator<ProjectEvent, DeployResult>;
   resolveDeployedResources(
     project: Project,

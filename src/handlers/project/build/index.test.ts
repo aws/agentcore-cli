@@ -7,10 +7,10 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
-import type { DeployResult, ProjectEvent } from "../types";
+import type { BuildProjectInput, DeployResult, ProjectEvent } from "../types";
 import type { ProjectBackend } from "../../../core/project";
-import type { BuildBackendInput } from "../../../core/project/backends/types";
 import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { applyOverrides } from "../../../globalConfig/config";
 
 type TestBuildOptions = {
   events?: ProjectEvent[];
@@ -23,7 +23,7 @@ type TestBuildOptions = {
 /** Stubs the backend so the real FsProjectManager and withProject stay in the path. */
 function testBuildCommand(options: TestBuildOptions = {}) {
   const io = testIO();
-  const calls: (BuildBackendInput | undefined)[] = [];
+  const calls: (BuildProjectInput | undefined)[] = [];
   const backend: ProjectBackend = {
     async *build(_project, input) {
       calls.push(input);
@@ -43,16 +43,11 @@ function testBuildCommand(options: TestBuildOptions = {}) {
   const core = new TestCoreClient({ backends: { CDK: backend } });
   const root = createRootHandler(core, {
     io: io.io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(
-      options.disableDependencyManagement === undefined
-        ? undefined
-        : {
-            initialConfigData: {
-              ...DEFAULT_GLOBAL_CONFIG,
-              disableDependencyManagement: options.disableDependencyManagement,
-            },
-          },
-    ),
+    globalConfigAccessor: new TestGlobalConfigAccessor({
+      initialConfigData: applyOverrides(DEFAULT_GLOBAL_CONFIG, {
+        disableDependencyManagement: options.disableDependencyManagement,
+      }),
+    }),
     logger: createSilentLogger(),
   });
 

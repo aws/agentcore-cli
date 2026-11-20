@@ -4,7 +4,6 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
-import type { BuildBackendInput } from "../../core/project/backends/types";
 import { DEFAULT_GLOBAL_CONFIG } from "../../globalConfig";
 import { CommandRunMetricEventKey, GlobalConfigAccessorKey, type Context } from "../../router";
 import {
@@ -22,7 +21,7 @@ import {
   waitForFlatText,
   waitForText,
 } from "../../testing";
-import type { DeployResult, Project, ProjectEvent } from "./types";
+import type { BuildProjectInput, DeployResult, Project, ProjectEvent } from "./types";
 import { ProjectKey } from "../../router";
 import { TuiHandoffKey } from "../../tui/handoff";
 
@@ -45,7 +44,7 @@ type FakeBackendOptions = {
 
 function fakeBackend(options: FakeBackendOptions = {}) {
   const deploys: { project: Project; input: DeployBackendInput; confirmed?: boolean }[] = [];
-  const builds: (BuildBackendInput | undefined)[] = [];
+  const builds: (BuildProjectInput | undefined)[] = [];
   const backend: ProjectBackend = {
     async *build(_project, input) {
       builds.push(input);
