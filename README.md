@@ -197,12 +197,18 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
-`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
-`agentcore create --template <name>` makes a Box project from either; every other template runs
-its agent without box. A Box project holds that one runtime, so `agentcore add runtime` and
-`agentcore export harness` refuse it. The runtime needs its `"box": { "version": ... }` in
-`agentcore.json`, which create writes; build and deploy stop without it. box comes from the public GitHub release `v0.1.11-linux-preview.7` of
+Seven templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+the CodeZip templates `agent-python-strands-box`, `agent-python-minimal-box`,
+`agent-python-langchain-box`, `a2a-python-strands-box`, `agui-python-strands-box`, and
+`mcp-python-fastmcp-box`, and the container template `agent-python-strands-box-container`.
+`agentcore create --template <name>` makes a Box project from one of them; every other template
+runs its agent without box. Each runtime of a Box project runs in a box, with its own box profile,
+`.box/<runtime>/local/profile.toml`. `agentcore add runtime` adds a Python CodeZip runtime in a box
+to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import there.
+`agentcore export harness` refuses a Box project. Each box runtime needs its
+`"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
+box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
+each runtime from its local profile. box comes from the public GitHub release `v0.1.11-linux-preview.7` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
 
