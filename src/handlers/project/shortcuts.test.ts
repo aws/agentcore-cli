@@ -12,15 +12,22 @@ describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
     expect(PROJECT_TEMPLATE_NAMES).toEqual([
       "agent-python-strands",
+      "agent-python-strands-box",
       "agent-python-strands-container",
+      "agent-python-strands-box-container",
       "agent-python-langchain",
+      "agent-python-langchain-box",
       "environment-python-bma",
       "agent-python-minimal",
+      "agent-python-minimal-box",
       "agent-typescript-strands",
       "agent-typescript-vercel",
       "a2a-python-strands",
+      "a2a-python-strands-box",
       "agui-python-strands",
+      "agui-python-strands-box",
       "mcp-python-fastmcp",
+      "mcp-python-fastmcp-box",
       "empty",
     ]);
   });

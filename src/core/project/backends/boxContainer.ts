@@ -1,14 +1,16 @@
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
+import { ProjectStateError } from "../../../errors/errors";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
-import { runsBoxStartScript } from "../templates/boxProfile";
-import type { BoxRelease } from "./boxRelease";
-import { assertImageCopiesPolicyFiles, assertStartScriptCopiesPolicyFiles } from "./boxStaging";
+import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
+import { runtimeRunsInBox } from "../templates/boxProfile";
+import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
+import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -104,8 +106,8 @@ export async function stageBoxImage(
 }
 
 /**
- * Stages box for build and deploy into each container runtime whose
- * Dockerfile copies `.box-dist/`: the box release its `box.version` names, and
+ * Stages box for build and deploy into each container runtime that runs in a box
+ * ({@link runtimeRunsInBox}): the box release its `box.version` names, and
  * what the runtime profile writer writes from the runtime's Box network model,
  * the Runtime profile and a byte copy of each policy file it names. Returns the names of the runtimes it staged.
  */
@@ -114,13 +116,14 @@ export async function stageBoxContainers(
   networks: readonly BoxNetwork[],
   releaseFor: (version: string | undefined) => Promise<BoxRelease>,
 ): Promise<string[]> {
-  const runtimes = project.spec.runtimes.filter((runtime) =>
-    imageCopiesBox(project.rootPath, runtime),
+  const runtimes = project.spec.runtimes.filter(
+    (runtime) => runtime.build === "Container" && runtimeRunsInBox(project.spec, runtime),
   );
   if (runtimes.length === 0) return [];
   const staged = runtimes.map((runtime) => ({
     runtime: runtime.name,
     dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
+    kind: "container" as const,
   }));
   const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
     spec: project.spec,
@@ -131,13 +134,11 @@ export async function stageBoxContainers(
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
   for (const runtime of runtimes) {
     const policyFiles = networks.find((n) => n.runtime === runtime.name)?.policyFiles ?? [];
-    const context = containerBuildContext(project.rootPath, runtime);
     assertImageCopiesPolicyFiles(
       dockerfileOf(project.rootPath, runtime),
       runtime.name,
       policyFiles,
     );
-    assertStartScriptCopiesPolicyFiles(join(context, "start.sh"), runtime.name, policyFiles);
   }
   for (const [index, { dist }] of staged.entries()) {
     const folder = join(project.rootPath, ...dist.split("/"));
@@ -151,13 +152,19 @@ export async function stageBoxContainers(
 }
 
 /**
- * Whether a runtime runs its agent in a box on AgentCore Runtime: a CodeZip
- * runtime whose entry point is the box start script, or a container runtime
- * whose Dockerfile copies `.box-dist/`.
+ * Throws for a runtime of a Box project with no `box.version`. Every runtime of a Box project runs
+ * in a box, and only `box.version` makes it do so, so without it build would stage no box and the
+ * agent could not start on AgentCore Runtime. `agentcore create` writes it with the box release
+ * this CLI pins.
  */
-export function runsAgentInBox(projectRoot: string, runtime: ProjectRuntime): boolean {
-  return (
-    (runtime.build === "CodeZip" && runsBoxStartScript(runtime.entrypoint)) ||
-    imageCopiesBox(projectRoot, runtime)
-  );
+export function assertBoxRuntimesHaveBoxVersion(spec: ProjectSpec): void {
+  if (!isBoxProject(spec)) return;
+  for (const runtime of spec.runtimes) {
+    if (runtime.box !== undefined) continue;
+    throw new ProjectStateError(
+      `runtime "${runtime.name}" has no box.version in agentcore.json, but every runtime of a Box ` +
+        `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
+        "runtime in agentcore.json, then retry.",
+    );
+  }
 }

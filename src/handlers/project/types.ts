@@ -86,6 +86,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. Not persisted: `runtime.box` names the box release. */
+    boxTemplate: z.boolean().optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),

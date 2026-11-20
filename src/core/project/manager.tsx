@@ -68,6 +68,7 @@ import {
   renderBoxProfile,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
+import { assertBoxRuntimesHaveBoxVersion } from "./backends/boxContainer";
 import { BOX_INSTALL_HINT } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -79,13 +80,11 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
-  boxGatewaySpec,
   isBoundGateway,
   isBoxProject,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
-import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
 import {
   CredentialSchema,
@@ -595,6 +594,15 @@ export class FsProjectManager implements ProjectManager {
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
+    if (input.skipInstall && scaffoldRuntimeInput && startsInBoxOnCodeZip(scaffoldRuntimeInput)) {
+      // The box profile keeps the venv out of the project's write grant with an optional
+      // deny_write, which box drops while `.venv` is missing; box then refuses the profile, as the
+      // venv's Python would be writable. An empty `.venv` keeps the profile valid, and `uv sync`
+      // fills it later.
+      await mkdir(join(destination, "app", scaffoldRuntimeInput.runtimeName, ".venv"), {
+        recursive: true,
+      });
+    }
 
     if (scaffoldRuntimeInput) {
       yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
@@ -830,6 +838,7 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
+        assertNoSecondBoxRuntime(projectSpec, `runtime '${input.resourceConfig.name}'`);
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         // The folder may hold the user's own code, but never another resource's.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
@@ -868,7 +877,6 @@ export class FsProjectManager implements ProjectManager {
             }
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
-          ensureBoxGateway(projectSpec, input.resourceConfig.name);
           break;
         }
 
@@ -889,7 +897,6 @@ export class FsProjectManager implements ProjectManager {
         });
         if (folderExisted) scaffoldedPaths.push(...scaffoldWritten);
         if (spec.runtimes) projectSpec.runtimes.push(...spec.runtimes);
-        for (const runtime of spec.runtimes ?? []) ensureBoxGateway(projectSpec, runtime.name);
         if (spec.memories) projectSpec.memories.push(...spec.memories);
         if (spec.credentials) projectSpec.credentials.push(...spec.credentials);
         if (envEntries.length > 0) {
@@ -1321,6 +1328,8 @@ export class FsProjectManager implements ProjectManager {
     input: ExportHarnessInput,
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
     if (project) assertV1Project(project, "export harness");
+    // Export adds a runtime, which a Box project cannot take.
+    if (project) assertNoSecondBoxRuntime(project.spec, "the exported harness as a runtime");
     if (!project) {
       if (!input.prefetched) {
         throw new ProjectStateError(
@@ -1507,7 +1516,6 @@ export class FsProjectManager implements ProjectManager {
 
       yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
       projectSpec.runtimes.push(plan.runtime);
-      ensureBoxGateway(projectSpec, plan.runtime.name);
       for (const credential of plan.credentials) {
         if (!projectSpec.credentials.some((candidate) => candidate.name === credential.name)) {
           projectSpec.credentials.push(credential);
@@ -1605,6 +1613,8 @@ export class FsProjectManager implements ProjectManager {
     command: "build" | "deploy",
     region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    assertBoxRuntimesHaveBoxVersion(project.spec);
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
@@ -2259,24 +2269,19 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
 }
 
 /**
- * Adds the Box gateway of a runtime to a Box project, if it is not already there. A Box project
- * keeps one Box gateway for each runtime, so every path that adds a runtime to an existing
- * project calls this: `add runtime` (docs and template runtimes) and `export harness`.
- * `agentcore create` does not call it: `newProjectSpec` (templates/project.ts) writes the
- * entries for a Box template.
+ * Refuses to add a runtime to a Box project. A Box project holds one runtime, the one `agentcore
+ * create` made from a box template, and runs it in a box with its box profile. The project has
+ * one box profile, so a second runtime could not run in a box, and a Box project has no runtime
+ * outside one.
  */
-function ensureBoxGateway(spec: z.infer<typeof ProjectSpecSchema>, runtimeName: string): void {
+function assertNoSecondBoxRuntime(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
   if (!isBoxProject(spec)) return;
-  if (spec.agentCoreGateways.some((gateway) => gateway.boundRuntime === runtimeName)) return;
-  const entry = boxGatewaySpec(runtimeName);
-  if (spec.agentCoreGateways.some((gateway) => gateway.name === entry.name)) {
-    throw new InputValidationError(
-      `the runtime '${runtimeName}' needs its Box gateway '${entry.name}', but a gateway with that ` +
-        `name already exists. Remove or rename the gateway '${entry.name}', or give the runtime ` +
-        `another name.`,
-    );
-  }
-  spec.agentCoreGateways.push(parseResource(AgentCoreGatewaySchema, entry));
+  throw new ProjectStateError(
+    `cannot add ${what}: a Box project holds one runtime, which \`agentcore ` +
+      "create` makes from a box template (agent-python-strands-box or " +
+      "agent-python-strands-box-container), and every runtime of a Box project runs in a box. " +
+      "Create a separate project for this runtime.",
+  );
 }
 
 /**

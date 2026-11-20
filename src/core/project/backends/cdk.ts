@@ -11,7 +11,8 @@ import type {
   ResolvedProjectResource,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { imageCopiesBox, stageBoxContainers } from "./boxContainer";
+import { stageBoxContainers } from "./boxContainer";
+import { runtimeRunsInBox } from "../templates/boxProfile";
 import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
@@ -253,7 +254,8 @@ export class CdkBackend implements ProjectBackend {
 
     for (const runtime of project.spec.runtimes) {
       if (
-        imageCopiesBox(project.rootPath, runtime) &&
+        runtime.build === "Container" &&
+        runtimeRunsInBox(project.spec, runtime) &&
         (runtime.instrumentation?.enableOtel ?? true)
       ) {
         yield {

@@ -8,10 +8,10 @@ import {
   getBoxGatewayBedrockTargetSpec,
 } from "../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import { isBoundGateway, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
+import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { runsAgentInBox } from "./backends/boxContainer";
+import { runtimeRunsInBox } from "./templates/boxProfile";
 
 /** The Box gateway's target, and the box route, that the agent's AgentCore Memory calls take. */
 export const BOX_MEMORY_TARGET = BOX_GATEWAY_AGENTCORE_TARGET_NAME;
@@ -56,14 +56,13 @@ export function hasDefaultMemory(spec: ProjectSpec, runtime: ProjectRuntime): bo
  * The runtimes of a Box project that run their agent in a box. Only a Box project has the Box
  * gateways their calls go through.
  */
-function boxedRuntimes(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
-  if (!isBoxProject(spec)) return [];
-  return spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime));
+function boxedRuntimes(spec: ProjectSpec): ProjectRuntime[] {
+  return spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
 }
 
 /** The runtimes of a Box project that run their agent in a box and have their default Memory. */
-function boxedRuntimesWithMemory(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
-  return boxedRuntimes(spec, projectRoot).filter((runtime) => hasDefaultMemory(spec, runtime));
+function boxedRuntimesWithMemory(spec: ProjectSpec): ProjectRuntime[] {
+  return boxedRuntimes(spec).filter((runtime) => hasDefaultMemory(spec, runtime));
 }
 
 /**
@@ -78,8 +77,8 @@ function callsBedrock(runtime: ProjectRuntime): boolean {
 }
 
 /** The runtimes of a Box project that run their agent in a box and call a Bedrock model. */
-function boxedRuntimesCallingBedrock(spec: ProjectSpec, projectRoot: string): ProjectRuntime[] {
-  return boxedRuntimes(spec, projectRoot).filter(callsBedrock);
+function boxedRuntimesCallingBedrock(spec: ProjectSpec): ProjectRuntime[] {
+  return boxedRuntimes(spec).filter(callsBedrock);
 }
 
 /**
@@ -93,12 +92,9 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec, projectRoot: string): Pr
  */
 export function boxMemoryPolicy(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string,
 ): Record<string, unknown> | undefined {
-  const memories = boxedRuntimesWithMemory(spec, projectRoot).map(({ name }) =>
-    defaultMemoryName(name),
-  );
+  const memories = boxedRuntimesWithMemory(spec).map(({ name }) => defaultMemoryName(name));
   if (memories.length === 0) return undefined;
   return {
     Version: "2012-10-17",
@@ -121,11 +117,8 @@ export function boxMemoryPolicy(
  * calls a Bedrock model. A cross-region (`us.`, `global.`) inference profile invokes the model in
  * other regions, so both the profiles and the foundation models match any region.
  */
-export function boxBedrockPolicy(
-  spec: ProjectSpec,
-  projectRoot: string,
-): Record<string, unknown> | undefined {
-  if (boxedRuntimesCallingBedrock(spec, projectRoot).length === 0) return undefined;
+export function boxBedrockPolicy(spec: ProjectSpec): Record<string, unknown> | undefined {
+  if (boxedRuntimesCallingBedrock(spec).length === 0) return undefined;
   return {
     Version: "2012-10-17",
     Statement: [
@@ -186,10 +179,9 @@ function grantPolicyFile(
  */
 export function addBoxMemoryTarget(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
-  const runtimes = boxedRuntimesWithMemory(spec, projectRoot);
+  const runtimes = boxedRuntimesWithMemory(spec);
   if (runtimes.length === 0) return [];
   refuseTargetNameOutsideBoxGateways(spec, BOX_MEMORY_TARGET, "the agent's Memory calls");
 
@@ -213,11 +205,10 @@ export function addBoxMemoryTarget(
  */
 export function addBoxBedrockTarget(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
   const messages: string[] = [];
-  for (const runtime of boxedRuntimesCallingBedrock(spec, projectRoot)) {
+  for (const runtime of boxedRuntimesCallingBedrock(spec)) {
     const gateway = boxGatewayFor(spec, runtime);
     if (!gateway) continue;
     placeTarget(gateway, getBoxGatewayBedrockTargetSpec, region, messages, "model calls");
@@ -232,13 +223,9 @@ export function addBoxBedrockTarget(
  */
 export function addBoxGatewayTargets(
   spec: ProjectSpec,
-  projectRoot: string,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
-  return [
-    ...addBoxBedrockTarget(spec, projectRoot, region),
-    ...addBoxMemoryTarget(spec, projectRoot, region),
-  ];
+  return [...addBoxBedrockTarget(spec, region), ...addBoxMemoryTarget(spec, region)];
 }
 
 /**

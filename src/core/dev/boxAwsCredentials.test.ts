@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import type { AwsCredentialIdentity } from "@smithy/types";
-import { writeBoxDevAwsFiles } from "./boxAwsCredentials";
+import { resolveDefaultAwsCredentials, writeBoxDevAwsFiles } from "./boxAwsCredentials";
 
 const FIRST: AwsCredentialIdentity = {
   accessKeyId: "AKIDFIRST",
@@ -21,7 +21,9 @@ function hostPath(mounts: string[], container: string): string {
 
 describe("writeBoxDevAwsFiles", () => {
   test("writes nothing when no credentials resolve", async () => {
-    expect(await writeBoxDevAwsFiles(async () => undefined, "us-west-2")).toBeUndefined();
+    expect(
+      await writeBoxDevAwsFiles(async () => undefined, { AWS_REGION: "us-west-2" }),
+    ).toBeUndefined();
   });
 
   test("refresh rewrites the mounted file in place, and keeps it when nothing resolves", async () => {
@@ -31,11 +33,14 @@ describe("writeBoxDevAwsFiles", () => {
       undefined,
       new Error("sso expired"),
     ];
-    const files = await writeBoxDevAwsFiles(async () => {
-      const next = answers.shift();
-      if (next instanceof Error) throw next;
-      return next;
-    }, "us-west-2");
+    const files = await writeBoxDevAwsFiles(
+      async () => {
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return next;
+      },
+      { AWS_REGION: "us-west-2" },
+    );
     if (!files) throw new Error("expected files");
     try {
       const credentials = hostPath(files.mounts, "/aws-config/credentials");
@@ -57,12 +62,57 @@ describe("writeBoxDevAwsFiles", () => {
     }
   });
 
+  test("resolves the credentials of the environment the container runs with, and writes its region", async () => {
+    const seen: Record<string, string | undefined>[] = [];
+    const env = { AWS_PROFILE: "dev-account", AWS_DEFAULT_REGION: "eu-west-1" };
+    const files = await writeBoxDevAwsFiles(async (given) => {
+      seen.push(given);
+      return FIRST;
+    }, env);
+    if (!files) throw new Error("expected files");
+    try {
+      await files.refresh();
+      // The first write and each refresh resolve the same identity.
+      expect(seen).toEqual([env, env]);
+      const config = hostPath(files.mounts, "/aws-config/config");
+      expect(readFileSync(config, "utf8")).toBe("[default]\nregion = eu-west-1\n");
+    } finally {
+      await files.dispose();
+    }
+  });
+
   test("dispose removes the folder", async () => {
-    const files = await writeBoxDevAwsFiles(async () => FIRST, undefined);
+    const files = await writeBoxDevAwsFiles(async () => FIRST, {});
     if (!files) throw new Error("expected files");
     const folder = dirname(hostPath(files.mounts, "/aws-config/config"));
     expect(existsSync(folder)).toBe(true);
     await files.dispose();
     expect(existsSync(folder)).toBe(false);
+  });
+});
+
+describe("resolveDefaultAwsCredentials", () => {
+  test("takes the keys of the container's environment first, as the agent outside a box does", async () => {
+    expect(
+      await resolveDefaultAwsCredentials({
+        AWS_ACCESS_KEY_ID: "AKIDENV",
+        AWS_SECRET_ACCESS_KEY: "env-secret",
+        AWS_SESSION_TOKEN: "env-token",
+        AWS_PROFILE: "ignored-when-keys-are-set",
+      }),
+    ).toEqual({
+      accessKeyId: "AKIDENV",
+      secretAccessKey: "env-secret",
+      sessionToken: "env-token",
+    });
+  });
+
+  test("leaves out a session token the environment does not set", async () => {
+    expect(
+      await resolveDefaultAwsCredentials({
+        AWS_ACCESS_KEY_ID: "AKIDENV",
+        AWS_SECRET_ACCESS_KEY: "env-secret",
+      }),
+    ).toEqual({ accessKeyId: "AKIDENV", secretAccessKey: "env-secret" });
   });
 });

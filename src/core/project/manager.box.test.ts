@@ -2,9 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
+import { existsSync } from "node:fs";
+import {
+  InputValidationError,
+  ProjectStateError,
+  ResourceNotFoundError,
+} from "../../errors/errors";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { boxGatewaySpec } from "../../projectSchemas/project";
@@ -45,8 +52,10 @@ async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
 }
 
 /**
- * A new Box project with the given runtimes, as a Box template makes it: `projectType: "box"`, and
- * each runtime gets the gateway `<runtime>-box-egress`.
+ * A Box project with the given box runtimes, as `newProjectSpec` writes one for a Box template:
+ * `projectType: "box"`, `box.version` on each runtime, and the gateway `<runtime>-box-egress` for
+ * each. `add runtime` refuses a Box project, so the runtimes are written here. Two runtimes are a
+ * project edited by hand; they check that each gateway stays bound to its own runtime.
  */
 async function createdProject(
   manager: FsProjectManager,
@@ -60,17 +69,29 @@ async function createdProject(
   );
   const path = join(created.rootPath, "agentcore", "agentcore.json");
   const spec = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
-  await writeFile(path, JSON.stringify({ ...spec, projectType: "box" }, null, 2));
-  let project = (await manager.resolve({ filePath: created.rootPath }))!;
-  for (const name of runtimes) {
-    project = await drain(
-      manager.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: { name, language: "Python", protocol: "HTTP" },
-      } as never),
-    );
-  }
-  return project;
+  const boxRuntimes = runtimes.map((name) => ({
+    name,
+    build: "CodeZip",
+    entrypoint: "start.py",
+    codeLocation: `app/${name}`,
+    runtimeVersion: "PYTHON_3_14",
+    protocol: "HTTP",
+    box: { version: BOX_RELEASE.version },
+  }));
+  for (const name of runtimes)
+    await mkdir(join(created.rootPath, "app", name), { recursive: true });
+  await writeFile(
+    path,
+    JSON.stringify(
+      {
+        ...spec,
+        ...newProjectSpec("example", [{ projectType: "box", runtimes: boxRuntimes as never }]),
+      },
+      null,
+      2,
+    ),
+  );
+  return (await manager.resolve({ filePath: created.rootPath }))!;
 }
 
 /** The agentcore.json of MyTemp3, a project made with CLI 1.0.0, as that CLI wrote it. */
@@ -164,6 +185,35 @@ describe("agentcore create", () => {
     const spec = await specOnDisk(project);
     expect("projectType" in spec).toBe(false);
     expect(spec.agentCoreGateways ?? []).toEqual([]);
+  });
+
+  test.each([
+    ["agent-python-strands-box", "box"],
+    ["agent-python-strands-box-container", "box"],
+    ["agent-python-strands", undefined],
+    ["agent-python-strands-container", undefined],
+    ["agent-python-minimal", undefined],
+  ] as const)("create --template %s writes projectType %p", async (template, projectType) => {
+    const manager = subject();
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+
+    const project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+      }),
+    );
+
+    // Only a box template runs its agent in a box, so only it makes a Box project.
+    const spec = await specOnDisk(project);
+    expect(spec.projectType).toBe(projectType);
+    expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
+      projectType ? ["agent-box-egress"] : [],
+    );
   });
 
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
@@ -274,15 +324,9 @@ describe("gateway targets in a Box project", () => {
     expect(await specText(project)).toBe(before);
   });
 
-  test("add runtime fails clearly when a user gateway has the runtime's Box gateway name", async () => {
+  test("add runtime is refused, and changes nothing: a Box project holds one runtime", async () => {
     const manager = subject();
-    let project = await createdProject(manager);
-    project = await drain(
-      manager.addResource(project, {
-        resourceType: "gateway",
-        resourceConfig: { name: "search-box-egress", targets: [], authorizerType: "NONE" } as never,
-      }),
-    );
+    const project = await createdProject(manager);
     const before = await specText(project);
 
     const add = drain(
@@ -292,11 +336,13 @@ describe("gateway targets in a Box project", () => {
       } as never),
     );
 
-    await expect(add).rejects.toBeInstanceOf(InputValidationError);
+    await expect(add).rejects.toBeInstanceOf(ProjectStateError);
     await expect(add).rejects.toThrow(
-      "the runtime 'search' needs its Box gateway 'search-box-egress', but a gateway with that name already exists.",
+      "cannot add runtime 'search': a Box project holds one runtime, which `agentcore create` " +
+        "makes from a box template",
     );
     expect(await specText(project)).toBe(before);
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
   });
 
   test("add gateway --name other-box-egress works: only the prefix must be unique", async () => {
@@ -412,20 +458,20 @@ describe("gateway targets in a Box project", () => {
     expect(spec.agentCoreGateways).toEqual([]);
   });
 
-  test("remove all, then add runtime, writes the Box gateway again under the same name", async () => {
+  test("remove all, then add runtime, is refused, as the project is still a Box project", async () => {
     const manager = subject();
     let project = await createdProject(manager);
     project = (await manager.removeAllResources(project)).project;
 
-    project = await drain(
+    const add = drain(
       manager.addResource(project, {
         resourceType: "runtime",
         resourceConfig: { name: "agent", language: "Python", protocol: "HTTP" },
       } as never),
     );
 
-    const spec = await specOnDisk(project);
-    expect(spec.agentCoreGateways.map(({ name }) => name)).toEqual(["agent-box-egress"]);
+    await expect(add).rejects.toBeInstanceOf(ProjectStateError);
+    expect((await specOnDisk(project)).agentCoreGateways).toEqual([]);
   });
 });
 

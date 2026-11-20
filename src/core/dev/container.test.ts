@@ -137,10 +137,12 @@ function input(
   root: string,
   projectRuntime: ProjectRuntime,
   signal = new AbortController().signal,
+  boxProject = true,
 ): DevServerInput {
   return {
     runtime: projectRuntime,
     projectRoot: root,
+    boxProject,
     port: 3000,
     env: { API_KEY: "super-secret" },
     signal,
@@ -810,9 +812,11 @@ describe("ContainerDevRunner", () => {
         /** The text of `.box/profile.toml`. */
         profileText?: string;
         dockerfile?: string;
+        /** Whether the runtime has box.version, which create writes only for a box template. */
+        box?: boolean;
       } = {},
     ) {
-      const projectRuntime = runtime();
+      const projectRuntime = runtime(options.box === false ? {} : { box: { version: "1.0.0" } });
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
@@ -845,9 +849,10 @@ describe("ContainerDevRunner", () => {
       });
     });
 
-    test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
+    test("runs a runtime with no box.version without box, whatever its Dockerfile says", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -972,6 +977,23 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(context, ".box-dev"))).toBe(false);
     });
 
+    test('refuses an image that installs box when agentcore.json has no "projectType": "box"', async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { calls, runner } = harness({ processEnv: credentials });
+
+      const error = await collect(
+        runner.run(input(root, projectRuntime, undefined, /* boxProject */ false)),
+      ).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ProjectStateError);
+      expect((error as Error).message).toContain(
+        'runs its agent in a box (it has box.version), but agentcore.json has no "projectType": "box"',
+      );
+      expect(calls.map(({ command }) => command[1])).not.toContain("build");
+      expect(calls.map(({ command }) => command[1])).not.toContain("run");
+      expect(existsSync(join(context, ".box-dist"))).toBe(false);
+    });
+
     test("stages box of the runtime's box.version", async () => {
       const { projectRuntime, root } = await boxedScene();
       const { boxVersions, runner } = harness({ processEnv: credentials });
@@ -981,9 +1003,10 @@ describe("ContainerDevRunner", () => {
       expect(boxVersions).toEqual(["2.0.0"]);
     });
 
-    test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
+    test("runs a runtime with no box.version without box's flags, even with a box profile", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -1125,7 +1148,10 @@ describe("ContainerDevRunner", () => {
     });
 
     test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
-      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
+      const { projectRuntime, root } = await boxedScene({
+        dockerfile: "FROM scratch\n",
+        box: false,
+      });
       const awsDirectory = join(root, ".aws");
       await mkdir(awsDirectory);
       let resolved = 0;
@@ -1153,7 +1179,7 @@ describe("ContainerDevRunner", () => {
       );
 
       expect(error).toBeInstanceOf(ResourceNotFoundError);
-      expect((error as Error).message).toContain("its Dockerfile copies .box-dist/");
+      expect((error as Error).message).toContain("it has box.version in agentcore.json");
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
   });

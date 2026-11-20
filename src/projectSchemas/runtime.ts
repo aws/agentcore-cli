@@ -321,7 +321,8 @@ export const ProjectRuntimeSchema = z
      * The box release a runtime that runs its agent in a box uses on AgentCore Runtime: build and
      * deploy ship its Linux build in a CodeZip runtime's zip, and a container image downloads it
      * (under `agentcore dev` too). `agentcore dev` runs a CodeZip agent with the `box` on your PATH
-     * instead. Absent means the box release this CLI pins.
+     * instead. Every runtime of a Box project needs it, and only a runtime with it runs in a box;
+     * `agentcore create` writes the box release this CLI pins.
      */
     box: z.object({ version: BoxVersionSchema }).optional(),
     envVars: z.array(EnvVarSchema).optional(),
