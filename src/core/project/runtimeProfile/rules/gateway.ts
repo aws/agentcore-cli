@@ -163,7 +163,9 @@ function routeKey(
   const name = entries[0]!;
   // The first host of the entry: a pack's own entry of that name merges with it, and the profile's
   // destinations replace the pack's, so no host of the pack's entry keeps a second route.
-  const first = context.hosts.find((host) => entriesOf(host).includes(name));
+  const first = context.hosts.find(
+    (host) => host.target !== undefined && entriesOf(host).includes(name),
+  );
   if (first?.target !== route.target) return route.target;
   if (name !== route.target && routes.some(({ target }) => target === name)) return route.target;
   return name;

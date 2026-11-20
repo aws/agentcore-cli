@@ -242,6 +242,22 @@ describe("the gateway rule", () => {
     );
   });
 
+  test("names the route of the first host of an entry that has a target after the entry, when an earlier host has none", () => {
+    const { table } = gateway(
+      'packs = ["@box/base", "@box/anthropic"]\n' +
+        '[egress.anthropic]\ndestinations = ["denied.anthropic.com", "api.anthropic.com"]\n',
+      [
+        host("denied.anthropic.com", entry("anthropic", "denied.anthropic.com")),
+        host("api.anthropic.com", entry("anthropic", "api.anthropic.com"), "egress-anthropic-api"),
+      ],
+    );
+
+    // A route of another name to api.anthropic.com would collide with the entry of the pack.
+    const egress = table.egress as Record<string, TomlTable>;
+    expect(Object.keys(egress)).toEqual(["anthropic"]);
+    expect(egress.anthropic!.destinations).toEqual(["api.anthropic.com"]);
+  });
+
   test("names a route after its target when a target of the entry's name serves another host", () => {
     const { table } = gateway(
       '[egress.orders]\ndestinations = ["api.example.com"]\n',
