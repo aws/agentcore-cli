@@ -22,7 +22,7 @@ type RuntimeTemplateTestCase = {
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime. Create needs `box` on
    * PATH. `agentcore dev` runs box on the protocol's fixed ingress port (8080, 8000 or 9000), so
-   * concurrent tests cannot run it side by side; the Runtime path is what these tests cover.
+   * the concurrent Runtime tests skip it; the sequential dev tests below cover it.
    */
   box?: boolean;
 };
@@ -248,6 +248,11 @@ const A2aResponseSchema = z.object({
 const CREATED_RUNTIME_NAME = "agent";
 /** Keep concurrent local-dev processes off protocol defaults and one another. */
 const LOCAL_DEV_PORT_BASE = 18080;
+/**
+ * The port a box profile's ingress listens on, by protocol. Box `dev` must use it, so the box dev
+ * tests run one at a time.
+ */
+const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
 
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
@@ -337,8 +342,8 @@ describe(
 
 // The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
 // deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
-// `agentcore dev`. They need `box` on PATH: create checks for it. Run them with
-// `bun run test:e2e -- --tagsFilter='box'`.
+// `agentcore dev`, which the sequential tests below cover. They need `box` on PATH: create checks
+// for it. Run them with `bun run test:e2e -- --tagsFilter='box'`.
 describe(
   "create, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
@@ -400,6 +405,97 @@ describe(
   },
 );
 
+// `agentcore dev` for each Strands Box template: box runs the agent on the developer's machine. Box
+// listens on the protocol's fixed ingress port, so these tests run one at a time. They deploy
+// nothing. They need `box` on PATH and a machine where `box run` can start its sandbox.
+describe.sequential("create and dev for Strands Box templates", { tags: [TAGS.BOX] }, () => {
+  const cli = new CliRunner();
+
+  test.each(BOX_TEMPLATES)(
+    "$name",
+    { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
+    async (runtime) => {
+      const projectDir = await createTemplateProject(cli, runtime);
+      const { devOutput } = await invokeLocally(
+        cli,
+        runtime,
+        projectDir,
+        BOX_DEV_PORTS[runtime.protocol],
+      );
+      expect(devOutput).toContain("box: running profile");
+    },
+  );
+});
+
+// Egress from a boxed agent under `agentcore dev`: the box profile allows one host with no
+// credential, and box blocks every other host. The agent is the minimal template with its code
+// replaced, so no model call decides the result. The hosts are public, so the network can make
+// this fail; it has its own tag, keeping it out of `--tagsFilter='box'`. Run it with
+// `bun run test:e2e -- --tagsFilter='box-egress'`.
+const EGRESS_ALLOWED_URL = "https://checkip.amazonaws.com";
+const EGRESS_BLOCKED_URL = "https://example.com";
+const EGRESS_AGENT = `import urllib.request
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+def fetch(url):
+    try:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            return {"status": response.status}
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+@app.entrypoint
+def invoke(payload, context):
+    return {"allowed": fetch("${EGRESS_ALLOWED_URL}"), "blocked": fetch("${EGRESS_BLOCKED_URL}")}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+const EgressReplySchema = z.object({
+  allowed: z.object({ status: z.number().optional(), error: z.string().optional() }),
+  blocked: z.object({ status: z.number().optional(), error: z.string().optional() }),
+});
+
+describe("egress under dev for a Strands Box template", { tags: [TAGS.BOX_EGRESS] }, () => {
+  const cli = new CliRunner();
+  const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+
+  test.skipIf(!runtime)(
+    "allows the profile's host and blocks any other",
+    {
+      retry: 2,
+      timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE,
+    },
+    async () => {
+      const template = runtime!;
+      const projectDir = await createTemplateProject(cli, template);
+      await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
+      const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
+      const host = new URL(EGRESS_ALLOWED_URL).host;
+      await writeFile(
+        profile,
+        `${await readFile(profile, "utf8")}\n[egress.checkip]\ndestinations = ["${host}"]\n`,
+      );
+
+      const { response } = await invokeLocally(
+        cli,
+        template,
+        projectDir,
+        BOX_DEV_PORTS[template.protocol],
+      );
+      const reply = EgressReplySchema.parse(JSON.parse(response.body));
+      expect(reply.allowed).toEqual({ status: 200 });
+      expect(reply.blocked.error).toMatch(/403/);
+    },
+  );
+});
+
 /**
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent.
  * The logs arrive a little after the invoke, so it retries.
@@ -460,13 +556,16 @@ async function createTemplateProject(
   return created.project.path;
 }
 
-/** Given a template test case, runs `agentcore dev` and invokes the runtime locally. */
+/**
+ * Given a template test case, runs `agentcore dev` and invokes the runtime locally. Returns the
+ * local invoke's response and everything dev printed.
+ */
 async function invokeLocally(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
   projectDir: string,
   devPort: number,
-): Promise<void> {
+): Promise<{ response: z.infer<typeof LocalRuntimeInvokeResponseSchema>; devOutput: string }> {
   let port: number | undefined;
   let pendingOutput = "";
   let devOutput = "";
@@ -525,6 +624,7 @@ async function invokeLocally(
     if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
       assertProtocolResponse(runtime, response.body);
     }
+    return { response, devOutput };
   } finally {
     if (dev.exitCode === null) {
       dev.kill("SIGTERM");
