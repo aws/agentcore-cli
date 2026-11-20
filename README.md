@@ -202,7 +202,9 @@ These templates run their agent in a box, both under `agentcore dev` and on Agen
 `agent-python-strands-box`, `agent-python-minimal-box`, `agent-python-langchain-box`,
 `a2a-python-strands-box`, `agui-python-strands-box` and `mcp-python-fastmcp-box`.
 `agentcore create --template <name>` makes a Box project from any of them; every other template runs
-its agent without box, and `--isolation private-vpc` needs a box template. box comes from the
+its agent without box, and `--isolation private-vpc` needs a box template. Each box runtime has its
+own box profile, `.box/<runtime>/local/profile.toml`; build and deploy stop without it. Build
+derives the AgentCore Runtime profile of each runtime from its local profile. box comes from the
 public GitHub release `v0.1.11-mquang.preview.9` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
 is needed to download it.
