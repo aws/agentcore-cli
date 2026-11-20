@@ -164,7 +164,7 @@ describe("stageBoxContainers", () => {
     );
 
     for (const networks of [
-      [],
+      [model([])],
       [{ ...model([]), thirdPartyTelemetry: [open] }],
     ] as BoxNetwork[][]) {
       await stageBoxContainers(demo, networks, releaseOf().releaseFor);
