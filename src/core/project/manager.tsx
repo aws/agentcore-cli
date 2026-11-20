@@ -61,6 +61,7 @@ import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./bo
 import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
 import { createProjectTree } from "./templates/project";
 import {
+  boxLocalProfileFile,
   boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
@@ -69,6 +70,8 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { BOX_INSTALL_HINT } from "./backends/boxRelease";
+import { runsAgentInBox } from "./backends/boxContainer";
+import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -620,6 +623,7 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
+    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes, project.rootPath);
     return project;
   }
 
@@ -1108,6 +1112,14 @@ export class FsProjectManager implements ProjectManager {
         }),
       ]);
       throw err;
+    }
+    // After the write, so a failed write gives no notice for a runtime that was not written.
+    if (input.resourceType === "runtime") {
+      yield* defaultLogTargetNotices(
+        newProjectSpec,
+        newProjectSpec.runtimes.filter(({ name }) => name === input.resourceConfig.name),
+        project.rootPath,
+      );
     }
 
     return {
@@ -2313,6 +2325,24 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   } catch {
     return "strands-agents (version unknown)";
   }
+}
+
+/**
+ * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
+ * runs in a box in `spec`, at `projectRoot`, and that does not turn observability off.
+ */
+function defaultLogTargetNotices(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  runtimes: readonly z.infer<typeof ProjectSpecSchema>["runtimes"][number][],
+  projectRoot: string,
+): ProjectEvent[] {
+  if (!isBoxProject(spec)) return [];
+  return runtimes
+    .filter((runtime) => runsAgentInBox(projectRoot, runtime) && !observabilityOff(runtime))
+    .map((runtime) => ({
+      type: "warning",
+      message: defaultLogTargetNotice(runtime.name, boxLocalProfileFile(runtime.name)),
+    }));
 }
 
 /**

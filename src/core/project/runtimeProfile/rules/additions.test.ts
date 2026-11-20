@@ -798,6 +798,24 @@ describe("the additions rule", () => {
       ]);
     });
 
+    test.each([
+      ["true", false],
+      [" TRUE ", false],
+      ["false", true],
+    ])(
+      "adds the default target only when the envVars do not set DISABLE_ADOT_OBSERVABILITY to true (%j)",
+      (value, added) => {
+        const runtime = {
+          ...CODEZIP,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value }],
+        } as ProjectRuntime;
+
+        expect(Object.hasOwn(tableOf(apply({}, contextOf(runtime)).table), "agentcore")).toBe(
+          added,
+        );
+      },
+    );
+
     test("adds the default target beside a cloudwatch_traces target, as it sends no logs", () => {
       const local = { telemetry: { "x-ray": CLOUDWATCH["x-ray"] } };
 
