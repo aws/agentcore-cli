@@ -104,8 +104,8 @@ export function validateBoxRuntimes(spec: ProjectSpec): void {
 /**
  * Throws for a runtime of a Box project whose `platformVersion` is not `"V2"`. Box runs only on
  * AgentCore Runtime V2, and without the field the service picks the platform, which can be V1.
- * `agentcore create` and `add runtime` write it. Build and deploy call this before they write
- * anything.
+ * `agentcore create` and `add runtime` write it. Build and deploy call this before the runtime
+ * sync rewrites agentcore.json.
  */
 export function assertBoxRuntimesOnRuntimeV2(spec: ProjectSpec): void {
   if (!isBoxProject(spec)) return;

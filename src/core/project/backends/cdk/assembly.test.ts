@@ -8,6 +8,7 @@ import {
   assertPlatformVersions,
   assertPrivateVpcs,
   countDeployableResources,
+  runtimePlatformVersions,
   stackArtifactForTarget,
 } from "./assembly";
 
@@ -142,6 +143,24 @@ describe("assertPrivateVpcs", () => {
   });
 });
 
+describe("runtimePlatformVersions", () => {
+  // Not only a Box project's runtimes: any runtime that names a version is checked, V1 too.
+  test("takes each runtime that names a platformVersion, V1 or V2, and skips one with none", () => {
+    expect(
+      runtimePlatformVersions([
+        { name: "box_agent", platformVersion: "V2" },
+        { name: "plain_v2", platformVersion: "V2" },
+        { name: "plain_v1", platformVersion: "V1" },
+        { name: "unset" },
+      ]),
+    ).toEqual([
+      { name: "box_agent", platformVersion: "V2" },
+      { name: "plain_v2", platformVersion: "V2" },
+      { name: "plain_v1", platformVersion: "V1" },
+    ]);
+  });
+});
+
 describe("assertPlatformVersions", () => {
   const artifact = { id: "Stack", stackName: "AgentCore-App-default", templateFile: TEMPLATE_FILE };
   /** A runtime resource, and the RuntimeId export the CDK library writes for runtime `name`. */
@@ -154,15 +173,27 @@ describe("assertPlatformVersions", () => {
       },
     },
   });
-  async function check(template: Record<string, unknown>, runtimeNames: string[]) {
+  /** One template with each runtime of `templates`. */
+  const merged = (...templates: ReturnType<typeof runtime>[]) => ({
+    Resources: Object.assign({}, ...templates.map(({ Resources }) => Resources)),
+    Outputs: Object.assign({}, ...templates.map(({ Outputs }) => Outputs)),
+  });
+  async function check(
+    template: Record<string, unknown>,
+    runtimes: { name: string; platformVersion: string }[],
+  ) {
     const directory = await assembly({ Stack: stackArtifact("prod") });
     await writeFile(join(directory, TEMPLATE_FILE), JSON.stringify(template));
-    return assertPlatformVersions(json, directory, artifact, runtimeNames, "V2");
+    return assertPlatformVersions(json, directory, artifact, runtimes);
   }
+  const notSet = (name: string, version: string) =>
+    `Runtime '${name}' has "platformVersion": "${version}", but the synthesized stack does not set it.`;
 
-  test("accepts a runtime that runs on the version", async () => {
+  test.each(["V1", "V2"])("accepts a runtime that runs on its own %s", async (version) => {
     await expect(
-      check(runtime("my_agent", "RuntimeMyAgent", { PlatformVersion: "V2" }), ["my_agent"]),
+      check(runtime("my_agent", "RuntimeMyAgent", { PlatformVersion: version }), [
+        { name: "my_agent", platformVersion: version },
+      ]),
     ).resolves.toBeUndefined();
   });
 
@@ -171,18 +202,41 @@ describe("assertPlatformVersions", () => {
   });
 
   test.each([
-    ["no PlatformVersion, as a CDK library from before platformVersion synthesizes", {}],
-    ["another PlatformVersion", { PlatformVersion: "V1" }],
-  ])("refuses %s", async (_name, properties) => {
-    await expect(check(runtime("agent", "RuntimeAgent", properties), ["agent"])).rejects.toThrow(
-      'Runtime \'agent\' has "platformVersion": "V2", but the synthesized stack does not set it.',
-    );
+    ["no PlatformVersion, as a CDK library from before platformVersion synthesizes", {}, "V2"],
+    ["another PlatformVersion", { PlatformVersion: "V1" }, "V2"],
+    ["no PlatformVersion for an explicit V1", {}, "V1"],
+  ])("refuses %s", async (_name, properties, version) => {
+    await expect(
+      check(runtime("agent", "RuntimeAgent", properties), [
+        { name: "agent", platformVersion: version },
+      ]),
+    ).rejects.toThrow(notSet("agent", version));
   });
 
-  test("refuses a runtime the stack exports no RuntimeId for", async () => {
+  test("names only the runtime that does not run on its version", async () => {
+    const template = merged(
+      runtime("good", "RuntimeGood", { PlatformVersion: "V2" }),
+      runtime("bad", "RuntimeBad", {}),
+    );
+
+    const refused = check(template, [
+      { name: "good", platformVersion: "V2" },
+      { name: "bad", platformVersion: "V2" },
+    ]);
+
+    await expect(refused).rejects.toThrow(notSet("bad", "V2"));
+    await expect(refused).rejects.not.toThrow("'good'");
+  });
+
+  test("refuses a runtime the stack exports no RuntimeId for, and says it is not found", async () => {
     await expect(
-      check(runtime("other", "RuntimeOther", { PlatformVersion: "V2" }), ["agent"]),
-    ).rejects.toThrow('Runtime \'agent\' has "platformVersion": "V2"');
+      check(runtime("other", "RuntimeOther", { PlatformVersion: "V2" }), [
+        { name: "agent", platformVersion: "V2" },
+      ]),
+    ).rejects.toThrow(
+      "Could not find runtime 'agent' in the synthesized stack 'AgentCore-App-default', so " +
+        'deploy cannot check that it runs on "platformVersion": "V2".',
+    );
   });
 });
 

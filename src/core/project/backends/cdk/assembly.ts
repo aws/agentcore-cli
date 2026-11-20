@@ -173,19 +173,32 @@ export async function assertPrivateVpcs(
 }
 
 /**
- * Refuses a stack in which a runtime of `runtimeNames` does not run on `platformVersion`. A CDK
- * library from before `platformVersion` drops the field without an error, and the service would
- * pick the platform. The CDK library exports each runtime's ID as `<stack>-<runtime>-RuntimeId`
- * (`_` as `-`), from `Fn::GetAtt` of its `AWS::BedrockAgentCore::Runtime`.
+ * The runtimes whose platform deploy checks after synth: each one that names a `platformVersion`,
+ * in a Box project or not, `"V1"` included, since a CDK library from before the field drops it.
+ */
+export function runtimePlatformVersions(
+  runtimes: readonly { readonly name: string; readonly platformVersion?: string }[],
+): { name: string; platformVersion: string }[] {
+  return runtimes.flatMap(({ name, platformVersion }) =>
+    platformVersion === undefined ? [] : [{ name, platformVersion }],
+  );
+}
+
+/**
+ * Refuses a stack in which a runtime of `runtimes` does not run on its own `platformVersion`. A
+ * CDK library from before `platformVersion` drops the field without an error, and the service
+ * would pick the platform. The CDK library exports each runtime's ID as
+ * `<stack>-<runtime>-RuntimeId` (`_` as `-`), from `Fn::GetAtt` of its
+ * `AWS::BedrockAgentCore::Runtime`; a runtime with no such export is refused too, as one whose
+ * platform deploy cannot check.
  */
 export async function assertPlatformVersions(
   json: ReadWriteJson,
   assemblyDirectory: string,
   artifact: StackArtifact,
-  runtimeNames: readonly string[],
-  platformVersion: string,
+  runtimes: readonly { readonly name: string; readonly platformVersion: string }[],
 ): Promise<void> {
-  if (runtimeNames.length === 0) return;
+  if (runtimes.length === 0) return;
   const template = await readStackTemplate(json, assemblyDirectory, artifact);
   const logicalIdByExport = new Map(
     Object.values(template.Outputs).flatMap((output) => {
@@ -197,21 +210,24 @@ export async function assertPlatformVersions(
   // letters, digits, `:` and `-` removed, joined with `-`.
   const exportName = (...parts: string[]) =>
     parts.map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, "")).join("-");
-  const missing = runtimeNames.filter((name) => {
+  const problems = runtimes.flatMap(({ name, platformVersion }) => {
     const logicalId = logicalIdByExport.get(exportName(artifact.stackName, name, "RuntimeId"));
     const resource = logicalId === undefined ? undefined : template.Resources[logicalId];
-    return (
-      PlatformVersionPropertiesSchema.safeParse(resource?.Properties).data?.PlatformVersion !==
-      platformVersion
-    );
+    if (resource === undefined) {
+      return [
+        `Could not find runtime '${name}' in the synthesized stack '${artifact.stackName}', so ` +
+          `deploy cannot check that it runs on "platformVersion": "${platformVersion}".`,
+      ];
+    }
+    const synthesized = PlatformVersionPropertiesSchema.safeParse(resource.Properties).data;
+    if (synthesized?.PlatformVersion === platformVersion) return [];
+    return [
+      `Runtime '${name}' has "platformVersion": "${platformVersion}", but the synthesized stack ` +
+        "does not set it. The @aws/agentcore-cdk in agentcore/cdk is older than platformVersion: " +
+        "update it to a release that has platformVersion, then deploy again.",
+    ];
   });
-  if (missing.length > 0) {
-    throw new ProjectStateError(
-      `Runtime ${missing.map((name) => `'${name}'`).join(", ")} has "platformVersion": ` +
-        `"${platformVersion}", but the synthesized stack does not set it. The @aws/agentcore-cdk ` +
-        "in agentcore/cdk is older than platformVersion: update it, then deploy again.",
-    );
-  }
+  if (problems.length > 0) throw new ProjectStateError(problems.join("\n"));
 }
 
 async function readStackTemplate(

@@ -2184,25 +2184,32 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
   });
 
-  test("refuses a Box runtime that is not on AgentCore Runtime V2, before anything is written", async () => {
-    const directory = await inTempDirectory();
-    const { manager: subject, commands } = manager(await boxHome());
-    const project = await scaffolded(subject, directory);
-    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
-    const spec = JSON.parse(await readFile(specPath, "utf8"));
-    spec.runtimes[0].platformVersion = "V1";
-    await writeFile(specPath, JSON.stringify(spec, null, 2));
-    const before = await readFile(specPath, "utf8");
-    const edited = (await subject.resolve({ filePath: project.rootPath }))!;
-    commands.length = 0;
+  // An existing Box project has no platformVersion, the common case; a V1 one is a hand edit.
+  test.each([
+    ["no platformVersion", undefined, "has no platformVersion"],
+    ['"platformVersion": "V1"', "V1", 'has "platformVersion": "V1"'],
+  ])(
+    "refuses a Box runtime with %s, before anything is written",
+    async (_label, platformVersion, actual) => {
+      const directory = await inTempDirectory();
+      const { manager: subject, commands } = manager(await boxHome());
+      const project = await scaffolded(subject, directory);
+      const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+      const spec = JSON.parse(await readFile(specPath, "utf8"));
+      spec.runtimes[0].platformVersion = platformVersion;
+      await writeFile(specPath, JSON.stringify(spec, null, 2));
+      const before = await readFile(specPath, "utf8");
+      const edited = (await subject.resolve({ filePath: project.rootPath }))!;
+      commands.length = 0;
 
-    await expect(drain(subject.build(edited))).rejects.toThrow(
-      'has "platformVersion": "V1" in agentcore.json, but every runtime of a Box project runs on ' +
-        "AgentCore Runtime V2.",
-    );
-    expect(await readFile(specPath, "utf8")).toBe(before);
-    expect(commands).toEqual([]);
-  });
+      await expect(drain(subject.build(edited))).rejects.toThrow(
+        `${actual} in agentcore.json, but every runtime of a Box project runs on ` +
+          "AgentCore Runtime V2.",
+      );
+      expect(await readFile(specPath, "utf8")).toBe(before);
+      expect(commands).toEqual([]);
+    },
+  );
 
   test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();
