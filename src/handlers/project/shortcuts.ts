@@ -31,7 +31,7 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
  * The Bedrock region of the box profile `agentcore create` writes when the caller passes no
  * region. Both create paths pass the region they resolved. Build and deploy write the Box
  * gateway's `bedrock` and `agentcore` targets, and the AgentCore Runtime profile, for the region
- * they build for instead (see `boxBuildRegion`).
+ * they build for instead (`--region`, else `resolveRegion`).
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 

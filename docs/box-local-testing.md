@@ -41,10 +41,9 @@ to it.
   [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
   as its `box-integration` branch does. The Box gateway that `create` writes has
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
-- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. The oldest box that
-  works is `0.1.11-linux-preview.7`, the first release with
-  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
-  the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
+- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. Use that release: the box
+  features and the profiles that the CLI writes change together, so an older box can refuse the
+  profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev run it
   to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
   agent with it. See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
@@ -104,8 +103,8 @@ box --version
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
 - `box --version` should print the pinned `box 0.1.11-preview.10` (from
-  `src/core/project/backends/boxRelease.json`). Build, deploy and dev accept
-  `0.1.11-linux-preview.7` or later.
+  `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
+  writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
   `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-preview.10"`.
 
@@ -320,10 +319,10 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.1.11-linux-preview.7` or later. Dev and build read the profile with
+- `box --version` must print the pinned version. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
-  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box release before it cannot do all of these.
+  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. An older box release cannot do all of these.
 - The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
   After you refresh them, restart dev.
 
@@ -593,7 +592,7 @@ These outlive the stack. Delete them too:
 - **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
   box release, unpack it into a folder, add that folder to your `PATH`, then retry.
 - **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
-  older than `0.1.11-linux-preview.7`. Install that release or later.
+  older than the pinned release. Install the pinned release.
 - **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
   set. Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials

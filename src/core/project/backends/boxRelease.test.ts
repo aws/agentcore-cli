@@ -9,7 +9,6 @@ import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
 import {
   BOX_INSTALL_HINT,
-  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
   type BoxRelease,
@@ -275,7 +274,6 @@ describe("publishInstall", () => {
 
 describe("the pinned releases", () => {
   test("pins one box, with the asset of its own version and a SHA-256", () => {
-    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
@@ -285,15 +283,11 @@ describe("the pinned releases", () => {
     );
   });
 
-  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.1.11-linux-preview.7 is the first release that reads the profiles the CLI writes.
+  test("the install hint names the pinned release", () => {
     expect(BOX_INSTALL_HINT).toBe(
       "Install box: download the build for your machine from " +
         `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
-        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
-        "release has no build for your machine, use box 0.1.11-linux-preview.7 " +
-        "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a " +
-        "later release that has one.",
+        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.",
     );
   });
 });

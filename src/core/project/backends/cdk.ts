@@ -228,10 +228,10 @@ export class CdkBackend implements ProjectBackend {
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
   // toolchain or dependencies fails without having provisioned credentials.
-  private async ensureCdkDependencies(
+  private async *ensureCdkDependencies(
     project: Project,
     boxNetworks: BuildBackendInput["boxNetworks"],
-  ): Promise<ProjectEvent[]> {
+  ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -241,23 +241,21 @@ export class CdkBackend implements ProjectBackend {
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
-    // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    const events: ProjectEvent[] = [];
-    const box = async (version: string | undefined) => {
-      const release = await boxReleaseFor(version);
-      return resolveBoxLinuxBuild(this.processEnv, {
-        runner: this.runner,
-        release,
-        onDownload: (download) =>
-          events.push({
-            type: "step",
-            message: boxDownloadMessage(download, "AgentCore Runtime"),
-          }),
-      });
-    };
-    await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, boxReleaseFor);
-    return events;
+    // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
+    // goes out when the download starts, not once staging ends.
+    yield* eventsWhile(async (emit) => {
+      const box = async (version: string | undefined) => {
+        const release = await boxReleaseFor(version);
+        return resolveBoxLinuxBuild(this.processEnv, {
+          runner: this.runner,
+          release,
+          onDownload: (download) =>
+            emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
+        });
+      };
+      await stageBoxCodeZip(project, boxNetworks, box);
+      await stageBoxContainers(project, boxNetworks, boxReleaseFor);
+    });
   }
 
   private async *synthesize(
@@ -265,7 +263,7 @@ export class CdkBackend implements ProjectBackend {
     explainUndeployedCredentials: boolean,
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    yield* await this.ensureCdkDependencies(project, boxNetworks);
+    yield* this.ensureCdkDependencies(project, boxNetworks);
 
     for (const message of boxOtelWarnings(project.spec)) yield { type: "warning", message };
 
@@ -321,7 +319,7 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    yield* await this.ensureCdkDependencies(project, input.boxNetworks);
+    yield* this.ensureCdkDependencies(project, input.boxNetworks);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
@@ -806,4 +804,38 @@ export class CdkBackend implements ProjectBackend {
   private assemblyDirectory(project: Project): string {
     return join(this.cdkDirectory(project), "cdk.out");
   }
+}
+
+/**
+ * Runs `work`, yielding each event it emits as soon as it emits it, then ends when `work` does.
+ * An error of `work` is thrown after the events it emitted first.
+ */
+export async function* eventsWhile(
+  work: (emit: (event: ProjectEvent) => void) => Promise<void>,
+): AsyncGenerator<ProjectEvent, void> {
+  const queue: ProjectEvent[] = [];
+  let wake: (() => void) | undefined;
+  let done = false;
+  const notify = () => {
+    wake?.();
+    wake = undefined;
+  };
+  const running = work((event) => {
+    queue.push(event);
+    notify();
+  });
+  const finish = () => {
+    done = true;
+    notify();
+  };
+  running.then(finish, finish);
+  for (;;) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (done) break;
+    await new Promise<void>((resolve) => {
+      wake = resolve;
+      if (queue.length > 0 || done) notify();
+    });
+  }
+  await running;
 }

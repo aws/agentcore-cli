@@ -922,6 +922,17 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     );
   });
 
+  test("takes the region build is given over AWS_REGION, as --region does", async () => {
+    const { manager, root } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+    const project = (await manager.resolve({ filePath: root })) as Project;
+
+    await drain(manager.build(project, { region: "ap-northeast-1" }));
+
+    const { targets } = await boxGateway(root);
+    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-northeast-1"));
+    expect((await runtimeProfile(root)).options).toEqual({ bedrock: { region: "ap-northeast-1" } });
+  });
+
   test("has box resolve the profile for that region, from a copy it then removes", async () => {
     // create wrote the profile for us-west-2, the region `agentcore dev` calls Bedrock in.
     const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });

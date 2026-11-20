@@ -43,26 +43,8 @@ export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
 const PINNED = z.object({ box: BoxReleaseSchema }).parse(pinned);
 export const BOX_RELEASE: BoxRelease = PINNED.box;
 
-/**
- * The first box release that reads the profiles that the CLI writes: their `@box/<name>` packs, and
- * the `key` of an input of the `@box/agentcore` pack.
- */
-export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
-
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
-
-/**
- * The GitHub release page of {@link BOX_MINIMUM_VERSION}, which has a macOS build. A local box runs
- * only `agentcore dev` and the profile checks of build, so a box of this release or a later one
- * does, also when the pinned release has no build for the machine.
- */
-export const BOX_MINIMUM_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_MINIMUM_VERSION}`;
-
-/** What to install when the pinned release has no build for the machine. */
-export const BOX_OTHER_MACHINE_HINT =
-  `When that release has no build for your machine, use box ${BOX_MINIMUM_VERSION} ` +
-  `(${BOX_MINIMUM_RELEASE_PAGE}) or a later release that has one.`;
 
 /** Where a release's asset downloads from: the public GitHub release, no token needed. */
 export function boxReleaseAssetUrl(
@@ -85,8 +67,7 @@ export const BOX_BINARIES = [
  */
 export const BOX_INSTALL_HINT =
   `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. " +
-  BOX_OTHER_MACHINE_HINT;
+  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
 
 /** A Linux arm64 box for AgentCore Runtime. */
 export type BoxLinuxBuild = {
