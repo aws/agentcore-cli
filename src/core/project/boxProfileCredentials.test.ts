@@ -131,14 +131,44 @@ describe("planBoxProfileCredentials", () => {
     }
   });
 
-  test("leaves the stored key alone when the shell sets the credential's own variable", () => {
-    // Deploy provisions that one, so the route's variable has nothing to change.
+  test("fills a blank stored key, and says so", () => {
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env: { GITHUB_TOKEN: "ghp_new" },
+      envLocal: { [RESERVED]: " " },
+    });
+
+    expect(plan.entries.map(({ key, value }) => [key, value])).toEqual([[RESERVED, "ghp_new"]]);
+    expect(plan.messages).toEqual([
+      `setting ${RESERVED} in ${ENV_LOCAL_RELATIVE_PATH}, which is blank there, to the key in ` +
+        "GITHUB_TOKEN, which agentcore dev uses, so deploy provisions it too",
+    ]);
+  });
+
+  test("leaves the stored key alone when the shell sets the credential's own variable, and names a different key", () => {
+    // Deploy provisions that one, so build stores nothing, but dev hands box the route's variable.
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
       env: { GITHUB_TOKEN: "ghp_new", [RESERVED]: "ghp_explicit" },
       envLocal: { [RESERVED]: "ghp_old" },
     });
 
     expect(plan.entries).toEqual([]);
+    expect(plan.messages).toEqual([
+      `${RESERVED} and GITHUB_TOKEN hold different keys: agentcore dev uses GITHUB_TOKEN, and ` +
+        `deploy provisions ${RESERVED}, which your environment sets. Unset ${RESERVED}, or give ` +
+        "both the same key.",
+    ]);
+  });
+
+  test("says nothing when the shell sets the credential's own variable to the route's key", () => {
+    for (const env of [
+      { GITHUB_TOKEN: "ghp_same", [RESERVED]: "ghp_same" },
+      { [RESERVED]: "ghp_explicit" },
+    ]) {
+      const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], { env, envLocal: {} });
+
+      expect(plan.entries).toEqual([]);
+      expect(plan.messages).toEqual([]);
+    }
   });
 
   test("keeps an earlier build's credential and says what to set when its key has gone", () => {

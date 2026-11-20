@@ -93,24 +93,38 @@ export function planBoxProfileCredentials(
   const entries: EnvLocalEntry[] = [];
   /**
    * Stores the route's key under `credential`'s reserved variable, as `agentcore dev` reads it: the
-   * route's variable from the environment, else from `.env.local`. A stored key that differs is
-   * replaced, so dev and deploy use the same key after a rotation. False when there is none.
+   * route's variable from the environment, else from `.env.local`. A stored key that differs, or a
+   * blank one, is replaced, so dev and deploy use the same key after a rotation, and says so. When
+   * the environment sets the reserved variable, deploy provisions that, and a different key in the
+   * route's variable gets a message. False when there is no key.
    */
   const seed = ({ variable }: BoxEnvRoute, credential: string): boolean => {
     const key = credentialEnvVarName(credential);
-    // Set in the environment itself, it is what deploy provisions; nothing to store.
-    if (hasValue(sources.env[key])) return true;
     if (entries.some((entry) => entry.key === key)) return true;
     const value = hasValue(sources.env[variable])
       ? sources.env[variable]
       : sources.envLocal[variable];
+    const exported = sources.env[key];
+    // Set in the environment itself, it is what deploy provisions; nothing to store.
+    if (hasValue(exported)) {
+      if (variable !== key && hasValue(value) && value !== exported) {
+        messages.push(
+          `${key} and ${variable} hold different keys: agentcore dev uses ${variable}, and deploy ` +
+            `provisions ${key}, which your environment sets. Unset ${key}, or give both the same key.`,
+        );
+      }
+      return true;
+    }
     const stored = sources.envLocal[key];
     if (!hasValue(value)) return hasValue(stored);
     if (value === stored) return true;
-    if (hasValue(stored)) {
+    if (stored !== undefined) {
       messages.push(
-        `updating ${key} in ${ENV_LOCAL_RELATIVE_PATH}: ${variable} holds a different key, which ` +
-          "agentcore dev uses, so deploy provisions it too",
+        hasValue(stored)
+          ? `updating ${key} in ${ENV_LOCAL_RELATIVE_PATH}: ${variable} holds a different key, ` +
+              "which agentcore dev uses, so deploy provisions it too"
+          : `setting ${key} in ${ENV_LOCAL_RELATIVE_PATH}, which is blank there, to the key in ` +
+              `${variable}, which agentcore dev uses, so deploy provisions it too`,
       );
     }
     entries.push({
