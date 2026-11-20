@@ -228,7 +228,7 @@ How each command uses it:
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
 which `agentcore create` writes. It must be the pinned version, whose checksums `boxRelease.json`
-keeps; build and deploy stop on any other version and say to set the pinned one.
+keeps; build, deploy and container `dev` stop on any other version and say to set the pinned one.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

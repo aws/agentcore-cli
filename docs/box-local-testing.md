@@ -31,7 +31,7 @@ only for the box templates. The runtime's entry point and Dockerfile never decid
 `"projectType": "box"` stops dev with `agentcore.json has no "projectType": "box"`.
 
 `box.version` must be the box version the CLI pins in
-`src/core/project/backends/boxRelease.json`; build and deploy stop on any other version. To try an
+`src/core/project/backends/boxRelease.json`; build, deploy and container `dev` stop on any other version. To try an
 unreleased box build, publish it as a pre-release with the same file names and run
 `bun scripts/bump-box-release.ts --box <version>` in your CLI checkout, then set `box.version` to it.
 

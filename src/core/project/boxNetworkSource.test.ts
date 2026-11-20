@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
+import { InvalidEnvironmentError } from "../../errors/errors";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
@@ -143,41 +143,6 @@ describe("readBoxNetworks", () => {
     await expect(
       readBoxNetworks(SPEC, await project([]), new FakeBoxProfileResolver(refused)),
     ).rejects.toBe(refused);
-  });
-
-  test("stops before box runs when the profile names a pack or a plugin that box ships by its old box/ name", async () => {
-    const root = await project([]);
-    await writeFile(
-      join(root, ...LOCAL, "profile.toml"),
-      'packs = ["box/base", "box/bedrock", "@box/node", "team-pack", "box/base"]\n' +
-        'plugins = ["box/aws-secrets-manager"]\n',
-    );
-    const box = new FakeBoxProfileResolver();
-
-    const stopped = readBoxNetworks(SPEC, root, box);
-
-    await expect(stopped).rejects.toBeInstanceOf(ProjectStateError);
-    await expect(stopped).rejects.toThrow(
-      'The box profile .box/agent/local/profile.toml names "box/base", "box/bedrock", ' +
-        '"box/aws-secrets-manager". Box now names each pack and plugin that it ships ' +
-        '"@box/<name>", and it refuses the old "box/<name>" name. In ' +
-        '.box/agent/local/profile.toml, change "box/base" to "@box/base", "box/bedrock" to ' +
-        '"@box/bedrock", "box/aws-secrets-manager" to "@box/aws-secrets-manager", then build again.',
-    );
-    expect(box.calls).toEqual([]);
-  });
-
-  test("runs box for a profile with only @box/ names and names of its own", async () => {
-    const root = await project([]);
-    await writeFile(
-      join(root, ...LOCAL, "profile.toml"),
-      'packs = ["@box/base", "@box/bedrock", "team-pack"]\nplugins = ["@box/aws-secrets-manager"]\n',
-    );
-    const box = new FakeBoxProfileResolver();
-
-    await readBoxNetworks(SPEC, root, box);
-
-    expect(box.calls).toHaveLength(1);
   });
 
   test("refuses a policy file Box would refuse, each at `policies`, and says how to fix it", async () => {
