@@ -71,7 +71,10 @@ import {
   renderBoxProfile,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
-import { assertBoxRuntimesHaveBoxVersion } from "./backends/boxContainer";
+import {
+  assertBoxCodeZipRuntimesStartBox,
+  assertBoxRuntimesHaveBoxVersion,
+} from "./backends/boxContainer";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -919,11 +922,8 @@ export class FsProjectManager implements ProjectManager {
 
         yield* this.installRuntimeDependencies(
           outputPath,
-          boxInput ?? input.resourceConfig.scaffoldRuntimeInput,
+          input.resourceConfig.scaffoldRuntimeInput,
         );
-        if (boxInput) {
-          yield* this.addBoxRuntime(project.rootPath, projectSpec, boxInput, scaffoldedPaths);
-        }
         break;
       }
       case "credential": {
@@ -1632,6 +1632,7 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
     // Every runtime of a Box project runs in a box, so stop before anything is written.
     assertBoxRuntimesHaveBoxVersion(project.spec);
+    assertBoxCodeZipRuntimesStartBox(project.spec);
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
@@ -2336,37 +2337,30 @@ function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: stri
 }
 
 /**
- * The input that the box profile of `config`, a runtime added to the Box project `spec`, renders
- * from: a Python CodeZip agent, as a box template makes. A docs-only runtime gets the framework
- * `none` and Bedrock, as agent-python-minimal-box has. Throws for a runtime that cannot run in a
- * box, and for a runtime whose Box gateway name is taken.
+ * The input that the box profile of `config`, a docs-only runtime added to the Box project `spec`,
+ * renders from: a Python CodeZip agent with the framework `none` and Bedrock, as
+ * agent-python-minimal-box has. Throws for a Bedrock Agent import, for a TypeScript runtime, and
+ * for a runtime whose Box gateway name is taken.
  */
 function boxRuntimeInput(
   spec: z.infer<typeof ProjectSpecSchema>,
   config: RuntimeResourceConfig | RuntimeDocsConfig,
 ): ScaffoldRuntimeInput {
-  if (isRuntimeDocsConfig(config) && config.language !== "Python") {
+  // The imported agent can call Bedrock Agent and action group hosts that the box profile of a
+  // new runtime does not allow, so a Box project does not take an import yet.
+  if (!isRuntimeDocsConfig(config)) {
     throw new InputValidationError(
-      `cannot add runtime '${config.name}' to a Box project: every runtime of a Box project ` +
-        `runs in a box, and a box runs only a Python agent. Add it with --language python.`,
+      `cannot add runtime '${config.name}' to a Box project from a Bedrock Agent import: every ` +
+        "runtime of a Box project runs in a box, and the box profile of an added runtime does not " +
+        "allow the hosts an imported agent calls. Import it into a project that is not a Box " +
+        "project, or add a runtime with --language python.",
     );
   }
-  const input: ScaffoldRuntimeInput = isRuntimeDocsConfig(config)
-    ? {
-        runtimeName: config.name,
-        build: "CodeZip",
-        language: "Python",
-        framework: "none",
-        protocol: config.protocol ?? "HTTP",
-        modelProvider: "Bedrock",
-        runtimeVersion: LATEST_PYTHON,
-        boxTemplate: true,
-      }
-    : { ...config.scaffoldRuntimeInput, boxTemplate: true };
-  if (!startsInBoxOnCodeZip(input)) {
+  if (config.language !== "Python") {
     throw new InputValidationError(
       `cannot add runtime '${config.name}' to a Box project: every runtime of a Box project ` +
-        "runs in a box, and a box runs only a Python CodeZip agent.",
+        "runs in a box, and add runtime adds a box runtime only as a Python CodeZip agent. Add " +
+        "it with --language python.",
     );
   }
   const gateway = boxGatewaySpec(config.name).name;
@@ -2376,7 +2370,16 @@ function boxRuntimeInput(
         "gateway with that name already exists. Choose a different --name.",
     );
   }
-  return input;
+  return {
+    runtimeName: config.name,
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: config.protocol ?? "HTTP",
+    modelProvider: "Bedrock",
+    runtimeVersion: LATEST_PYTHON,
+    boxTemplate: true,
+  };
 }
 
 /**

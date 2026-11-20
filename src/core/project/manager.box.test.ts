@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { InputValidationError, ResourceNotFoundError } from "../../errors/errors";
 import type { AddResourceInput, Project } from "../../handlers/project/types";
@@ -354,6 +354,104 @@ describe("gateway targets in a Box project", () => {
     ]);
   });
 
+  test("add runtime refuses a Bedrock Agent import in a Box project, and changes nothing", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const before = await specText(project);
+
+    const add = drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: {
+          name: "search",
+          scaffoldRuntimeInput: {
+            runtimeName: "search",
+            build: "CodeZip",
+            language: "Python",
+            framework: "none",
+            modelProvider: "Bedrock",
+            runtimeVersion: "PYTHON_3_14",
+          },
+          importBedrockAgent: {},
+        },
+      } as never),
+    );
+
+    await expect(add).rejects.toThrow(
+      "cannot add runtime 'search' to a Box project from a Bedrock Agent import",
+    );
+    expect(await specText(project)).toBe(before);
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+    expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
+  });
+
+  // A read-only agentcore folder makes the spec write fail after the box files are written.
+  // Windows has no mode bits, and root writes through them.
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "a failed add runtime removes the box files it made, and keeps what was there",
+    async () => {
+      const manager = subject();
+      const project = await createdProject(manager);
+      // A code folder the user already has, with a file of their own.
+      const app = join(project.rootPath, "app", "search");
+      await mkdir(app, { recursive: true });
+      await writeFile(join(app, "notes.txt"), "mine\n");
+      const agentcore = join(project.rootPath, "agentcore");
+      const spec = join(agentcore, "agentcore.json");
+      await chmod(spec, 0o444);
+      await chmod(agentcore, 0o555);
+
+      try {
+        await expect(
+          drain(
+            manager.addResource(project, {
+              resourceType: "runtime",
+              resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+            } as never),
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await chmod(agentcore, 0o755);
+        await chmod(spec, 0o644);
+      }
+
+      expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
+      expect(existsSync(join(app, "start.py"))).toBe(false);
+      expect(existsSync(join(app, ".venv"))).toBe(false);
+      expect(await readFile(join(app, "notes.txt"), "utf8")).toBe("mine\n");
+    },
+  );
+
+  test("add runtime again after remove runtime keeps the local profile the user had", async () => {
+    const manager = subject();
+    let project = await createdProject(manager, ["agent", "search"]);
+    const local = join(project.rootPath, ".box", "search", "local", "profile.toml");
+    await mkdir(dirname(local), { recursive: true });
+    await writeFile(local, "# the user's profile\n");
+    project = (await manager.removeResource(project, { resourceType: "runtime", name: "search" }))
+      .project;
+
+    const events: unknown[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      events.push(next.value);
+    }
+
+    expect(await readFile(local, "utf8")).toBe("# the user's profile\n");
+    expect(events).toContainEqual({
+      type: "warning",
+      message: `box profile ${local} already exists; left unchanged`,
+    });
+    const spec = await parsedSpec(project);
+    expect(spec.agentCoreGateways.map(({ boundRuntime }) => boundRuntime)).toEqual([
+      "agent",
+      "search",
+    ]);
+  });
+
   test("add runtime refuses a TypeScript runtime in a Box project, and changes nothing", async () => {
     const manager = subject();
     const project = await createdProject(manager);
@@ -369,7 +467,8 @@ describe("gateway targets in a Box project", () => {
     await expect(add).rejects.toThrow(
       new InputValidationError(
         "cannot add runtime 'search' to a Box project: every runtime of a Box project runs in a " +
-          "box, and a box runs only a Python agent. Add it with --language python.",
+          "box, and add runtime adds a box runtime only as a Python CodeZip agent. Add it with " +
+          "--language python.",
       ),
     );
     expect(await specText(project)).toBe(before);

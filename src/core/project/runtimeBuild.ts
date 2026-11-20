@@ -9,6 +9,7 @@ import {
   type RuntimeVersion,
 } from "../../projectSchemas/constants";
 import { EntrypointSchema, type ProjectRuntime } from "../../projectSchemas/runtime";
+import { BOX_CODEZIP_ENTRYPOINT } from "./templates/boxProfile";
 
 /**
  * Re-derives a runtime's build settings (`build`, `dockerfile`, `runtimeVersion`,
@@ -105,7 +106,21 @@ export function syncRuntimeBuild(runtime: ProjectRuntime, projectRoot: string): 
       : next.build === "CodeZip"
         ? nodeEntrypoint(runtime, projectRoot, warnings)
         : undefined;
-  if (entrypoint !== undefined) {
+  // A CodeZip runtime that runs in a box starts box with start.py, and its box profile runs the
+  // agent, so the manifest's entrypoint names the agent, not the Runtime's entry point.
+  const startsBox =
+    runtime.box !== undefined &&
+    next.build === "CodeZip" &&
+    runtime.entrypoint === BOX_CODEZIP_ENTRYPOINT;
+  if (entrypoint !== undefined && startsBox) {
+    if (entrypoint.value !== BOX_CODEZIP_ENTRYPOINT) {
+      warnings.push(
+        `runtime "${runtime.name}" runs its agent in a box, so its entrypoint stays ` +
+          `${BOX_CODEZIP_ENTRYPOINT}, which starts box, and its box profile runs the agent. ` +
+          `${entrypoint.reason} names ${entrypoint.value}, which is not used.`,
+      );
+    }
+  } else if (entrypoint !== undefined) {
     next.entrypoint = entrypoint.value;
     reasons.entrypoint = entrypoint.reason;
   }

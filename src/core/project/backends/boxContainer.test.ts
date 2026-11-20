@@ -7,7 +7,11 @@ import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack, renderRuntimeBoxProfile } from "../templates/boxProfile";
-import { assertBoxRuntimesHaveBoxVersion, stageBoxContainers } from "./boxContainer";
+import {
+  assertBoxCodeZipRuntimesStartBox,
+  assertBoxRuntimesHaveBoxVersion,
+  stageBoxContainers,
+} from "./boxContainer";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 
 /** The staged path of the generated box/agentcore pack, from `.box-dist/`. */
@@ -197,5 +201,34 @@ describe("assertBoxRuntimesHaveBoxVersion", () => {
     delete (demo.spec as { projectType?: string }).projectType;
 
     expect(() => assertBoxRuntimesHaveBoxVersion(demo.spec)).not.toThrow();
+  });
+});
+
+describe("assertBoxCodeZipRuntimesStartBox", () => {
+  test("refuses a CodeZip box runtime whose entrypoint is not start.py", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    const runtime = demo.spec.runtimes[0]!;
+    runtime.build = "CodeZip";
+    runtime.entrypoint = "main.py";
+
+    expect(() => assertBoxCodeZipRuntimesStartBox(demo.spec)).toThrow(
+      'runtime "agent" runs its agent in a box (it has box.version in agentcore.json), but its ' +
+        "entrypoint is main.py, so AgentCore Runtime would run the agent with no box. Set " +
+        '"entrypoint": "start.py" for the runtime in agentcore.json, and keep start.py in ' +
+        "app/agent, then retry.",
+    );
+  });
+
+  test("accepts start.py, a container runtime, and a runtime with no box", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    const runtime = demo.spec.runtimes[0]!;
+    // A container image starts box itself, whatever its entrypoint.
+    expect(() => assertBoxCodeZipRuntimesStartBox(demo.spec)).not.toThrow();
+    runtime.build = "CodeZip";
+    runtime.entrypoint = "start.py";
+    expect(() => assertBoxCodeZipRuntimesStartBox(demo.spec)).not.toThrow();
+    runtime.entrypoint = "main.py";
+    delete runtime.box;
+    expect(() => assertBoxCodeZipRuntimesStartBox(demo.spec)).not.toThrow();
   });
 });

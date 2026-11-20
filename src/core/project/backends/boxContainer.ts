@@ -8,7 +8,7 @@ import type { BoxNetwork } from "../boxNetwork";
 import { boxNetworkEdits, runtimeProfileWriter, writeBoxNetworkFiles } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
 import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
-import { boxAwsDir, runtimeRunsInBox } from "../templates/boxProfile";
+import { BOX_CODEZIP_ENTRYPOINT, boxAwsDir, runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
@@ -172,6 +172,25 @@ export function assertBoxRuntimesHaveBoxVersion(spec: ProjectSpec): void {
       `runtime "${runtime.name}" has no box.version in agentcore.json, but every runtime of a Box ` +
         `project runs in a box. Add "box": { "version": "${BOX_RELEASE.version}" } to the ` +
         "runtime in agentcore.json, then retry.",
+    );
+  }
+}
+
+/**
+ * Throws for a CodeZip runtime that runs in a box ({@link runtimeRunsInBox}) but whose entrypoint
+ * is not start.py. Only start.py starts box on AgentCore Runtime, so another entrypoint would run
+ * the agent with no box, while build still writes its box profile and Box gateway.
+ */
+export function assertBoxCodeZipRuntimesStartBox(spec: ProjectSpec): void {
+  for (const runtime of spec.runtimes) {
+    if (runtime.build !== "CodeZip" || !runtimeRunsInBox(spec, runtime)) continue;
+    const [file = ""] = runtime.entrypoint.split(":");
+    if (file === BOX_CODEZIP_ENTRYPOINT) continue;
+    throw new ProjectStateError(
+      `runtime "${runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
+        `but its entrypoint is ${runtime.entrypoint}, so AgentCore Runtime would run the agent ` +
+        `with no box. Set "entrypoint": "${BOX_CODEZIP_ENTRYPOINT}" for the runtime in ` +
+        `agentcore.json, and keep ${BOX_CODEZIP_ENTRYPOINT} in ${runtime.codeLocation}, then retry.`,
     );
   }
 }

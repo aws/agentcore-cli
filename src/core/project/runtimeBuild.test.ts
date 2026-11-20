@@ -613,3 +613,35 @@ describe("prepareRuntimes", () => {
     expect(() => prepareRuntimes(root, [nodeRuntime()], "deploy")).toThrow("no node_modules");
   });
 });
+
+describe("entrypoint of a CodeZip runtime that runs in a box", () => {
+  const boxed = (overrides: Partial<ProjectRuntime> = {}) =>
+    runtime({ entrypoint: "start.py", box: { version: "1.0.0" }, ...overrides });
+
+  test("stays start.py when pyproject.toml names the agent's main.py, with a warning", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(
+        ">=3.12",
+        '[tool.agentcore]\nentrypoint = "main.py"\n',
+      ),
+    });
+
+    const sync = syncRuntimeBuild(boxed(), root);
+
+    expect(sync.runtime.entrypoint).toBe("start.py");
+    expect(sync.changes.map(({ field }) => field)).not.toContain("entrypoint");
+    expect(sync.warnings).toEqual([
+      'runtime "search" runs its agent in a box, so its entrypoint stays start.py, which starts ' +
+        "box, and its box profile runs the agent. [tool.agentcore] entrypoint in " +
+        "app/search/pyproject.toml names main.py, which is not used.",
+    ]);
+  });
+
+  test("still takes the pyproject.toml entrypoint for a runtime with no box", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(">=3.12", '[tool.agentcore]\nentrypoint = "app.py"\n'),
+    });
+
+    expect(syncRuntimeBuild(runtime(), root).runtime.entrypoint).toBe("app.py");
+  });
+});
