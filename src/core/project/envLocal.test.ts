@@ -167,6 +167,38 @@ test("rollback restores the content removeKeys deleted", async () => {
   expect(await Bun.file(file.path).text()).toBe("# api key\nSECRET='v'\nOTHER=1\n");
 });
 
+test("upsert replaces a key's value under its own comment, and appends a new key", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old key\nSECRET='v'\nOTHER=1\n");
+
+  const result = await file.upsert([
+    { key: "SECRET", value: "w", comment: "unused for an existing key" },
+    { key: "NEW", value: "n", comment: "new key" },
+  ]);
+
+  expect(result).toEqual({ written: ["NEW"], updated: ["SECRET"] });
+  expect(await file.read()).toEqual({ SECRET: "w", OTHER: "1", NEW: "n" });
+  expect(await Bun.file(file.path).text()).toStartWith("# old key\nSECRET='w'\nOTHER=1\n");
+});
+
+test("rollback undoes an upsert, the replaced value and the appended key", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old key\nSECRET='v'\n");
+
+  await file.upsert([ENTRY, { key: "SECRET", value: "w", comment: "c" }]);
+  await file.upsert([{ key: "NEW", value: "n", comment: "c" }]);
+  const second = new EnvLocalFile(root);
+  await second.upsert([
+    { key: "SECRET", value: "x", comment: "c" },
+    { key: "MORE", value: "m", comment: "c" },
+  ]);
+  await second.rollback();
+
+  expect(await second.read()).toEqual({ SECRET: "w", NEW: "n" });
+});
+
 testPosix("removeKeys keeps owner-only permissions on the rewritten file", async () => {
   const root = await tempRoot();
   const file = new EnvLocalFile(root);

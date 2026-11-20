@@ -66,7 +66,7 @@ export interface BoxNetworkEdits {
   /** Changes to the copy of agentcore.json, in order; each returns its step messages. */
   readonly spec?: readonly ((spec: ProjectSpec) => string[])[];
   readonly files?: readonly BoxNetworkFile[];
-  /** Entries for `.env.local`, which keep any value it holds already. */
+  /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
 }
 

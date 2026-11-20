@@ -18,6 +18,7 @@ import {
   boxLocalDir,
   boxLocalProfileFile,
   boxLocalProfilePath,
+  boxStartFolder,
   runtimeRunsInBox,
 } from "./templates/boxProfile";
 import {
@@ -138,10 +139,11 @@ async function readResolvedPolicy(
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
+  const startFolder = boxStartFolder(text);
   const resolved =
     forRegion === undefined
-      ? await resolver.resolve(projectRoot, profileFile)
-      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts);
+      ? await resolver.resolve(projectRoot, profileFile, startFolder)
+      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
   const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
   return {
@@ -242,6 +244,7 @@ async function resolveCopy(
   resolver: BoxProfileResolver,
   text: string,
   policies: readonly PolicyFileText[],
+  startFolder: string,
 ): Promise<ResolvedBoxProfile> {
   const localDir = boxLocalDir(agentName);
   const folder = realpathSync(await mkdtemp(join(tmpdir(), "agentcore-box-profile-")));
@@ -253,7 +256,7 @@ async function resolveCopy(
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, policy.text);
     }
-    return await resolver.resolve(projectRoot, copy);
+    return await resolver.resolve(projectRoot, copy, startFolder);
   } catch (error) {
     if (!(error instanceof InvalidEnvironmentError)) throw error;
     throw new InvalidEnvironmentError(
@@ -303,6 +306,7 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "strands-box-contain-trampoline",
   "resources",
   "profile.toml",
+  ".gitignore",
 ]);
 
 /**

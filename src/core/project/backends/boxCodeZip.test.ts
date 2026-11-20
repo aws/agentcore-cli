@@ -13,7 +13,7 @@ import {
   renderAgentCorePack,
   renderRuntimeBoxProfile,
 } from "../templates/boxProfile";
-import { stageBoxCodeZip } from "./boxCodeZip";
+import { BOX_DIST_GITIGNORE, stageBoxCodeZip } from "./boxCodeZip";
 import type { BoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
@@ -101,6 +101,8 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, AGENTCORE_CODEZIP_PACK_PATH), "utf8")).toBe(
       renderAgentCoreCodeZipPack(),
     );
+    // A template's own .gitignore may not list .box-dist/, so the folder ignores itself.
+    expect(await readFile(join(dist, ".gitignore"), "utf8")).toBe(BOX_DIST_GITIGNORE);
   });
 
   test("asks for the box of the runtime's box.version", async () => {
