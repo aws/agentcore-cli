@@ -220,7 +220,7 @@ async function readResolvedPolicy(
       ? await resolver.resolve(projectRoot, profileFile, startFolder)
       : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
-  const source = profileSource(text, profileFile, startFolder);
+  const source = profileSource(text, profileFile);
   const policy = parseResolvedPolicy(
     { ...profile.profile, places, ...(source && { source }) },
     resolved.policy,
@@ -241,17 +241,9 @@ async function readResolvedPolicy(
  * The box profile `text` at `profileFile` as a TOML table, with where it sets each key, or
  * `undefined` when it is not TOML; the profile parser stops build for that.
  */
-function profileSource(
-  text: string,
-  profileFile: string,
-  startFolder: string,
-): ParsedProfileSource | undefined {
+function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
   try {
-    return {
-      table: parseToml(text) as TomlTable,
-      places: profileKeyPlaces(text, profileFile),
-      startFolder,
-    };
+    return { table: parseToml(text) as TomlTable, places: profileKeyPlaces(text, profileFile) };
   } catch {
     return undefined;
   }

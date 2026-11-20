@@ -209,7 +209,6 @@ export function buildBoxNetwork(
       hosts: targets.hosts,
       telemetry: telemetry?.telemetry ?? [],
       places: source.places,
-      startFolder: source.startFolder,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
   failures.push(

@@ -85,8 +85,6 @@ function contextOf(
     hosts: [],
     telemetry: options.telemetry ?? [],
     places: new Map(),
-    // box starts a CodeZip profile that create writes in the code folder of the runtime.
-    startFolder: runtime.build === "CodeZip" ? runtime.codeLocation : "",
   });
 }
 

@@ -583,7 +583,6 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         source: {
           table: parse(text) as TomlTable,
           places: profileKeyPlaces(text, PROFILE),
-          startFolder: "",
         },
       },
       `${policy}${boxNetworkRules(egress, mcp)}`,

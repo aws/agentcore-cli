@@ -38,7 +38,7 @@ export const RUNTIME_INPUTS = {
  */
 export interface RuntimePaths {
   readonly build: "CodeZip" | "Container";
-  /** The code folder, as the local profile names it: `${{ workspace }}/<codeLocation>`. */
+  /** The code folder, as the local profile names it: `${{ workspace }}`, where dev starts box. */
   readonly localCode: string;
   /** The venv of the code folder, as the local profile names it. */
   readonly localVenv: string;

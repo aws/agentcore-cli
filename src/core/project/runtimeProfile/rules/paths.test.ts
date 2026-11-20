@@ -21,10 +21,9 @@ const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as P
 const PROFILE = ".box/agent/local/profile.toml";
 
 /**
- * The context of the local profile `text`. box starts in `startFolder`: the code folder for a
- * profile that create writes now, and the project root for the profiles of these tests.
+ * The context of the local profile `text`. dev starts box in the code folder, `${{ workspace }}`.
  */
-const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder = "") =>
+const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
   runtimeProfileContext({
     spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
     runtime,
@@ -34,7 +33,6 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder 
     hosts: [],
     telemetry: [],
     places: profileKeyPlaces(text, PROFILE),
-    startFolder,
   });
 
 /** The table of the paths rule for the local profile `text`. */
@@ -47,7 +45,7 @@ const moved = (text: string, runtime: ProjectRuntime = CODEZIP) => {
 
 const toml = (...lines: string[]) => lines.join("\n");
 
-const APP = "${{ workspace }}/app/agent";
+const APP = "${{ workspace }}";
 const CODE = "${{ inputs.code.dir }}";
 const PYTHON = "${{ inputs.python.path }}";
 const PREFIX = "${{ inputs.python.prefix }}";
@@ -58,14 +56,14 @@ const LEAVES = toml(
   'packs = ["@box/base"]',
   "",
   "[agent]",
-  'command = ["${{ workspace }}/app/agent/run"]',
+  'command = ["${{ workspace }}/run"]',
   "",
   "[mcp.notes]",
   'type = "stdio"',
   `command = ["${APP}/.venv/bin/python3.15", "${APP}/notes_server.py", "--root=${APP}/notes"]`,
   `workspace = "${APP}"`,
   "argument_wildcards = true",
-  `env = { NOTES_DIR = "\${{workspace}}/app/agent/notes", LEVEL = "debug" }`,
+  `env = { NOTES_DIR = "\${{workspace}}/notes", LEVEL = "debug" }`,
   "",
   "[mcp.notes.filesystem]",
   `read = ["${APP}", { path = "${APP}/.venv", optional = true }, { path = "\${{ home }}/.local/share/uv/python", optional = true }]`,
@@ -107,11 +105,11 @@ describe("the paths rule", () => {
   test("keeps the code folder in the PYTHONPATH of [agent] and of a leaf on the Runtime Python, one time", () => {
     const text = [
       "[agent.env]",
-      'PYTHONPATH = "${{ workspace }}/app/agent/lib"',
+      'PYTHONPATH = "${{ workspace }}/lib"',
       "[mcp.notes]",
       'type = "stdio"',
-      'command = ["${{ workspace }}/app/agent/.venv/bin/python3.15", "-m", "notes"]',
-      'env = { PYTHONPATH = "/opt/lib:${{ workspace }}/app/agent:${{ workspace }}/app/agent/.venv" }',
+      'command = ["${{ workspace }}/.venv/bin/python3.15", "-m", "notes"]',
+      'env = { PYTHONPATH = "/opt/lib:${{ workspace }}:${{ workspace }}/.venv" }',
     ].join("\n");
 
     const { profile } = deriveRuntimeProfile(parse(text) as TomlTable, contextOf(text));
@@ -128,9 +126,9 @@ describe("the paths rule", () => {
   test("leaves out a deny entry on the venv or in it, with a warning, and keeps deny_write on the venv", () => {
     const text = [
       "[agent.filesystem]",
-      'read = ["${{ workspace }}/app/agent"]',
-      'deny = ["${{ workspace }}/app/agent/.venv", { path = "${{workspace}}/app/agent/.venv/bin" }]',
-      'deny_write = ["${{ workspace }}/app/agent/.venv"]',
+      'read = ["${{ workspace }}"]',
+      'deny = ["${{ workspace }}/.venv", { path = "${{workspace}}/.venv/bin" }]',
+      'deny_write = ["${{ workspace }}/.venv"]',
     ].join("\n");
 
     // The paths rule alone: the additions rule removes the deny_write of the template.
@@ -141,7 +139,7 @@ describe("the paths rule", () => {
     expect(filesystem).not.toHaveProperty("deny");
     expect(filesystem.deny_write).toEqual(["${{ inputs.code.dir }}"]);
     expect(warnings).toEqual(
-      ["${{ workspace }}/app/agent/.venv", "${{workspace}}/app/agent/.venv/bin"].map(
+      ["${{ workspace }}/.venv", "${{workspace}}/.venv/bin"].map(
         (path) =>
           `[agent.filesystem] deny names ${JSON.stringify(path)}, in the venv. On AgentCore ` +
           "Runtime the venv is the code folder, ${{ inputs.code.dir }}, so the entry would keep " +
@@ -153,8 +151,8 @@ describe("the paths rule", () => {
   test("leaves out a deny entry and an optional grant that are not on the Runtime, with a warning", () => {
     const text = [
       "[agent.filesystem]",
-      'read = ["${{ workspace }}/app/agent", { path = "${{ home }}/.aws", optional = true }]',
-      'deny = ["${{ home }}/.ssh", "${{ workspace }}/app/agent/secrets"]',
+      'read = ["${{ workspace }}", { path = "${{ home }}/.aws", optional = true }]',
+      'deny = ["${{ home }}/.ssh", "${{ workspace }}/secrets"]',
     ].join("\n");
 
     const { profile, problems, warnings } = deriveRuntimeProfile(
@@ -192,7 +190,7 @@ describe("the paths rule", () => {
   test("moves the venv's Python, the venv, the uv Pythons, and the code folder in [agent]", () => {
     const table = moved(
       toml(
-        'agent-args = ["--config", "${{ workspace }}/app/agent/agent.json"]',
+        'agent-args = ["--config", "${{ workspace }}/agent.json"]',
         "[agent]",
         `command = ["${APP}/.venv/bin/python", "-m", "main"]`,
         `workspace = "${APP}"`,
@@ -317,14 +315,14 @@ describe("the paths rule", () => {
       'bedrock.region = "us-west-2"',
       "[egress.files]",
       'destinations = ["files.example.com"]',
-      'secret.ref = "file://${{ workspace }}/app/agent/.files-token"',
+      'secret.ref = "file://${{ workspace }}/.files-token"',
       "[mcp.docs]",
       'type = "http"',
       'destinations = ["docs.example.com"]',
-      'secret.ref = "file://${{ workspace }}/app/agent/.docs-token"',
+      'secret.ref = "file://${{ workspace }}/.docs-token"',
       "[telemetry.local]",
       'kind = "file"',
-      'path = "${{ workspace }}/app/agent/telemetry.jsonl"',
+      'path = "${{ workspace }}/telemetry.jsonl"',
       "[agent]",
       'command = ["/usr/bin/env", "--flag", "${{ inputs.code.dir }}/x", "https://example.com/a:b"]',
       "[[agent.ingress]]",
@@ -352,7 +350,7 @@ describe("the paths rule", () => {
   test.each(["HTTP", "A2A", "MCP", "AGUI"])(
     "moves each path of the profile that create writes for a %s runtime to the Runtime's inputs",
     (protocol) => {
-      const context = contextOf("", { ...CODEZIP, protocol } as ProjectRuntime, "app/agent");
+      const context = contextOf("", { ...CODEZIP, protocol } as ProjectRuntime);
 
       const text = serializeRuntimeProfile(apply(context.template.local, context).table);
 

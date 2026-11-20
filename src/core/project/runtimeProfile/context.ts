@@ -20,11 +20,11 @@ const HOME = "${{ home }}";
 /**
  * Where the paths of the local profile of `runtime` are on AgentCore Runtime. A container image runs
  * the profile in /app, its workspace, under `agentcore dev` and on the Runtime alike, so each path
- * stays. A CodeZip runtime runs it in the project folder under `agentcore dev`.
+ * stays. Under `agentcore dev`, box starts a CodeZip runtime in its code folder (boxStartFolder),
+ * so `${{ workspace }}` is the code folder.
  */
 export function runtimePaths(
   runtime: Pick<ProjectRuntime, "build" | "codeLocation">,
-  startFolder = "",
 ): RuntimePaths {
   if (runtime.build !== "CodeZip") {
     return {
@@ -42,15 +42,10 @@ export function runtimePaths(
     .normalize(runtime.codeLocation.replace(/\\/g, "/"))
     .replace(/^\.\/|\/+$/g, "");
   const root = folder === "." || folder === "";
-  // `${{ workspace }}` is the folder box starts in: the code folder for a profile that create or
-  // add runtime writes now, and the project root for one written before.
-  const start = posix.normalize(startFolder || ".").replace(/^\.\/|\/+$/g, "");
-  const fromStart = posix.relative(start === "." ? "" : start, root ? "" : folder);
-  const localCode = fromStart === "" ? WORKSPACE : `${WORKSPACE}/${fromStart}`;
   return {
     build: "CodeZip",
-    localCode,
-    localVenv: `${localCode}/.venv`,
+    localCode: WORKSPACE,
+    localVenv: `${WORKSPACE}/.venv`,
     localPythons: `${HOME}/.local/share/uv/python`,
     runtimeCode: RUNTIME_INPUTS.codeDir,
     runtimePython: RUNTIME_INPUTS.pythonPath,
@@ -125,14 +120,12 @@ export function runtimeProfileContext(
   input: Omit<RuntimeProfileContext, "paths" | "template" | "placeOf"> & {
     /** Where the local profile sets each key: {@link profileKeyPlaces}. */
     readonly places: ReadonlyMap<string, string>;
-    /** The folder, from the project root, that box starts in for the local profile. */
-    readonly startFolder?: string;
   },
 ): RuntimeProfileContext {
-  const { places, startFolder, ...rest } = input;
+  const { places, ...rest } = input;
   return {
     ...rest,
-    paths: runtimePaths(input.runtime, startFolder),
+    paths: runtimePaths(input.runtime),
     template: runtimeTemplate(input.spec.name, input.runtime, input.region),
     placeOf: (key) => {
       for (let depth = key.length; depth > 0; depth--) {

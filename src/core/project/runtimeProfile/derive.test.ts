@@ -72,29 +72,21 @@ describe("deriveRuntimeProfile", () => {
 });
 
 describe("runtimePaths", () => {
-  test("moves a CodeZip runtime's code and Python to the inputs of @box/agentcore-codezip", () => {
+  test("moves a CodeZip runtime's code folder, ${{ workspace }}, and Python to the inputs of @box/agentcore-codezip", () => {
+    // dev starts box in the code folder of a CodeZip runtime (boxStartFolder).
     expect(runtimePaths(CODEZIP)).toEqual({
       build: "CodeZip",
-      localCode: "${{ workspace }}/app/agent",
-      localVenv: "${{ workspace }}/app/agent/.venv",
+      localCode: "${{ workspace }}",
+      localVenv: "${{ workspace }}/.venv",
       localPythons: "${{ home }}/.local/share/uv/python",
       runtimeCode: "${{ inputs.code.dir }}",
       runtimePython: "${{ inputs.python.path }}",
       runtimePythonPrefix: "${{ inputs.python.prefix }}",
       shownCode: "app/agent/",
     });
-    expect(
-      runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime).localCode,
-    ).toBe("${{ workspace }}/app/agent");
-  });
-
-  test("names the code folder ${{ workspace }} when box starts in it, as for a profile create writes now", () => {
-    expect(runtimePaths(CODEZIP, "app/agent")).toMatchObject({
-      localCode: "${{ workspace }}",
-      localVenv: "${{ workspace }}/.venv",
-      shownCode: "app/agent/",
-    });
-    expect(runtimePaths(CODEZIP, "app").localCode).toBe("${{ workspace }}/agent");
+    expect(runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime)).toEqual(
+      runtimePaths(CODEZIP),
+    );
   });
 
   test("keeps each path of a container image, which runs in /app under dev and on the Runtime", () => {

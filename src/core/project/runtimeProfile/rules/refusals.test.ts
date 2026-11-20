@@ -21,11 +21,10 @@ const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as P
 const PROFILE = ".box/agent/local/profile.toml";
 
 /**
- * The context of the local profile `text`, with the CloudWatch targets that box takes from it. box
- * starts in `startFolder`: the code folder for a profile that create writes now, and the project
- * root for the profiles of these tests.
+ * The context of the local profile `text`, with the CloudWatch targets that box takes from it. dev
+ * starts box in the code folder, `${{ workspace }}`.
  */
-const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder = "") =>
+const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
   runtimeProfileContext({
     spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
     runtime,
@@ -36,7 +35,6 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP, startFolder 
     telemetry: withDeployRegion(cloudWatchTelemetry(parse(text) as TomlTable), "us-west-2", PROFILE)
       .telemetry,
     places: profileKeyPlaces(text, PROFILE),
-    startFolder,
   });
 
 /** The problems of the refusals rule for the local profile `text`. */
@@ -49,7 +47,7 @@ const toml = (...lines: string[]) => lines.join("\n");
 const lineOf = (text: string, start: string) =>
   `${PROFILE}:${text.split("\n").findIndex((line) => line.startsWith(start)) + 1}:1`;
 
-const APP = "${{ workspace }}/app/agent";
+const APP = "${{ workspace }}";
 
 /** A local profile that can go to a CodeZip Runtime: each path moves, and each program is there. */
 const WORKS = toml(
@@ -100,14 +98,6 @@ describe("the refusals rule", () => {
 
   test.each([
     [
-      "a path of the project outside the code folder",
-      ["mcp", "notes", "command"],
-      `command = ["${APP}/.venv/bin/python3.15", "\${{ workspace }}/tools/notes.py"]`,
-      '[mcp.notes] command names "${{ workspace }}/tools/notes.py", which is not in app/agent/. ' +
-        "The zip of a CodeZip deploy contains only that folder. Move the file into app/agent/, " +
-        "or remove the path.",
-    ],
-    [
       "a path of the home folder",
       ["mcp", "notes", "env", "NOTES_DIR"],
       'env = { NOTES_DIR = "${{ home }}/notes" }',
@@ -133,8 +123,8 @@ describe("the refusals rule", () => {
     [
       "a folder of the project whose name starts as the code folder's does",
       ["mcp", "notes", "command"],
-      'command = ["${{ workspace }}/app/agent-tools/notes-server"]',
-      '[mcp.notes] command names "${{ workspace }}/app/agent-tools/notes-server", which is not in ' +
+      'command = ["${{ workspace }}-tools/notes-server"]',
+      '[mcp.notes] command names "${{ workspace }}-tools/notes-server", which is not in ' +
         "app/agent/. The zip of a CodeZip deploy contains only that folder. Move the file into " +
         "app/agent/, or remove the path.",
     ],
@@ -360,9 +350,9 @@ describe("the refusals rule", () => {
   });
 
   test.each([
-    ["mcp", 'type = "stdio"\ncommand = ["${{ workspace }}/app/agent/notes-server"]'],
-    ["tool", 'command = ["${{ workspace }}/app/agent/notes-server"]'],
-    ["agent", 'command = ["${{ workspace }}/app/agent/notes-server"]'],
+    ["mcp", 'type = "stdio"\ncommand = ["${{ workspace }}/notes-server"]'],
+    ["tool", 'command = ["${{ workspace }}/notes-server"]'],
+    ["agent", 'command = ["${{ workspace }}/notes-server"]'],
   ])(
     "stops for contain_egress = false in [%s], for CodeZip and a container (RUNTIME_EGRESS_NOT_CONTAINED)",
     (group, body) => {
@@ -450,8 +440,7 @@ describe("the refusals rule", () => {
     "finds no problem in each profile that create writes for a %s runtime",
     (protocol) => {
       for (const build of [CODEZIP, CONTAINER]) {
-        const start = build.build === "CodeZip" ? "app/agent" : "";
-        const context = contextOf("", { ...build, protocol } as ProjectRuntime, start);
+        const context = contextOf("", { ...build, protocol } as ProjectRuntime);
 
         expect(apply(context.template.local, context).problems).toEqual([]);
       }
