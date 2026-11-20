@@ -92,7 +92,7 @@ export function boxShowOf(input: {
     boxToml: { name: "test-preview", egress: kept, mcp },
     policy: `${input.policy ?? ""}\n${boxNetworkRules(egress, mcp)}`,
     openRoutes,
-    packs: [{ name: "box/base", version: "1" }],
+    packs: [{ name: "@box/base", version: "1" }],
     warnings: [],
   });
 }

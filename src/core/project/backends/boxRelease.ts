@@ -7,7 +7,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -34,28 +33,36 @@ const BoxReleaseSchema = z.object({
   linux: TargetAssetSchema,
 });
 
-/**
- * A release of the Python ffi shim that a CodeZip agent's Python needs in a box: the `_ctypes`
- * and libffi that Box Core's W^X filter allows, by the runtimeVersion they are built for. It ships
- * on its own, so it can come from another repository or version than box.
- */
-const FfiReleaseSchema = z.object({
-  repo: z.string().min(1),
-  version: z.string().min(1),
-  pythons: z.record(z.string(), AssetSchema),
-});
-
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
-export type FfiRelease = z.infer<typeof FfiReleaseSchema>;
 
 /**
- * The releases this CLI pins, from boxRelease.json. The checksums are pinned there, not read
+ * The release this CLI pins, from boxRelease.json. The checksums are pinned there, not read
  * from a release's SHA256SUMS.txt, so a changed asset fails instead of shipping.
  * `scripts/bump-box-release.ts` rewrites the file.
  */
-const PINNED = z.object({ box: BoxReleaseSchema, ffi: FfiReleaseSchema }).parse(pinned);
+const PINNED = z.object({ box: BoxReleaseSchema }).parse(pinned);
 export const BOX_RELEASE: BoxRelease = PINNED.box;
-export const FFI_RELEASE: FfiRelease = PINNED.ffi;
+
+/**
+ * The first box release that reads the profiles that the CLI writes: their `@box/<name>` packs, and
+ * the `key` of an input of the `@box/agentcore` pack.
+ */
+export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
+
+/** The GitHub release page of the pinned box, with a build for each machine it supports. */
+export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
+
+/**
+ * The GitHub release page of {@link BOX_MINIMUM_VERSION}, which has a macOS build. A local box runs
+ * only `agentcore dev` and the profile checks of build, so a box of this release or a later one
+ * does, also when the pinned release has only the Linux arm64 build that ships to AgentCore Runtime.
+ */
+export const BOX_MINIMUM_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_MINIMUM_VERSION}`;
+
+/** What to install when the pinned release has no build for the machine. */
+export const BOX_OTHER_MACHINE_HINT =
+  `When that release has no build for your machine, use box ${BOX_MINIMUM_VERSION} ` +
+  `(${BOX_MINIMUM_RELEASE_PAGE}) or a later release that has one.`;
 
 /** Where a release's asset downloads from: the public GitHub release, no token needed. */
 export function boxReleaseAssetUrl(
@@ -74,21 +81,19 @@ export const BOX_BINARIES = [
 
 /**
  * How to install the `box` that `agentcore dev` runs a CodeZip box agent with, which create and
- * dev ask for when it is not on PATH. The release has a build for each machine it supports.
+ * dev ask for when it is not on PATH.
  */
 export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ` +
-  `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
+  `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
+  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. " +
+  BOX_OTHER_MACHINE_HINT;
 
-/** A Linux arm64 box for AgentCore Runtime, and the Python ffi shims, by runtimeVersion. */
+/** A Linux arm64 box for AgentCore Runtime. */
 export type BoxLinuxBuild = {
   /** The folder that holds box and its helpers. */
   binaries: string;
   /** box's packs. */
   resources: string;
-  /** The `_ctypes` and libffi that Box Core's W^X filter allows, for each Python it is built for. */
-  ffi: Partial<Record<string, string>>;
 };
 
 /** What is about to download, which happens once per version. */
@@ -111,8 +116,6 @@ export type ResolveBoxLinuxBuildOptions = {
   home?: string;
   /** The box release to install; BOX_RELEASE by default. */
   release?: BoxRelease;
-  /** The ffi release to install; FFI_RELEASE by default. */
-  ffi?: FfiRelease;
 };
 
 /** The cache of box builds, by version and target. */
@@ -120,55 +123,27 @@ function boxCache(home: string): string {
   return join(home, ".agentcore", "box");
 }
 
-/** The cache of ffi shims, by version and runtimeVersion. */
-function ffiCache(home: string): string {
-  return join(home, ".agentcore", "box-ffi");
-}
-
 /** Where a box build is cached. */
 export function boxCachePath(home: string, version: string, target: string): string {
   return join(boxCache(home), `${version}-${target}`);
 }
 
-/** Where an ffi shim is cached. */
-export function ffiCachePath(home: string, version: string, runtimeVersion: string): string {
-  return join(ffiCache(home), version, runtimeVersion);
-}
-
-/** The file in an ffi cache folder that names the SHA-256 of the archive it came from. */
-export const FFI_CACHE_MARKER = ".sha256";
-
 /**
- * The Linux box for AgentCore Runtime from `release`, and the ffi shims from `ffi`. Each
- * downloads once with curl from its public URL, after its checksum matches: box into
- * `~/.agentcore/box/<version>-<target>/`, each shim into
- * `~/.agentcore/box-ffi/<version>/<runtimeVersion>/`. Later runs reuse them.
+ * The Linux box for AgentCore Runtime from `release`. It downloads once with curl from its public
+ * URL, after its checksum matches, into `~/.agentcore/box/<version>-<target>/`. Later runs reuse it.
  */
 export async function resolveBoxLinuxBuild(
   env: NodeJS.ProcessEnv,
   options: ResolveBoxLinuxBuildOptions = {},
 ): Promise<BoxLinuxBuild> {
   const release = options.release ?? BOX_RELEASE;
-  const ffi = options.ffi ?? FFI_RELEASE;
   // HOME from the environment the CLI was given, so the caches follow it.
   const home = options.home ?? env.HOME ?? homedir();
   const runner = options.runner ?? runProcess;
   const root = await installBox(release, release.linux, env, runner, home, options.onDownload, {
     forWhat: "AgentCore Runtime",
   });
-  const shims: Partial<Record<string, string>> = {};
-  for (const [runtimeVersion, asset] of Object.entries(ffi.pythons)) {
-    shims[runtimeVersion] = await installFfi(
-      ffi,
-      runtimeVersion,
-      asset,
-      env,
-      runner,
-      home,
-      options.onDownload,
-    );
-  }
-  return { binaries: root, resources: join(root, "resources"), ffi: shims };
+  return { binaries: root, resources: join(root, "resources") };
 }
 
 /** Whether `root` holds box `version`: release.json, box, its helpers, and its packs. */
@@ -263,46 +238,6 @@ async function installBox(
   return root;
 }
 
-/** Installs the ffi shim of `runtimeVersion` into its cache folder, once, and returns it. */
-async function installFfi(
-  ffi: FfiRelease,
-  runtimeVersion: string,
-  asset: { asset: string; sha256: string },
-  env: NodeJS.ProcessEnv,
-  runner: ProcessRunner,
-  home: string,
-  onDownload: OnBoxDownload | undefined,
-): Promise<string> {
-  const root = ffiCachePath(home, ffi.version, runtimeVersion);
-  const marker = join(root, FFI_CACHE_MARKER);
-  const installed = () => isFile(marker) && readFileSync(marker, "utf8").trim() === asset.sha256;
-  if (installed()) return root;
-
-  const url = boxReleaseAssetUrl(ffi, asset.asset);
-  onDownload?.({ name: `the box ffi shim for ${runtimeVersion}`, version: ffi.version, url });
-  const { work, archive } = await downloadChecked(
-    ffi,
-    asset,
-    ffiCache(home),
-    env,
-    runner,
-    (failed) =>
-      `a CodeZip runtime on ${runtimeVersion} runs its agent in a box, so this ships the box ffi ` +
-      `shim ${ffi.version}, downloaded from ${failed}, which failed. Check your network, then retry.`,
-  );
-  try {
-    const payload = join(work, "payload");
-    mkdirSync(payload);
-    await runner(["tar", "-xzf", archive, "-C", payload], { cwd: work, env });
-    writeFileSync(join(payload, FFI_CACHE_MARKER), `${asset.sha256}\n`);
-    mkdirSync(join(root, ".."), { recursive: true });
-    publishInstall(payload, root, installed);
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
-  return root;
-}
-
 /**
  * Moves the checked `payload` into the cache folder `root`, where another process may be
  * installing the same release at the same time: several concurrent build or deploy commands each
@@ -358,8 +293,7 @@ async function download(
 /**
  * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
  * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE. The ffi shim does not follow it: FFI_RELEASE pins
- * that on its own.
+ * SHA256SUMS.txt. No version means BOX_RELEASE.
  */
 export async function boxReleaseFor(
   version: string | undefined,

@@ -197,30 +197,32 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-Two templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
-`agent-python-strands-box` (CodeZip) and `agent-python-strands-box-container` (Container).
-`agentcore create --template <name>` makes a Box project from either; every other template runs
-its agent without box. A Box project holds that one runtime, so `agentcore add runtime` and
-`agentcore export harness` refuse it. The runtime needs its `"box": { "version": ... }` in
-`agentcore.json`, which create writes; build and deploy stop without it. box comes from the public GitHub release `v0.1.11-linux-preview.6` of
+Seven templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+the CodeZip templates `agent-python-strands-box`, `agent-python-minimal-box`,
+`agent-python-langchain-box`, `a2a-python-strands-box`, `agui-python-strands-box`, and
+`mcp-python-fastmcp-box`, and the container template `agent-python-strands-box-container`.
+`agentcore create --template <name>` makes a Box project from one of them; every other template
+runs its agent without box. Each runtime of a Box project runs in a box, with its own box profile,
+`.box/<runtime>/local/profile.toml`. `agentcore add runtime` adds a Python CodeZip runtime in a box
+to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import there.
+`agentcore export harness` refuses a Box project. Each box runtime needs its
+`"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
+box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
+each runtime from its local profile. box comes from the public GitHub release `v0.1.11-mquang.preview.9` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
-is needed to download it.
+is needed to download it. That release has only the Linux arm64 build that ships to AgentCore
+Runtime. For `agentcore dev` and the profile checks of `build` on macOS, install the macOS build of
+`v0.1.11-linux-preview.7`, or of a later release that has one.
 
-`src/core/project/backends/boxRelease.json` pins two releases on their own, each with its
-repository, version and SHA-256s:
-
-- `box`: the Linux build that ships to AgentCore Runtime.
-- `ffi`: the Python ffi shim a CodeZip agent needs in a box, by Python version. It can come from
-  another repository or version than box.
-
-`bun scripts/bump-box-release.ts --box <version>` (or `--ffi <version>`, with `--box-repo` or
-`--ffi-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
+`src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
+Runtime, with its repository, version and SHA-256. `bun scripts/bump-box-release.ts --box <version>`
+(with `--box-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
 
 How each command uses it:
 
 - A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
-  `~/.agentcore/box/` and the ffi shim into `~/.agentcore/box-ffi/`, check each against its pinned
-  SHA-256, and stage box, its packs and the shim into the runtime's `.box-dist/`.
+  `~/.agentcore/box/`, check it against its pinned SHA-256, and stage box and its packs into the
+  runtime's `.box-dist/`.
 - A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
   release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
   (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
@@ -234,8 +236,7 @@ How each command uses it:
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
 which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
-another version takes them from its release's `SHA256SUMS.txt`. `box.version` picks box only: the
-ffi shim always comes from `boxRelease.json`. To try an unreleased box build,
+another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
 publish it as a pre-release with the same file names and set `box.version` to it.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
@@ -254,7 +255,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-linux-preview.6`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-mquang.preview.9`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.

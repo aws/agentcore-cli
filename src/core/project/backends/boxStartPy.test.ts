@@ -2,8 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProjectSpec } from "../../../projectSchemas/project";
-import { renderRuntimeBoxProfile } from "../templates/boxProfile";
+import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 
 /** The CodeZip box agent's entry point, which runs on the Runtime's Python. */
 const START_PY = join(
@@ -64,35 +63,23 @@ async function run(profile: string) {
   };
 }
 
-const SPEC = {
-  name: "V3Demo",
-  runtimes: [
-    {
-      name: "agent",
-      build: "CodeZip",
-      entrypoint: "start.py",
-      codeLocation: "app/agent",
-      protocol: "HTTP",
-      modelProvider: "Bedrock",
-    },
-  ],
-  agentCoreGateways: [],
-} as unknown as ProjectSpec;
+/** A Runtime profile as the runtime profile writer writes it, with a header comment. */
+const runtimeProfile = (policies?: string[]) =>
+  serializeRuntimeProfile(
+    { packs: ["@box/base"], ...(policies && { policies }), profile: { name: "V3Demo" } },
+    ["Runs the agent of the AgentCore project 'V3Demo' in a box."],
+  );
 
 describe.skipIf(PYTHON === undefined)("start.py with no tomllib, as on Python 3.10", () => {
-  test("reads the policies of a Runtime profile deploy renders", async () => {
-    const profile = renderRuntimeBoxProfile(SPEC, SPEC.runtimes[0]!, {
-      policyFiles: ["policy.dw", "rules/extra.dw"],
-    });
-
-    const result = await run(profile);
+  test("reads the policies of a Runtime profile that the runtime profile writer writes", async () => {
+    const result = await run(runtimeProfile(["policy.dw", "rules/extra.dw"]));
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(["policy.dw", "rules/extra.dw"]);
   });
 
   test("reads no policies from a profile that names none", async () => {
-    const result = await run(renderRuntimeBoxProfile(SPEC, SPEC.runtimes[0]!));
+    const result = await run(runtimeProfile());
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual([]);
