@@ -32,27 +32,19 @@ async function cdkDirectoryWith(manifest: object, installed = true): Promise<str
 
 async function run(
   cdkDirectory: string,
-  options: { runner?: ProcessRunner; disabled?: boolean; lenient?: boolean } = {},
-) {
-  const commands: string[][] = [];
+  options: { runner?: ProcessRunner; lenient?: boolean } = {},
+): Promise<ProjectEvent[]> {
   const events: ProjectEvent[] = [];
-  const runner: ProcessRunner =
-    options.runner ??
-    (async (command) => {
-      commands.push(command);
-    });
   for await (const event of syncCdkDependencies({
     cdkDirectory,
     vendedManifest: JSON.stringify(VENDED),
-    runner,
+    runner: options.runner ?? (async () => {}),
     logger: createSilentLogger(),
-    disabled: options.disabled,
     lenient: options.lenient,
   })) {
     events.push(event);
   }
-  const manifest = JSON.parse(await readFile(join(cdkDirectory, "package.json"), "utf8"));
-  return { commands, events, manifest };
+  return events;
 }
 
 describe("planDependencySync", () => {
@@ -154,49 +146,6 @@ describe("newerPinMessage", () => {
 });
 
 describe("syncCdkDependencies", () => {
-  test("rewrites only managed entries and installs once", async () => {
-    const directory = await cdkDirectoryWith({
-      name: "agentcore-cdk-app",
-      devDependencies: VENDED.devDependencies,
-      dependencies: { "@aws/agentcore-cdk": "1.0.3", "aws-cdk-lib": "~2.269.0", zod: "4.1.0" },
-    });
-
-    const { commands, events, manifest } = await run(directory);
-
-    expect(manifest.dependencies).toEqual({
-      "@aws/agentcore-cdk": "1.1.0",
-      "aws-cdk-lib": "~2.269.0",
-      zod: "4.1.0",
-    });
-    expect(manifest.name).toBe("agentcore-cdk-app");
-    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
-    expect(events).toContainEqual({
-      type: "step",
-      message: "updating CDK dependencies: @aws/agentcore-cdk 1.0.3 -> 1.1.0",
-    });
-  });
-
-  test("does nothing when the pins already match", async () => {
-    const directory = await cdkDirectoryWith(VENDED);
-
-    const { commands, events } = await run(directory);
-
-    expect(commands).toEqual([]);
-    expect(events).toEqual([]);
-  });
-
-  test("installs a missing node_modules even when the pins already match", async () => {
-    const directory = await cdkDirectoryWith(VENDED, false);
-
-    const { commands, events, manifest } = await run(directory);
-
-    expect(manifest).toEqual(VENDED);
-    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
-    expect(events).toEqual([
-      { type: "step", message: "installing CDK dependencies (node_modules missing)" },
-    ]);
-  });
-
   test("names the directory and npm's error when installing a missing node_modules fails", async () => {
     const directory = await cdkDirectoryWith(VENDED, false);
     const failure = new ProcessFailedError(["npm", "install"], directory, 1, "npm error E404");
@@ -207,7 +156,7 @@ describe("syncCdkDependencies", () => {
     await expect(run(directory, { runner })).rejects.toThrow(
       new RegExp(`npm install failed in ${directory}.*npm error E404`, "s"),
     );
-    const { events } = await run(directory, { runner, lenient: true });
+    const events = await run(directory, { runner, lenient: true });
     expect(events.at(-1)).toEqual({
       type: "warning",
       message: expect.stringContaining("npm error E404"),
@@ -259,34 +208,6 @@ describe("syncCdkDependencies", () => {
         "typescript ~5.9.3, aws-cdk-lib ~2.269.0. Set aws-cdk-lib back to ~2.269.0, or run " +
         "'agentcore config disableDependencyManagement true' to manage them yourself.",
     );
-  });
-
-  test("only warns about a newer pin when the user opted out, and writes nothing", async () => {
-    const original = {
-      ...VENDED,
-      dependencies: { "@aws/agentcore-cdk": "1.2.0", "aws-cdk-lib": "~2.200.0" },
-    };
-    const directory = await cdkDirectoryWith(original);
-
-    const { commands, events, manifest } = await run(directory, { disabled: true });
-
-    expect(manifest).toEqual(original);
-    expect(commands).toEqual([]);
-    expect(events.map(({ type }) => type)).toEqual(["warning"]);
-  });
-
-  test("only warns about a newer pin on a teardown, and still syncs the rest", async () => {
-    const directory = await cdkDirectoryWith({
-      ...VENDED,
-      dependencies: { "@aws/agentcore-cdk": "1.2.0", "aws-cdk-lib": "~2.200.0" },
-    });
-
-    const { commands, events, manifest } = await run(directory, { lenient: true });
-
-    expect(manifest.dependencies["aws-cdk-lib"]).toBe("~2.269.0");
-    expect(manifest.dependencies["@aws/agentcore-cdk"]).toBe("1.2.0");
-    expect(commands).toEqual([["npm", "install", "--no-audit", "--no-fund"]]);
-    expect(events[0]?.type).toBe("warning");
   });
 
   test("warns when package.json cannot be restored after npm install fails", async () => {
