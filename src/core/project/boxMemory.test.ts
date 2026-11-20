@@ -182,7 +182,7 @@ describe("addBoxBedrockTarget", () => {
 
     for (const project of [mcp, openai, plain]) {
       expect(addBoxBedrockTarget(project)).toEqual([]);
-      expect(boxBedrockPolicy(project)).toBeUndefined();
+      expect(boxBedrockPolicy(project, "us-west-2")).toBeUndefined();
     }
   });
 
@@ -196,18 +196,34 @@ describe("addBoxBedrockTarget", () => {
     expect(gateway(project).additionalPolicies).toBeUndefined();
   });
 
-  test("grants the gateway role the model invoke actions in any region", () => {
-    expect(boxBedrockPolicy(spec())).toEqual({
+  test("grants the gateway role the model invoke actions in the build region, and other regions only through a profile there", () => {
+    const actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+    expect(boxBedrockPolicy(spec(), "eu-central-1")).toEqual({
       Version: "2012-10-17",
       Statement: [
         {
-          Sid: "BoxedAgentModelCallsThroughGateway",
+          Sid: "BoxedAgentInferenceProfilesThroughGateway",
           Effect: "Allow",
-          Action: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-          Resource: [
-            "arn:aws:bedrock:*:*:inference-profile/*",
-            "arn:aws:bedrock:*::foundation-model/*",
-          ],
+          Action: actions,
+          Resource: ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
+          Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+        },
+        {
+          Sid: "BoxedAgentModelsThroughGateway",
+          Effect: "Allow",
+          Action: actions,
+          Resource: ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
+        },
+        {
+          Sid: "BoxedAgentModelsThroughInferenceProfiles",
+          Effect: "Allow",
+          Action: actions,
+          Resource: ["arn:aws:bedrock:*::foundation-model/*"],
+          Condition: {
+            StringLike: {
+              "bedrock:InferenceProfileArn": "arn:aws:bedrock:eu-central-1:*:inference-profile/*",
+            },
+          },
         },
       ],
     });

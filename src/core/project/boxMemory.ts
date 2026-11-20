@@ -114,22 +114,41 @@ export function boxMemoryPolicy(
 
 /**
  * The IAM policy document for {@link BOX_BEDROCK_POLICY_FILE}, or undefined when no boxed runtime
- * calls a Bedrock model. A cross-region (`us.`, `global.`) inference profile invokes the model in
- * other regions, so both the profiles and the foundation models match any region.
+ * calls a Bedrock model. The gateway's `bedrock` target calls Bedrock in `region`, the region build
+ * builds for, so the role may invoke:
+ * - an inference profile of the project's own account in `region`;
+ * - a foundation model in `region`;
+ * - a foundation model in any region only through an inference profile in `region`, which is how
+ *   a cross-region (`us.`, `global.`) profile reaches the models of other regions.
  */
-export function boxBedrockPolicy(spec: ProjectSpec): Record<string, unknown> | undefined {
+export function boxBedrockPolicy(
+  spec: ProjectSpec,
+  region: string,
+): Record<string, unknown> | undefined {
   if (boxedRuntimesCallingBedrock(spec).length === 0) return undefined;
+  const profiles = `arn:aws:bedrock:${region}:*:inference-profile/*`;
   return {
     Version: "2012-10-17",
     Statement: [
       {
-        Sid: "BoxedAgentModelCallsThroughGateway",
+        Sid: "BoxedAgentInferenceProfilesThroughGateway",
         Effect: "Allow",
         Action: BEDROCK_INVOKE_ACTIONS,
-        Resource: [
-          "arn:aws:bedrock:*:*:inference-profile/*",
-          "arn:aws:bedrock:*::foundation-model/*",
-        ],
+        Resource: [profiles],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      },
+      {
+        Sid: "BoxedAgentModelsThroughGateway",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [`arn:aws:bedrock:${region}::foundation-model/*`],
+      },
+      {
+        Sid: "BoxedAgentModelsThroughInferenceProfiles",
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: ["arn:aws:bedrock:*::foundation-model/*"],
+        Condition: { StringLike: { "bedrock:InferenceProfileArn": profiles } },
       },
     ],
   };
