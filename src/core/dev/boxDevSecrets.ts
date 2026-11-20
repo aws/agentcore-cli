@@ -43,9 +43,9 @@ export function boxDevSecrets(
       const secret = BoxEgressSecretSchema.safeParse(tableOf(entry).secret);
       if (!secret.success || !secret.data.ref.startsWith(ENV_SCHEME)) continue;
       const variable = secret.data.ref.slice(ENV_SCHEME.length);
-      if (variable.trim() === "" || variable in found) continue;
+      if (variable.trim() === "" || Object.hasOwn(found, variable)) continue;
       const fromShell = shellValue(sources.env, variable, platform);
-      const fromFile = sources.envLocal[variable];
+      const fromFile = own(sources.envLocal, variable);
       const value = hasValue(fromShell) ? fromShell : fromFile;
       if (!hasValue(value)) {
         if (!missing.some((other) => other.variable === variable)) {
@@ -91,9 +91,15 @@ function shellValue(
   variable: string,
   platform: NodeJS.Platform,
 ): string | undefined {
-  if (env[variable] !== undefined || platform !== "win32") return env[variable];
+  const exact = own(env, variable);
+  if (exact !== undefined || platform !== "win32") return exact;
   const name = Object.keys(env).find((key) => key.toUpperCase() === variable.toUpperCase());
-  return name === undefined ? undefined : env[name];
+  return name === undefined ? undefined : own(env, name);
+}
+
+/** The value `env` itself holds for `name`, not one an Object property such as `constructor` gives. */
+function own(env: Readonly<Record<string, string | undefined>>, name: string): string | undefined {
+  return Object.hasOwn(env, name) ? env[name] : undefined;
 }
 
 function parseProfile(text: string): Record<string, unknown> {

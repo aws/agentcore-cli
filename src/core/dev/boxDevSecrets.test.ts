@@ -60,6 +60,18 @@ describe("boxDevSecrets", () => {
   test("returns nothing for a profile that does not parse; box run reports it", () => {
     expect(fromShell("[egress\n", {})).toEqual({ env: {}, missing: [], shadowed: [] });
   });
+
+  test("treats a variable named like an Object property as any other", () => {
+    // `in` would find `constructor` on the prototype and skip it with no value and no warning.
+    const profile =
+      '[egress.odd]\ndestinations = ["odd.example.com"]\nsecret.ref = "env://constructor"\n';
+    expect(fromShell(profile, { constructor: "k" } as NodeJS.ProcessEnv).env).toEqual({
+      constructor: "k",
+    });
+    expect(fromShell(profile, {}).missing).toEqual([
+      { variable: "constructor", table: "[egress.odd]" },
+    ]);
+  });
 });
 
 describe("boxDevSecrets picks each variable as build does", () => {
