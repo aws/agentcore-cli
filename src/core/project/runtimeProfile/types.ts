@@ -27,8 +27,8 @@ export const RUNTIME_INPUTS = {
   codeDir: "${{ inputs.code.dir }}",
   /** The Python of a CodeZip Runtime (@box/agentcore-codezip). */
   pythonPath: "${{ inputs.python.path }}",
-  /** The base prefix of that Python (@box/agentcore-codezip). */
-  pythonPrefix: "${{ inputs.python.prefix }}",
+  /** The standard library of that Python, with its native modules (@box/agentcore-codezip). */
+  pythonStdlib: "${{ inputs.python.stdlib }}",
 } as const;
 
 /**
@@ -48,8 +48,11 @@ export interface RuntimePaths {
   readonly runtimeCode: string;
   /** The Python on the Runtime, for the venv's Python: `${{ inputs.python.path }}` on CodeZip. */
   readonly runtimePython: string;
-  /** The prefix of that Python, for the uv Pythons: `${{ inputs.python.prefix }}` on CodeZip. */
-  readonly runtimePythonPrefix: string;
+  /**
+   * The standard library of that Python, with its native modules, for the uv Pythons:
+   * `${{ inputs.python.stdlib }}` on CodeZip.
+   */
+  readonly runtimePythonStdlib: string;
   /** The code folder as a message names it: `app/agent/`. */
   readonly shownCode: string;
 }

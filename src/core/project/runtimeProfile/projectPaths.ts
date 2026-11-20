@@ -7,7 +7,7 @@
  * | --- | --- |
  * | the venv's Python, `<code>/.venv/bin/python[3[.N]]` | `${{ inputs.python.path }}` |
  * | the venv, `<code>/.venv` | `${{ inputs.code.dir }}`, where the Runtime installs the dependencies |
- * | the uv Pythons, `${{ home }}/.local/share/uv/python` | `${{ inputs.python.prefix }}` |
+ * | the uv Pythons, `${{ home }}/.local/share/uv/python` | `${{ inputs.python.stdlib }}`, the standard library of the Runtime's Python |
  * | the code folder and each path in it, `<code>[/...]` | `${{ inputs.code.dir }}[/...]` |
  * | another path of the project, of the home folder, or in the venv | none: a {@link PathProblem} |
  */
@@ -127,7 +127,7 @@ export function moveProjectPath(
     .replace(new RegExp(`${venv}${PATH_END}`, "g"), () => paths.runtimeCode)
     .replace(
       new RegExp(`${literal(paths.localPythons)}${PATH_END}`, "g"),
-      () => paths.runtimePythonPrefix,
+      () => paths.runtimePythonStdlib,
     );
   if (new RegExp(`${venv}/`).test(moved)) return { problem: "venv" };
   const result = moved.replace(

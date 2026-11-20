@@ -81,7 +81,7 @@ describe("runtimePaths", () => {
       localPythons: "${{ home }}/.local/share/uv/python",
       runtimeCode: "${{ inputs.code.dir }}",
       runtimePython: "${{ inputs.python.path }}",
-      runtimePythonPrefix: "${{ inputs.python.prefix }}",
+      runtimePythonStdlib: "${{ inputs.python.stdlib }}",
       shownCode: "app/agent/",
     });
     expect(runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime)).toEqual(
