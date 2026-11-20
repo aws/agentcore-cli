@@ -183,8 +183,9 @@ printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env:
 Build and deploy run `box profile show .box/<runtime>/local/profile.toml --format json --full` in
 the project folder, with the `box` on your `PATH`, and turn the `box.toml` and `policy.dw` that Box
 resolves the profile to into the runtime's Box network. Every pack, option, and rule Box adds is
-already in them, so any pack works. They change nothing in `.box/<runtime>/local/`; they generate
-the Runtime profile and its resources under `.box/<runtime>/aws/`.
+already in them, so any pack works. They change nothing in `.box/<runtime>/local/`. They generate
+the Runtime profile, its policy files, its packs, and box under `.box/<runtime>/aws/`, and copy that
+folder into the `.box-dist/` folder of the code folder or of the build context.
 
 Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
 For a profile that names a pack or a plugin `box/<name>`, build stops and gives each `@box/<name>`
@@ -226,10 +227,13 @@ name.
     records to the runtime's own log group.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a path
-  of the project outside the code folder, a home path, a CodeZip program outside the code folder,
-  `network.contain_egress = false`, or a telemetry target that is not CloudWatch. With
-  `AGENTCORE_BOX_SECRETS_MANAGER=1`, build keeps each `otlp`, `langfuse`, or `langsmith` target
-  that it can send through AWS Secrets Manager, and stops only for the others. Each policy file
+  of the project outside the code folder, a home path (`${{ home }}`, `~`, `/Users`, `/home`), a
+  CodeZip program of the agent, a stdio server, or a tool outside the code folder, a CodeZip write
+  grant in the code folder, `network.contain_egress = false`, or a telemetry target that is not
+  CloudWatch. With `AGENTCORE_BOX_SECRETS_MANAGER=1`, build keeps each `otlp`, `langfuse`, or
+  `langsmith` target that it can send through AWS Secrets Manager, and stops only for the others.
+  The route of an `[egress]` entry with one host keeps the name of the entry, so a pack's own entry
+  of that name merges with it. Each policy file
   is copied beside the profile, byte for byte.
 
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
