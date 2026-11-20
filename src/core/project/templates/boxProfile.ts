@@ -1,6 +1,4 @@
-import { existsSync } from "node:fs";
 import { join, posix } from "node:path";
-import { ProjectStateError } from "../../../errors/errors";
 import {
   DEFAULT_EGRESS_BEDROCK_REGION,
   callsBedrockModel,
@@ -151,23 +149,6 @@ export function boxLocalProfileName(projectName: string, agentName: string): str
 /** An agent's local box profile at `projectRoot`. */
 export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
   return join(projectRoot, boxLocalProfileFile(agentName));
-}
-
-/** The one box profile of a project in the layout before each agent had its own. */
-const PROJECT_BOX_PROFILE_FILE = posix.join(BOX_ROOT, "profile.toml");
-
-/**
- * Throws when the project at `projectRoot` keeps `.box/profile.toml`, the one box profile of the
- * earlier layout, which no command reads now.
- */
-export function assertNoProjectBoxProfile(projectRoot: string): void {
-  if (!existsSync(join(projectRoot, ...PROJECT_BOX_PROFILE_FILE.split("/")))) return;
-  throw new ProjectStateError(
-    `${PROJECT_BOX_PROFILE_FILE} is the box profile of an earlier layout, and no command reads ` +
-      `it now: each agent has its own profile, ${boxLocalProfileFile("<runtime>")}. Move the ` +
-      "profile and its policy files into that folder of the runtime it runs, then remove " +
-      `${PROJECT_BOX_PROFILE_FILE}.`,
-  );
 }
 
 /**

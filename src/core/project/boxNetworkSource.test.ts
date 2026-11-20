@@ -272,22 +272,6 @@ describe("readBoxNetworks", () => {
     );
   });
 
-  test("refuses a project that keeps .box/profile.toml, and runs no box", async () => {
-    const root = await project([]);
-    await writeFile(join(root, ".box", "profile.toml"), "# earlier layout\n");
-    const box = new FakeBoxProfileResolver();
-
-    const read = readBoxNetworks(SPEC, root, box);
-
-    await expect(read).rejects.toBeInstanceOf(ProjectStateError);
-    await expect(read).rejects.toThrow(
-      ".box/profile.toml is the box profile of an earlier layout, and no command reads it now: " +
-        "each agent has its own profile, .box/<runtime>/local/profile.toml. Move the profile and " +
-        "its policy files into that folder of the runtime it runs, then remove .box/profile.toml.",
-    );
-    expect(box.calls).toEqual([]);
-  });
-
   test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {
     const root = await project(["policy.dw"]);
     await writeFile(

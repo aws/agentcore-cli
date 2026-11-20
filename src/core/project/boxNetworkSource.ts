@@ -14,7 +14,6 @@ import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
-  assertNoProjectBoxProfile,
   BOX_BEDROCK_PACK,
   boxLocalDir,
   boxLocalProfileFile,
@@ -47,8 +46,7 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
 /**
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
  * own local box profile as `resolver` resolves it for a build in `region`. A project with no box
- * runtime resolves nothing, and an agent with no local box profile resolves no profile. Throws for
- * a project that keeps the one box profile of the earlier layout.
+ * runtime resolves nothing. Throws, naming the file, for a box runtime with no local box profile.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,
@@ -58,7 +56,6 @@ export async function readBoxNetworks(
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
-  assertNoProjectBoxProfile(projectRoot);
   assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.

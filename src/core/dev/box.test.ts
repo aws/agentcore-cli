@@ -334,40 +334,6 @@ describe("BoxDevRunner", () => {
     expect(fallbackRuns).toEqual([]);
   });
 
-  test.each([
-    ["has no box profile of its own", false],
-    ["has its own box profile too", true],
-  ])(
-    "refuses a box runtime in a project that keeps .box/profile.toml, when it %s",
-    async (_label, profiled) => {
-      const { projectRoot, calls, fallbackRuns, runner } = await scene(profiled);
-      await mkdir(join(projectRoot, ".box"), { recursive: true });
-      await writeFile(join(projectRoot, ".box", "profile.toml"), PROFILE);
-
-      const run = collect(runner.run(input(projectRoot, 8080, "HTTP", "start.py")));
-
-      await expect(run).rejects.toBeInstanceOf(ProjectStateError);
-      await expect(run).rejects.toThrow(
-        ".box/profile.toml is the box profile of an earlier layout, and no command reads it " +
-          "now: each agent has its own profile, .box/<runtime>/local/profile.toml.",
-      );
-      expect(calls).toEqual([]);
-      expect(fallbackRuns).toEqual([]);
-    },
-  );
-
-  test("runs a runtime with no box.version the usual way in a project that keeps .box/profile.toml", async () => {
-    const { projectRoot, fallbackRuns, runner } = await scene(false);
-    await mkdir(join(projectRoot, ".box"));
-    await writeFile(join(projectRoot, ".box", "profile.toml"), PROFILE);
-
-    await collect(
-      runner.run(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false)),
-    );
-
-    expect(fallbackRuns).toHaveLength(1);
-  });
-
   test("tells the user to run uv sync when the runtime has no .venv", async () => {
     const { projectRoot, calls, runner } = await scene(true);
     await rm(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
