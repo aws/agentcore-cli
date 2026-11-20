@@ -191,10 +191,17 @@ export const credentialsWriter: BoxNetworkWriter = {
   },
 };
 
+/**
+ * Each `env://` route of the networks once, by its name and its variable: two runtimes can read
+ * one credential from its own variable and from one other, and build copies the other's key.
+ */
 function uniqueRoutes(networks: readonly BoxNetwork[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];
   for (const route of networks.flatMap((network) => network.envRoutes)) {
-    if (!routes.some((other) => other.route === route.route)) routes.push(route);
+    const seen = routes.some(
+      (other) => other.route === route.route && other.variable === route.variable,
+    );
+    if (!seen) routes.push(route);
   }
   return routes;
 }
