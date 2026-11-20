@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.linuxOnly && '["Linux","Linux-arm64"]' || '["Linux","Linux-arm64","Windows","macOS"]') }}
+        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Linux-arm64","Windows","macOS"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
