@@ -99,6 +99,27 @@ const LEAVES_ON_RUNTIME = {
 };
 
 describe("the paths rule", () => {
+  test("keeps the code folder in the PYTHONPATH of [agent] and of a leaf on the Runtime Python, one time", () => {
+    const text = [
+      "[agent.env]",
+      'PYTHONPATH = "${{ workspace }}/app/agent/lib"',
+      "[mcp.notes]",
+      'type = "stdio"',
+      'command = ["${{ workspace }}/app/agent/.venv/bin/python3.15", "-m", "notes"]',
+      'env = { PYTHONPATH = "/opt/lib:${{ workspace }}/app/agent:${{ workspace }}/app/agent/.venv" }',
+    ].join("\n");
+
+    const { profile } = deriveRuntimeProfile(parse(text) as TomlTable, contextOf(text));
+
+    // The Runtime installs the dependencies in the code folder, so without it no import works.
+    expect(((profile.agent as TomlTable).env as TomlTable).PYTHONPATH).toBe(
+      "${{ inputs.code.dir }}/.box-dist/ffi:${{ inputs.code.dir }}/lib:${{ inputs.code.dir }}",
+    );
+    expect((((profile.mcp as TomlTable).notes as TomlTable).env as TomlTable).PYTHONPATH).toBe(
+      "${{ inputs.code.dir }}/.box-dist/ffi:/opt/lib:${{ inputs.code.dir }}",
+    );
+  });
+
   test("leaves out a deny entry on the venv or in it, with a warning, and keeps deny_write on the venv", () => {
     const text = [
       "[agent.filesystem]",
