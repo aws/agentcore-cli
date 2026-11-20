@@ -781,6 +781,9 @@ export class EvalClient implements CoreEvalClient {
     input: StartBatchEvaluationInput,
     options: CoreOptions,
   ): Promise<StartBatchEvaluationResponse> {
+    for (const [index, metadata] of (input.groundTruth ?? []).entries()) {
+      requireGroundTruthSessionId(metadata.sessionId, index, "sessionId");
+    }
     const dataSourceConfig = await this.dataSourceConfigForSource(input.source, options);
     return this.clients.data(toClientConfig(options)).send(
       new StartBatchEvaluationCommand({
@@ -908,10 +911,29 @@ export class EvalClient implements CoreEvalClient {
   }
 
   async evaluate(input: EvaluateInput, options: CoreOptions): Promise<EvaluateResult> {
+    const refsBySession = groupRefsBySession(input.groundTruth);
     const data = this.clients.data(toClientConfig(options));
     const control = this.clients.control(toClientConfig(options));
     const levels = await resolveEvaluatorLevels(input.evaluatorIds, control, options);
-    const refsBySession = groupRefsBySession(input.groundTruth);
+
+    // A reference is useful only if some evaluator will issue an Evaluate call
+    // for its session. TRACE and TOOL_CALL evaluators skip sessions with no IDs
+    // at that level, so warn for those as well as session IDs absent from traces.
+    const sessionsWithTargets = new Set<string>();
+    for (const evaluatorId of input.evaluatorIds) {
+      const level = levels.get(evaluatorId) ?? "SESSION";
+      for (const trace of input.traces) {
+        if (targetBatches(level, trace).length > 0) sessionsWithTargets.add(trace.sessionId);
+      }
+    }
+    const unusedReferenceSessions = [...refsBySession.keys()].filter(
+      (sessionId) => !sessionsWithTargets.has(sessionId),
+    );
+    if (unusedReferenceSessions.length > 0) {
+      this.logger.warn(
+        `ground-truth entries reference sessions not evaluated: ${unusedReferenceSessions.join(", ")}`,
+      );
+    }
 
     const results: EvaluationResultContent[] = [];
     // Sessions that actually produced Evaluate results — distinct from the sessions
@@ -2032,15 +2054,32 @@ function groupRefsBySession(
   groundTruth: EvaluationReferenceInput[] | undefined,
 ): Map<string, EvaluationReferenceInput[]> {
   const map = new Map<string, EvaluationReferenceInput[]>();
-  for (const ref of groundTruth ?? []) {
-    const sessionId =
+  for (const [index, ref] of (groundTruth ?? []).entries()) {
+    const rawSessionId =
       ref.context && "spanContext" in ref.context ? ref.context.spanContext?.sessionId : undefined;
-    if (!sessionId) continue;
+    const sessionId = requireGroundTruthSessionId(
+      rawSessionId,
+      index,
+      "context.spanContext.sessionId",
+    );
     const list = map.get(sessionId);
     if (list) list.push(ref);
     else map.set(sessionId, [ref]);
   }
   return map;
+}
+
+function requireGroundTruthSessionId(
+  sessionId: string | undefined,
+  index: number,
+  field: string,
+): string {
+  if (typeof sessionId !== "string" || sessionId.trim().length === 0) {
+    throw new InputValidationError(
+      `Invalid value for option '--ground-truth': entry ${index} is missing ${field}`,
+    );
+  }
+  return sessionId;
 }
 
 // targetBatches splits a session's evaluation targets into <=10-id Evaluate calls.
