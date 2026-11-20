@@ -132,6 +132,12 @@ const AWS_ENDPOINTS = [
     api: "lambda-url",
     service: "lambda",
   },
+  {
+    pattern:
+      /^[a-z0-9][a-z0-9-]*\.gateway\.bedrock-agentcore\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "gateway",
+    service: "bedrock-agentcore",
+  },
 ] as const;
 
 /** The API of an AWS endpoint that the gateway signs for. */
@@ -191,6 +197,17 @@ export function outboundAuthFor(
   if (!secret) return { ok: true, auth: { kind: "none" } };
   const [scheme, value = ""] = secret.ref.split("://", 2);
   if (scheme === "aws") {
+    if (awsEndpoint(host)?.api === "gateway") {
+      return {
+        ok: false,
+        code: "UNSIGNABLE_HOST",
+        reason:
+          `signs requests to ${host}, the host of an AgentCore gateway, with ${secret.ref}. ` +
+          "Build signs only for the gateways of this project, and it adds the route to each of " +
+          "them on AgentCore Runtime itself, as [mcp.<gateway name>], with the host that the " +
+          "deploy gives the gateway. Remove this entry. To call a gateway, add it to this project.",
+      };
+    }
     const signing = signingService(host);
     if (!signing) {
       return {

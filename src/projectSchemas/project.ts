@@ -181,6 +181,29 @@ export const ProjectSpecSchema = z
         });
       }
     }
+    // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
+    // a runtime belongs to that runtime, so no target of another gateway calls it.
+    for (const gateway of spec.agentCoreGateways) {
+      for (const target of gateway.targets) {
+        const reached = target.passthrough?.gateway;
+        if (reached === undefined) continue;
+        const named = spec.agentCoreGateways.find((other) => other.name === reached);
+        const problem =
+          named === undefined
+            ? "but the project has no gateway of that name"
+            : named === gateway
+              ? "which is its own gateway"
+              : named.boundRuntime !== undefined
+                ? `which is bound to the runtime "${named.boundRuntime}"`
+                : undefined;
+        if (problem === undefined) continue;
+        ctx.addIssue({
+          code: "custom",
+          message: `Target "${target.name}" of gateway "${gateway.name}" names the gateway "${reached}" in passthrough.gateway, ${problem}. Name a gateway of this project without boundRuntime`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
     // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
     // deployed gateway, so every command stops here and prints the entry to add back.
     if (isBoxProject(spec)) {

@@ -19,6 +19,7 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
+import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
 import {
   addBoxGatewayTargets,
   BOX_BEDROCK_POLICY_FILE,
@@ -242,11 +243,11 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
 };
 
 /**
- * Sets the build-owned targets of the network's Box gateway: a managed target that a host takes is
- * rewritten in place, every other managed target goes, a host whose managed target the gateway
- * lacks gets one at the end, and every target build does not manage stays. A host whose target
- * sends an API key credential that agentcore.json does not declare gets no target. Returns the
- * step messages.
+ * Sets the build-owned targets of the network's Box gateway: a managed target that a host or a
+ * gateway of the project takes is rewritten in place, every other managed target goes, a host or a
+ * gateway whose managed target the gateway lacks gets one at the end, and every target build does
+ * not manage stays. A host whose target sends an API key credential that agentcore.json does not
+ * declare gets no target. Returns the step messages.
  */
 function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const gateway = boxGatewayOf(spec, network.runtime);
@@ -262,18 +263,35 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const messages: string[] = [];
   const targets: AgentCoreGatewayTarget[] = [];
   const gatewayName = `'${gateway.name}'`;
+  const reached = network.projectGateways ?? [];
   for (const target of existing) {
     if (!isManagedTarget(target)) {
       targets.push(target);
       continue;
     }
+    const called = reached.find((candidate) => candidate.target === target.name);
+    if (called) {
+      const written = projectGatewayTargetFor(called, network.region);
+      if (!isDeepStrictEqual(written, target)) {
+        messages.push(
+          `updating gateway target '${target.name}' of ${gatewayName} for the gateway ` +
+            `'${called.name}'`,
+        );
+      }
+      targets.push(written);
+      continue;
+    }
     const host = sent.find((candidate) => candidate.target === target.name);
     if (!host) {
       if (unsent.some((candidate) => candidate.target === target.name)) continue;
-      const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+      const named = target.passthrough?.gateway;
+      const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
       messages.push(
-        `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
-          `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
+        named !== undefined
+          ? `removing gateway target '${target.name}' from ${gatewayName}: the boxed agent no ` +
+              `longer calls the gateway '${named}'`
+          : `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
+              `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
       );
       continue;
     }
@@ -289,6 +307,14 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     if (existing.some(({ name }) => name === host.target)) continue;
     targets.push(gatewayTargetFor(host));
     messages.push(`adding gateway target '${host.target}' to ${gatewayName} for ${host.authority}`);
+  }
+  for (const called of reached) {
+    if (existing.some(({ name }) => name === called.target)) continue;
+    targets.push(projectGatewayTargetFor(called, network.region));
+    messages.push(
+      `adding gateway target '${called.target}' to ${gatewayName}, for the boxed agent's calls ` +
+        `to the gateway '${called.name}'`,
+    );
   }
   for (const host of unsent) {
     const auth = undeclaredKey(spec, host)!;
@@ -442,7 +468,10 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
         const entry = spec.runtimes.find(({ name }) => name === runtime) ?? { name: runtime };
         return [
           { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
-          { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec, entry) },
+          {
+            path: `${dist}/${AGENTCORE_PACK_PATH}`,
+            text: renderAgentCorePack(spec, entry, network?.projectGateways),
+          },
           ...(kind === "codezip"
             ? [
                 {

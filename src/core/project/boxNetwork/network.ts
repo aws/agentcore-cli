@@ -31,6 +31,7 @@ import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
 import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
+import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import {
   MAX_GATEWAY_TARGETS,
@@ -118,6 +119,11 @@ export interface BoxNetwork {
   /** The `env://` route of each target that sends an API key, for the credentials writer. */
   readonly envRoutes: readonly BoxEnvRoute[];
   /**
+   * The gateways of the project that the agent calls through the Box gateway, each with its
+   * target; absent means none.
+   */
+  readonly projectGateways?: readonly BoxProjectGateway[];
+  /**
    * The policy files, relative to the agent's local box folder, to copy beside the AgentCore
    * Runtime profile.
    */
@@ -198,7 +204,8 @@ export function buildBoxNetwork(
     return { ...rest, reason: `${where.subject} ${reason}`, place: where.place };
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
-  const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
+  const reached = projectGatewaysOf(project.spec, project.runtime);
+  const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);
   const telemetry =
     parsed.profile.telemetry &&
@@ -213,6 +220,7 @@ export function buildBoxNetwork(
       region: project.region,
       gateway: { name: project.gateway, targets: project.targets },
       hosts: targets.hosts,
+      projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
       places: source.places,
     });
@@ -231,6 +239,7 @@ export function buildBoxNetwork(
     region: project.region,
     hosts: targets.hosts,
     envRoutes: envRoutesOf(targets.hosts),
+    projectGateways: reached.gateways,
     policyFiles: parsed.profile.policyFiles,
     ...(sent && { telemetry: sent }),
     ...(derived &&
@@ -249,6 +258,7 @@ export function buildBoxNetwork(
         );
       }),
       ...(telemetry?.warnings ?? []),
+      ...reached.warnings,
       ...(derived?.warnings ?? []),
     ],
     failures,
@@ -278,7 +288,7 @@ export function isManagedTarget(target: Pick<AgentCoreGatewayTarget, "name">): b
 
 /** The host map key of a passthrough target's endpoint, or `undefined` for another target. */
 function endpointKey(target: AgentCoreGatewayTarget): string | undefined {
-  const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+  const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
   return at ? hostKey(at.host, at.port) : undefined;
 }
 
@@ -327,6 +337,7 @@ function duplicateRule(
 function hostTargets(
   mapped: readonly MappedHost[],
   project: BoxNetworkProject,
+  gateways: readonly BoxProjectGateway[],
   located: (failure: ConversionFailure) => BoxNetworkFailure,
   profilePath: string,
 ): { hosts: BoxNetworkHost[]; failures: BoxNetworkFailure[] } {
@@ -450,6 +461,9 @@ function hostTargets(
   for (const target of existing) {
     if (!isManagedTarget(target)) owners.set(target.name, `the gateway target '${target.name}'`);
   }
+  for (const gateway of gateways) {
+    owners.set(gateway.target, `the target that build adds for the gateway '${gateway.name}'`);
+  }
   const describeHost = (host: MappedHost) =>
     host.entry ? `${entryLabel(host.entry)} for ${host.authority}` : `the host ${host.authority}`;
   for (const index of reused) owners.set(hosts[index]!.target!, describeHost(mapped[index]!));
@@ -474,13 +488,19 @@ function hostTargets(
 
   const served = hosts.filter((host) => host.target !== undefined).length;
   const kept = existing.filter((target) => !isManagedTarget(target) && !claimed.has(target.name));
-  if (served + kept.length > MAX_GATEWAY_TARGETS) {
+  const needed = served + gateways.length + kept.length;
+  if (needed > MAX_GATEWAY_TARGETS) {
+    const builds =
+      gateways.length === 0
+        ? `${served} for the hosts of the Box profile and`
+        : `${served} for the hosts of the Box profile, ${gateways.length} for the gateways of ` +
+          "the project, and";
     failures.push({
       code: "TOO_MANY_TARGETS",
       reason:
-        `The gateway '${project.gateway}' needs ${served + kept.length} targets, ${served} for ` +
-        `the hosts of the Box profile and ${kept.length} of your own, and a gateway can have at ` +
-        `most ${MAX_GATEWAY_TARGETS}. Remove hosts from the profile, or targets from the gateway.`,
+        `The gateway '${project.gateway}' needs ${needed} targets, ${builds} ${kept.length} of ` +
+        `your own, and a gateway can have at most ${MAX_GATEWAY_TARGETS}. Remove hosts from the ` +
+        "profile, or targets from the gateway.",
       place: profilePath,
     });
   }
@@ -514,7 +534,10 @@ function unmanagedShape(target: AgentCoreGatewayTarget): string | undefined {
   const { endpoint, protocolType, stickinessConfiguration } = target.passthrough;
   if (protocolType !== "CUSTOM") return `has protocolType ${protocolType}`;
   if (stickinessConfiguration) return "has a stickinessConfiguration";
-  if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(endpoint)) return `has the endpoint ${endpoint}`;
+  // A target that names a gateway of the project has no endpoint.
+  if (endpoint !== undefined && !/^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(endpoint)) {
+    return `has the endpoint ${endpoint}`;
+  }
   const auth = target.outboundAuth;
   const fields = auth ? Object.keys(auth).sort().join(",") : "";
   const shapes: Record<string, string[]> = {
@@ -540,7 +563,7 @@ function targetConflict(
   auth: BoxEgressAuth,
   profilePath: string,
 ): string | undefined {
-  const endpoint = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+  const endpoint = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
   const named = `The gateway target '${target.name}' for ${host.authority}`;
   if (target.passthrough?.protocolType !== "CUSTOM") {
     return (
@@ -650,13 +673,17 @@ export function boxGatewayIamWarnings(
         );
       case "lambda-url":
         return grants("lambda:InvokeFunctionUrl");
+      case "gateway":
+        return grants("bedrock-agentcore:InvokeGateway");
     }
   };
   const warnings: string[] = [];
   for (const target of gateway.targets) {
     const auth = target.outboundAuth;
     if (auth?.type !== "GATEWAY_IAM_ROLE" || !auth.service) continue;
-    const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+    // The CDK library grants the role InvokeGateway on the gateway that the target names.
+    if (target.passthrough?.gateway !== undefined) continue;
+    const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
     const endpoint = at && awsEndpoint(at.host);
     const host = at && hostKey(at.host, at.port);
     if (endpoint && host ? allows(endpoint.api, host) : holds(auth.service)) continue;
