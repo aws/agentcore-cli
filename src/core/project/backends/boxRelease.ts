@@ -47,7 +47,7 @@ export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases
 /**
  * The GitHub release page of {@link BOX_MINIMUM_VERSION}, which has a macOS build. A local box runs
  * only `agentcore dev` and the profile checks of build, so a box of this release or a later one
- * does, also when the pinned release has only the Linux arm64 build that ships to AgentCore Runtime.
+ * does, also when the pinned release has no build for the machine.
  */
 export const BOX_MINIMUM_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_MINIMUM_VERSION}`;
 

@@ -207,9 +207,9 @@ own box profile, `.box/<runtime>/local/profile.toml`; build and deploy stop with
 derives the AgentCore Runtime profile of each runtime from its local profile. box comes from the
 public GitHub release `v0.1.11-mquang.preview.9` of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
-is needed to download it. That release has only the Linux arm64 build that ships to AgentCore
-Runtime. For `agentcore dev` and the profile checks of `build` on macOS, install the macOS build of
-`v0.1.11-linux-preview.7`, or of a later release that has one.
+is needed to download it. When that release has no build for your machine, use the build of
+`v0.1.11-linux-preview.7`, or of a later release that has one, for `agentcore dev` and the profile
+checks of `build`.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. `bun scripts/bump-box-release.ts --box <version>`

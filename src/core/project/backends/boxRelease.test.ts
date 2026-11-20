@@ -260,7 +260,7 @@ describe("the pinned releases", () => {
   });
 
   test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.1.11-mquang.preview.9 has only the Linux arm64 build; 0.1.11-linux-preview.7 has macOS too.
+    // 0.1.11-linux-preview.7 is the first release that reads the profiles the CLI writes.
     expect(BOX_INSTALL_HINT).toBe(
       "Install box: download the build for your machine from " +
         `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
