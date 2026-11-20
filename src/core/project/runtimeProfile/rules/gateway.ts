@@ -22,15 +22,14 @@ import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway"
 import type { BoxHostSource, BoxNetworkHost } from "../../boxNetwork";
 import { BOX_EGRESS_TARGET_PREFIX } from "../../boxNetwork/egress";
 import { gatewayTargetFor } from "../../boxNetwork/projectSpec";
+import { isTable } from "../projectPaths";
 import {
+  RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
   type RuleResult,
   type RuntimeProfileContext,
   type TomlTable,
 } from "../types";
-
-/** The signer of each gateway backend: the AWS default credential chain, the execution role. */
-const RUNTIME_AWS_SIGNER = "aws://";
 
 type McpSource = Extract<BoxHostSource, { kind: "mcp" }>;
 
@@ -42,9 +41,6 @@ interface GatewayRoute {
   /** The HTTP MCP server of the Box network model that the target serves. */
   readonly server?: McpSource;
 }
-
-const isTable = (value: unknown): value is TomlTable =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const routes = gatewayRoutes(context);

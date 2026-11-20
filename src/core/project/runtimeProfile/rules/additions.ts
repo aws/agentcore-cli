@@ -23,15 +23,14 @@ import {
   BOX_BEDROCK_PACK,
   BOX_CODEZIP_DIST,
 } from "../../templates/boxProfile";
+import { isTable } from "../projectPaths";
 import {
+  RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
   type RuleResult,
   type RuntimeProfileContext,
   type TomlTable,
 } from "../types";
-
-/** The credential that signs an AWS call on AgentCore Runtime: the execution role. */
-export const RUNTIME_AWS_SIGNER = "aws://";
 
 /** The variable that tells the template's agent that it runs under `agentcore dev`. */
 const LOCAL_DEV = "LOCAL_DEV";
@@ -399,9 +398,6 @@ function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): u
   }
   return result;
 }
-
-const isTable = (value: unknown): value is TomlTable =>
-  typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date);
 
 /** `value` when it is a table, or an empty table. */
 const tableOf = (value: unknown): TomlTable => (isTable(value) ? value : {});
