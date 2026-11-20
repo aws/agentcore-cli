@@ -174,18 +174,17 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
 /**
  * The folder, from the project root, that box starts a run or a resolution of `runtime`'s local
  * profile in: the runtime's own code folder for a CodeZip runtime, from agentcore.json, so the
- * agent's grants reach no further than it, whatever the profile's comments say. The project root
- * ("") for a container runtime, whose profile describes the image's /app, and for a profile
- * written before box started in the code folder: its paths name that folder under the project root.
+ * agent's grants reach no further than it, whatever the profile says. The project root ("") for a
+ * container runtime, whose profile describes the image's /app.
  */
-export function boxStartFolder(
-  profileText: string,
-  runtime: { readonly build: string; readonly codeLocation: string },
-): string {
+export function boxStartFolder(runtime: {
+  readonly build: string;
+  readonly codeLocation: string;
+}): string {
   if (runtime.build !== "CodeZip") return "";
-  if (profileText.includes("${{ workspace }}/app/")) return "";
   return runtime.codeLocation.replace(/^\.\/+/, "").replace(/\/+$/, "");
 }
+
 /** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (

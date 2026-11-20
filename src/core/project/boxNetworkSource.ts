@@ -139,7 +139,7 @@ async function readResolvedPolicy(
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
-  const startFolder = boxStartFolder(text, runtime);
+  const startFolder = boxStartFolder(runtime);
   const resolved =
     forRegion === undefined
       ? await resolver.resolve(projectRoot, profileFile, startFolder)
