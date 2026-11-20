@@ -151,8 +151,10 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 Export `GITHUB_TOKEN` before build. Build reads it and writes its value into
 `agentcore/.env.local` under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`.
 On a later build it replaces that value when `GITHUB_TOKEN` holds a different key, as after a
-rotation, so deploy provisions the key `agentcore dev` uses. A build with `GITHUB_TOKEN` unset
-keeps the stored key.
+rotation, so deploy provisions the key `agentcore dev` uses. Build reads `GITHUB_TOKEN` as dev
+does: from your shell, or from `agentcore/.env.local` when the shell has none. So a
+`GITHUB_TOKEN` line in `agentcore/.env.local` replaces the stored key too, even with an older
+key; keep the key in one place. With `GITHUB_TOKEN` in neither, build keeps the stored key.
 
 ```
 cd "$DEMO/$PROJECT"

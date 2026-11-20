@@ -103,18 +103,23 @@ export class EnvLocalFile {
       lines.push(`${exported}${key}=${formatValue(encrypted[key] ?? "")}`);
       if (!updated.includes(key)) updated.push(key);
     }
+    // Keep the earliest snapshot, as removeKeys does, so rollback undoes this whole call even when
+    // insertIfNew, which snapshots the file it starts from, fails after the in-place write.
+    const snapshot = this.snapshot === undefined ? existing : this.snapshot;
     if (updated.length > 0) {
-      this.snapshot = existing;
+      this.snapshot = snapshot;
       await atomicWrite(this.path, await this.encryptContent(lines.join("\n")), {
         mode: SECRET_FILE_MODE,
       });
     }
-    const { written } = await this.insertIfNew(
-      entries.filter((entry) => !updated.includes(entry.key)),
-    );
-    // insertIfNew snapshots what this call wrote; rollback restores the file from before it.
-    if (updated.length > 0) this.snapshot = existing;
-    return { written, updated };
+    try {
+      const { written } = await this.insertIfNew(
+        entries.filter((entry) => !updated.includes(entry.key)),
+      );
+      return { written, updated };
+    } finally {
+      if (updated.length > 0) this.snapshot = snapshot;
+    }
   }
 
   /**
