@@ -632,6 +632,7 @@ export class FsProjectManager implements ProjectManager {
       );
     }
     yield* defaultLogTargetNotices(project.spec, project.spec.runtimes);
+    if (isBoxProject(project.spec)) yield* boxGatewayLogsWarnings(project.spec.agentCoreGateways);
     return project;
   }
 
@@ -1094,9 +1095,13 @@ export class FsProjectManager implements ProjectManager {
     }
     // After the write, so a failed write gives no notice for a runtime that was not written.
     if (input.resourceType === "runtime") {
+      const added = input.resourceConfig.name;
       yield* defaultLogTargetNotices(
         newProjectSpec,
-        newProjectSpec.runtimes.filter(({ name }) => name === input.resourceConfig.name),
+        newProjectSpec.runtimes.filter(({ name }) => name === added),
+      );
+      yield* boxGatewayLogsWarnings(
+        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
       );
     }
 
@@ -2374,6 +2379,28 @@ function isInside(path: string, dir: string): boolean {
     !relativePath.startsWith(`..${sep}`) &&
     !isAbsolute(relativePath)
   );
+}
+
+/** What the CLI tells the user about the `APPLICATION_LOGS` of a Box gateway that it writes. */
+export function boxGatewayLogsNotice(gatewayName: string): string {
+  return (
+    `the Box gateway '${gatewayName}' sends its APPLICATION_LOGS to CloudWatch Logs, which keeps ` +
+    "them for 90 days. They can hold the request and response bodies of its calls, prompts and " +
+    `completions included. To stop them, set "enableApplicationLogs": false on that gateway in ` +
+    "agentcore/agentcore.json"
+  );
+}
+
+/**
+ * A warning for each gateway of `gateways` that is a Box gateway and sends its `APPLICATION_LOGS`.
+ * Each command that writes a new Box gateway gives these warnings: `create` and `add runtime`.
+ */
+function boxGatewayLogsWarnings(
+  gateways: readonly { name: string; boundRuntime?: string; enableApplicationLogs?: boolean }[],
+): ProjectEvent[] {
+  return gateways
+    .filter((gateway) => isBoundGateway(gateway) && gateway.enableApplicationLogs)
+    .map((gateway) => ({ type: "warning", message: boxGatewayLogsNotice(gateway.name) }));
 }
 
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */
