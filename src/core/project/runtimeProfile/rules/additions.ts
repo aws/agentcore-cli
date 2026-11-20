@@ -8,7 +8,7 @@
  * | `[profile] name` | the project's name |
  * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
- * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region, the AWS stand-ins, and (CodeZip) the ffi `PYTHONPATH` come in; a value of the user stays |
+ * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) the ffi `PYTHONPATH` come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
  * | `[tool.<name>]` | a table of the template becomes its Runtime table, or goes when the Runtime has none; a table of the user stays |
@@ -32,6 +32,12 @@ import {
   type RuntimeProfileContext,
   type TomlTable,
 } from "../types";
+
+/** The variables of the region of the agent, which get the region of the Runtime. */
+const REGION_ENV_NAMES: ReadonlySet<string> = new Set(["AWS_REGION", "AWS_DEFAULT_REGION"]);
+
+/** The variable of a named AWS profile, which AgentCore Runtime does not have. */
+const AWS_PROFILE = "AWS_PROFILE";
 
 /** The variable that tells the template's agent that it runs under `agentcore dev`. */
 const LOCAL_DEV = "LOCAL_DEV";
@@ -145,14 +151,15 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const bedrock = Array.isArray(packs) && packs.includes(BOX_BEDROCK_PACK);
   const options = runtimeOptions(result.options, bedrock, context.region);
   if (options !== undefined) result.options = options;
-  result.agent = runtimeAgent(result.agent, bedrock, context);
+  const warnings: string[] = [];
+  result.agent = runtimeAgent(result.agent, bedrock, context, warnings);
   if (result.tool !== undefined) {
     const tool = runtimeTools(result.tool, context);
     if (tool === undefined) delete result.tool;
     else result.tool = tool;
   }
   result.telemetry = runtimeTelemetry(result.telemetry, context);
-  return { table: result, problems: [], warnings: [] };
+  return { table: result, problems: [], warnings };
 }
 
 /** The user's packs in their order, then each Runtime pack that they do not import. */
@@ -183,7 +190,12 @@ function runtimeOptions(options: unknown, bedrock: boolean, region: string): unk
 }
 
 /** `[agent]` with its command, env, filesystem, and ingress for the Runtime; other keys stay. */
-function runtimeAgent(agent: unknown, bedrock: boolean, context: RuntimeProfileContext): unknown {
+function runtimeAgent(
+  agent: unknown,
+  bedrock: boolean,
+  context: RuntimeProfileContext,
+  warnings: string[],
+): unknown {
   if (agent !== undefined && !isTable(agent)) return agent;
   const local: TomlTable = agent ?? {};
   const templateLocal = tableOf(context.template.local.agent);
@@ -200,6 +212,7 @@ function runtimeAgent(agent: unknown, bedrock: boolean, context: RuntimeProfileC
     tableOf(templateRuntime.env),
     bedrock,
     context,
+    warnings,
   );
   const filesystem = runtimeFilesystem(
     local.filesystem,
@@ -264,6 +277,7 @@ function runtimeEnv(
   templateRuntime: TomlTable,
   bedrock: boolean,
   context: RuntimeProfileContext,
+  warnings: string[],
 ): unknown {
   if (env !== undefined && !isTable(env)) return env;
   const local: TomlTable = env ?? {};
@@ -278,10 +292,30 @@ function runtimeEnv(
     else if (has(name)) result[name] = ofTemplate(name) ? value : local[name];
   }
   for (const [name, value] of Object.entries(added)) {
-    result[name] = has(name) ? local[name] : value;
+    // The region of the Runtime wins: the hosts that the profile routes are in that region.
+    result[name] = has(name) && !REGION_ENV_NAMES.has(name) ? local[name] : value;
+  }
+  for (const name of REGION_ENV_NAMES) {
+    if (!has(name) || sameValue(local[name], result[name])) continue;
+    warnings.push(
+      `[agent.env] ${name} is ${JSON.stringify(local[name])} in ${context.profileFile}. On ` +
+        "AgentCore Runtime the agent gets the region of the Runtime" +
+        (Object.hasOwn(result, name)
+          ? `, ${RUNTIME_INPUTS.awsRegion}`
+          : ` from ${BOX_BEDROCK_PACK}`) +
+        ", so build does not use this value.",
+    );
+  }
+  if (has(AWS_PROFILE)) {
+    warnings.push(
+      `[agent.env] ${AWS_PROFILE} is ${JSON.stringify(local[AWS_PROFILE])} in ` +
+        `${context.profileFile}. AgentCore Runtime has no AWS profiles: box signs each AWS call ` +
+        `with the execution role. Build does not send ${AWS_PROFILE} to the Runtime.`,
+    );
   }
   for (const [name, value] of Object.entries(local)) {
-    if (name === LOCAL_DEV || Object.hasOwn(result, name) || ofTemplate(name)) continue;
+    if (name === LOCAL_DEV || name === AWS_PROFILE || REGION_ENV_NAMES.has(name)) continue;
+    if (Object.hasOwn(result, name) || ofTemplate(name)) continue;
     result[name] = value;
   }
   if (context.paths.build === "CodeZip") {
