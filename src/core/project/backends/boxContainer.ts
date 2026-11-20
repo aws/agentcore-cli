@@ -110,8 +110,8 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime that runs in a box
- * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the box release its
- * `box.version` names, and what the runtime profile writer writes from the runtime's Box network
+ * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets `release`, the pinned box, and
+ * what the runtime profile writer writes from the runtime's Box network
  * model (the Runtime profile and a byte copy of each policy file it names). `.box/<name>/aws/`
  * gets only what the writer writes, for people to read. Returns the names of the runtimes it
  * staged.
@@ -119,7 +119,7 @@ export async function stageBoxImage(
 export async function stageBoxContainers(
   project: Project,
   networks: readonly BoxNetwork[],
-  releaseFor: (version: string | undefined) => Promise<BoxRelease>,
+  release: BoxRelease,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "Container" && runtimeRunsInBox(project.spec, runtime),
@@ -150,7 +150,6 @@ export async function stageBoxContainers(
     const folder = join(project.rootPath, ...dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
-    const release = await releaseFor(runtime.box?.version);
     await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     writeRenderedBoxFiles(project.rootPath, runtime.name, dist, filesOf(dist));

@@ -270,18 +270,3 @@ async function download(
     );
   }
 }
-
-/**
- * The box release that `version`, a runtime's `box.version`, names. It must be the pinned one,
- * BOX_RELEASE, whose checksums `boxRelease.json` pins: another box is untested with this CLI (box
- * 0.1.11-linux-preview.6, for one, refuses the `@box/` packs the CLI writes), and build cannot
- * see that, since it checks the profile with the box on PATH. No version means BOX_RELEASE.
- */
-export async function boxReleaseFor(version: string | undefined): Promise<BoxRelease> {
-  if (version === undefined || version === BOX_RELEASE.version) return BOX_RELEASE;
-  throw new InvalidEnvironmentError(
-    `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
-      `${BOX_RELEASE.version}, the one box it pins. Set box.version to ${BOX_RELEASE.version}, ` +
-      "then retry.",
-  );
-}

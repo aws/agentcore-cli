@@ -13,7 +13,7 @@ import type {
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
 import { runtimeRunsInBox } from "../templates/boxProfile";
-import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
+import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -244,17 +244,16 @@ export class CdkBackend implements ProjectBackend {
     // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
     // goes out when the download starts, not once staging ends.
     yield* eventsWhile(async (emit) => {
-      const box = async (version: string | undefined) => {
-        const release = await boxReleaseFor(version);
-        return resolveBoxLinuxBuild(this.processEnv, {
+      // Every box runtime ships the pinned box: build set each box.version to it.
+      const box = () =>
+        resolveBoxLinuxBuild(this.processEnv, {
           runner: this.runner,
-          release,
+          release: BOX_RELEASE,
           onDownload: (download) =>
             emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
         });
-      };
       await stageBoxCodeZip(project, boxNetworks, box);
-      await stageBoxContainers(project, boxNetworks, boxReleaseFor);
+      await stageBoxContainers(project, boxNetworks, BOX_RELEASE);
     });
   }
 

@@ -12,7 +12,6 @@ import {
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
   type BoxRelease,
-  boxReleaseFor,
   publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
@@ -208,26 +207,6 @@ describe("resolveBoxLinuxBuild from the box release", () => {
   });
 });
 
-describe("boxReleaseFor a runtime's box.version", () => {
-  test("is the pinned release for no version or the pinned one", async () => {
-    expect(await boxReleaseFor(undefined)).toBe(BOX_RELEASE);
-    expect(await boxReleaseFor(BOX_RELEASE.version)).toBe(BOX_RELEASE);
-  });
-
-  test.each(["0.1.11-linux-preview.6", "2.0.0"])(
-    "refuses %s, a box this CLI does not pin, and says to set the pinned one",
-    async (version) => {
-      await expect(boxReleaseFor(version)).rejects.toThrow(
-        new InvalidEnvironmentError(
-          `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
-            `${BOX_RELEASE.version}, the one box it pins. Set box.version to ` +
-            `${BOX_RELEASE.version}, then retry.`,
-        ),
-      );
-    },
-  );
-});
-
 describe("publishInstall", () => {
   /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
   async function folders(rootText?: string) {
@@ -273,7 +252,7 @@ describe("publishInstall", () => {
 });
 
 describe("the pinned releases", () => {
-  test("pins one box, with the asset of its own version and a SHA-256", () => {
+  test("pins one box: the asset of its own version, its SHA-256, and its release page", () => {
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );

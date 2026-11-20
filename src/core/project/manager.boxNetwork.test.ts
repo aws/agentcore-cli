@@ -13,6 +13,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -625,6 +626,38 @@ describe("build writes the Box network of the box profile", () => {
         ".box/agent_python_strands/local/profile.toml.",
     );
     expect(await text(root, SPEC)).toBe(spec);
+  });
+});
+
+describe("build sets box.version to the pinned box", () => {
+  // The box features and the profiles that the CLI writes change together, so a project created
+  // by an earlier CLI builds with the box this one ships, and agentcore.json says so.
+  test("updates a runtime's older box.version, and says so", async () => {
+    const { manager, root } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.runtimes[0].box = { version: "0.1.11-linux-preview.6" };
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toContain(
+      "updating box.version of runtime 'agent_python_strands' from 0.1.11-linux-preview.6 to " +
+        `${BOX_RELEASE.version}, the box this CLI ships`,
+    );
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual({
+      version: BOX_RELEASE.version,
+    });
+  });
+
+  test("leaves the pinned box.version as it is, with no message", async () => {
+    const { manager, root } = await strandsProject();
+    const before = JSON.parse(await text(root, SPEC)).runtimes[0].box;
+
+    const { steps } = await build(manager, root);
+
+    expect(before).toEqual({ version: BOX_RELEASE.version });
+    expect(steps.some((step) => step.startsWith("updating box.version"))).toBe(false);
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual(before);
   });
 });
 
