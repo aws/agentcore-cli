@@ -113,7 +113,6 @@ function contextOf(
     gateway: { name: GATEWAY, targets },
     hosts,
     telemetry: [],
-    policyFiles: [],
     places: profileKeyPlaces(text, PROFILE),
   });
 }
@@ -570,7 +569,6 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         gateway: { name: GATEWAY, targets },
         hosts: network.hosts,
         telemetry: [],
-        policyFiles: network.policyFiles,
         places: profileKeyPlaces(text, PROFILE),
       }),
     );

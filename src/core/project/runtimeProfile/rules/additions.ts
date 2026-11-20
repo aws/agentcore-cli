@@ -11,7 +11,7 @@
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) the ffi `PYTHONPATH` come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
- * | `[tool.<name>]` | a table of the template becomes its Runtime table, or goes when the Runtime has none; a table of the user stays |
+ * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  *
@@ -22,6 +22,7 @@ import {
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
   BOX_CODEZIP_DIST,
+  RUNTIME_LOGS_HEADERS_ENV,
 } from "../../templates/boxProfile";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { isTable } from "../projectPaths";
@@ -50,7 +51,7 @@ const CLOUDWATCH_KINDS: ReadonlySet<unknown> = new Set(["cloudwatch_logs", "clou
  * Stand-in AWS keys for boto3 in the box on AgentCore Runtime. They authenticate nothing: each AWS
  * route goes to the Box gateway, and box signs each call for it with the execution role.
  */
-export const RUNTIME_AWS_STAND_INS: Readonly<Record<string, string>> = {
+const RUNTIME_AWS_STAND_INS: Readonly<Record<string, string>> = {
   AWS_ACCESS_KEY_ID: "box-stand-in",
   AWS_SECRET_ACCESS_KEY: "box-stand-in",
 };
@@ -61,9 +62,6 @@ const RUNTIME_ENV_NAMES: ReadonlySet<string> = new Set([
   "AWS_DEFAULT_REGION",
   ...Object.keys(RUNTIME_AWS_STAND_INS),
 ]);
-
-/** The variable in which AgentCore Runtime names the runtime's own log group and log stream. */
-const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
 /**
  * The CloudWatch Logs target of a Runtime profile that has no `cloudwatch_logs` target: the
@@ -83,7 +81,7 @@ export const DEFAULT_TELEMETRY_TARGET = {
  * The Runtime's region in the agent's environment, from the @box/agentcore `aws.region` input.
  * @box/bedrock sets `AWS_REGION` itself, so the profile sets it only without that pack.
  */
-export function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
+function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   const region = RUNTIME_INPUTS.awsRegion;
   return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
 }
@@ -92,7 +90,7 @@ export function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
  * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
  * of the runtime set it to `true`, the Runtime profile gets no default log target.
  */
-export const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
+const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
 
 /** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
 export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
@@ -228,21 +226,17 @@ function runtimeAgent(
 }
 
 /**
- * `[tool]` for the Runtime. A `[tool.<name>]` of the template that the local profile keeps as the
- * template has it becomes the template's Runtime table, or goes when the Runtime has none: the
- * `deny_write` that a CodeZip template gives a tool of @box/base protects the local venv, and the
- * Runtime has no venv. Each other tool table stays. An empty `[tool]` goes.
+ * `[tool]` for the Runtime. A `[tool.<name>]` that the local profile keeps as the template writes
+ * it goes: the `deny_write` that a CodeZip template gives a tool of @box/base protects the local
+ * venv, and the Runtime has no venv. Each other tool table stays. An empty `[tool]` goes.
  */
 function runtimeTools(tool: unknown, context: RuntimeProfileContext): unknown {
   if (!isTable(tool)) return tool;
   const templateLocal = tableOf(context.template.local.tool);
-  const templateRuntime = tableOf(context.template.runtime.tool);
   const result: TomlTable = {};
   for (const [name, entry] of Object.entries(tool)) {
     if (!Object.hasOwn(templateLocal, name) || !sameValue(entry, templateLocal[name])) {
       result[name] = entry;
-    } else if (Object.hasOwn(templateRuntime, name)) {
-      result[name] = structuredClone(templateRuntime[name]);
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;

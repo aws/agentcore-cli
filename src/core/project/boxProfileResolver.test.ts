@@ -103,7 +103,8 @@ const PINNED =
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
  * with no secret, the route `keyed` with one, and {@link POLICY}, as box prints it, with HOME at
  * /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations of an open route into one
- * string, and later boxes give a list.
+ * string, and later boxes give a list. The first file is the output of preview.6, so its pack has
+ * the name of that release, box/base; the second has the name of later releases, @box/base.
  */
 const OPEN_ROUTES_SHOWN = Object.entries({
   "one string": readFileSync(

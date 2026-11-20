@@ -49,10 +49,10 @@ const BOX_CODE_ENV = "BOX_CODE";
  * The variable in which AgentCore Runtime names the runtime's own log group and log stream, as
  * `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
  */
-const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+export const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
 /** The pack of box that each box profile imports. */
-export const BOX_BASE_PACK = "@box/base";
+const BOX_BASE_PACK = "@box/base";
 
 /** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
 export const BOX_BEDROCK_PACK = "@box/bedrock";
@@ -142,7 +142,7 @@ export function boxLocalProfileFile(agentName: string): string {
 }
 
 /** The `[profile] name` of an agent's local box profile: the project's name, then the agent's. */
-export function boxLocalProfileName(projectName: string, agentName: string): string {
+function boxLocalProfileName(projectName: string, agentName: string): string {
   return `${projectName}-${agentName}`;
 }
 

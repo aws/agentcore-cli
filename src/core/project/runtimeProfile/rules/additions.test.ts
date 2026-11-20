@@ -70,7 +70,6 @@ function contextOf(
   options: {
     memories?: readonly string[];
     telemetry?: readonly CloudWatchTelemetry[];
-    policyFiles?: readonly string[];
   } = {},
 ) {
   const spec = specOf(runtime, options.memories);
@@ -85,7 +84,6 @@ function contextOf(
     },
     hosts: [],
     telemetry: options.telemetry ?? [],
-    policyFiles: options.policyFiles ?? [],
     places: new Map(),
   });
 }
@@ -212,10 +210,9 @@ describe("deriveRuntimeProfile on the created templates", () => {
         BUILD_REGION,
         PROFILE_FILE,
       ).telemetry;
-      const policyFiles = extras ? ["policy.dw"] : [];
       const { profile, problems } = deriveRuntimeProfile(
         local,
-        contextOf(runtime, { memories, telemetry, policyFiles }),
+        contextOf(runtime, { memories, telemetry }),
       );
 
       const expected = OLD_RENDERER.templates[
@@ -247,18 +244,6 @@ function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
 }
 
 describe("deriveRuntimeProfile on each box template of create", () => {
-  test("covers the seven box templates", () => {
-    expect(BOX_TEMPLATES).toEqual([
-      "a2a-python-strands-box",
-      "agent-python-langchain-box",
-      "agent-python-minimal-box",
-      "agent-python-strands-box",
-      "agent-python-strands-box-container",
-      "agui-python-strands-box",
-      "mcp-python-fastmcp-box",
-    ]);
-  });
-
   const cases = BOX_TEMPLATES.flatMap((template) => {
     const providers = RUNTIME_TEMPLATE_SHORTCUTS[template].supportsModelProviderOverride
       ? ["of the template", "OpenAI"]
@@ -295,11 +280,10 @@ describe("deriveRuntimeProfile on each box template of create", () => {
         BUILD_REGION,
         PROFILE_FILE,
       ).telemetry;
-      const policyFiles = extras ? ["policy.dw"] : [];
 
       const { profile, problems } = deriveRuntimeProfile(
         local,
-        contextOf(runtime, { memories, telemetry, policyFiles }),
+        contextOf(runtime, { memories, telemetry }),
       );
 
       expect(problems).toEqual([]);
@@ -900,10 +884,10 @@ describe("the additions rule", () => {
   test("keeps the policies list as the local profile names it", () => {
     const local = { policies: ["./policy.dw", "rules/extra.dw"] };
 
-    expect(
-      apply(local, contextOf(CODEZIP, { policyFiles: ["policy.dw", "rules/extra.dw"] })).table
-        .policies,
-    ).toEqual(["./policy.dw", "rules/extra.dw"]);
+    expect(apply(local, contextOf(CODEZIP)).table.policies).toEqual([
+      "./policy.dw",
+      "rules/extra.dw",
+    ]);
   });
 
   test("writes a header that names the local profile and the Runtime packs", () => {

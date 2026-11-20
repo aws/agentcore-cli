@@ -68,8 +68,6 @@ export interface RuntimeProfileContext {
   readonly hosts: readonly BoxNetworkHost[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */
   readonly telemetry: readonly CloudWatchTelemetry[];
-  /** The local profile's policy files, from its folder, which staging copies beside it. */
-  readonly policyFiles: readonly string[];
   readonly paths: RuntimePaths;
   /**
    * The profile that `agentcore create` writes for this runtime, `local`, and its Runtime form,

@@ -27,7 +27,7 @@ import type {
  * `gateway` and `additions` write Runtime values, which name only the Runtime's inputs. `paths`
  * runs last, so it moves each path that the user's own keys name, and no Runtime value.
  */
-export const RUNTIME_PROFILE_RULES: readonly {
+const RUNTIME_PROFILE_RULES: readonly {
   readonly name: string;
   readonly apply: RuntimeProfileRule;
 }[] = [

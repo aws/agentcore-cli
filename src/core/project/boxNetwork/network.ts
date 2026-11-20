@@ -207,7 +207,6 @@ export function buildBoxNetwork(
       gateway: { name: project.gateway, targets: project.targets },
       hosts: targets.hosts,
       telemetry: telemetry?.telemetry ?? [],
-      policyFiles: parsed.profile.policyFiles,
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
