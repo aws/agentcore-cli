@@ -459,24 +459,23 @@ describe("outbound auth", () => {
     ]);
   });
 
-  test("fails an entry named for a credential that another entry's variable takes", () => {
-    const shared = model(
-      "",
-      {
-        mirror: {
-          destinations: ["mirror.example.com"],
-          secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
-        },
-        github: GITHUB,
-      },
-      { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }] },
-    );
-    expect(shared.failures()).toEqual([["API_KEY_CREDENTIAL_SHARED", "github"]]);
-    expect(shared.lines()).toEqual([
-      ".box/agent/local/profile.toml:3:1  [egress.github] needs the API key credential 'github' for " +
-        "env://GITHUB_TOKEN, and [egress.mirror] takes that credential for " +
-        "env://AGENTCORE_CREDENTIAL_GITHUB. One credential holds one key. Rename the entry.",
-    ]);
+  test("takes one credential for its own variable and for one other variable, which build copies to it", () => {
+    const github = { authorizerType: "ApiKeyCredentialProvider", name: "github" } as const;
+    const mirror = {
+      destinations: ["mirror.example.com"],
+      secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
+    };
+    for (const egress of [
+      { mirror, github: GITHUB },
+      { github: GITHUB, mirror },
+    ]) {
+      const shared = model("", egress, { credentials: [github] });
+      expect(shared.failures()).toEqual([]);
+      expect(shared.network.hosts.map(({ outboundAuth }) => outboundAuth)).toMatchObject([
+        { kind: "apiKey", credentialName: "github" },
+        { kind: "apiKey", credentialName: "github" },
+      ]);
+    }
   });
 
   test("leaves an env:// entry that cannot name an API key credential to the credentials writer", () => {

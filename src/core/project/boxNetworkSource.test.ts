@@ -237,6 +237,36 @@ describe("readBoxNetworks", () => {
     );
   });
 
+  test("takes the credential of another runtime for the credential's own variable", async () => {
+    const root = await project([]);
+    const profiles: Record<string, { variable: string; host: string }> = {
+      ".box/agent/local/profile.toml": { variable: "GITHUB_TOKEN", host: "api.github.com" },
+      ".box/second/local/profile.toml": {
+        variable: "AGENTCORE_CREDENTIAL_GITHUB",
+        host: "uploads.github.com",
+      },
+    };
+    for (const [file, { variable, host }] of Object.entries(profiles)) {
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(
+        join(root, file),
+        `[egress.github]\ndestinations = ["${host}"]\nsecret.ref = "env://${variable}"\n`,
+      );
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        const { variable, host } = profiles[profilePath]!;
+        return boxShowOf({
+          egress: { github: { destinations: [host], secret: { ref: `env://${variable}` } } },
+        });
+      },
+    };
+
+    const networks = await readBoxNetworks(specWith("second"), root, resolver);
+
+    expect(networks.map(({ failures }) => failures)).toEqual([[], []]);
+  });
+
   test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {
     const root = await project(["policy.dw"]);
     await writeFile(

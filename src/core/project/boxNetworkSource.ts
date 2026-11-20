@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
@@ -133,7 +134,10 @@ function sharedKeyFailures(
 ): BoxNetworkFailure[] {
   const failures: BoxNetworkFailure[] = [];
   for (const { outboundAuth: auth, sources } of network.hosts) {
-    if (auth.kind !== "apiKey") continue;
+    // Build copies the key of another variable to the credential's own, so it is the same key.
+    if (auth.kind !== "apiKey" || auth.variable === credentialEnvVarName(auth.credentialName)) {
+      continue;
+    }
     const holder = keys.get(auth.credentialName);
     if (holder === undefined) {
       keys.set(auth.credentialName, { variable: auth.variable, runtime: network.runtime });

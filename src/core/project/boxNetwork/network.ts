@@ -5,6 +5,7 @@
  * it.
  */
 import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
+import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -369,7 +370,11 @@ function hostTargets(
 
   const claimed = new Set<string>();
   const reused = new Set<number>();
-  /** The variable and the entry of each API key credential an entry takes. */
+  /**
+   * The variable and the entry of each API key credential an entry takes for a variable that is
+   * not the credential's own. Build copies the key of that variable to the credential's own, so an
+   * entry that reads the credential's own variable takes the same key.
+   */
   const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
@@ -380,17 +385,21 @@ function hostTargets(
       );
       if (result.ok) auth = result.auth;
       else failAt(host, result.code, result.reason);
-      const holder = auth.kind === "apiKey" ? keys.get(auth.credentialName) : undefined;
-      if (auth.kind === "apiKey" && holder && holder.variable !== auth.variable) {
+      const alias =
+        auth.kind === "apiKey" && auth.variable !== credentialEnvVarName(auth.credentialName)
+          ? auth
+          : undefined;
+      const holder = alias && keys.get(alias.credentialName);
+      if (alias && holder && holder.variable !== alias.variable) {
         failAt(
           host,
           "API_KEY_CREDENTIAL_SHARED",
-          `needs the API key credential '${auth.credentialName}' for env://${auth.variable}, ` +
+          `needs the API key credential '${alias.credentialName}' for env://${alias.variable}, ` +
             `and ${holder.entry} takes that credential for env://${holder.variable}. One ` +
             "credential holds one key. Rename the entry.",
         );
-      } else if (auth.kind === "apiKey" && !holder) {
-        keys.set(auth.credentialName, { variable: auth.variable, entry: entryLabel(entry) });
+      } else if (alias && !holder) {
+        keys.set(alias.credentialName, { variable: alias.variable, entry: entryLabel(entry) });
       }
     }
     let target: string | undefined;
