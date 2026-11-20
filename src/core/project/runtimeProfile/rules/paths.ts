@@ -44,17 +44,32 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
         withoutLostGrants(process.filesystem, key, paths, warnings),
       );
     }
-    if (!leaf || programOf(process) !== paths.runtimePython) continue;
+    // The additions rule gives [agent] its PYTHONPATH; a leaf gets one when it runs that Python.
+    if (leaf && programOf(process) !== paths.runtimePython) continue;
     const env = isTable(process.env) ? process.env : {};
     const own = env.PYTHONPATH;
-    const ffi = runtimeFfiPath(paths);
     if (own === undefined) {
-      process.env = { ...env, PYTHONPATH: runtimePythonPath(paths) };
-    } else if (typeof own === "string" && !own.split(":").includes(ffi)) {
-      process.env = { ...env, PYTHONPATH: `${ffi}:${own}` };
+      if (leaf) process.env = { ...env, PYTHONPATH: runtimePythonPath(paths) };
+    } else if (typeof own === "string") {
+      process.env = { ...env, PYTHONPATH: withRuntimePythonPath(own, paths, leaf) };
     }
   }
   return { table: moved, problems: [], warnings };
+}
+
+/**
+ * The `PYTHONPATH` `own` of a process that runs the Runtime's Python, with each entry one time in
+ * its order, and the code folder, where the Runtime installs the dependencies, at the end when
+ * `own` does not name it. For a leaf, the `_ctypes` folder that deploy stages comes first; the
+ * additions rule puts it first for `[agent]`.
+ */
+function withRuntimePythonPath(own: string, paths: RuntimePaths, leaf: boolean): string {
+  const ffi = runtimeFfiPath(paths);
+  const entries = [...new Set(own.split(":").filter((entry) => entry !== ""))];
+  const ordered = leaf ? [ffi, ...entries.filter((entry) => entry !== ffi)] : entries;
+  return [...ordered, ...(ordered.includes(paths.runtimeCode) ? [] : [paths.runtimeCode])].join(
+    ":",
+  );
 }
 
 /**
