@@ -490,14 +490,48 @@ describe("the additions rule", () => {
     test("keeps a template variable that the user changed, and leaves out one the user removed", () => {
       const local = createdProfile(CONTAINER);
       const { PYTHONUNBUFFERED: _removed, ...env } = agentOf(local).env;
-      agentOf(local).env = { ...env, PORT: "9999", AWS_DEFAULT_REGION: "eu-west-1" };
+      agentOf(local).env = { ...env, PORT: "9999" };
 
       const result = agentOf(apply(local, contextOf(CONTAINER)).table).env;
 
       expect(result.PORT).toBe("9999");
-      expect(result.AWS_DEFAULT_REGION).toBe("eu-west-1");
       expect(result).not.toHaveProperty("PYTHONUNBUFFERED");
       expect(result).not.toHaveProperty("PYTHONPATH");
+    });
+
+    test("gives the agent the region of the Runtime over a region of the user, and says so", () => {
+      const local = { packs: ["@box/base"], agent: { env: { AWS_REGION: "eu-west-1" } } };
+      const withBedrock = { ...local, packs: ["@box/base", "@box/bedrock"] };
+
+      const own = apply(local, contextOf(CODEZIP));
+      const bedrock = apply(withBedrock, contextOf(CODEZIP));
+
+      expect(agentOf(own.table).env.AWS_REGION).toBe("${{ inputs.aws.region }}");
+      expect(own.warnings).toEqual([
+        `[agent.env] AWS_REGION is "eu-west-1" in ${PROFILE_FILE}. On AgentCore Runtime the ` +
+          "agent gets the region of the Runtime, ${{ inputs.aws.region }}, so build does not use " +
+          "this value.",
+      ]);
+      // @box/bedrock sets AWS_REGION itself, so the profile does not.
+      expect(agentOf(bedrock.table).env).not.toHaveProperty("AWS_REGION");
+      expect(bedrock.warnings).toEqual([
+        `[agent.env] AWS_REGION is "eu-west-1" in ${PROFILE_FILE}. On AgentCore Runtime the ` +
+          "agent gets the region of the Runtime from @box/bedrock, so build does not use this value.",
+      ]);
+    });
+
+    test("sends no AWS_PROFILE to the Runtime, and says so", () => {
+      const { table, warnings } = apply(
+        { agent: { env: { AWS_PROFILE: "Admin" } } },
+        contextOf(CODEZIP),
+      );
+
+      expect(agentOf(table).env).not.toHaveProperty("AWS_PROFILE");
+      expect(warnings).toEqual([
+        `[agent.env] AWS_PROFILE is "Admin" in ${PROFILE_FILE}. AgentCore Runtime has no AWS ` +
+          "profiles: box signs each AWS call with the execution role. Build does not send " +
+          "AWS_PROFILE to the Runtime.",
+      ]);
     });
 
     test("sets AWS_REGION only when the profile imports no @box/bedrock", () => {
