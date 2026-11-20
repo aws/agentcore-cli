@@ -93,6 +93,8 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",
     );
+    // box 0.1.11-mquang.preview.9 runs the Runtime's Python with no ffi shim.
+    expect(existsSync(join(dist, "ffi"))).toBe(false);
     // The Runtime profile is the one build derived from the local profile.
     const { runtimeProfile, runtimeProfileHeader } = model([]);
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
