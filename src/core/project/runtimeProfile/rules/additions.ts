@@ -7,31 +7,36 @@
  * | `packs` | the user's packs in their order, then @box/agentcore, and @box/agentcore-codezip for CodeZip |
  * | `[profile] name` | the project's name |
  * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
- * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
+ * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
+ * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
+import { posix } from "node:path";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
   boxIngressPort,
   boxWorkloadPort,
+  otelOn,
   RUNTIME_LOGS_HEADERS_ENV,
 } from "../../templates/boxProfile";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
-import { isTable } from "../projectPaths";
+import type { CloudWatchTelemetry } from "../../boxNetwork";
+import { isTable, isVenvPython } from "../projectPaths";
 import { FILE_TELEMETRY_KIND } from "./refusals";
 import {
   RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
   type RuleResult,
+  type RuntimePaths,
   type RuntimeProfileContext,
   type TomlTable,
 } from "../types";
@@ -77,6 +82,30 @@ export const DEFAULT_TELEMETRY_TARGET = {
   include: ["deny", "permit", "trace"],
   secret: { ref: RUNTIME_AWS_SIGNER },
 } as const;
+
+/**
+ * The X-Ray target of a Runtime profile with OTEL on that has no `cloudwatch_traces` target: the
+ * agent's spans and box's own, in the Runtime's region, signed with the execution role.
+ */
+export const DEFAULT_TRACES_TARGET = {
+  kind: "cloudwatch_traces",
+  region: RUNTIME_INPUTS.awsRegion,
+  include: ["deny", "permit", "trace"],
+  secret: { ref: RUNTIME_AWS_SIGNER },
+} as const;
+
+/** The program that starts a Python command with the OpenTelemetry instrumentation. */
+const OTEL_INSTRUMENT = "opentelemetry-instrument";
+
+/** Whether `command` starts under opentelemetry-instrument, as its program or as the script of it. */
+function startsUnderOtel(command: unknown): boolean {
+  return (
+    Array.isArray(command) &&
+    command
+      .slice(0, 2)
+      .some((word) => typeof word === "string" && posix.basename(word) === OTEL_INSTRUMENT)
+  );
+}
 
 /**
  * The Runtime's region in the agent's environment, from the @box/agentcore `aws.region` input.
@@ -139,7 +168,41 @@ export function runtimeProfileHeader(
           `and log stream, which box reads from ${RUNTIME_LOGS_HEADERS_ENV} when the run starts. ` +
           `Add a cloudwatch_logs target to ${context.profileFile} to use another.`,
       ),
+    ...defaultTracesTargets(profile).map(
+      (name) =>
+        `[telemetry.${name}] is the default X-Ray target: the agent's spans and box's own, in the ` +
+        `Runtime's region. Add a cloudwatch_traces target to ${context.profileFile} to use ` +
+        "another, or set instrumentation.enableOtel to false in agentcore.json to send none.",
+    ),
   ];
+}
+
+/** The name of each {@link DEFAULT_TRACES_TARGET} in the `[telemetry]` of `profile`. */
+function defaultTracesTargets(profile: Readonly<TomlTable>): string[] {
+  return Object.entries(tableOf(profile.telemetry))
+    .filter(([, target]) => sameValue(target, DEFAULT_TRACES_TARGET))
+    .map(([name]) => name);
+}
+
+/**
+ * Each {@link DEFAULT_TRACES_TARGET} of `profile`, a Runtime profile, as a CloudWatch target in
+ * `region`, the region build builds for: the execution role needs a grant for it.
+ */
+export function defaultTracesTelemetry(
+  profile: Readonly<TomlTable>,
+  region: string,
+): CloudWatchTelemetry[] {
+  return defaultTracesTargets(profile).map((name) => ({
+    name,
+    kind: "cloudwatch_traces",
+    region,
+    include: [...DEFAULT_TRACES_TARGET.include],
+  }));
+}
+
+/** Whether the `[agent] command` of `profile`, a Runtime profile, starts under opentelemetry-instrument. */
+export function agentStartsUnderOtel(profile: Readonly<TomlTable>): boolean {
+  return startsUnderOtel(tableOf(profile.agent).command);
 }
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
@@ -202,9 +265,10 @@ function runtimeAgent(
   const templateRuntime = tableOf(context.template.runtime.agent);
   const result: TomlTable = { ...local };
   if (local.command !== undefined) {
-    result.command = sameValue(local.command, templateLocal.command)
+    const command = sameValue(local.command, templateLocal.command)
       ? structuredClone(templateRuntime.command)
       : withoutReload(local.command);
+    result.command = otelOn(context.runtime) ? underOtel(command, context.paths) : command;
   }
   result.env = runtimeEnv(
     local.env,
@@ -262,6 +326,18 @@ function withoutReload(command: unknown): unknown {
     result.push(word);
   }
   return result;
+}
+
+/**
+ * `command` under opentelemetry-instrument (`paths.otelInstrument`) when its program is the venv's
+ * Python, whose dependencies hold the script. A command that already starts under it, or that runs
+ * another program, stays.
+ */
+function underOtel(command: unknown, paths: RuntimePaths): unknown {
+  if (!Array.isArray(command) || startsUnderOtel(command)) return command;
+  const program: unknown = command[0];
+  if (typeof program !== "string" || !isVenvPython(program, paths)) return command;
+  return [...paths.otelInstrument, ...command];
 }
 
 /**
@@ -440,9 +516,11 @@ function onAllAddresses(entry: unknown): unknown {
  * names of `context.telemetry`) with its keys, signed with a bare `aws://`, in the deploy region
  * when it names none; one that box refuses goes; then each CloudWatch target of the
  * context that the local profile does not declare, as box resolves it. A target of another kind
- * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes last, as
+ * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes next, as
  * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
- * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}).
+ * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}). With OTEL on and no
+ * `cloudwatch_traces` target, {@link DEFAULT_TRACES_TARGET} comes last, as `agentcore_traces`, or
+ * as `agentcore_traces_default` when a target has that name.
  */
 function runtimeTelemetry(
   telemetry: unknown,
@@ -491,13 +569,19 @@ function runtimeTelemetry(
       secret: { ref: RUNTIME_AWS_SIGNER },
     };
   }
-  const logs = Object.entries(result).some(
-    ([name, entry]) =>
-      isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === "cloudwatch_logs",
-  );
-  if (!logs && !observabilityOff(context.runtime)) {
+  const has = (kind: string) =>
+    Object.entries(result).some(
+      ([name, entry]) => isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === kind,
+    );
+  if (!has("cloudwatch_logs") && !observabilityOff(context.runtime)) {
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
     result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
+  }
+  if (!has("cloudwatch_traces") && otelOn(context.runtime)) {
+    const name = Object.hasOwn(result, "agentcore_traces")
+      ? "agentcore_traces_default"
+      : "agentcore_traces";
+    result[name] = structuredClone(DEFAULT_TRACES_TARGET);
   }
   return result;
 }

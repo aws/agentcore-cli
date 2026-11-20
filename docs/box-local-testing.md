@@ -155,6 +155,12 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role.
+  - with `instrumentation.enableOtel` on, which is the default for a box template too, a command
+    of the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the
+    Python of the Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The
+    `@box/agentcore` pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES`
+    that the Runtime sets. When your `[agent.env]` sets one of these variables, box uses your value.
+    The pack sets no `OTEL_EXPORTER_OTLP_*` variable, because box sets each one.
 
   **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
   `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
@@ -166,6 +172,15 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
   in `agentcore.json`. To send them to another log group, add a `cloudwatch_logs` target to the
   local profile. `agentcore create` and `agentcore add runtime` give this notice for each box
   runtime.
+
+  **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the
+  Runtime profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its
+  own deny, permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the
+  execution role `xray:PutSpans` and `xray:PutTraceSegments` in
+  `agentcore/box-telemetry-policy-<runtime>.json`. To send the spans to a different target, add a
+  `cloudwatch_traces` target to the local profile. To send no spans, set
+  `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel` is on and the
+  agent does not start with `opentelemetry-instrument`, build gives a warning.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a
   required grant or a command path in the project outside the code folder, in the venv, or in a

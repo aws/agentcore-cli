@@ -2106,7 +2106,8 @@ describe("FsProjectManager.build", () => {
       },
     ]);
     // Build adds the Bedrock and Memory targets, and grants the Box gateway's role each, since the
-    // gateway signs the agent's calls with that role.
+    // gateway signs the agent's calls with that role. With OTEL on, it grants the execution role
+    // X-Ray for the default traces target of the Runtime profile.
     expect(events).toEqual([
       {
         type: "step",
@@ -2128,8 +2129,17 @@ describe("FsProjectManager.build", () => {
         message:
           "adding 'agentcore/box-memory-policy.json' to gateway 'agent-python-strands-box-box-egress' additionalPolicies in agentcore.json, so its role can call Memory",
       },
+      {
+        type: "step",
+        message:
+          "adding agentcore/box-telemetry-policy-agent_python_strands_box.json to additionalPolicies of 'agent_python_strands_box', so its box can send telemetry to CloudWatch",
+      },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
+      {
+        type: "step",
+        message: "writing agentcore/box-telemetry-policy-agent_python_strands_box.json",
+      },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // The zip carries box and the Runtime profile in the code folder's .box-dist.
