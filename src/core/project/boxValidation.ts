@@ -104,16 +104,22 @@ export function validateBoxRuntimes(spec: ProjectSpec): void {
 
 /**
  * Throws for a Box project deployed to a region where AgentCore Runtime has no platformVersion V2.
- * Box runs only on V2, so the runtimes could not be created there.
+ * Box runs only on V2, so the runtimes could not be created there. `target` is a configured target,
+ * or, with `provisioning`, the default target deploy is about to create in that region.
  */
 export function assertBoxRegionSupported(
   spec: ProjectSpec,
   target: { name: string; region: string },
+  { provisioning = false }: { provisioning?: boolean } = {},
 ): void {
   if (!isBoxProject(spec) || supportsRuntimeV2(target.region)) return;
+  const wayOut = provisioning
+    ? "Deploy with --region set to a region that has it, or add a target in another region to " +
+      "agentcore/aws-targets.json, then retry."
+    : `Change the region of target '${target.name}' in agentcore/aws-targets.json, or deploy ` +
+      "with --target to a target in another region, then retry.";
   throw new RegionUnsupportedFeatureError(
     `Cannot deploy Box project '${spec.name}' to target '${target.name}' in ${target.region}: ` +
-      `Box runs on AgentCore Runtime V2, which is not available in ${target.region}. ` +
-      `Set a target in another region in agentcore/aws-targets.json, then retry.`,
+      `Box runs on AgentCore Runtime V2, which is not available in ${target.region}. ${wayOut}`,
   );
 }

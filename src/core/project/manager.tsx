@@ -1795,6 +1795,12 @@ export class FsProjectManager implements ProjectManager {
     // `default` gets this treatment: inventing a *named* target would turn a
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
+      // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
+      assertBoxRegionSupported(
+        project.spec,
+        { name: DEFAULT_TARGET_NAME, region: input.region },
+        { provisioning: true },
+      );
       target = await this.provisionDefaultTarget(project, targetsPath, input.region);
       yield {
         type: "step",
