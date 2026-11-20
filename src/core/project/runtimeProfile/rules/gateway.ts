@@ -7,8 +7,8 @@
  *
  * | Local profile | Runtime profile |
  * | --- | --- |
- * | `[egress.<name>]` with one host that has a target | `[egress.<name>]`, the other keys kept, no `secret`, a backend to its target |
- * | `[egress.<name>]` with several hosts, or whose name a target of another host has | `[egress.<target>]` for each host with a target, the other keys kept, no `secret` |
+ * | `[egress.<name>]`, its first host with a target | `[egress.<name>]`, the other keys kept, no `secret`, a backend to its target |
+ * | `[egress.<name>]`, each other host with a target, or a name that a target of another host has | `[egress.<target>]`, the other keys kept, no `secret` |
  * | HTTP `[mcp.<name>]` | `[mcp.<name>]`, the other keys kept, only an `env://` secret |
  * | a target that no entry of the profile names | `[egress.<target>]`, or the `[mcp]` server it serves |
  * | an entry whose hosts the policy denies | removed; the Box network model warns for it |
@@ -141,8 +141,8 @@ function gatewayRoutes(context: RuntimeProfileContext): GatewayRoute[] {
 }
 
 /**
- * The key of the `[egress]` route of `route`: the name of the one entry whose one host the route
- * serves, else the name of the target. A pack that the profile imports keeps its own
+ * The key of the `[egress]` route of `route`: the name of its entry when the route serves the first
+ * host of one entry, else the name of the target. A pack that the profile imports keeps its own
  * `[egress.<name>]` on the Runtime, and box merges it with the route of that name, as
  * `[egress.bedrock]` of @box/bedrock does. A route under another name would be a second route to
  * the host, which box refuses. A target of the same name for another host keeps its name.
@@ -161,8 +161,10 @@ function routeKey(
   const entries = [...new Set(served.flatMap(entriesOf))];
   if (entries.length !== 1) return route.target;
   const name = entries[0]!;
-  const hosts = context.hosts.filter((host) => entriesOf(host).includes(name));
-  if (hosts.length !== 1) return route.target;
+  // The first host of the entry: a pack's own entry of that name merges with it, and the profile's
+  // destinations replace the pack's, so no host of the pack's entry keeps a second route.
+  const first = context.hosts.find((host) => entriesOf(host).includes(name));
+  if (first?.target !== route.target) return route.target;
   if (name !== route.target && routes.some(({ target }) => target === name)) return route.target;
   return name;
 }
