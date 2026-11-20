@@ -677,6 +677,16 @@ describe("the additions rule", () => {
     expect(moved.warnings).toEqual([]);
   });
 
+  test("gives no workload_port warning when the local first ingress sets none and the agent keeps the template command", () => {
+    const local = createdProfile(CODEZIP);
+    agentOf(local).ingress = [{ listen: "127.0.0.1:8080" }];
+
+    const { table, warnings } = apply(local, contextOf(CODEZIP));
+
+    expect(agentOf(table).ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 8081 }]);
+    expect(warnings).toEqual([]);
+  });
+
   test("gives the template's ingress its Runtime ingress, and puts each other on 0.0.0.0", () => {
     const local = createdProfile(CODEZIP);
     agentOf(local).ingress.push({ listen: "127.0.0.1:9100", workload_port: 9101 });

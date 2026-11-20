@@ -389,7 +389,7 @@ const PORT_ENV: Readonly<Record<string, string>> = {
  * variable of the template: the Runtime form of the template starts the agent on the same port as
  * the local form. Else it forwards to its own `workload_port`, where the agent of the user listens
  * under dev too. Each other ingress listens on `0.0.0.0` on its own port. A warning names each port
- * that changes.
+ * of the local profile that changes.
  */
 function runtimeIngress(
   ingress: unknown,
@@ -414,7 +414,8 @@ function runtimeIngress(
           `profile listens on ${listen}.`,
       );
     }
-    if (workload !== entry.workload_port) {
+    // A workload_port that the local profile does not set is no change of the user's.
+    if (entry.workload_port !== undefined && workload !== entry.workload_port) {
       warnings.push(
         `[[agent.ingress]] workload_port is ${String(entry.workload_port)} in ` +
           `${context.profileFile}, but the agent keeps the command and the port of the template, ` +
