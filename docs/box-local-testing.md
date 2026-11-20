@@ -133,7 +133,11 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
   only the targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them,
   changes them, and removes one when no host needs it. It never changes another target, also one
   whose name starts with `egress-`. For a gateway that the file does not list, which an older CLI
-  built, build takes each `egress-` target that has the shape it writes as its own, once.
+  built, build takes each `egress-` target that has the shape it writes as its own, once, and warns
+  for each other `egress-` target, which it keeps as yours. Commit
+  `agentcore/box-gateway-targets.json` with `agentcore.json`: in a clone without it, build goes
+  back to that `egress-` rule, and can take or give up the wrong targets. The `.gitignore` that
+  `agentcore create` writes does not exclude it.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
 - **Failures.** A wildcard host, a plain-HTTP-only host, an unsupported secret or pack, an
