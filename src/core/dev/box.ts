@@ -110,7 +110,7 @@ export class BoxDevRunner implements DevRunner {
     }
     // box starts in the folder the profile names, the runtime's own for a CodeZip profile, so the
     // agent reaches no other folder of the project; box finds the profile from there.
-    const startFolder = boxStartFolder(profileText);
+    const startFolder = boxStartFolder(profileText, input.runtime);
     const cwd =
       startFolder === ""
         ? input.projectRoot

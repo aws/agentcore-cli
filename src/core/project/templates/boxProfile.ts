@@ -171,17 +171,20 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
 }
 
-/** The header line of a CodeZip profile that names the folder `agentcore dev` starts box in. */
-const START_FOLDER_LINE =
-  /^# Written by `agentcore create` or `agentcore add runtime` for (\S+?): /m;
-
 /**
- * The folder, from the project root, that box starts a run or a resolution of the profile in: the
- * runtime's code folder for a CodeZip profile, so the agent's grants reach no further than it, and
- * the project root ("") for the container profile and for profiles written before.
+ * The folder, from the project root, that box starts a run or a resolution of `runtime`'s local
+ * profile in: the runtime's own code folder for a CodeZip runtime, from agentcore.json, so the
+ * agent's grants reach no further than it, whatever the profile's comments say. The project root
+ * ("") for a container runtime, whose profile describes the image's /app, and for a profile
+ * written before box started in the code folder: its paths name that folder under the project root.
  */
-export function boxStartFolder(profileText: string): string {
-  return START_FOLDER_LINE.exec(profileText)?.[1] ?? "";
+export function boxStartFolder(
+  profileText: string,
+  runtime: { readonly build: string; readonly codeLocation: string },
+): string {
+  if (runtime.build !== "CodeZip") return "";
+  if (profileText.includes("${{ workspace }}/app/")) return "";
+  return runtime.codeLocation.replace(/^\.\/+/, "").replace(/\/+$/, "");
 }
 /** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
@@ -341,8 +344,9 @@ function serve(
       env: { PORT: String(workloadPort) },
     };
   }
-  // The box starts the agent in the project folder, and boxy refuses a script path inside it,
-  // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
+  // box starts the agent in the folder it runs in (the runtime's own, locally), and refuses a
+  // script path inside it, so the module is found through PYTHONPATH. `agentcore dev` runs these
+  // without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
   // serve_a2a puts its listen port in the agent card's URL, and AGENTCORE_RUNTIME_URL takes
   // precedence. Locally, callers reach the agent only through box's ingress port, so the card names

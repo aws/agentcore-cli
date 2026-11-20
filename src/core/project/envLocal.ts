@@ -88,17 +88,20 @@ export class EnvLocalFile {
     }
     await this.enforcePermissions();
     const values = new Map(entries.map((entry) => [entry.key, entry.value ?? ""]));
+    const encrypted = await this.secrets.encrypt(Object.fromEntries(values));
     const updated: string[] = [];
     const lines: string[] = [];
     for (const line of existing.split("\n")) {
       const key = KEY_LINE.exec(line)?.[1];
-      if (key === undefined || !values.has(key) || updated.includes(key)) {
+      if (key === undefined || !values.has(key)) {
         lines.push(line);
         continue;
       }
-      const encrypted = await this.secrets.encrypt({ [key]: values.get(key)! });
-      lines.push(`${key}=${formatValue(encrypted[key])}`);
-      updated.push(key);
+      // Every line of the key gets the value: the parser keeps the last, so replacing only the
+      // first would leave an older one in force. An `export` line stays one.
+      const exported = /^\s*export\s+/.exec(line)?.[0] ?? "";
+      lines.push(`${exported}${key}=${formatValue(encrypted[key] ?? "")}`);
+      if (!updated.includes(key)) updated.push(key);
     }
     if (updated.length > 0) {
       this.snapshot = existing;

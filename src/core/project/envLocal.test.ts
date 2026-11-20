@@ -167,6 +167,27 @@ test("rollback restores the content removeKeys deleted", async () => {
   expect(await Bun.file(file.path).text()).toBe("# api key\nSECRET='v'\nOTHER=1\n");
 });
 
+test("upsert replaces every line of a key, so a later one cannot keep the old value", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "# old\nSECRET='v'\nOTHER=1\nSECRET='stale'\n");
+
+  await file.upsert([{ key: "SECRET", value: "w", comment: "c" }]);
+
+  expect(await Bun.file(file.path).text()).toStartWith("# old\nSECRET='w'\nOTHER=1\nSECRET='w'\n");
+  expect(await file.read()).toEqual({ SECRET: "w", OTHER: "1" });
+});
+
+test("upsert keeps an export line an export line", async () => {
+  const root = await tempRoot();
+  const file = new EnvLocalFile(root);
+  await Bun.write(file.path, "export SECRET='v'\n");
+
+  await file.upsert([{ key: "SECRET", value: "w", comment: "c" }]);
+
+  expect(await Bun.file(file.path).text()).toStartWith("export SECRET='w'\n");
+});
+
 test("upsert replaces a key's value under its own comment, and appends a new key", async () => {
   const root = await tempRoot();
   const file = new EnvLocalFile(root);
