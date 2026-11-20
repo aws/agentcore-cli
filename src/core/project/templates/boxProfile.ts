@@ -11,6 +11,7 @@ import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
 import { modelProviderCredentialName } from "./runtime";
+import { projectGatewayInputs, type BoxProjectGateway } from "../boxNetwork/projectGateways";
 
 /** Where a box template's venv gets its uv-managed Python, relative to the home folder. */
 const UV_PYTHON_HOME_DIR = ".local/share/uv/python";
@@ -72,6 +73,15 @@ export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pa
  */
 const GATEWAY_URL_PATTERN =
   "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*";
+
+/**
+ * The host of a gateway of the project, which the CDK library sets in `<prefix>_HOST`, and that
+ * gateway's URL in `<prefix>_URL`, with `/mcp` for an MCP gateway. Each input that reaches a route's
+ * destinations needs a pattern.
+ */
+const PROJECT_GATEWAY_HOST_PATTERN =
+  "[a-z0-9][-a-z0-9]*[.]gateway[.]bedrock-agentcore[.][a-z0-9-]+[.]amazonaws[.]com";
+const PROJECT_GATEWAY_URL_PATTERN = `https://${PROJECT_GATEWAY_HOST_PATTERN}(/mcp)?`;
 
 /** As @box/bedrock bounds `bedrock.region`. */
 const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
@@ -612,10 +622,16 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
  * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One
- * input per project memory carries its ID into the agent's environment. box finds the pack beside
- * its binary at {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
+ * input per project memory carries its ID into the agent's environment. Each gateway of the project
+ * that the agent calls through the Box gateway gets two inputs: its host, for the destination of
+ * its `[mcp]` server, and its URL, which the agent gets under the variable name that a runtime
+ * without a box reads. box finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build
+ * and deploy stage it there.
  */
-export function renderAgentCorePack(spec: ProjectSpec): string {
+export function renderAgentCorePack(
+  spec: ProjectSpec,
+  gateways: readonly BoxProjectGateway[] = [],
+): string {
   const memories = spec.memories ?? [];
   const memoryInputs = memories
     .map(
@@ -625,13 +641,33 @@ description = ${str(`The deployed '${memory.name}' Memory ID.`)}
 from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
     )
     .join("");
-  const memoryEnv = memories
-    .map(
-      (memory) =>
-        `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
-    )
-    .join("\n");
-  const agentEnv = memoryEnv ? `\n[agent.env]\n${memoryEnv}\n` : "";
+  const memoryEnv = memories.map(
+    (memory) =>
+      `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
+  );
+  const gatewayInputs = gateways
+    .map((gateway) => {
+      const inputs = projectGatewayInputs(gateway);
+      return `
+
+# The '${gateway.name}' gateway of the project, which the agent calls through the Box gateway.
+[inputs.${inputs.url}]
+description = ${str(`The deployed '${gateway.name}' gateway URL.`)}
+from = ${str(`env:${gateway.variablePrefix}_URL`)}
+pattern = ${str(PROJECT_GATEWAY_URL_PATTERN)}
+
+[inputs.${inputs.host}]
+description = ${str(`The deployed '${gateway.name}' gateway host.`)}
+from = ${str(`env:${gateway.variablePrefix}_HOST`)}
+pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
+    })
+    .join("");
+  const gatewayEnv = gateways.map(
+    (gateway) =>
+      `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
+  );
+  const env = [...memoryEnv, ...gatewayEnv].join("\n");
+  const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.
 [pack]
@@ -669,7 +705,7 @@ key = "x-aws-log-stream"
 [inputs.runtime.url]
 description = "The URL an A2A agent card advertises on the Runtime."
 from = "env:AGENTCORE_RUNTIME_URL"
-default = "http://localhost:9000/"${memoryInputs}
+default = "http://localhost:9000/"${memoryInputs}${gatewayInputs}
 ${agentEnv}`;
 }
 

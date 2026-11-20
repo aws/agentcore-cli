@@ -213,6 +213,14 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   `mcp:call`. A host the gateway already has a target for keeps that target. Build owns
   only the targets whose name starts with `egress-`: it adds them, changes them, and removes
   one when no host needs it. It never changes another target.
+- **The other gateways of the project.** A runtime without a box gets each gateway without
+  `boundRuntime` in `AGENTCORE_GATEWAY_<NAME>_URL`. For a box runtime, each of these gateways gets
+  the target `egress-gateway-<name>` on `<runtime>-box-egress`, with `passthrough.gateway` set to
+  the gateway's name. The L3 sets the target's endpoint to that gateway's URL, gives the Box
+  gateway's role `bedrock-agentcore:InvokeGateway` on that gateway only, and sets
+  `AGENTCORE_GATEWAY_<NAME>_URL` and `_HOST` on the runtime. A `PRIVATE_VPC` runtime gets none of
+  them. A `CUSTOM_JWT` gateway gets a warning and no target. You write nothing for them. A profile
+  entry that signs for a gateway host with `aws://` stops build.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
@@ -241,7 +249,12 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
-    target signs with the execution role.
+    target signs with the execution role;
+  - each other gateway of the project gets `[mcp.<gateway>]`, to the host that `@box/agentcore`
+    reads from `AGENTCORE_GATEWAY_<NAME>_HOST`, through its `egress-gateway-<name>` target. The agent
+    gets `AGENTCORE_GATEWAY_<NAME>_URL`, so the code that calls the gateway without a box works in
+    the box. Box permits each tool of the server, and a forbid rule of your policy still applies.
+    A server of your profile with the name of a gateway stops build.
 
   **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
   `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
@@ -270,7 +283,8 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
 
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
-  local L3 build, as in step 5.
+  local L3 build, as in step 5. A target with `passthrough.gateway` also needs an L3 that
+  accepts that field.
 
 ## 5. Point the generated CDK app at the local L3 tarball
 

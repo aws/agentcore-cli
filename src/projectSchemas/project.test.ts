@@ -555,6 +555,60 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
   });
 });
 
+describe("a passthrough target that names a gateway", () => {
+  const target = (passthrough: Record<string, unknown>) => ({
+    name: "egress-gateway-tools",
+    targetType: "passthrough",
+    passthrough: { protocolType: "CUSTOM", ...passthrough },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+  });
+  const messages = (gateways: unknown[]) => {
+    const result = ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      runtimes: [runtime],
+      agentCoreGateways: gateways,
+    });
+    return result.success ? [] : result.error.issues.map(({ message }) => message);
+  };
+  const front = (passthrough: Record<string, unknown>, fields: Record<string, unknown> = {}) => ({
+    name: "front",
+    authorizerType: "AWS_IAM",
+    protocolType: "None",
+    targets: [target(passthrough)],
+    ...fields,
+  });
+  const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
+
+  test("accepts a gateway of the project without boundRuntime", () => {
+    expect(messages([front({ gateway: "tools" }), TOOLS])).toEqual([]);
+  });
+
+  test.each([
+    [
+      "no gateway of that name",
+      [front({ gateway: "gone" })],
+      'names the gateway "gone" in passthrough.gateway, but the project has no gateway of that name',
+    ],
+    ["its own gateway", [front({ gateway: "front" })], "which is its own gateway"],
+    [
+      "a gateway bound to a runtime",
+      [front({ gateway: "tools" }), { ...TOOLS, boundRuntime: "agent" }],
+      'which is bound to the runtime "agent"',
+    ],
+  ])("refuses %s", (_, gateways, message) => {
+    expect(messages(gateways)).toContainEqual(expect.stringContaining(message));
+  });
+
+  test.each([
+    ["both endpoint and gateway", { endpoint: "https://api.example.com", gateway: "tools" }],
+    ["neither endpoint nor gateway", {}],
+  ])("refuses %s", (_, passthrough) => {
+    expect(messages([front(passthrough), TOOLS])).toContain(
+      "A passthrough configuration needs exactly one of endpoint and gateway.",
+    );
+  });
+});
+
 describe("Box project gateways", () => {
   const runtimeNamed = (name: string) => ({ ...runtime, name, codeLocation: `./${name}` });
   const parse = (runtimes: string[], gateways: unknown[]) =>
