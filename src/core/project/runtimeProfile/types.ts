@@ -11,6 +11,12 @@ import type { BoxNetworkHost, CloudWatchTelemetry, ThirdPartyTelemetry } from ".
 /** A TOML table as smol-toml parses it: a key holds a string, a number, a boolean, a list, or a table. */
 export type TomlTable = Record<string, unknown>;
 
+/**
+ * The credential that signs an AWS call on AgentCore Runtime, a gateway backend and a CloudWatch
+ * target: the AWS default credential chain, which is the execution role there.
+ */
+export const RUNTIME_AWS_SIGNER = "aws://";
+
 /** The inputs that the generated packs fill in on AgentCore Runtime, as a profile names them. */
 export const RUNTIME_INPUTS = {
   /** The runtime's Box gateway URL (@box/agentcore). */
