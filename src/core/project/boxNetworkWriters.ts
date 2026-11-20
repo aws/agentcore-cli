@@ -42,7 +42,9 @@ import {
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
 } from "./templates/boxProfile";
+import { isTable } from "./runtimeProfile/projectPaths";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+import { RUNTIME_INPUTS, type TomlTable } from "./runtimeProfile/types";
 import { ProjectStateError } from "../../errors/errors";
 
 /** Something exactly one writer owns. */
@@ -401,7 +403,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
       files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
         return [
-          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network) },
+          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
           { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) },
           ...(kind === "codezip"
             ? [
@@ -425,7 +427,11 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
  * The text of the AgentCore Runtime profile of `runtime`, which build derived from its local box
  * profile into the Box network model (`BoxNetwork.runtimeProfile`).
  */
-function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): string {
+function runtimeProfileText(
+  runtime: string,
+  network: BoxNetwork | undefined,
+  spec: ProjectSpec,
+): string {
   if (network?.runtimeProfile === undefined) {
     throw new ProjectStateError(
       `runtime "${runtime}" runs its agent in a box, but build has no AgentCore Runtime profile ` +
@@ -434,7 +440,45 @@ function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): s
         "Box gateway is in agentcore.json and that the profile is there, then retry.",
     );
   }
-  return serializeRuntimeProfile(network.runtimeProfile, network.runtimeProfileHeader);
+  return serializeRuntimeProfile(
+    withoutUnsentRoutes(network.runtimeProfile, network, spec),
+    network.runtimeProfileHeader,
+  );
+}
+
+/**
+ * `profile` with no `[egress]` route and no `[mcp]` server to the target of a host that sends an
+ * API key that agentcore.json holds no credential for: the gateway targets writer writes no such
+ * target (writeGatewayTargets), and says so.
+ */
+function withoutUnsentRoutes(
+  profile: Readonly<TomlTable>,
+  network: BoxNetwork,
+  spec: ProjectSpec,
+): TomlTable {
+  const unsent = new Set(
+    network.hosts.flatMap((host) =>
+      host.target !== undefined && undeclaredKey(spec, host) !== undefined
+        ? [`${RUNTIME_INPUTS.gatewayUrl}/${host.target}`]
+        : [],
+    ),
+  );
+  const result: TomlTable = { ...profile };
+  if (unsent.size === 0) return result;
+  const routesToUnsent = (entry: unknown) =>
+    isTable(entry) &&
+    Array.isArray(entry.backends) &&
+    entry.backends.some((backend) => isTable(backend) && unsent.has(backend.url as string));
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    const kept = Object.fromEntries(
+      Object.entries(table).filter(([, entry]) => !routesToUnsent(entry)),
+    );
+    if (Object.keys(kept).length > 0) result[key] = kept;
+    else delete result[key];
+  }
+  return result;
 }
 
 /** The writers that build and deploy run before synth, in order. */

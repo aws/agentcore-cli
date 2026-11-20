@@ -326,6 +326,12 @@ describe("build writes the Box network of the box profile", () => {
         "the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential 'github' " +
         "to hold it",
     );
+    // With no target, the Runtime profile has no route to api.github.com, as the old renderer.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock"]);
   });
 
   test("changes nothing on a second build", async () => {
