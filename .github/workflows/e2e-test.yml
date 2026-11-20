@@ -140,7 +140,9 @@ jobs:
           WORK=$(mktemp -d)
           curl -fsSL --retry 3 -o "${WORK}/${ASSET}" "${URL}/${ASSET}"
           curl -fsSL --retry 3 -o "${WORK}/SHA256SUMS.txt" "${URL}/SHA256SUMS.txt"
-          (cd "${WORK}" && grep " ${ASSET}\$" SHA256SUMS.txt | shasum -a 256 -c -)
+          # Linux has sha256sum, and macOS may have only shasum.
+          SUM=$(command -v sha256sum || echo "shasum -a 256")
+          (cd "${WORK}" && grep " ${ASSET}\$" SHA256SUMS.txt | $SUM -c -)
           # box reads its packs from resources/ beside it, so keep the release together.
           sudo mkdir -p /opt/box
           sudo tar -xzf "${WORK}/${ASSET}" -C /opt/box
@@ -162,22 +164,14 @@ jobs:
           npm install --global "@aws/agentcore@${NPM_VERSION}"
           agentcore --version
       - name: Run all E2E tests
-        if: inputs.tags == '' && matrix.name != 'Linux-arm64'
+        if: inputs.tags == ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e
       - name: Run tagged E2E tests
-        if: inputs.tags != '' && matrix.name != 'Linux-arm64'
+        if: inputs.tags != ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
           AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"
-      # The Linux x86_64 job runs every other test, so the Linux arm64 job runs only the Box tests.
-      - name: Run Box E2E tests
-        if: matrix.name == 'Linux-arm64' && (inputs.tags == '' || contains(inputs.tags, 'box'))
-        env:
-          AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
-          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
-          TAGS: ${{ inputs.tags || 'box' }}
-        run: bun run test:e2e -- --tagsFilter="$TAGS"

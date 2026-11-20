@@ -27,9 +27,9 @@ invoke each one on AgentCore Runtime, and run `agentcore dev` with one local inv
 are optional and need a `box` on your PATH: `create` checks for one for a CodeZip box template, and
 `build` and `deploy` run `box profile show` for every Box template, the container one too. Without
 one, they skip. box ships only arm64 builds, so in CI only the macOS runner (Apple silicon) and the
-Linux arm64 runner (`ubuntu-24.04-arm`, which runs only the Box tests) have one: each installs the
-box that `src/core/project/backends/boxRelease.json` pins. `create` also installs the agent's dependencies and the CDK app's, which `dev` and
-`deploy` use, so the tests don't pass `--skip-install`.
+Linux arm64 runner (`ubuntu-24.04-arm`) have one: each installs the box that
+`src/core/project/backends/boxRelease.json` pins. `create` also installs the agent's dependencies
+and the CDK app's, which `dev` and `deploy` use, so the tests don't pass `--skip-install`.
 
 The tests that deploy also need `AGENTCORE_E2E_BOX_CDK`: the pinned `@aws/agentcore-cdk` release
 cannot deploy a Box project yet. Set it to an `@aws/agentcore-cdk` version or a `file:` tarball
