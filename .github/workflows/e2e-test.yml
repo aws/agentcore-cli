@@ -131,21 +131,24 @@ jobs:
       - name: Install box
         if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         env:
-          TARGET: ${{ matrix.name == 'macOS' && 'aarch64-apple-darwin' || 'aarch64-unknown-linux-gnu' }}
+          # The build's key in boxRelease.json, which pins its archive and SHA-256.
+          BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
         run: |
-          REPO=$(jq -r .box.repo src/core/project/backends/boxRelease.json)
-          VER=$(jq -r .box.version src/core/project/backends/boxRelease.json)
-          ASSET="box-v${VER}-${TARGET}.tar.gz"
-          URL="https://github.com/${REPO}/releases/download/v${VER}"
+          PIN=src/core/project/backends/boxRelease.json
+          REPO=$(jq -er .box.repo "$PIN")
+          VER=$(jq -er .box.version "$PIN")
+          ASSET=$(jq -er ".box.${BUILD}.asset" "$PIN")
+          SHA=$(jq -er ".box.${BUILD}.sha256" "$PIN")
           WORK=$(mktemp -d)
-          curl -fsSL --retry 3 -o "${WORK}/${ASSET}" "${URL}/${ASSET}"
-          curl -fsSL --retry 3 -o "${WORK}/SHA256SUMS.txt" "${URL}/SHA256SUMS.txt"
+          curl -fsSL --retry 3 -o "${WORK}/${ASSET}" \
+            "https://github.com/${REPO}/releases/download/v${VER}/${ASSET}"
+          # Check against the pin in the repository, not a checksum file of the same release.
           # Linux has sha256sum, and macOS may have only shasum.
           SUM=$(command -v sha256sum || echo "shasum -a 256")
-          (cd "${WORK}" && grep " ${ASSET}\$" SHA256SUMS.txt | $SUM -c -)
+          echo "${SHA}  ${WORK}/${ASSET}" | $SUM -c -
           # box reads its packs from resources/ beside it, so keep the release together.
           sudo mkdir -p /opt/box
-          sudo tar -xzf "${WORK}/${ASSET}" -C /opt/box
+          sudo tar --no-same-owner -xzf "${WORK}/${ASSET}" -C /opt/box
           sudo ln -sf /opt/box/box /usr/local/bin/box
           box --version
       # Ubuntu 24.04 lets AppArmor stop an unprivileged process from making a user namespace, which

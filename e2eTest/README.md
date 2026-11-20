@@ -54,7 +54,8 @@ pins a shim for `PYTHON_3_14` only, so they fail on any machine.
 
 The `box-egress` test checks that box, under `agentcore dev`, lets the agent reach the host its
 profile allows (`checkip.amazonaws.com`) and blocks any other (`example.com`). It reaches public
-hosts, so the network can make it fail. It retries twice, and `--tagsFilter='box'` leaves it out:
+hosts, so the network can make it fail. It retries twice, and `--tagsFilter='box'` leaves it out.
+A full run includes it, so in CI it runs on the macOS and Linux arm64 runners:
 
 ```sh
 bun run test:e2e -- --tagsFilter='box-egress'
