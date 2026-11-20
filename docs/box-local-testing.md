@@ -116,8 +116,9 @@ printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env:
 
 Build and deploy read each runtime's own `.box/<runtime>/local/profile.toml` and the policy files
 it lists under `policies`, and turn them into that runtime's Box network. They change nothing in
-`.box/<runtime>/local/`; they generate the Runtime profile and its resources under
-`.box/<runtime>/aws/`.
+`.box/<runtime>/local/`. They stage the Runtime profile, its policy files, and box in the
+`.box-dist/` folder of the code folder or of the build context, and write a copy of the profile,
+the generated packs, and the policy files into `.box/<runtime>/aws/` for you to read.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
@@ -132,8 +133,8 @@ it lists under `policies`, and turn them into that runtime's Box network. They c
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** Build derives `.box/<runtime>/aws/profile.toml`, copied into
-  `.box-dist/`, from the local profile. Each key of the local profile stays, and build changes
+- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
+  profile. Each key of the local profile stays, and build changes
   only what must differ on AgentCore Runtime:
   - each `[egress]` host with a gateway target becomes one `[egress.<target>]` route to
     `<runtime>-box-egress`, and an HTTP `[mcp.<name>]` server gets the same gateway backend;
@@ -147,8 +148,11 @@ it lists under `policies`, and turn them into that runtime's Box network. They c
     records to the runtime's own log group.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a path
-  of the project outside the code folder, a home path, a CodeZip program outside the code folder,
-  `network.contain_egress = false`, or a telemetry target that is not CloudWatch. Each policy file
+  of the project outside the code folder, a home path (`${{ home }}`, `~`, `/Users`, `/home`), a
+  CodeZip program of the agent, a stdio server, or a tool outside the code folder, a CodeZip write
+  grant in the code folder, `network.contain_egress = false`, or a telemetry target that is not
+  CloudWatch. The route of an `[egress]` entry with one host keeps the name of the entry, so a
+  pack's own entry of that name merges with it. Each policy file
   is copied beside the profile, byte for byte.
 
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
