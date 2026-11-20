@@ -15,10 +15,8 @@ export function isChinaRegion(region: string): boolean {
 }
 
 /**
- * Regions where AgentCore Runtime offers no platformVersion V2. Box runs only on V2. The source
- * of truth is the `runtimeVersion` flag in YggdrasillControlPlaneServiceConfigCDK
- * (configuration/dynamic-configuration/feature-flags/prod-<region>.json): a region without it has
- * no V2. Remove a region here once V2 launches in it.
+ * Regions where AgentCore Runtime offers no platformVersion V2. Box runs only on V2. The list is
+ * the AgentCore Runtime team's; remove a region here once V2 launches in it.
  */
 const NO_RUNTIME_V2_REGIONS: ReadonlySet<string> = new Set(["ap-south-2", "us-west-1"]);
 /** Partitions with no V2 in any region: GovCloud, and the isolated (ADC) partitions. */
