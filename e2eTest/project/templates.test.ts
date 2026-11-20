@@ -75,6 +75,11 @@ const AGUI_RUN_PAYLOAD = {
  * deploy of every Box template run `box profile show`, so the Box tests skip without one.
  */
 const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
+
+/** Whether a container tool that `agentcore dev` uses (docker, podman or finch) runs from PATH. */
+const CONTAINER_TOOL_ON_PATH = ["docker", "podman", "finch"].some(
+  (tool) => spawnSync(tool, ["--version"], { stdio: "ignore" }).status === 0,
+);
 /**
  * The opt-in for the Box tests that deploy: an `@aws/agentcore-cdk` version or `file:` tarball
  * that deploys Box projects, which the pinned release does not yet. It replaces the pin in each
@@ -420,11 +425,10 @@ describe.skipIf(!BOX_ON_PATH)(
   { tags: [TAGS.BOX], sequential: true },
   () => {
     const cli = new CliRunner();
-    // The container template's dev needs a container tool, which a CI macOS runner cannot run
-    // (no nested virtualization), as py_strands_container notes. Linux arm64 runs it.
-    const noLocalContainers = process.env.CI === "true" && process.platform !== "linux";
+    // The container template's dev builds and runs its image, so it needs a container tool, which
+    // the CI macOS runner does not have (no nested virtualization).
     const templates = BOX_TEMPLATES.filter(
-      (t) => !(noLocalContainers && t.template === "agent-python-strands-box-container"),
+      (t) => CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container",
     );
 
     test.each(templates)(

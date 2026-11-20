@@ -39,8 +39,8 @@ that can, for example one packed from the `box-integration` branch of
 `agentcore/cdk`. Without it, as in CI, they skip.
 
 The `dev` tests also need a machine where `box run` can start its sandbox, and for the container
-template a container tool. CI skips the container template's `dev` test on macOS, whose runner
-cannot run one; the Linux arm64 runner runs it. Box listens on the protocol's fixed port (8080,
+template a container tool. The container template's `dev` test skips when no `docker`, `podman`
+or `finch` runs from PATH, as on the CI macOS runner; the Linux arm64 runner runs it. Box listens on the protocol's fixed port (8080,
 8000 or 9000), so the `dev` tests run one at a time and need those ports free:
 
 ```sh
