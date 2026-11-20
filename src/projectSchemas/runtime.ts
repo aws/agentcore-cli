@@ -1,6 +1,7 @@
 import {
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
+  PlatformVersionSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
   SECURITY_GROUP_ID_PATTERN,
@@ -311,6 +312,8 @@ export const ProjectRuntimeSchema = z
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
+    /** Removing this keeps a deployed runtime on its current version; set V1 to move back. */
+    platformVersion: PlatformVersionSchema.optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
     networkConfig: NetworkConfigSchema.optional(),

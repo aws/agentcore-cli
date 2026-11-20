@@ -196,6 +196,34 @@ Every protocol also shares these:
   to the current time on every ping. Change it only when the status changes,
   or idle sessions never time out and can use up your session quota.
 
+### Platform version V2
+
+`--platform-version V2` (`platformVersion` in `agentcore.json`) starts each
+instance from a snapshot of your initialized code, so cold starts stay fast
+as images and traffic grow. V1 is the default, and V2 is offered in
+[some Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html#runtime-platform-versions).
+On V2:
+
+- Startup work (imports, loading models, building clients) is captured once
+  in the snapshot and shared by every instance. Finish it within 120 seconds,
+  or creating the runtime fails its health check.
+- Produce anything that must differ per request, or can expire, in your
+  request handler: random values and IDs, the current time, the reference
+  point for elapsed time, and credentials.
+- Get random values from the operating system on each request
+  (`secrets`, `os.urandom()`, `uuid.uuid4()`). The `random` module is seeded
+  at startup, so restored instances repeat its sequence.
+- Every instance reports the same hostname and PID, so don't use either as
+  an instance or worker ID.
+- Creating or updating a V2 runtime takes several minutes. Keep
+  `platformVersion` set: removing it doesn't move the runtime back, and a
+  later replacement of the runtime would start on V1. Set `V1` to move back.
+- If deploy fails with "platformVersion V2 is not available for this
+  account", the target's Region, or your account, doesn't offer V2: deploy to
+  a supported Region or set `V1`.
+
+More: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-v2-optimize.html
+
 ## Dependencies: `pyproject.toml`
 
 Declare dependencies in `[project].dependencies`. That's the only place the

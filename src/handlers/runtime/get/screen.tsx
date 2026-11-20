@@ -67,6 +67,7 @@ export function RuntimeGetScreen(props: ScreenProps) {
         version: detail.data?.agentRuntimeVersion ?? "",
         protocol: detail.data?.protocolConfiguration?.serverProtocol ?? "-",
         network: detail.data?.networkConfiguration?.networkMode ?? "-",
+        platform: detail.data?.platformVersion ?? "-",
         arn: detail.data?.agentRuntimeArn ?? "",
       }}
       actions={

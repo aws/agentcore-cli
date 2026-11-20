@@ -68,6 +68,10 @@ in more detail.
   `context.session_id`) to tell conversations apart. Custom headers only
   arrive if they are named `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` and
   listed in `requestHeaderAllowlist`.
+- If `platformVersion` is `V2` in `agentcore/agentcore.json`, keep startup
+  code to work that is the same for every request, and create random values
+  (`secrets` or `os.urandom()`), timestamps, and credentials inside the
+  request handler.
 
 ## Must not
 

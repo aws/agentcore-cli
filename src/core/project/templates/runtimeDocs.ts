@@ -156,6 +156,7 @@ export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
     ...(infra.envVars?.length && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
+    ...(infra.platformVersion && { platformVersion: infra.platformVersion }),
     ...(infra.authorizerType && { authorizerType: infra.authorizerType }),
     ...(infra.authorizerConfiguration && {
       authorizerConfiguration: infra.authorizerConfiguration,
