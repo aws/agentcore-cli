@@ -295,6 +295,7 @@ function serve(
   workloadPort: number,
   reload: boolean,
   python = `${appDir}/.venv/bin/python`,
+  cardUrl = `http://localhost:${boxIngressPort(protocol)}/`,
 ): { command: string[]; env: Record<string, string> } {
   if (protocol === "HTTP") {
     return {
@@ -317,15 +318,13 @@ function serve(
   // The box starts the agent in the project folder, and boxy refuses a script path inside it,
   // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
-  // serve_a2a puts its listen port in the agent card's URL, but callers reach the agent only
-  // through box's ingress port, so the card names that port instead.
-  const cardUrl: Record<string, string> =
-    protocol === "A2A"
-      ? { AGENTCORE_RUNTIME_URL: `http://localhost:${boxIngressPort(protocol)}/` }
-      : {};
+  // serve_a2a puts its listen port in the agent card's URL, and AGENTCORE_RUNTIME_URL takes
+  // precedence. Locally, callers reach the agent only through box's ingress port, so the card names
+  // that port; on the Runtime, `cardUrl` is the Runtime's own value (see renderAgentCorePack).
+  const card: Record<string, string> = protocol === "A2A" ? { AGENTCORE_RUNTIME_URL: cardUrl } : {};
   return {
     command: [python, "-m", "main"],
-    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...cardUrl },
+    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...card },
   };
 }
 
@@ -397,7 +396,14 @@ function runtimeCodeZipRunner(protocol: Protocol, workloadPort: number): Runner 
   const code = "${{ inputs.code.dir }}";
   const python = "${{ inputs.python.path }}";
   const pythonPrefix = "${{ inputs.python.prefix }}";
-  const { command, env } = serve(protocol, code, workloadPort, false, python);
+  const { command, env } = serve(
+    protocol,
+    code,
+    workloadPort,
+    false,
+    python,
+    "${{ inputs.runtime.url }}",
+  );
   return {
     command,
     env: {
@@ -833,7 +839,14 @@ pattern = ${str(GATEWAY_URL_PATTERN)}
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
-pattern = ${str(AWS_REGION_PATTERN)}${memoryInputs}
+pattern = ${str(AWS_REGION_PATTERN)}
+
+# The URL an A2A agent card advertises. Outside a box, serve_a2a reads AGENTCORE_RUNTIME_URL itself
+# and otherwise names the contract port; the agent in the box gets the same value through this.
+[inputs.runtime.url]
+description = "The URL an A2A agent card advertises on the Runtime."
+from = "env:AGENTCORE_RUNTIME_URL"
+default = "http://localhost:9000/"${memoryInputs}
 ${agentEnv}`;
 }
 

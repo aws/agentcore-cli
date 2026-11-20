@@ -363,6 +363,19 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect(profile.agent.env.AWS_DEFAULT_REGION).toBe("${{ inputs.aws.region }}");
   });
 
+  test("gives an A2A agent card the Runtime's own URL, not the local ingress port", () => {
+    const spec = {
+      name: "V3Demo",
+      runtimes: [{ name: "agent", build: "CodeZip", protocol: "A2A", modelProvider: "Bedrock" }],
+      agentCoreGateways: [],
+    } as unknown as ProjectSpec;
+    const profile = parse(renderRuntimeBoxProfile(spec, spec.runtimes[0]!)) as Record<string, any>;
+
+    // serve_a2a gives AGENTCORE_RUNTIME_URL precedence, so localhost here would send clients that
+    // read the card back to themselves.
+    expect(profile.agent.env.AGENTCORE_RUNTIME_URL).toBe("${{ inputs.runtime.url }}");
+  });
+
   test("runs agent-python-strands from the zip with the Runtime's Python, read through the packs", () => {
     const text = renderBoxProfile(
       "V3Demo",
@@ -903,6 +916,13 @@ describe("renderAgentCorePack", () => {
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("eu-central-1")).toBe(true);
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-gov-west-1")).toBe(true);
     expect(new RegExp(`^${inputs.aws.region.pattern}$`).test("us-west-2; rm")).toBe(false);
+  });
+
+  test("declares the A2A card URL input from the Runtime's AGENTCORE_RUNTIME_URL", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime.url.from).toBe("env:AGENTCORE_RUNTIME_URL");
+    // What serve_a2a advertises outside a box when the Runtime sets none.
+    expect(inputs.runtime.url.default).toBe("http://localhost:9000/");
   });
 
   test("declares one input per memory and carries each ID into the agent's environment", () => {
