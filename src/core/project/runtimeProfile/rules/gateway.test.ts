@@ -183,13 +183,48 @@ describe("the gateway rule", () => {
     expect(table).toEqual(
       parse(
         'packs = ["@box/base"]\n' +
-          "[egress.egress-github]\n" +
+          // The route keeps the name of its entry; its backend names the target.
+          "[egress.github]\n" +
           'destinations = ["api.github.com"]\n' +
           'protocol = "http"\n' +
           'x-later-key = "kept"\n' +
-          backendText("egress.egress-github", "egress-github"),
+          backendText("egress.github", "egress-github"),
       ),
     );
+  });
+
+  test.each([
+    ["that a pack adds", 'packs = ["@box/base", "@box/anthropic"]\n'],
+    [
+      "that the profile changes",
+      'packs = ["@box/base", "@box/anthropic"]\n[egress.anthropic]\nsecret.ref = "env://MY_KEY"\n',
+    ],
+  ])(
+    "gives the route of an entry %s the name of the entry, so the table of the pack merges with it",
+    (_label, text) => {
+      const { table } = gateway(text, [
+        host("api.anthropic.com", entry("anthropic", "api.anthropic.com"), "egress-anthropic"),
+      ]);
+
+      // A route under the target's name beside the pack's own [egress.anthropic] would be a second
+      // route to api.anthropic.com, which box refuses.
+      expect(table.egress).toEqual(
+        parse(
+          '[egress.anthropic]\ndestinations = ["api.anthropic.com"]\n' +
+            backendText("egress.anthropic", "egress-anthropic"),
+        ).egress,
+      );
+    },
+  );
+
+  test("names a route after its target when a target of the entry's name serves another host", () => {
+    const { table } = gateway(
+      '[egress.orders]\ndestinations = ["api.example.com"]\n',
+      [host("api.example.com", entry("orders", "api.example.com"), "egress-orders")],
+      [passthrough("orders", "https://orders.example.com")],
+    );
+
+    expect(Object.keys(table.egress as TomlTable).sort()).toEqual(["egress-orders", "orders"]);
   });
 
   test("gives each host of an entry with several destinations its own route, signed for the Runtime's region and not the build region", () => {
@@ -404,6 +439,19 @@ function rendered(label: string): TomlTable {
   return { ...(egress && { egress }), ...(Object.keys(mcp).length > 0 && { mcp }) };
 }
 
+/**
+ * The `[egress]` routes of the old renderer under the keys that the gateway rule gives them: the
+ * old renderer named each route after its target, and the rule names the route of an entry with one
+ * host after the entry, so that a pack table of that name merges with it. The routes are the same.
+ */
+const withEntryKeys = (egress: unknown) =>
+  Object.fromEntries(
+    Object.entries(egress as TomlTable).map(([key, route]) => [
+      key === "egress-github" ? "github" : key,
+      route,
+    ]),
+  );
+
 describe("the gateway rule and the Runtime renderer it replaced", () => {
   const TEXT = [
     'packs = ["@box/base", "@box/bedrock"]',
@@ -551,10 +599,10 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
       "orders",
     ]);
     expect(Object.keys(http(old.mcp))).toEqual(["docs"]);
-    expect(derived.profile.egress).toEqual(old.egress);
+    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
     expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
     // The model that build keeps holds the same derived profile.
-    expect(network.runtimeProfile?.egress).toEqual(old.egress);
+    expect(network.runtimeProfile?.egress).toEqual(withEntryKeys(old.egress));
     expect(http(network.runtimeProfile?.mcp)).toEqual(http(old.mcp));
   });
 
@@ -565,7 +613,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
 
     expect(network.failures).toEqual([]);
     expect(first.agentCoreGateways[0]!.targets.map(({ name }) => name)).toContain("egress-github");
-    expect(derived.profile.egress).toEqual(old.egress);
+    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
     expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
   });
 
@@ -580,8 +628,10 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         backendText('egress."tools.v2"', "tools.v2"),
     ).egress as TomlTable;
     expect((old.egress as TomlTable)["tools.v2"]).toEqual(quoted["tools.v2"]);
-    expect(derived.profile.egress).toEqual(old.egress);
-    expect(parse(serializeRuntimeProfile(derived.profile)).egress as unknown).toEqual(old.egress);
+    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
+    expect(parse(serializeRuntimeProfile(derived.profile)).egress as unknown).toEqual(
+      withEntryKeys(old.egress),
+    );
   });
 
   test("give no second problem for an entry that the Box network model rejects, and no route", () => {
@@ -607,7 +657,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
       ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
     ]);
     expect(derived.problems).toEqual([]);
-    expect(derived.profile.egress).toEqual(old.egress);
+    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
     expect(derived.profile.mcp).toBeUndefined();
     expect(old.mcp).toBeUndefined();
   });

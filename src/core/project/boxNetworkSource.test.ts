@@ -474,7 +474,7 @@ describe("two routes of one profile to one host", () => {
       ([, route]) => route.destinations.includes("api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["egress-a", ["api.example.com"]],
+      ["a", ["api.example.com"]],
     ]);
   });
 });
