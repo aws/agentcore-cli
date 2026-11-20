@@ -3,8 +3,7 @@
  * Box gateway. Each passthrough target of that gateway, as build writes the gateway, gets one
  * route: the box sends the calls to the target's host to `${{ inputs.gateway.url }}/<target>`, and
  * signs them for the gateway in the Runtime's own region, `${{ inputs.aws.region }}`, with a bare
- * `aws://`, the execution role. The
- * gateway then calls the host with the target's own auth.
+ * `aws://`, the execution role. The gateway then calls the host with the target's own auth.
  *
  * | Local profile | Runtime profile |
  * | --- | --- |
@@ -22,7 +21,7 @@ import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway"
 import type { BoxNetworkSource, BoxNetworkHost } from "../../boxNetwork";
 import { BOX_EGRESS_TARGET_PREFIX } from "../../boxNetwork/egress";
 import { gatewayTargetFor } from "../../boxNetwork/projectSpec";
-import { isTable } from "../projectPaths";
+import { isHttpServer, isTable } from "../projectPaths";
 import {
   RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
@@ -82,7 +81,8 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     }
   }
 
-  // The two tables keep their place in the profile, and an empty one goes.
+  // Each table keeps its place when the profile has it, and comes last when it does not. An empty
+  // table goes.
   const result: TomlTable = { ...table, egress, mcp };
   if (Object.keys(egress).length === 0) delete result.egress;
   if (Object.keys(mcp).length === 0) delete result.mcp;
@@ -177,12 +177,6 @@ function routesOf(
 
 function mcpSourceOf(host: BoxNetworkHost): McpSource | undefined {
   return host.sources.find((source): source is McpSource => source.kind === "mcp");
-}
-
-/** Whether `entry` is an HTTP MCP server: it has no `command`, and it is `http` or names a host. */
-function isHttpServer(entry: Readonly<TomlTable>): boolean {
-  if ("command" in entry || entry.type === "stdio") return false;
-  return entry.type === "http" || "url" in entry || "destinations" in entry;
 }
 
 /**

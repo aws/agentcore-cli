@@ -29,7 +29,6 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
     gateway: { name: "agent-box-egress", targets: [] },
     hosts: [],
     telemetry: [],
-    policyFiles: [],
     places: profileKeyPlaces(text, PROFILE),
   });
 

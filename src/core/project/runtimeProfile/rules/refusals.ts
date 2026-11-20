@@ -150,7 +150,8 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       }
     }
     for (const { key, table: process, leaf } of processTables(table)) {
-      // The command of the template moves to the Runtime's Python. A command of the user stays.
+      // The command of the template starts the venv's Python, which moves to the Runtime's Python,
+      // so only a command of the user can start another program.
       const command = programOf(process);
       const searched = leaf && typeof process.program === "string" ? process.program : undefined;
       for (const [name, program] of [

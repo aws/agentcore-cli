@@ -3,7 +3,7 @@ import { parse } from "smol-toml";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { profileKeyPlaces, runtimePaths, runtimeProfileContext, runtimeTemplate } from "./context";
-import { deriveRuntimeProfile, RUNTIME_PROFILE_RULES } from "./derive";
+import { deriveRuntimeProfile } from "./derive";
 import { keyLabel } from "./projectPaths";
 import { serializeRuntimeProfile } from "./serialize";
 import type { TomlTable } from "./types";
@@ -29,7 +29,6 @@ const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
     gateway: { name: "agent-box-egress", targets: [] },
     hosts: [],
     telemetry: [],
-    policyFiles: [],
     places,
   });
 
@@ -43,15 +42,6 @@ const CARRIED: TomlTable = {
 };
 
 describe("deriveRuntimeProfile", () => {
-  test("runs the rules in their order: refusals, gateway, additions, then paths", () => {
-    expect(RUNTIME_PROFILE_RULES.map(({ name }) => name)).toEqual([
-      "refusals",
-      "gateway",
-      "additions",
-      "paths",
-    ]);
-  });
-
   test.each([CODEZIP, CONTAINER])(
     "carries each key that no rule changes as the local profile has it ($build)",
     (runtime) => {

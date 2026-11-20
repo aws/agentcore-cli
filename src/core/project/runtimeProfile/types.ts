@@ -75,8 +75,6 @@ export interface RuntimeProfileContext {
   readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
   /** Whether AGENTCORE_BOX_SECRETS_MANAGER is `1` for this build (boxTelemetrySecrets.ts). */
   readonly secretsManager?: boolean;
-  /** The local profile's policy files, from its folder, which staging copies beside it. */
-  readonly policyFiles: readonly string[];
   readonly paths: RuntimePaths;
   /**
    * The profile that `agentcore create` writes for this runtime, `local`, and its Runtime form,

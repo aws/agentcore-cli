@@ -39,6 +39,12 @@ const NOT_READ: ReadonlySet<string> = new Set([
   "telemetry",
 ]);
 
+/** Whether `entry` is an HTTP MCP server: it has no `command`, and it is `http` or names a host. */
+export function isHttpServer(entry: Readonly<TomlTable>): boolean {
+  if ("command" in entry || entry.type === "stdio") return false;
+  return entry.type === "http" || "url" in entry || "destinations" in entry;
+}
+
 /** A key as a message names it: `[mcp.notes] command`, `[agent.filesystem] read`, `packs`. */
 export function keyLabel(key: readonly string[]): string {
   if (key.length === 1) return key[0]!;
@@ -152,7 +158,7 @@ export function mapProjectPaths(
       result[name] = Object.fromEntries(
         Object.entries(value).map(([server, entry]) => [
           server,
-          isTable(entry) && entry.type === "http"
+          isTable(entry) && isHttpServer(entry)
             ? structuredClone(entry)
             : mapValue(entry, [name, server], false, move),
         ]),
@@ -184,7 +190,7 @@ function mapValue(
 }
 
 /** A table of a profile that starts one process: `[agent]`, a stdio `[mcp.<name>]`, a `[tool.<name>]`. */
-export interface ProcessTable {
+interface ProcessTable {
   /** `["agent"]`, `["mcp", "<name>"]`, or `["tool", "<name>"]`. */
   readonly key: readonly string[];
   readonly table: TomlTable;
@@ -199,7 +205,7 @@ export function processTables(profile: Readonly<TomlTable>): ProcessTable[] {
     if (name === "agent" && isTable(value)) tables.push({ key: [name], table: value, leaf: false });
     if ((name === "mcp" || name === "tool") && isTable(value)) {
       for (const [entry, table] of Object.entries(value)) {
-        if (!isTable(table) || (name === "mcp" && table.type === "http")) continue;
+        if (!isTable(table) || (name === "mcp" && isHttpServer(table))) continue;
         tables.push({ key: [name, entry], table, leaf: true });
       }
     }

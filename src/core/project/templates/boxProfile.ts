@@ -47,7 +47,7 @@ const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
 const BOX_CODE_ENV = "BOX_CODE";
 
 /** The pack of box that each box profile imports. */
-export const BOX_BASE_PACK = "@box/base";
+const BOX_BASE_PACK = "@box/base";
 
 /** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
 export const BOX_BEDROCK_PACK = "@box/bedrock";
@@ -143,7 +143,7 @@ export function boxLocalProfileFile(agentName: string): string {
 }
 
 /** The `[profile] name` of an agent's local box profile: the project's name, then the agent's. */
-export function boxLocalProfileName(projectName: string, agentName: string): string {
+function boxLocalProfileName(projectName: string, agentName: string): string {
   return `${projectName}-${agentName}`;
 }
 

@@ -32,7 +32,6 @@ const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
     hosts: [],
     telemetry: withDeployRegion(cloudWatchTelemetry(parse(text) as TomlTable), "us-west-2", PROFILE)
       .telemetry,
-    policyFiles: [],
     places: profileKeyPlaces(text, PROFILE),
   });
 

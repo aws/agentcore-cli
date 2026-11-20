@@ -240,7 +240,6 @@ export function buildBoxNetwork(
       telemetry: telemetry?.telemetry ?? [],
       thirdPartyTelemetry: thirdParty.targets,
       secretsManager: project.secretsManager ?? false,
-      policyFiles: parsed.profile.policyFiles,
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
