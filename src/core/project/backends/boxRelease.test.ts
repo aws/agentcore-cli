@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { gte } from "semver";
 import {
   BOX_INSTALL_HINT,
   BOX_MINIMUM_VERSION,
