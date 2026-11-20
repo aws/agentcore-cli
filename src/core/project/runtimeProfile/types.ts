@@ -86,6 +86,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_EGRESS_NOT_CONTAINED",
   /** A telemetry target that is not CloudWatch, which the Runtime cannot send to yet. */
   "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+  /** A CloudWatch telemetry target that box refuses when a run starts. */
+  "RUNTIME_TELEMETRY_REFUSED",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 

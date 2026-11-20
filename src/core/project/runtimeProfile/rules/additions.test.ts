@@ -130,6 +130,10 @@ const DEFAULT_TARGET = {
   secret: { ref: "aws://" },
 };
 
+/** The CloudWatch targets that box takes from the local profile `local`, as build gives them. */
+const acceptedTelemetry = (local: TomlTable) =>
+  withDeployRegion(cloudWatchTelemetry(local), BUILD_REGION, PROFILE_FILE).telemetry;
+
 /** The [telemetry] of a local profile for each case: none, a target of each kind, traces only. */
 const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
   none: undefined,
@@ -638,7 +642,9 @@ describe("the additions rule", () => {
         },
       };
 
-      expect(apply(local, contextOf(CODEZIP)).table.telemetry).toEqual({
+      expect(
+        apply(local, contextOf(CODEZIP, { telemetry: acceptedTelemetry(local) })).table.telemetry,
+      ).toEqual({
         logs: {
           ...(CLOUDWATCH.logs as TomlTable),
           batch: { max: 5 },
@@ -646,6 +652,20 @@ describe("the additions rule", () => {
         },
         "x-ray": { kind: "cloudwatch_traces", region: BUILD_REGION, secret: { ref: "aws://" } },
       });
+    });
+
+    test("copies no CloudWatch target that box refuses, as it grants it nothing, and adds the default target", () => {
+      const local = {
+        telemetry: {
+          logs: { ...(CLOUDWATCH.logs as TomlTable), log_stream: "a:b" },
+          "x-ray": { ...(CLOUDWATCH["x-ray"] as TomlTable), include: [] },
+        },
+      };
+
+      expect(acceptedTelemetry(local)).toEqual([]);
+      expect(
+        apply(local, contextOf(CODEZIP, { telemetry: acceptedTelemetry(local) })).table.telemetry,
+      ).toEqual({ agentcore: DEFAULT_TARGET });
     });
 
     test("signs a table with no kind that adds to the CloudWatch target of a pack", () => {
@@ -752,7 +772,9 @@ describe("the additions rule", () => {
     test("adds no default target when the profile has its own cloudwatch_logs target", () => {
       const local = { telemetry: { logs: CLOUDWATCH.logs } };
 
-      expect(apply(local, contextOf(CONTAINER)).table.telemetry).toEqual({
+      expect(
+        apply(local, contextOf(CONTAINER, { telemetry: acceptedTelemetry(local) })).table.telemetry,
+      ).toEqual({
         logs: { ...(CLOUDWATCH.logs as TomlTable), secret: { ref: "aws://" } },
       });
     });
@@ -776,7 +798,9 @@ describe("the additions rule", () => {
     test("adds the default target beside a cloudwatch_traces target, as it sends no logs", () => {
       const local = { telemetry: { "x-ray": CLOUDWATCH["x-ray"] } };
 
-      expect(apply(local, contextOf(CODEZIP)).table.telemetry).toEqual({
+      expect(
+        apply(local, contextOf(CODEZIP, { telemetry: acceptedTelemetry(local) })).table.telemetry,
+      ).toEqual({
         "x-ray": { kind: "cloudwatch_traces", region: BUILD_REGION, secret: { ref: "aws://" } },
         agentcore: DEFAULT_TARGET,
       });
@@ -786,8 +810,9 @@ describe("the additions rule", () => {
       ["a CloudWatch target", CLOUDWATCH["x-ray"]],
       ["a third-party target", { kind: "langfuse", secret: { ref: "env://LANGFUSE_AUTH" } }],
     ])("names the default target agentcore_default when %s is agentcore", (_label, target) => {
+      const local = { telemetry: { agentcore: target } };
       const telemetry = tableOf(
-        apply({ telemetry: { agentcore: target } }, contextOf(CODEZIP)).table,
+        apply(local, contextOf(CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
       );
 
       expect(Object.keys(telemetry)).toEqual(["agentcore", "agentcore_default"]);
@@ -798,7 +823,8 @@ describe("the additions rule", () => {
     test("names the default target in the header, and no other target", () => {
       const context = contextOf(CODEZIP);
       const withDefault = apply({}, context).table;
-      const withOwn = apply({ telemetry: { logs: CLOUDWATCH.logs } }, context).table;
+      const own = { telemetry: { logs: CLOUDWATCH.logs } };
+      const withOwn = apply(own, contextOf(CODEZIP, { telemetry: acceptedTelemetry(own) })).table;
 
       expect(runtimeProfileHeader(context, withDefault).at(-1)).toBe(
         "[telemetry.agentcore] is the default CloudWatch Logs target: the runtime's own log " +
