@@ -15,9 +15,17 @@ import {
   unsentTargetWarnings,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
+import { BOX_GATEWAY_TARGETS_FILE } from "./boxNetwork";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+
+/** The targets build owns in a gateway that agentcore/box-gateway-targets.json does not name. */
+class EgressTargets extends Set<string> {
+  override has(name: string): boolean {
+    return name.startsWith("egress-");
+  }
+}
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
@@ -27,6 +35,7 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
     region: "us-west-2",
     hosts: [],
     envRoutes: [],
+    managedTargets: new EgressTargets(),
     policyFiles: [],
     runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
     runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
@@ -145,6 +154,41 @@ describe("boxNetworkEdits", () => {
 });
 
 describe("gatewayTargetsWriter", () => {
+  test("keeps a user's egress- target that the record does not name, and records the targets it writes", () => {
+    const project = spec([
+      passthrough("egress-mine", "https://mine.example.com"),
+      passthrough("egress-gone", "https://gone.example.com"),
+    ]);
+    const models = [
+      network({
+        hosts: [
+          host("httpbin.org", "egress-httpbin-org"),
+          host("api.github.com", "egress-github", { outboundAuth: GITHUB_AUTH }),
+        ],
+        managedTargets: new Set(["egress-gone", "egress-httpbin-org", "egress-github"]),
+      }),
+    ];
+
+    const edits = run([gatewayTargetsWriter], models, project);
+
+    expect(targetNames(edits.spec)).toEqual(["egress-mine", "egress-httpbin-org"]);
+    expect(edits.messages).toContain(
+      "removing gateway target 'egress-gone' from 'agent-box-egress': the Box profile no longer " +
+        "allows gone.example.com",
+    );
+    // No credential holds the GitHub key, so build writes no egress-github and records none.
+    expect(edits.files).toEqual([
+      {
+        path: BOX_GATEWAY_TARGETS_FILE,
+        text: `${JSON.stringify({ "agent-box-egress": ["egress-httpbin-org"] }, undefined, 2)}\n`,
+      },
+    ]);
+  });
+
+  test("records no file for a project with no box runtime", () => {
+    expect(run([gatewayTargetsWriter], []).files).toEqual([]);
+  });
+
   test("adds a host's target, rewrites a managed one, removes a stale one, and keeps the user's", () => {
     const project = spec([
       passthrough("ours", "https://ours.example.com"),

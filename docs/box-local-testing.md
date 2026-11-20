@@ -130,8 +130,10 @@ the generated packs, and the policy files into `.box/<runtime>/aws/` for you to 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
   `<runtime>-box-egress`. A host the gateway already has a target for keeps that target. Build owns
-  only the targets whose name starts with `egress-`: it adds them, changes them, and removes
-  one when no host needs it. It never changes another target.
+  only the targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them,
+  changes them, and removes one when no host needs it. It never changes another target, also one
+  whose name starts with `egress-`. For a gateway that the file does not list, which an older CLI
+  built, build takes each `egress-` target that has the shape it writes as its own, once.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
 - **Failures.** A wildcard host, a plain-HTTP-only host, an unsupported secret or pack, an

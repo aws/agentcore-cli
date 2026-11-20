@@ -93,12 +93,14 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 /**
  * The routes of the runtime: one for each passthrough target of its Box gateway, in the order of
  * the gateway's targets once build writes them. Build keeps each target it does not manage where
- * it is, keeps each `egress-` target that a host takes, removes the other `egress-` targets, and
+ * it is, keeps each target it manages that a host takes, removes the other targets it manages, and
  * adds the target of each other host at the end. Throws for two targets for one host, which would
  * give the box two routes to that host.
  */
 function gatewayRoutes(context: RuntimeProfileContext): GatewayRoute[] {
-  const managed = (name: string) => name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+  const owned = context.gateway.managed;
+  const managed = (name: string) =>
+    owned ? owned.has(name) : name.startsWith(BOX_EGRESS_TARGET_PREFIX);
   const served = context.hosts.filter(
     (host): host is BoxNetworkHost & { readonly target: string } =>
       host.target !== undefined && managed(host.target),

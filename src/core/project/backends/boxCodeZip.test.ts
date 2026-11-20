@@ -251,6 +251,7 @@ function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
     region: "us-west-2",
     hosts: [],
     envRoutes: [],
+    managedTargets: new Set<string>(),
     policyFiles,
     runtimeProfile: runtimeProfileOf(policyFiles, runtime),
     runtimeProfileHeader: [`Derived from .box/${runtime}/local/profile.toml.`],

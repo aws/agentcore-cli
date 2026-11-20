@@ -501,6 +501,56 @@ describe("two routes of one profile to one host", () => {
   });
 });
 
+describe("the record of the targets build writes", () => {
+  const mine = {
+    name: "egress-mine",
+    targetType: "passthrough",
+    passthrough: { endpoint: "https://mine.example.com", protocolType: "CUSTOM" },
+  };
+  const withTarget = {
+    ...SPEC,
+    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets: [mine] }],
+  } as unknown as ProjectSpec;
+  const managed = async (root: string) => [
+    ...(await readBoxNetworks(withTarget, root, new FakeBoxProfileResolver()))[0]!.managedTargets,
+  ];
+
+  test("makes only the targets it names build's", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"agent-box-egress": []}',
+    );
+    expect(await managed(root)).not.toContain("egress-mine");
+  });
+
+  test("makes each egress- target of the shape build writes build's, for a gateway it does not name", async () => {
+    const root = await project([]);
+    expect(await managed(root)).toContain("egress-mine");
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"other-box-egress": []}',
+    );
+    expect(await managed(root)).toContain("egress-mine");
+  });
+
+  test("stops on a record that is not the one build writes, and names the file", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"agent-box-egress": "x"}',
+    );
+    await expect(readBoxNetworks(withTarget, root, new FakeBoxProfileResolver())).rejects.toThrow(
+      "agentcore/box-gateway-targets.json is not the record of the gateway targets that build " +
+        "writes: a JSON object with a list of target names for each Box gateway. Remove the " +
+        "file, and build writes it again.",
+    );
+  });
+});
+
 describe("the IAM policy files of the Box gateway", () => {
   test("counts the actions of each listed file, and warns for one it cannot count", async () => {
     const root = await project([]);

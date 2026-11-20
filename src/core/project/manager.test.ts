@@ -2128,6 +2128,7 @@ describe("FsProjectManager.build", () => {
         message:
           "adding 'agentcore/box-memory-policy.json' to gateway 'agent-python-strands-box-box-egress' additionalPolicies in agentcore.json, so its role can call Memory",
       },
+      { type: "step", message: "writing agentcore/box-gateway-targets.json" },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },

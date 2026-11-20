@@ -394,6 +394,37 @@ describe("build writes the Box network of the box profile", () => {
     expect(second.warnings.filter((w) => w.startsWith("api.openai.com"))).toEqual([]);
   });
 
+  test("owns only the targets it records, after it takes its old egress- targets once", async () => {
+    const { manager, root } = await strandsProject();
+    // A project built before the record: build wrote egress-old, for a host the profile has left.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-old", "https://old.example.com")),
+    );
+
+    const first = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(first.steps).toContain(
+      `removing gateway target 'egress-old' from '${GATEWAY}': the Box profile no longer allows ` +
+        "old.example.com",
+    );
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+
+    // The user's own target with the prefix, of the shape build writes, now stays theirs.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+    await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-mine"]);
+    // The Runtime profile routes the user's target, as a target build does not own.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(egress["egress-mine"]?.destinations).toEqual(["mine.example.com"]);
+  });
+
   test("changes nothing on a second build", async () => {
     const { manager, root, counter, box } = await strandsProject({
       env: { GITHUB_TOKEN: "ghp_123" },

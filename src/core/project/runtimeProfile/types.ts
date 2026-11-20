@@ -63,7 +63,12 @@ export interface RuntimeProfileContext {
   /** The region build builds for: of the Box gateway and its `bedrock` and `agentcore` targets. */
   readonly region: string;
   /** The runtime's Box gateway: its name, and its targets with the ones build adds. */
-  readonly gateway: { readonly name: string; readonly targets: readonly AgentCoreGatewayTarget[] };
+  readonly gateway: {
+    readonly name: string;
+    readonly targets: readonly AgentCoreGatewayTarget[];
+    /** The targets build owns (`BoxNetwork.managedTargets`); absent: each `egress-` target. */
+    readonly managed?: ReadonlySet<string>;
+  };
   /** The hosts of the Box network model, each with the gateway target it gets. */
   readonly hosts: readonly BoxNetworkHost[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */

@@ -11,10 +11,10 @@ import type { EnvLocalEntry } from "../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import {
+  BOX_GATEWAY_TARGETS_FILE,
   boxGatewayOf,
   gatewayTargetFor,
   hostKey,
-  isManagedTarget,
   parseEndpoint,
   type BoxNetwork,
   type BoxNetworkHost,
@@ -198,14 +198,58 @@ function uniqueRoutes(networks: readonly BoxNetwork[]): BoxEnvRoute[] {
   return routes;
 }
 
-/** The `egress-` targets of each Box gateway, which build adds, rewrites, and removes. */
+/**
+ * The targets of each Box gateway that build owns, which it adds, rewrites, and removes, and the
+ * record of the targets it writes ({@link BOX_GATEWAY_TARGETS_FILE}).
+ */
 export const gatewayTargetsWriter: BoxNetworkWriter = {
   name: "gateway targets",
-  writes: (networks) => networks.map(({ gateway }) => ({ kind: "gatewayTargets", gateway })),
-  edits: (networks) => ({
-    spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
-  }),
+  writes: (networks) => [
+    ...networks.map(({ gateway }) => ({ kind: "gatewayTargets" as const, gateway })),
+    ...(networks.length > 0 ? [{ kind: "file" as const, path: BOX_GATEWAY_TARGETS_FILE }] : []),
+  ],
+  edits: (networks, context) => {
+    if (networks.length === 0) return {};
+    const after = withPlannedCredentials(networks, context).spec;
+    const record = Object.fromEntries(
+      networks.map((network) => [
+        network.gateway,
+        [
+          ...new Set(
+            network.hosts.flatMap((host) =>
+              host.target !== undefined &&
+              network.managedTargets.has(host.target) &&
+              undeclaredKey(after, host) === undefined
+                ? [host.target]
+                : [],
+            ),
+          ),
+        ],
+      ]),
+    );
+    return {
+      spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
+      files: [
+        { path: BOX_GATEWAY_TARGETS_FILE, text: `${JSON.stringify(record, undefined, 2)}\n` },
+      ],
+    };
+  },
 };
+
+/**
+ * `context.spec` with the API key credentials that the credentials writer adds, and the plan that
+ * adds them.
+ */
+function withPlannedCredentials(
+  networks: readonly BoxNetwork[],
+  { spec, env, envLocal }: BoxNetworkWriteContext,
+): { spec: ProjectSpec; plan: ReturnType<typeof planBoxProfileCredentials> } {
+  const plan = planBoxProfileCredentials(structuredClone(spec), uniqueRoutes(networks), {
+    env,
+    envLocal,
+  });
+  return { spec: { ...spec, credentials: [...spec.credentials, ...plan.added] }, plan };
+}
 
 /**
  * Sets the build-owned targets of the network's Box gateway: a managed target that a host takes is
@@ -217,8 +261,9 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
 function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const gateway = boxGatewayOf(spec, network.runtime);
   if (!gateway) return [];
+  const managed = network.managedTargets;
   const served = network.hosts.flatMap((host) =>
-    host.target === undefined || !isManagedTarget({ name: host.target })
+    host.target === undefined || !managed.has(host.target)
       ? []
       : [{ ...host, target: host.target }],
   );
@@ -229,7 +274,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const targets: AgentCoreGatewayTarget[] = [];
   const gatewayName = `'${gateway.name}'`;
   for (const target of existing) {
-    if (!isManagedTarget(target)) {
+    if (!managed.has(target.name)) {
       targets.push(target);
       continue;
     }
@@ -279,32 +324,28 @@ export function unsentTargetWarnings(
   networks: readonly BoxNetwork[],
   context: BoxNetworkWriteContext,
 ): string[] {
-  const { spec, env, envLocal } = context;
-  const plan = planBoxProfileCredentials(structuredClone(spec), uniqueRoutes(networks), {
-    env,
-    envLocal,
-  });
-  const after = { ...spec, credentials: [...spec.credentials, ...plan.added] };
+  const { spec: after, plan } = withPlannedCredentials(networks, context);
   const warnings: string[] = [];
-  for (const host of networks.flatMap((network) => network.hosts)) {
-    if (host.target === undefined || !isManagedTarget({ name: host.target })) continue;
-    const auth = undeclaredKey(after, host);
-    const source = host.sources.find(
-      (candidate): candidate is Exclude<typeof candidate, { kind: "rule" }> =>
-        candidate.kind !== "rule",
-    );
-    if (auth === undefined || source === undefined) continue;
-    const [table, route] =
-      source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
-    const why =
-      plan.unprovisioned.get(route) ??
-      `agentcore.json has no API key credential '${auth.credentialName}' to hold the key of ` +
-        `env://${auth.variable}.`;
-    warnings.push(
-      `${host.authority}: build gives [${table}.${route}] no gateway target, so the agent ` +
-        `cannot reach this host on AgentCore Runtime. ${why}`,
-    );
-  }
+  for (const { hosts, managedTargets } of networks)
+    for (const host of hosts) {
+      if (host.target === undefined || !managedTargets.has(host.target)) continue;
+      const auth = undeclaredKey(after, host);
+      const source = host.sources.find(
+        (candidate): candidate is Exclude<typeof candidate, { kind: "rule" }> =>
+          candidate.kind !== "rule",
+      );
+      if (auth === undefined || source === undefined) continue;
+      const [table, route] =
+        source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
+      const why =
+        plan.unprovisioned.get(route) ??
+        `agentcore.json has no API key credential '${auth.credentialName}' to hold the key of ` +
+          `env://${auth.variable}.`;
+      warnings.push(
+        `${host.authority}: build gives [${table}.${route}] no gateway target, so the agent ` +
+          `cannot reach this host on AgentCore Runtime. ${why}`,
+      );
+    }
   return warnings;
 }
 

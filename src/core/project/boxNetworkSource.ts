@@ -25,6 +25,7 @@ import {
   runtimeRunsInBox,
 } from "./templates/boxProfile";
 import {
+  BOX_GATEWAY_TARGETS_FILE,
   boxGatewayOf,
   buildBoxNetwork,
   parseResolvedPolicy,
@@ -68,6 +69,7 @@ export async function readBoxNetworks(
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
   const keys: SharedKeys = new Map();
+  const record = readBoxGatewayTargets(projectRoot);
   for (const runtime of runtimes) {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
     const entry = boxGatewayOf(withDefaults, runtime.name);
@@ -87,6 +89,8 @@ export async function readBoxNetworks(
       region,
       targets: entry.targets,
       grantedActions: granted.actions,
+      ...(record &&
+        Object.hasOwn(record, entry.name) && { ownedTargets: new Set(record[entry.name]) }),
     });
     networks.push({
       ...network,
@@ -95,6 +99,31 @@ export async function readBoxNetworks(
     });
   }
   return networks;
+}
+
+/** The record of the targets build writes, as {@link BOX_GATEWAY_TARGETS_FILE} holds it. */
+const BoxGatewayTargetsSchema = z.record(z.string(), z.array(z.string()));
+
+/**
+ * The targets build wrote for each Box gateway, by the gateway's name, or `undefined` when the
+ * project has no {@link BOX_GATEWAY_TARGETS_FILE}. Throws for a file that is not that record.
+ */
+function readBoxGatewayTargets(projectRoot: string): Record<string, string[]> | undefined {
+  const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
+  if (!existsSync(path)) return undefined;
+  let document: unknown;
+  try {
+    document = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    document = undefined;
+  }
+  const record = BoxGatewayTargetsSchema.safeParse(document);
+  if (record.success) return record.data;
+  throw new ProjectStateError(
+    `${BOX_GATEWAY_TARGETS_FILE} is not the record of the gateway targets that build writes: a ` +
+      "JSON object with a list of target names for each Box gateway. Remove the file, and build " +
+      "writes it again.",
+  );
 }
 
 /**
