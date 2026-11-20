@@ -13,7 +13,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
-import { FsProjectManager } from "./manager";
+import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -161,7 +161,7 @@ async function strandsProject(
     boxProfileResolver: box,
     ...(options.backends && { backends: options.backends }),
   });
-  const { value: created } = await drain(
+  const { value: created, warnings: createWarnings } = await drain(
     manager.create({
       name: "demo",
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands"),
@@ -172,7 +172,7 @@ async function strandsProject(
   const root = created.rootPath;
   await mkdir(join(root, "agentcore", "cdk", "node_modules"), { recursive: true });
   counter.specWrites = 0;
-  return { manager, root, counter, box };
+  return { manager, root, counter, box, createWarnings };
 }
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
@@ -300,6 +300,12 @@ describe("build writes the Box network of the box profile", () => {
     expect(await targetNames(root)).toContain("egress-github");
     // The Box gateway gets only the fields build changed.
     expect(Object.keys(await boxGateway(root))).not.toContain("enableSemanticSearch");
+  });
+
+  test("create says that the Box gateway sends its logs, and how to stop them", async () => {
+    const { createWarnings } = await strandsProject();
+
+    expect(createWarnings).toContain(boxGatewayLogsNotice(GATEWAY));
   });
 
   test("keeps the enableApplicationLogs of the Box gateway as the user wrote it", async () => {

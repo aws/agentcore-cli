@@ -614,6 +614,13 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
+    if (isBoxProject(project.spec)) {
+      for (const gateway of project.spec.agentCoreGateways) {
+        if (isBoundGateway(gateway) && gateway.enableApplicationLogs) {
+          yield { type: "warning", message: boxGatewayLogsNotice(gateway.name) };
+        }
+      }
+    }
     return project;
   }
 
@@ -2227,6 +2234,16 @@ function isInside(path: string, dir: string): boolean {
     relativePath !== ".." &&
     !relativePath.startsWith(`..${sep}`) &&
     !isAbsolute(relativePath)
+  );
+}
+
+/** What `create` tells the user about the `APPLICATION_LOGS` of a new Box gateway. */
+export function boxGatewayLogsNotice(gatewayName: string): string {
+  return (
+    `the Box gateway '${gatewayName}' sends its APPLICATION_LOGS to CloudWatch Logs, which keeps ` +
+    "them for 90 days. They can hold the request and response bodies of its calls, prompts and " +
+    `completions included. To stop them, set "enableApplicationLogs": false on that gateway in ` +
+    "agentcore/agentcore.json"
   );
 }
 
