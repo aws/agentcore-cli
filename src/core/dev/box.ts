@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import { streamProcess, type ProcessStreamer } from "../../io";
@@ -11,6 +11,7 @@ import {
   boxIngressPort,
   boxProfileIsFor,
   boxProfilePath,
+  boxStartFolder,
   runsInBox,
 } from "../project/templates/boxProfile";
 
@@ -64,7 +65,8 @@ export class BoxDevRunner implements DevRunner {
       return;
     }
     const hasProfile = existsSync(profile);
-    if (!hasProfile || !boxProfileIsFor(readFileSync(profile, "utf8"), input.runtime)) {
+    const profileText = hasProfile ? readFileSync(profile, "utf8") : "";
+    if (!hasProfile || !boxProfileIsFor(profileText, input.runtime)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in ` +
           `agentcore.json), but ${profile} ` +
@@ -101,12 +103,17 @@ export class BoxDevRunner implements DevRunner {
     for (const missing of secrets.missing) {
       yield { type: "status", message: missingBoxSecretWarning(missing) };
     }
+    // box starts in the folder the profile names, the runtime's own for a CodeZip profile, so the
+    // agent reaches no other folder of the project; box finds the profile from there.
+    const startFolder = boxStartFolder(profileText);
+    const cwd = join(input.projectRoot, ...startFolder.split("/").filter(Boolean));
+    const profileArg = posix.relative(startFolder, BOX_PROFILE_FILE);
     yield {
       type: "status",
-      message: `Starting the agent in a box (box run ${BOX_PROFILE_FILE})`,
+      message: `Starting the agent in a box (box run ${profileArg})`,
     };
-    yield* this.streamProcess(["box", "run", BOX_PROFILE_FILE, "--no-banner"], {
-      cwd: input.projectRoot,
+    yield* this.streamProcess(["box", "run", profileArg, "--no-banner"], {
+      cwd,
       env: { ...this.processEnv, ...fileEnv, ...secrets.env },
       signal: input.signal,
     });

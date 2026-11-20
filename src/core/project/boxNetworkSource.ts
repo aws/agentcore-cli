@@ -13,7 +13,12 @@ import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors"
 import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
-import { BOX_PROFILE_FILE, boxProfilePath, runtimeRunsInBox } from "./templates/boxProfile";
+import {
+  BOX_PROFILE_FILE,
+  boxProfilePath,
+  boxStartFolder,
+  runtimeRunsInBox,
+} from "./templates/boxProfile";
 import {
   boxGatewayOf,
   buildBoxNetwork,
@@ -118,10 +123,11 @@ async function readResolvedPolicy(
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
+  const startFolder = boxStartFolder(text);
   const resolved =
     forRegion === undefined
-      ? await resolver.resolve(projectRoot, BOX_PROFILE_FILE)
-      : await resolveCopy(projectRoot, resolver, forRegion, files.texts);
+      ? await resolver.resolve(projectRoot, BOX_PROFILE_FILE, startFolder)
+      : await resolveCopy(projectRoot, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], BOX_PROFILE_FILE);
   const policy = parseResolvedPolicy({ ...profile.profile, places }, resolved.policy, files.texts);
   return {
@@ -191,6 +197,7 @@ async function resolveCopy(
   resolver: BoxProfileResolver,
   text: string,
   policies: readonly PolicyFileText[],
+  startFolder: string,
 ): Promise<ResolvedBoxProfile> {
   const folder = realpathSync(await mkdtemp(join(tmpdir(), "agentcore-box-profile-")));
   const copy = join(folder, "profile.toml");
@@ -201,7 +208,7 @@ async function resolveCopy(
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, policy.text);
     }
-    return await resolver.resolve(projectRoot, copy);
+    return await resolver.resolve(projectRoot, copy, startFolder);
   } catch (error) {
     if (!(error instanceof InvalidEnvironmentError)) throw error;
     throw new InvalidEnvironmentError(

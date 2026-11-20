@@ -14,6 +14,7 @@ import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/projec
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   boxProfileWarnings,
+  boxStartFolder,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
@@ -38,27 +39,27 @@ const STRANDS = template("agent-python-strands-box");
 
 const VENV_GRANTS = {
   read: [
-    "${{ workspace }}/app/agent",
-    { path: "${{ workspace }}/app/agent/.venv", optional: true },
+    "${{ workspace }}",
+    { path: "${{ workspace }}/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
   exec: [
-    { path: "${{ workspace }}/app/agent/.venv", optional: true },
+    { path: "${{ workspace }}/.venv", optional: true },
     { path: "${{ home }}/.local/share/uv/python", optional: true },
   ],
-  deny_write: [{ path: "${{ workspace }}/app/agent/.venv", optional: true }],
+  deny_write: [{ path: "${{ workspace }}/.venv", optional: true }],
 };
 
 const UVICORN = [
-  "${{ workspace }}/app/agent/.venv/bin/python",
+  "${{ workspace }}/.venv/bin/python",
   "-m",
   "uvicorn",
   "main:app",
   "--app-dir",
-  "${{ workspace }}/app/agent",
+  "${{ workspace }}",
   "--reload",
   "--reload-dir",
-  "${{ workspace }}/app/agent",
+  "${{ workspace }}",
   "--host",
   "127.0.0.1",
   "--port",
@@ -83,9 +84,26 @@ describe("renderBoxProfile", () => {
     });
   });
 
-  test("names itself after the project, so `box run .box/profile.toml` can load it by its path", () => {
+  test("names itself after the project, and the folder `agentcore dev` starts box in", () => {
     expect(profile("agent-python-minimal-box").profile).toEqual({ name: "V3Demo" });
-    expect(renderBoxProfile("V3Demo", STRANDS)).toContain("Run `box run .box/profile.toml`");
+    const text = renderBoxProfile("V3Demo", STRANDS)!;
+    expect(text).toContain("runs `box run ../../.box/profile.toml` there");
+    expect(boxStartFolder(text)).toBe("app/agent");
+  });
+
+  // agentcore dev starts box in app/<runtime>, so ${{ workspace }} and the project grant are that
+  // folder: agentcore/.env.local, with the model's key, .git and agentcore/cdk lie outside them.
+  test("grants the agent its own folder and no other folder of the project", () => {
+    const { project, agent, tool } = profile("agent-python-strands-box", {
+      modelProvider: "OpenAI",
+      apiKey: "sk-test",
+    });
+    expect(project).toEqual({ access: "write" });
+    for (const grant of [...agent.filesystem.read, ...agent.filesystem.exec]) {
+      const path = typeof grant === "string" ? grant : grant.path;
+      expect(path).not.toMatch(/agentcore|\.git|\.\./);
+    }
+    expect(JSON.stringify(tool)).not.toMatch(/agentcore|\.git|\.\./);
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
@@ -111,9 +129,9 @@ describe("renderBoxProfile", () => {
     ["mcp-python-fastmcp-box", "FASTMCP_PORT", 8000],
   ] as const)("runs %s as a module on its own port, one above dev's", (name, variable, devPort) => {
     const { agent } = profile(name);
-    expect(agent.command).toEqual(["${{ workspace }}/app/agent/.venv/bin/python", "-m", "main"]);
+    expect(agent.command).toEqual(["${{ workspace }}/.venv/bin/python", "-m", "main"]);
     expect(agent.env).toMatchObject({
-      PYTHONPATH: "${{ workspace }}/app/agent",
+      PYTHONPATH: "${{ workspace }}",
       [variable]: String(devPort + 1),
     });
     expect(agent.ingress).toEqual([{ listen: `127.0.0.1:${devPort}`, workload_port: devPort + 1 }]);

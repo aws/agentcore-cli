@@ -9,6 +9,8 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
 import { MissingToolError } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { renderBoxProfile } from "../project/templates/boxProfile";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 import { BoxDevRunner } from "./box";
 
@@ -129,7 +131,7 @@ describe("BoxDevRunner", () => {
     expect(fallbackRuns).toHaveLength(1);
   });
 
-  test("runs the project's box profile from the project folder", async () => {
+  test("runs a profile written before from the project folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 
     const events = await collect(runner.run(input(projectRoot)));
@@ -144,6 +146,28 @@ describe("BoxDevRunner", () => {
       { type: "status", message: "Starting the agent in a box (box run .box/profile.toml)" },
       { type: "stdout", line: "Uvicorn running" },
     ]);
+  });
+
+  test("starts box in the runtime's folder for a profile create writes now", async () => {
+    // So the agent's workspace, and the project grant, are app/agent and nothing else of the
+    // project: not agentcore/.env.local, which holds the model's key.
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+      runtimeName: "agent",
+    });
+    const { projectRoot, calls, runner } = await scene(true, true, {
+      profile: renderBoxProfile("Demo", runtime)!,
+    });
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["box", "run", "../../.box/profile.toml", "--no-banner"],
+    ]);
+    expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
+    expect(events).toContainEqual({
+      type: "status",
+      message: "Starting the agent in a box (box run ../../.box/profile.toml)",
+    });
   });
 
   test("hands box run the .env.local values, so it can attach the API key, and not dev's OTEL ones", async () => {

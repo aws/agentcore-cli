@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { InputValidationError } from "../../../errors/errors";
 import {
   DEFAULT_EGRESS_BEDROCK_REGION,
@@ -152,9 +152,24 @@ export function boxProfileIsFor(
   profileText: string,
   runtime: { build: string; codeLocation: string },
 ): boolean {
-  const codeZip = profileText.includes("${{ workspace }}/app/");
+  const folder = boxStartFolder(profileText);
+  // A profile from before box started in the runtime's folder names that folder in its paths.
+  const codeZip = folder !== "" || profileText.includes("${{ workspace }}/app/");
   if (runtime.build === "Container") return !codeZip;
-  return profileText.includes(`/${runtime.codeLocation}"`);
+  const code = runtime.codeLocation.replace(/\/+$/, "");
+  return folder === code || profileText.includes(`/${runtime.codeLocation}"`);
+}
+
+/** The header line of a CodeZip profile that names the folder `agentcore dev` starts box in. */
+const START_FOLDER_LINE = /^# Written by `agentcore create` for (\S+?): /m;
+
+/**
+ * The folder, from the project root, that box starts a run or a resolution of the profile in: the
+ * runtime's code folder for a CodeZip profile, so the agent's grants reach no further than it, and
+ * the project root ("") for the container profile and for profiles written before.
+ */
+export function boxStartFolder(profileText: string): string {
+  return START_FOLDER_LINE.exec(profileText)?.[1] ?? "";
 }
 
 /** The Strands box container template, whose image starts `box run` in /app. */
@@ -452,7 +467,11 @@ export function renderBoxProfile(
   if (!hasBoxProfile(runtime)) return undefined;
 
   const protocol = runtime.protocol ?? "HTTP";
-  const appDir = `\${{ workspace }}/app/${runtime.runtimeName}`;
+  // `agentcore dev` starts box in the runtime's folder, so the agent can read and write that folder
+  // and nothing else of the project: not agentcore/.env.local, with the model's key, nor .git or
+  // agentcore/cdk, which run outside the box.
+  const codeFolder = `app/${runtime.runtimeName}`;
+  const appDir = "${{ workspace }}";
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const onRuntime = target === "runtime";
@@ -489,7 +508,9 @@ export function renderBoxProfile(
       ? "# Rendered by agentcore build and deploy from agentcore.json, for AgentCore Runtime. The box/agentcore pack carries the deployed resources' variables."
       : container
         ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-        : `# Written by \`agentcore create\`. Run \`box run ${BOX_PROFILE_FILE}\` in the project folder.`;
+        : `# Written by \`agentcore create\` for ${codeFolder}: \`agentcore dev\` runs \`box run ` +
+          `${posix.relative(codeFolder, BOX_PROFILE_FILE)}\` there, so the agent can reach no other ` +
+          "folder of the project.";
   const regionComment = onRuntime
     ? ""
     : "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
