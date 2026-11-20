@@ -10,7 +10,7 @@
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) the ffi `PYTHONPATH` come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
- * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
+ * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
@@ -22,6 +22,8 @@ import {
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
   BOX_CODEZIP_DIST,
+  boxIngressPort,
+  boxWorkloadPort,
   RUNTIME_LOGS_HEADERS_ENV,
 } from "../../templates/boxProfile";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
@@ -220,7 +222,11 @@ function runtimeAgent(
   );
   if (filesystem !== undefined) result.filesystem = filesystem;
   if (local.ingress !== undefined) {
-    result.ingress = runtimeIngress(local.ingress, templateLocal.ingress, templateRuntime.ingress);
+    const variable = PORT_ENV[context.runtime.protocol ?? "HTTP"] ?? "PORT";
+    const keepsTemplatePort =
+      sameValue(local.command, templateLocal.command) &&
+      sameValue(tableOf(local.env)[variable], tableOf(templateLocal.env)[variable]);
+    result.ingress = runtimeIngress(local.ingress, keepsTemplatePort, context, warnings);
   }
   return result;
 }
@@ -376,24 +382,57 @@ const pathOf = (grant: unknown): unknown =>
 const includesPath = (list: readonly unknown[], grant: unknown) =>
   list.some((other) => sameValue(pathOf(other), pathOf(grant)));
 
+/** The variable that names the port of the agent of a template, for each protocol. */
+const PORT_ENV: Readonly<Record<string, string>> = {
+  HTTP: "PORT",
+  AGUI: "PORT",
+  A2A: "A2A_PORT",
+  MCP: "FASTMCP_PORT",
+};
+
 /**
- * Each `[[agent.ingress]]` for the Runtime: the template's own ingress becomes its Runtime ingress,
- * and each other one listens on `0.0.0.0` on its own port, as the Runtime reaches the microVM there.
+ * Each `[[agent.ingress]]` for the Runtime. AgentCore Runtime sends the requests of the protocol
+ * only to its port (boxIngressPort), so the first ingress listens on `0.0.0.0:<that port>`. It
+ * forwards to the workload port of the template when the agent keeps the command and the port
+ * variable of the template: the Runtime form of the template starts the agent on the same port as
+ * the local form. Else it forwards to its own `workload_port`, where the agent of the user listens
+ * under dev too. Each other ingress listens on `0.0.0.0` on its own port. A warning names each port
+ * that changes.
  */
 function runtimeIngress(
   ingress: unknown,
-  templateLocal: unknown,
-  templateRuntime: unknown,
+  agentKeepsTemplatePort: boolean,
+  context: RuntimeProfileContext,
+  warnings: string[],
 ): unknown {
-  if (isTable(ingress)) return onAllAddresses(ingress);
-  if (!Array.isArray(ingress)) return ingress;
-  const localEntries = listOf(templateLocal);
-  const runtimeEntries = listOf(templateRuntime);
-  return ingress.map((entry: unknown) => {
-    const index = localEntries.findIndex((other) => sameValue(other, entry));
-    const runtime = index >= 0 ? runtimeEntries[index] : undefined;
-    return runtime !== undefined ? structuredClone(runtime) : onAllAddresses(entry);
+  const entries = isTable(ingress) ? [ingress] : Array.isArray(ingress) ? ingress : undefined;
+  if (entries === undefined) return ingress;
+  const protocol = context.runtime.protocol ?? "HTTP";
+  const port = boxIngressPort(protocol);
+  const listen = `0.0.0.0:${port}`;
+  const result = entries.map((entry: unknown, index) => {
+    if (index > 0 || !isTable(entry)) return onAllAddresses(entry);
+    const workload = agentKeepsTemplatePort ? boxWorkloadPort(protocol) : entry.workload_port;
+    const localPort =
+      typeof entry.listen === "string" ? /:(\d+)$/.exec(entry.listen)?.[1] : undefined;
+    if (localPort !== undefined && Number(localPort) !== port) {
+      warnings.push(
+        `[[agent.ingress]] listen is ${JSON.stringify(entry.listen)} in ${context.profileFile}. ` +
+          `AgentCore Runtime sends the ${protocol} requests only to port ${port}, so the Runtime ` +
+          `profile listens on ${listen}.`,
+      );
+    }
+    if (workload !== entry.workload_port) {
+      warnings.push(
+        `[[agent.ingress]] workload_port is ${String(entry.workload_port)} in ` +
+          `${context.profileFile}, but the agent keeps the command and the port of the template, ` +
+          `so on AgentCore Runtime it listens on ${String(workload)}. The Runtime profile forwards ` +
+          "there.",
+      );
+    }
+    return { ...entry, listen, workload_port: workload };
   });
+  return isTable(ingress) ? result[0] : result;
 }
 
 /** An ingress whose `listen` is `0.0.0.0:<its port>`. */
