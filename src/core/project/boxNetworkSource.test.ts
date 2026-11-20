@@ -514,7 +514,7 @@ describe("two routes of one profile to one host", () => {
       ["api.example.com", "egress-a"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
-      ([, route]) => route.destinations.includes("api.example.com"),
+      ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
       ["a", ["api.example.com"]],
