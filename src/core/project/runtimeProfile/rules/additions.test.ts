@@ -1094,6 +1094,24 @@ describe("the additions rule", () => {
       );
     });
 
+    test.each([
+      ["true", false],
+      [" TRUE ", false],
+      ["false", true],
+    ])(
+      "adds the default X-Ray target only when the envVars do not set DISABLE_ADOT_OBSERVABILITY to true (%j)",
+      (value, added) => {
+        const runtime = {
+          ...OTEL_CODEZIP,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value }],
+        } as ProjectRuntime;
+        const { table } = apply({}, contextOf(runtime));
+
+        expect(Object.hasOwn(tableOf(table), "agentcore_traces")).toBe(added);
+        expect(defaultTracesTelemetry(table, BUILD_REGION)).toHaveLength(added ? 1 : 0);
+      },
+    );
+
     test("names the default X-Ray target agentcore_traces_default when a target is agentcore_traces", () => {
       const local = { telemetry: { agentcore_traces: CLOUDWATCH.logs } };
       const telemetry = tableOf(

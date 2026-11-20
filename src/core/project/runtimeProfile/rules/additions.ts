@@ -14,7 +14,7 @@
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
- * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
+ * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`, unless observability is off: X-Ray in the Runtime's region |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
@@ -84,8 +84,9 @@ export const DEFAULT_TELEMETRY_TARGET = {
 } as const;
 
 /**
- * The X-Ray target of a Runtime profile with OTEL on that has no `cloudwatch_traces` target: the
- * agent's spans and box's own, in the Runtime's region, signed with the execution role.
+ * The X-Ray target of a Runtime profile with OTEL on that has no `cloudwatch_traces` target, unless
+ * the envVars of the runtime turn observability off: the agent's spans and box's own, in the
+ * Runtime's region, signed with the execution role.
  */
 export const DEFAULT_TRACES_TARGET = {
   kind: "cloudwatch_traces",
@@ -520,7 +521,7 @@ function onAllAddresses(entry: unknown): unknown {
  * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
  * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}). With OTEL on and no
  * `cloudwatch_traces` target, {@link DEFAULT_TRACES_TARGET} comes last, as `agentcore_traces`, or
- * as `agentcore_traces_default` when a target has that name.
+ * as `agentcore_traces_default` when a target has that name, unless observability is off.
  */
 function runtimeTelemetry(
   telemetry: unknown,
@@ -577,7 +578,7 @@ function runtimeTelemetry(
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
     result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
   }
-  if (!has("cloudwatch_traces") && otelOn(context.runtime)) {
+  if (!has("cloudwatch_traces") && otelOn(context.runtime) && !observabilityOff(context.runtime)) {
     const name = Object.hasOwn(result, "agentcore_traces")
       ? "agentcore_traces_default"
       : "agentcore_traces";

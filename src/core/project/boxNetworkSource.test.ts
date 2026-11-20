@@ -456,6 +456,26 @@ describe("the default X-Ray target of a runtime with OTEL on", () => {
     expect(policyOf(off!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
   });
 
+  test("is not added, and gets no grant, when the envVars set DISABLE_ADOT_OBSERVABILITY to true", async () => {
+    const root = await project([]);
+    const box = new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE }));
+    const spec = {
+      ...OTEL_SPEC,
+      runtimes: [
+        {
+          ...OTEL_SPEC.runtimes[0]!,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, box);
+
+    expect(network?.runtimeProfile?.telemetry).toEqual({});
+    expect(network?.telemetry).toBeUndefined();
+    expect(policyOf(network!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
+  });
+
   test("is not added, and gets no second grant, when the profile has its own cloudwatch_traces target", async () => {
     const root = await project([]);
     const shown = boxShowOf({ egress: API_ROUTE });
