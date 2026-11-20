@@ -125,6 +125,24 @@ jobs:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
+      # box ships only arm64 builds, so only the macOS runner (Apple silicon) can run the Box tests.
+      # They skip on a runner with no box on PATH.
+      - name: Install box
+        if: matrix.name == 'macOS'
+        run: |
+          REPO=$(jq -r .box.repo src/core/project/backends/boxRelease.json)
+          VER=$(jq -r .box.version src/core/project/backends/boxRelease.json)
+          ASSET="box-v${VER}-aarch64-apple-darwin.tar.gz"
+          URL="https://github.com/${REPO}/releases/download/v${VER}"
+          WORK=$(mktemp -d)
+          curl -fsSL --retry 3 -o "${WORK}/${ASSET}" "${URL}/${ASSET}"
+          curl -fsSL --retry 3 -o "${WORK}/SHA256SUMS.txt" "${URL}/SHA256SUMS.txt"
+          (cd "${WORK}" && grep " ${ASSET}\$" SHA256SUMS.txt | shasum -a 256 -c -)
+          # box reads its packs from resources/ beside it, so keep the release together.
+          sudo mkdir -p /opt/box
+          sudo tar -xzf "${WORK}/${ASSET}" -C /opt/box
+          sudo ln -sf /opt/box/box /usr/local/bin/box
+          box --version
       - name: Build CLI
         if: inputs.npmVersion == ''
         run: bun run build
