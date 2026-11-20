@@ -13,6 +13,7 @@ import {
   type BoxRelease,
   type FfiRelease,
   boxReleaseFor,
+  publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
 
@@ -295,6 +296,50 @@ describe("boxReleaseFor a runtime's box.version", () => {
     await expect(boxReleaseFor("2.0.0", {}, { runner, home })).rejects.toThrow(
       /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
     );
+  });
+});
+
+describe("publishInstall", () => {
+  /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
+  async function folders(rootText?: string) {
+    const parent = await temp("box-publish-");
+    const payload = join(parent, "payload");
+    const root = join(parent, "root");
+    await mkdir(payload);
+    await writeFile(join(payload, "box"), "mine");
+    if (rootText !== undefined) {
+      await mkdir(root);
+      await writeFile(join(root, "box"), rootText);
+    }
+    return { payload, root };
+  }
+
+  test("keeps the install another process renamed in after the first check, before the rename", async () => {
+    // `root` is complete only by the time the rename fails: the other process won in between.
+    const { payload, root } = await folders("theirs");
+    let checks = 0;
+
+    publishInstall(payload, root, () => checks++ > 0);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("theirs");
+    expect(checks).toBe(2);
+  });
+
+  test("replaces an incomplete folder an interrupted install left", async () => {
+    const { payload, root } = await folders("partial");
+
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
+    expect(existsSync(payload)).toBe(false);
+  });
+
+  test("renames the payload in when no install is there", async () => {
+    const { payload, root } = await folders();
+
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
   });
 });
 

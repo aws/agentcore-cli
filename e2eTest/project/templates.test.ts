@@ -24,9 +24,8 @@ type RuntimeTemplateTestCase = {
   /**
    * A Strands Box template: it runs its agent in a box on AgentCore Runtime, so the test checks the
    * Runtime's logs for box starting it, and installs the AGENTCORE_E2E_BOX_CDK build to deploy it.
-   * `agentcore dev` runs box on the
-   * protocol's fixed ingress port (8080, 8000 or 9000), so the concurrent Runtime tests skip it; the
-   * sequential dev tests below cover it.
+   * `agentcore dev` runs box on the protocol's fixed ingress port (8080, 8000 or 9000), so the
+   * concurrent Runtime tests skip it; the sequential dev tests below cover it.
    */
   box?: boolean;
 };
@@ -538,9 +537,22 @@ async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void
   );
   // `--query` is a CloudWatch filter pattern, so it returns only the matching events: the error
   // lines need their own query. These are the ones the root README.md says a working box agent
-  // never logs. box logs `running profile` when it starts, before the invoke, so the check waits
-  // for log lines from the invoke to reach CloudWatch first.
-  await new Promise((resolve) => setTimeout(resolve, 30 * 1000));
+  // never logs. box logs `running profile` when it starts, before the invoke, so the check first
+  // waits for a line the invoke itself writes, the agent server's access line for its POST, so
+  // the invoke's own lines have reached CloudWatch when it looks for errors.
+  await retry(
+    async () => {
+      const found = await logs('"POST /"');
+      if (found.exitCode !== 0 || !found.stdout.includes("POST /")) {
+        throw new Error(
+          `the Runtime's logs show no request from the invoke yet.\nstdout: ${found.stdout}\nstderr: ${found.stderr}`,
+        );
+      }
+      return found;
+    },
+    2 * 60 * 1000,
+    10 * 1000,
+  );
   const errors = await logs('?ERROR ?"blocked by egress control" ?AccessDenied');
   expect(errors.exitCode).toBe(0);
   expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);

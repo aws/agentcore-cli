@@ -46,7 +46,9 @@ AGENTCORE_E2E_BOX_CDK=file:/path/to/aws-agentcore-cdk-1.1.0.tgz bun run test:e2e
 
 That runs each Box template on its default Python. The CodeZip box template on Python 3.10 to 3.13
 (`py_strands_box_3_10` to `py_strands_box_3_13`) is in the runtime templates describe, so it runs
-with `--tagsFilter='runtime'` or a full run, given `box` and the same opt-in.
+with `--tagsFilter='runtime'` or a full run, given `box` and the same opt-in. Those four cases
+pass only once box runs CodeZip agents without the ffi shim (#2867): until then `boxRelease.json`
+pins a shim for `PYTHON_3_14` only, so they fail on any machine.
 
 The `box-egress` test checks that box, under `agentcore dev`, lets the agent reach the host its
 profile allows (`checkip.amazonaws.com`) and blocks any other (`example.com`). It reaches public

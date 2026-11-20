@@ -310,9 +310,10 @@ async function installFfi(
  * complete payload, and a process that loses the race keeps the winner's copy and drops its own.
  * `root` is removed only when the rename fails and `installed()` does not hold, as for a folder an
  * interrupted install left. Another process can finish its install between that check and the
- * removal; the removal then takes a complete install away, and the next command downloads again.
+ * removal; the removal then takes that install away while its command may still be reading it, and
+ * this process's own payload replaces it.
  */
-function publishInstall(payload: string, root: string, installed: () => boolean): void {
+export function publishInstall(payload: string, root: string, installed: () => boolean): void {
   if (installed()) return;
   try {
     renameSync(payload, root);
