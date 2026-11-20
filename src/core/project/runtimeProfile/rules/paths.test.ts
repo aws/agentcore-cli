@@ -100,6 +100,31 @@ const LEAVES_ON_RUNTIME = {
 };
 
 describe("the paths rule", () => {
+  test("leaves out a deny entry on the venv or in it, with a warning, and keeps deny_write on the venv", () => {
+    const text = [
+      "[agent.filesystem]",
+      'read = ["${{ workspace }}/app/agent"]',
+      'deny = ["${{ workspace }}/app/agent/.venv", { path = "${{workspace}}/app/agent/.venv/bin" }]',
+      'deny_write = ["${{ workspace }}/app/agent/.venv"]',
+    ].join("\n");
+
+    // The paths rule alone: the additions rule removes the deny_write of the template.
+    const { table, problems, warnings } = apply(parse(text) as TomlTable, contextOf(text));
+
+    expect(problems).toEqual([]);
+    const filesystem = (table.agent as TomlTable).filesystem as TomlTable;
+    expect(filesystem).not.toHaveProperty("deny");
+    expect(filesystem.deny_write).toEqual(["${{ inputs.code.dir }}"]);
+    expect(warnings).toEqual(
+      ["${{ workspace }}/app/agent/.venv", "${{workspace}}/app/agent/.venv/bin"].map(
+        (path) =>
+          `[agent.filesystem] deny names ${JSON.stringify(path)}, in the venv. On AgentCore ` +
+          "Runtime the venv is the code folder, ${{ inputs.code.dir }}, so the entry would keep " +
+          "the process from its own code. Build leaves it out of the Runtime profile.",
+      ),
+    );
+  });
+
   test("leaves out a deny entry and an optional grant that are not on the Runtime, with a warning", () => {
     const text = [
       "[agent.filesystem]",

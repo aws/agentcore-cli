@@ -34,7 +34,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     return { table: structuredClone(table) as TomlTable, problems: [], warnings: [] };
   }
   const warnings: string[] = [];
-  const moved = mapProjectPaths(table, (value) => {
+  const moved = mapProjectPaths(withoutVenvDeny(table, paths, warnings), (value) => {
     const result = moveProjectPath(value, paths);
     return typeof result === "string" ? result : value;
   });
@@ -58,6 +58,40 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 }
 
 /**
+ * `table` with no `deny` entry on the venv or in it, with a warning for each: on a CodeZip Runtime
+ * the venv is the code folder, so such an entry would keep the process from its own code. A
+ * `deny_write` entry on the venv stays.
+ */
+function withoutVenvDeny(
+  table: Readonly<TomlTable>,
+  paths: RuntimePaths,
+  warnings: string[],
+): TomlTable {
+  const result = structuredClone(table) as TomlTable;
+  const venv = (path: string) => {
+    const normal = path.replace(/\$\{\{\s*workspace\s*\}\}/g, "${{ workspace }}");
+    return normal === paths.localVenv || normal.startsWith(`${paths.localVenv}/`);
+  };
+  for (const { key, table: process } of processTables(result)) {
+    const filesystem = process.filesystem;
+    if (!isTable(filesystem) || !Array.isArray(filesystem.deny)) continue;
+    const deny = filesystem.deny.filter((grant) => {
+      const path = grantPath(grant);
+      if (path === undefined || !venv(path)) return true;
+      warnings.push(
+        `${keyLabel([...key, "filesystem", "deny"])} names ${JSON.stringify(path)}, in the venv. ` +
+          `On AgentCore Runtime the venv is the code folder, ${paths.runtimeCode}, so the entry ` +
+          "would keep the process from its own code. Build leaves it out of the Runtime profile.",
+      );
+      return false;
+    });
+    if (deny.length > 0) filesystem.deny = deny;
+    else delete filesystem.deny;
+  }
+  return result;
+}
+
+/**
  * `filesystem` with no deny entry and no optional grant whose path is not on the Runtime, with a
  * warning for each. The refusals rule stops build for each other grant with no place there. A
  * moved path names no `${{ workspace }}` or `${{ home }}`, so only a grant that did not move is
@@ -75,7 +109,7 @@ function withoutLostGrants(
       result[list] = grants;
       continue;
     }
-    result[list] = grants.filter((grant) => {
+    const kept = grants.filter((grant) => {
       const path = grantPath(grant);
       if (path === undefined || pathProblem(path, paths) === undefined) return true;
       if (!isDroppableGrant(list, grant)) return true;
@@ -85,6 +119,8 @@ function withoutLostGrants(
       );
       return false;
     });
+    // A list that build empties goes.
+    if (kept.length > 0 || grants.length === 0) result[list] = kept;
   }
   return result;
 }
