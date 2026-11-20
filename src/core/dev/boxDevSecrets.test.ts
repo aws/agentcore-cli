@@ -28,11 +28,39 @@ async function project(profile?: string): Promise<string> {
   return root;
 }
 
+/** The secrets of the profile when only the shell sets the variables. */
+const secretsFromShell = (root: string, env: NodeJS.ProcessEnv) =>
+  boxDevSecrets(root, { env, envLocal: {} });
+
+describe("boxDevSecrets picks each variable as build does", () => {
+  test("takes a set shell value over .env.local's", async () => {
+    const root = await project(GITHUB_ROUTE);
+    expect(
+      await boxDevSecrets(root, {
+        env: { GITHUB_TOKEN: "ghp_shell" },
+        envLocal: { GITHUB_TOKEN: "ghp_file" },
+      }),
+    ).toEqual({ env: { GITHUB_TOKEN: "ghp_shell" }, missing: [] });
+  });
+
+  test("takes .env.local's value when the shell's is blank, as box then gets it", async () => {
+    // A blank shell value, such as an unset CI secret, must not hide the .env.local one: box
+    // starts with the .env.local key, so dev must not warn that it is missing.
+    const root = await project(GITHUB_ROUTE);
+    for (const env of [{ GITHUB_TOKEN: "" }, { GITHUB_TOKEN: "  " }, {}]) {
+      expect(await boxDevSecrets(root, { env, envLocal: { GITHUB_TOKEN: "ghp_file" } })).toEqual({
+        env: { GITHUB_TOKEN: "ghp_file" },
+        missing: [],
+      });
+    }
+  });
+});
+
 describe("boxDevSecrets", () => {
   test("returns an env:// route's variable under its own name, and writes no .env.local", async () => {
     const root = await project(GITHUB_ROUTE);
 
-    expect(await boxDevSecrets(root, { GITHUB_TOKEN: "ghp_1", OTHER: "x" })).toEqual({
+    expect(await secretsFromShell(root, { GITHUB_TOKEN: "ghp_1", OTHER: "x" })).toEqual({
       env: { GITHUB_TOKEN: "ghp_1" },
       missing: [],
     });
@@ -42,7 +70,7 @@ describe("boxDevSecrets", () => {
   test("returns an HTTP MCP server's env:// variable too", async () => {
     const root = await project(GITHUB_ROUTE + TOOLS_SERVER);
 
-    expect(await boxDevSecrets(root, { GITHUB_TOKEN: "ghp_1", TOOLS_TOKEN: "tk_1" })).toEqual({
+    expect(await secretsFromShell(root, { GITHUB_TOKEN: "ghp_1", TOOLS_TOKEN: "tk_1" })).toEqual({
       env: { GITHUB_TOKEN: "ghp_1", TOOLS_TOKEN: "tk_1" },
       missing: [],
     });
@@ -54,7 +82,7 @@ describe("boxDevSecrets", () => {
         '[egress.gist]\ndestinations = ["gist.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
     );
 
-    expect(await boxDevSecrets(root, {})).toEqual({
+    expect(await secretsFromShell(root, {})).toEqual({
       env: {},
       missing: [{ variable: "GITHUB_TOKEN", table: "[egress.github]" }],
     });
@@ -63,7 +91,7 @@ describe("boxDevSecrets", () => {
   test("reports a variable that is unset or blank as missing, with the table that reads it", async () => {
     const root = await project(GITHUB_ROUTE + TOOLS_SERVER);
 
-    expect(await boxDevSecrets(root, { GITHUB_TOKEN: "  " })).toEqual({
+    expect(await secretsFromShell(root, { GITHUB_TOKEN: "  " })).toEqual({
       env: {},
       missing: [
         { variable: "GITHUB_TOKEN", table: "[egress.github]" },
@@ -78,7 +106,9 @@ describe("boxDevSecrets", () => {
         '[egress.blank]\ndestinations = ["blank.example.com"]\nsecret.ref = "env://  "\n',
     );
 
-    expect(await boxDevSecrets(root, { AWS_BEARER_TOKEN_BEDROCK: "token", default: "x" })).toEqual({
+    expect(
+      await secretsFromShell(root, { AWS_BEARER_TOKEN_BEDROCK: "token", default: "x" }),
+    ).toEqual({
       env: {},
       missing: [],
     });
@@ -87,13 +117,13 @@ describe("boxDevSecrets", () => {
   test("returns nothing for a profile that does not parse; box run reports it", async () => {
     const root = await project("[egress\n");
 
-    expect(await boxDevSecrets(root, {})).toEqual({ env: {}, missing: [] });
+    expect(await secretsFromShell(root, {})).toEqual({ env: {}, missing: [] });
   });
 
   test("returns nothing without a box profile", async () => {
     const root = await project();
 
-    expect(await boxDevSecrets(root, { GITHUB_TOKEN: "ghp_1" })).toEqual({
+    expect(await secretsFromShell(root, { GITHUB_TOKEN: "ghp_1" })).toEqual({
       env: {},
       missing: [],
     });

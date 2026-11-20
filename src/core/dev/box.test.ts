@@ -232,6 +232,22 @@ describe("BoxDevRunner", () => {
       expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_file");
     });
 
+    test("uses .env.local's value, with no warning, when the shell's is blank", async () => {
+      // A blank shell value, such as an unset CI secret, hid the .env.local one from the check
+      // but not from box run, so dev warned that box would not start, and box started.
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: { GITHUB_TOKEN: "" },
+      });
+
+      const events = await collect(
+        runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }),
+      );
+
+      expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_file");
+      expect(JSON.stringify(events)).not.toContain("GITHUB_TOKEN for [egress.github]");
+    });
+
     test("warns when neither has it, before box run reports it", async () => {
       const { projectRoot, calls, runner } = await scene(true, true, {
         profile: GITHUB_PROFILE,

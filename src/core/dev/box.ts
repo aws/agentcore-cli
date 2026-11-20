@@ -94,11 +94,11 @@ export class BoxDevRunner implements DevRunner {
       yield { type: "status", message: "Traces are not collected when the agent runs in a box" };
     }
     const fileEnv = credentialEnvironment(input.env);
-    // box reads each env:// key of the profile from its own environment. The shell's value wins
-    // over agentcore/.env.local's, and dev writes neither anywhere.
+    // box reads each env:// key of the profile from its own environment, picked as build picks it:
+    // the shell's value when set and not blank, else agentcore/.env.local's. Dev writes neither.
     const secrets = await boxDevSecrets(input.projectRoot, {
-      ...fileEnv,
-      ...this.processEnv,
+      env: this.processEnv,
+      envLocal: fileEnv,
     });
     for (const missing of secrets.missing) {
       yield { type: "status", message: missingBoxSecretWarning(missing) };

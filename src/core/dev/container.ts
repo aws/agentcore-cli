@@ -249,8 +249,8 @@ export class ContainerDevRunner implements DevRunner {
       // the profile here. The shell's value wins over agentcore/.env.local's, and dev writes
       // neither anywhere but the run's own env file, removed when the run ends.
       const secrets = await boxDevSecrets(input.projectRoot, {
-        ...input.env,
-        ...this.processEnv,
+        env: this.processEnv,
+        envLocal: input.env ?? {},
       });
       for (const missing of secrets.missing) {
         yield { type: "status", message: missingBoxSecretWarning(missing) };

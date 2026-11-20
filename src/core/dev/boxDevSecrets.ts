@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { parse as parseToml } from "smol-toml";
 import { hasValue } from "../project/boxProfileEgress";
+import type { BoxKeySources } from "../project/boxProfileCredentials";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 import { BOX_PROFILE_FILE, boxProfilePath } from "../project/templates/boxProfile";
 
@@ -20,16 +21,17 @@ export type BoxDevSecrets = {
 
 /**
  * The variables that the project's box profile reads its keys from: each `env://<VAR>` secret of
- * an `[egress.<name>]` route or an `[mcp.<name>]` server, with its value in `env`. Dev hands these
- * to `box run` as they are and writes none of them anywhere. A CodeZip agent's `box run` inherits
- * the whole environment already; a box container gets them in its environment, since it gets
- * nothing else from the host's. Only the profile's own tables count: a pack's variable, such as
- * box/bedrock's `AWS_BEARER_TOKEN_BEDROCK`, is not the profile author's to pass. A profile that
- * does not parse has none here; `box run` reports it.
+ * an `[egress.<name>]` route or an `[mcp.<name>]` server, with its value as build picks it
+ * ({@link BoxKeySources}): the environment's when it is set and not blank, else `.env.local`'s.
+ * Dev hands these to `box run` as they are and writes none of them anywhere. A CodeZip agent's
+ * `box run` inherits the whole environment already; a box container gets them in its environment,
+ * since it gets nothing else from the host's. Only the profile's own tables count: a pack's
+ * variable, such as box/bedrock's `AWS_BEARER_TOKEN_BEDROCK`, is not the profile author's to pass.
+ * A profile that does not parse has none here; `box run` reports it.
  */
 export async function boxDevSecrets(
   projectRoot: string,
-  env: Readonly<Record<string, string | undefined>>,
+  sources: BoxKeySources,
 ): Promise<BoxDevSecrets> {
   const profile = boxProfilePath(projectRoot);
   if (!existsSync(profile)) return { env: {}, missing: [] };
@@ -43,7 +45,9 @@ export async function boxDevSecrets(
       if (typeof ref !== "string" || !ref.startsWith(ENV_SCHEME)) continue;
       const variable = ref.slice(ENV_SCHEME.length);
       if (variable.trim() === "" || variable in found) continue;
-      const value = env[variable];
+      const value = hasValue(sources.env[variable])
+        ? sources.env[variable]
+        : sources.envLocal[variable];
       if (!hasValue(value)) {
         if (!missing.some((other) => other.variable === variable)) {
           missing.push({ variable, table: `[${kind}.${name}]` });
