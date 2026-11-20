@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
@@ -622,6 +622,34 @@ describe("FsProjectManager.create", () => {
       skipInstall: true,
     });
     expect(skipInstall.checkedTools).toEqual(["git"]);
+  });
+
+  test("with --skip-install, makes an empty .venv only for a CodeZip box agent", async () => {
+    const directory = await inTempDirectory();
+    const venv = (name: string, runtime: { runtimeName: string }) =>
+      join(directory, name, "app", runtime.runtimeName, ".venv");
+
+    // box drops the profile's optional .venv deny_write while the folder is missing, and then
+    // refuses the profile, as the venv's Python would be under the project's write grant.
+    await runCreate(manager().manager, {
+      name: "codezip",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall: true,
+    });
+    expect(readdirSync(venv("codezip", AGENT_PYTHON_STRANDS_BOX))).toEqual([]);
+
+    // A container's image builds its own venv, and an agent outside a box has no profile.
+    for (const [name, runtime] of [
+      ["container", AGENT_PYTHON_STRANDS_BOX_CONTAINER],
+      ["plain", AGENT_PYTHON],
+    ] as const) {
+      await runCreate(manager().manager, {
+        name,
+        scaffoldRuntimeInput: runtime,
+        skipInstall: true,
+      });
+      expect(existsSync(venv(name, runtime))).toBe(false);
+    }
   });
 
   test("fails before writing files when box is not on PATH, with the install hint", async () => {

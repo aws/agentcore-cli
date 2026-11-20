@@ -73,6 +73,7 @@ describe("renderBoxProfile", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS)!) as unknown).toEqual({
       packs: ["box/base", "box/bedrock"],
       profile: { name: "V3Demo" },
+      project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: UVICORN,
@@ -80,6 +81,7 @@ describe("renderBoxProfile", () => {
         filesystem: VENV_GRANTS,
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
+      tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
       egress: { bedrock: { secret: { ref: "aws://default" } } },
     });
   });
@@ -374,6 +376,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
     expect(parse(text)).toEqual({
       packs: ["box/base", "box/bedrock", "box/agentcore", "box/agentcore-codezip"],
       profile: { name: "V3Demo" },
+      project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
       agent: {
         command: [
@@ -416,6 +419,7 @@ describe("renderBoxProfile for AgentCore Runtime", () => {
         // The container reads the deployed resources from the environment through box/agentcore.
         packs: ["box/base", "box/bedrock", "box/agentcore"],
         profile: { name: "V3Demo" },
+        project: { access: "read" },
         options: { bedrock: { region: "us-west-2" } },
         agent: {
           command: [
@@ -511,7 +515,11 @@ describe("renderRuntimeBoxProfile", () => {
     backends: [
       {
         url: `\${{ inputs.gateway.url }}/${target}`,
-        auth: { ref: "aws://", aws: { service: "bedrock-agentcore", region: "us-west-2" } },
+        // Signed for the Runtime's own region, which box reads from AWS_REGION there.
+        auth: {
+          ref: "aws://",
+          aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
+        },
       },
     ],
   });
@@ -528,7 +536,7 @@ describe("renderRuntimeBoxProfile", () => {
           url: "${{ inputs.gateway.url }}/agentcore",
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "us-west-2" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -573,7 +581,7 @@ describe("renderRuntimeBoxProfile", () => {
     });
   });
 
-  test("signs each route for the gateway in the region build builds for", () => {
+  test("signs each route for the gateway in the Runtime's own region", () => {
     const project = spec([], {}, [getBoxGatewayBedrockTargetSpec("eu-central-1")]);
     const profile = parse(
       renderRuntimeBoxProfile(project, project.runtimes[0]!, {
@@ -588,9 +596,10 @@ describe("renderRuntimeBoxProfile", () => {
       backends: [
         {
           url: "${{ inputs.gateway.url }}/bedrock",
+          // The gateway is in the Runtime's region, which box reads from AWS_REGION there.
           auth: {
             ref: "aws://",
-            aws: { service: "bedrock-agentcore", region: "eu-central-1" },
+            aws: { service: "bedrock-agentcore", region: "${{ inputs.aws.region }}" },
           },
         },
       ],
@@ -702,7 +711,7 @@ describe("renderRuntimeBoxProfile", () => {
           'secret.phantom_prefix = "tk-"\n\n' +
           "[[mcp.tools.backends]]\n" +
           'url = "${{ inputs.gateway.url }}/egress-tools"\nauth.ref = "aws://"\n' +
-          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "us-west-2"\n',
+          'auth.aws.service = "bedrock-agentcore"\nauth.aws.region = "${{ inputs.aws.region }}"\n',
       );
     });
 
@@ -837,8 +846,17 @@ describe("startsInBoxOnCodeZip", () => {
   test("starts only the CodeZip box template in a box", () => {
     const plain = (name: RuntimeTemplateShortcutName) => resolveRuntimeTemplateShortcut(name);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-minimal-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-minimal"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agent-python-langchain-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agent-python-langchain"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("a2a-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("a2a-python-strands"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands-box"))).toBe(true);
+    expect(startsInBoxOnCodeZip(plain("agui-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp"))).toBe(false);
+    expect(startsInBoxOnCodeZip(plain("mcp-python-fastmcp-box"))).toBe(true);
     expect(startsInBoxOnCodeZip(plain("agent-python-strands-box-container"))).toBe(false);
     expect(startsInBoxOnCodeZip(plain("agent-typescript-strands"))).toBe(false);
   });

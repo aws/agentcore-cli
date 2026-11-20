@@ -5,6 +5,7 @@ import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { Layout } from "./Layout";
 import { Spinner } from "./ui/spinner";
 import { CodeBlock } from "./ui/code-block";
+import { stringifyJson } from "../io";
 
 export interface JsonDetailProps {
   // breadcrumb labels the screen (e.g. [..., "endpoint", "get", id, name]).
@@ -79,7 +80,7 @@ export function JsonDetail({
             showLineNumbers={false}
             showBorder={false}
             wrap
-            code={JSON.stringify(data, null, 2)}
+            code={stringifyJson(data, 2)}
           />
         </ScrollView>
       )}
