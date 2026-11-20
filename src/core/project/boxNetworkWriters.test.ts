@@ -461,8 +461,8 @@ describe("runtimeProfileWriter", () => {
       writer.writes(models, contextFor()),
     );
     expect(files.slice(3)).toEqual([
-      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/policy.dw" },
-      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/rules/extra.dw" },
+      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/agent/local/policy.dw" },
+      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/agent/local/rules/extra.dw" },
     ]);
     expect("text" in files[0]! && files[0].text).toContain(
       'policies = ["policy.dw", "rules/extra.dw"]',

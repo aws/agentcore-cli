@@ -30,6 +30,11 @@ import type {
   UpdateEvaluatorResponse,
   UpdateOnlineEvaluationConfigResponse,
   OutputConfig as OnlineEvalOutputConfig,
+  AgentInsightStoreEnablementStatus,
+  AgentInsightStoreEncryptionConfiguration,
+  GetAgentInsightStoreResponse,
+  ListAgentInsightStoresResponse,
+  UpdateAgentInsightStoreResponse,
 } from "@aws-sdk/client-bedrock-agentcore-control";
 import type {
   CreateABTestResponse,
@@ -39,14 +44,19 @@ import type {
   ABTestExecutionStatus,
   UpdateABTestResponse,
   DeleteABTestResponse,
+  DeleteDatasetGenerationResponse,
   DeleteRecommendationResponse,
   GetBatchEvaluationResponse,
+  GetDatasetGenerationResponse,
   GetRecommendationResponse,
+  ListDatasetGenerationsResponse,
   ListRecommendationsResponse,
   ListBatchEvaluationsResponse,
   RecommendationConfig,
   RecommendationStatus,
   RecommendationType,
+  StartDatasetGenerationRequest,
+  StartDatasetGenerationResponse,
   StartRecommendationResponse,
   StartBatchEvaluationResponse,
   StopBatchEvaluationResponse,
@@ -56,6 +66,10 @@ import type {
   EvaluationResultContent,
   OutputConfig,
   DataSourceConfig as DataPlaneDataSourceConfig,
+  AgentInsightArchiveStatus,
+  GetAgentInsightResponse,
+  ListAgentInsightsResponse,
+  UpdateAgentInsightResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
 import type { CoreOptions } from "../../core/types";
 import type { LogSource } from "../../core/observability/types";
@@ -230,6 +244,7 @@ export type CreateTargetBasedABTestInput = {
 };
 
 export type CreateDatasetInput = CreateDatasetRequest;
+export type StartDatasetGenerationInput = Omit<StartDatasetGenerationRequest, "clientToken">;
 export type StartRecommendationInput = {
   name: string;
   description?: string;
@@ -340,6 +355,25 @@ export type DatasetUpdateProgressEvent = {
   message: string;
 };
 
+export type ListAgentInsightsInput = {
+  applicationName?: string;
+  batchEvaluationId?: string;
+  archiveStatus?: AgentInsightArchiveStatus;
+  nextToken?: string;
+  maxResults?: number;
+};
+
+export type UpdateAgentInsightInput = {
+  applicationName: string;
+  agentInsightId: string;
+  archiveStatus: AgentInsightArchiveStatus;
+};
+
+export type AgentInsightStoreUpdate = {
+  enablementStatus?: AgentInsightStoreEnablementStatus;
+  encryptionConfiguration?: AgentInsightStoreEncryptionConfiguration;
+};
+
 // CoreEvalClient is the evaluator, online evaluation, and dataset surface the eval
 // handlers depend on. It is declared here, next to the handlers that consume it,
 // and implemented by src/core/eval.tsx (dependency inversion: handlers own the
@@ -382,6 +416,27 @@ export interface CoreEvalClient {
     options: CoreOptions,
   ): Promise<ListRecommendationsResponse>;
   deleteRecommendation(id: string, options: CoreOptions): Promise<DeleteRecommendationResponse>;
+
+  startDatasetGeneration(
+    input: StartDatasetGenerationInput,
+    options: CoreOptions,
+  ): Promise<StartDatasetGenerationResponse>;
+  getDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<GetDatasetGenerationResponse>;
+  listDatasetGenerations(
+    datasetId: string,
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListDatasetGenerationsResponse>;
+  deleteDatasetGeneration(
+    datasetId: string,
+    generationId: string,
+    options: CoreOptions,
+  ): Promise<DeleteDatasetGenerationResponse>;
 
   // getBatchEvaluation returns the service-side job and, unless `includeResults`
   // is false, the per-session results read from its per-job CloudWatch stream once
@@ -508,8 +563,8 @@ export interface CoreEvalClient {
     filter?: VersionFilter,
   ): Promise<ListConfigurationBundleVersionsResponse>;
 
-  // createDataset seeds a new dataset's DRAFT from `source`, which is required.
-  // `schemaType` governs the structure of every example and is immutable after creation.
+  // createDataset seeds a new dataset's DRAFT from `source`, or creates it empty when
+  // `source` is omitted.
   // The response reports status CREATING — ingestion is asynchronous, and the dataset is not
   // writable until GetDataset reports ACTIVE.
   createDataset(input: CreateDatasetInput, options: CoreOptions): Promise<CreateDatasetResponse>;
@@ -552,4 +607,29 @@ export interface CoreEvalClient {
     // Called immediately before each mutation batch starts.
     onProgress?: (event: DatasetUpdateProgressEvent) => void,
   ): Promise<DatasetUpdateResult>;
+
+  listAgentInsights(
+    input: ListAgentInsightsInput,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightsResponse>;
+  getAgentInsight(
+    applicationName: string,
+    agentInsightId: string,
+    options: CoreOptions,
+  ): Promise<GetAgentInsightResponse>;
+  updateAgentInsight(
+    input: UpdateAgentInsightInput,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightResponse>;
+  listAgentInsightStores(
+    nextToken: string | undefined,
+    maxResults: number | undefined,
+    options: CoreOptions,
+  ): Promise<ListAgentInsightStoresResponse>;
+  getAgentInsightStore(id: string, options: CoreOptions): Promise<GetAgentInsightStoreResponse>;
+  updateAgentInsightStore(
+    id: string,
+    update: AgentInsightStoreUpdate,
+    options: CoreOptions,
+  ): Promise<UpdateAgentInsightStoreResponse>;
 }

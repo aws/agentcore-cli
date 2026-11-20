@@ -9,7 +9,7 @@ import { gatewayTargetFor, outboundAuthWords, sameOutboundAuth } from "./project
 /** The hosts of `egress`, with the rules Box adds for it. */
 function hostsOf(egress: Record<string, unknown>): BoxNetworkHost[] {
   const { parsed } = parseResolvedPolicy(
-    { path: ".box/profile.toml", egress, mcp: {}, policyFiles: [] },
+    { path: ".box/agent/local/profile.toml", egress, mcp: {}, policyFiles: [] },
     boxNetworkRules(egress),
     [],
   );

@@ -132,14 +132,12 @@ describe("dataset create", () => {
       "orders-regression",
       "--source",
       `file://${path}`,
-      "--schema-type",
-      "predefined",
     ]);
 
     expect(createDatasetInput(core)).toEqual({
       datasetName: "orders-regression",
       source: { inlineExamples: { examples: [EXAMPLE_A, EXAMPLE_B] } },
-      schemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
+      schemaType: undefined,
       description: undefined,
       kmsKeyArn: undefined,
       tags: undefined,
@@ -149,17 +147,7 @@ describe("dataset create", () => {
   test("reads examples from stdin", async () => {
     const { core, route } = testDatasetCommand(`${JSON.stringify(EXAMPLE_A)}\n`);
 
-    await route([
-      "eval",
-      "dataset",
-      "create",
-      "--name",
-      "orders-regression",
-      "--source",
-      "-",
-      "--schema-type",
-      "predefined",
-    ]);
+    await route(["eval", "dataset", "create", "--name", "orders-regression", "--source", "-"]);
 
     expect(createDatasetInput(core).source).toEqual({
       inlineExamples: { examples: [EXAMPLE_A] },
@@ -179,15 +167,12 @@ describe("dataset create", () => {
       "orders-regression",
       "--source",
       "s3://my-bucket/datasets/orders.jsonl",
-      "--schema-type",
-      "simulated",
     ]);
 
     const input = createDatasetInput(core);
     expect(input.source).toEqual({
       s3Source: { s3Uri: "s3://my-bucket/datasets/orders.jsonl" },
     });
-    expect(input.schemaType).toBe("AGENTCORE_EVALUATION_SIMULATED_V1");
   });
 
   test("passes through description, KMS key, and tags", async () => {
@@ -202,8 +187,6 @@ describe("dataset create", () => {
       "orders-regression",
       "--source",
       `file://${path}`,
-      "--schema-type",
-      "predefined",
       "--description",
       "Regression tests for the order-support agent",
       "--kms-key-arn",
@@ -239,8 +222,6 @@ describe("dataset create", () => {
       "orders-regression",
       "--source",
       `file://${path}`,
-      "--schema-type",
-      "predefined",
     ]);
 
     expect(JSON.parse(stdout())).toMatchObject({
@@ -255,75 +236,19 @@ describe("dataset create", () => {
     test("requires --name", async () => {
       const { core, route } = testDatasetCommand();
 
-      const promise = route([
-        "eval",
-        "dataset",
-        "create",
-        "--source",
-        `file://${path()}`,
-        "--schema-type",
-        "predefined",
-      ]);
+      const promise = route(["eval", "dataset", "create", "--source", `file://${path()}`]);
 
       await expectError(promise, /--name/, InputValidationError);
       expect(core.eval.calls).toHaveLength(0);
     });
 
-    // The API has no way to create an empty dataset, so --source is required
-    // even though the design doc lists it as optional.
-    test("requires --source", async () => {
+    // GA makes `source` optional, so omitting it creates an empty dataset.
+    test("creates an empty dataset when --source is omitted", async () => {
       const { core, route } = testDatasetCommand();
 
-      const promise = route([
-        "eval",
-        "dataset",
-        "create",
-        "--name",
-        "orders-regression",
-        "--schema-type",
-        "predefined",
-      ]);
+      await route(["eval", "dataset", "create", "--name", "orders-regression"]);
 
-      await expectError(promise, /--source/, InputValidationError);
-      expect(core.eval.calls).toHaveLength(0);
-    });
-
-    // schemaType is immutable after creation, so the customer chooses it rather
-    // than inheriting a default that cannot later be corrected.
-    test("requires --schema-type", async () => {
-      const { core, route } = testDatasetCommand();
-
-      const promise = route([
-        "eval",
-        "dataset",
-        "create",
-        "--name",
-        "orders-regression",
-        "--source",
-        `file://${path()}`,
-      ]);
-
-      await expectError(promise, /--schema-type/, InputValidationError);
-      expect(core.eval.calls).toHaveLength(0);
-    });
-
-    test("rejects an unknown --schema-type", async () => {
-      const { core, route } = testDatasetCommand();
-
-      const promise = route([
-        "eval",
-        "dataset",
-        "create",
-        "--name",
-        "orders-regression",
-        "--source",
-        `file://${path()}`,
-        "--schema-type",
-        "predefined-v1",
-      ]);
-
-      await expect(promise).rejects.toThrow();
-      expect(core.eval.calls).toHaveLength(0);
+      expect(createDatasetInput(core).source).toBeUndefined();
     });
 
     // A bare path is the predictable first mistake: it parses as inline content
@@ -339,8 +264,6 @@ describe("dataset create", () => {
         "orders-regression",
         "--source",
         "./dataset/orders.jsonl",
-        "--schema-type",
-        "predefined",
       ]);
 
       await expect(promise).rejects.toThrow(/file:\/\/\.\/dataset\/orders\.jsonl/);
@@ -362,8 +285,6 @@ describe("dataset create", () => {
         "orders-regression",
         "--source",
         `file://${badPath}`,
-        "--schema-type",
-        "predefined",
       ]);
 
       await expect(promise).rejects.toThrow(/line 2/);
@@ -381,7 +302,6 @@ describe("dataset get", () => {
       datasetName: "orders-regression",
       status: "ACTIVE",
       draftStatus: "MODIFIED",
-      schemaType: "AGENTCORE_EVALUATION_PREDEFINED_V1",
       exampleCount: 2,
     } as never);
 

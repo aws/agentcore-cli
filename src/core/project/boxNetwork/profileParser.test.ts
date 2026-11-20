@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseResolvedProfile, profilePlaces, profilePolicyFiles } from "./profileParser";
 
-const PROFILE = ".box/profile.toml";
+const PROFILE = ".box/agent/local/profile.toml";
 
 describe("parseResolvedProfile", () => {
   test("reads [egress] and [mcp] of Box's resolved box.toml, and keeps the profile's policy files", () => {
@@ -124,13 +124,13 @@ describe("profilePolicyFiles", () => {
   test.each([
     [
       'policies = ["../escape.dw"]',
-      '`policies` names "../escape.dw", which is outside .box/. Move the file into ' +
-        ".box/, and name it from there.",
+      '`policies` names "../escape.dw", which is outside .box/agent/local/. Move the file into ' +
+        ".box/agent/local/, and name it from there.",
     ],
     [
       'policies = ["/etc/policy.dw"]',
-      '`policies` names "/etc/policy.dw", which is outside .box/. Move the file into ' +
-        ".box/, and name it from there.",
+      '`policies` names "/etc/policy.dw", which is outside .box/agent/local/. Move the file into ' +
+        ".box/agent/local/, and name it from there.",
     ],
     ['policies = ["a.dw", "./a.dw"]', '`policies` names "./a.dw" twice. Remove one of them.'],
     [
@@ -141,7 +141,7 @@ describe("profilePolicyFiles", () => {
     expect(refusal(`# policy files\n  ${text}\n`)).toEqual({
       code: "INVALID_PROFILE",
       reason,
-      place: ".box/profile.toml:2:3",
+      place: ".box/agent/local/profile.toml:2:3",
     });
   });
 
@@ -151,7 +151,7 @@ describe("profilePolicyFiles", () => {
       reason:
         "Box does not take the key `policy`. List your policy files under `policies` instead, " +
         'such as policies = ["policy.dw"].',
-      place: ".box/profile.toml:2:1",
+      place: ".box/agent/local/profile.toml:2:1",
     });
   });
 
@@ -159,7 +159,7 @@ describe("profilePolicyFiles", () => {
     expect(refusal("a = 1\n[egress\n")).toEqual({
       code: "INVALID_PROFILE",
       reason: "This is not valid TOML (illegal character in key). Correct the syntax.",
-      place: ".box/profile.toml:2:8",
+      place: ".box/agent/local/profile.toml:2:8",
     });
   });
 });
@@ -191,13 +191,13 @@ describe("profilePlaces", () => {
     );
 
     expect(Object.fromEntries(places.entries)).toEqual({
-      "egress.github": ".box/profile.toml:4:1",
-      "egress.dot.name": ".box/profile.toml:7:1",
-      "egress.inline": ".box/profile.toml:11:3",
-      "mcp.tools": ".box/profile.toml:17:1",
+      "egress.github": ".box/agent/local/profile.toml:4:1",
+      "egress.dot.name": ".box/agent/local/profile.toml:7:1",
+      "egress.inline": ".box/agent/local/profile.toml:11:3",
+      "mcp.tools": ".box/agent/local/profile.toml:17:1",
     });
-    expect(places.packs).toBe(".box/profile.toml:1:1");
-    expect(places.policies).toBe(".box/profile.toml:2:1");
+    expect(places.packs).toBe(".box/agent/local/profile.toml:1:1");
+    expect(places.policies).toBe(".box/agent/local/profile.toml:2:1");
   });
 
   test("places no entry, `packs`, or `policies` that the profile does not set", () => {

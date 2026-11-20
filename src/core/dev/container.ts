@@ -27,7 +27,7 @@ import {
 } from "../project/backends/boxContainer";
 import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
-import { boxProfileIsFor, boxProfilePath, runsInBox } from "../project/templates/boxProfile";
+import { boxLocalProfilePath, runsInBox } from "../project/templates/boxProfile";
 import {
   BOX_DEV_AWS_REFRESH_MS,
   resolveDefaultAwsCredentials,
@@ -329,7 +329,7 @@ export class ContainerDevRunner implements DevRunner {
 
   /**
    * Stages box into the build context for a runtime that runs in a box (`runsInBox`), with the
-   * project's box profile and the policy files it names, and returns the folder it staged, or
+   * runtime's local box profile and the policy files it names, and returns the folder it staged, or
    * undefined for a runtime outside a box. A Dockerfile that takes the folder as `BOX_DIST` gets `.box-dev/`, so dev
    * leaves build and deploy's `.box-dist/` alone; an older one gets `.box-dist/`. The image then
    * runs `box run`, which needs BOX_RUN_FLAGS.
@@ -343,29 +343,22 @@ export class ContainerDevRunner implements DevRunner {
       }
       return undefined;
     }
-    const profile = boxProfilePath(input.projectRoot);
+    const profile = boxLocalProfilePath(input.projectRoot, input.runtime.name);
     if (!existsSync(profile)) {
       throw new ResourceNotFoundError(
         `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
           `but its box profile ${profile} does not exist. Restore the profile that ` +
-          "`agentcore create` wrote.",
+          "`agentcore create` or `agentcore add runtime` wrote.",
       );
     }
     const profileText = readFileSync(profile, "utf8");
-    if (!boxProfileIsFor(profileText, input.runtime)) {
-      throw new InputValidationError(
-        `runtime "${input.runtime.name}" runs its agent in a box (it has box.version in agentcore.json), ` +
-          `but ${profile} is the box profile of another runtime. Write a box profile for this ` +
-          "runtime there.",
-      );
-    }
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
     await stageBoxImage(
       context,
       profileText,
-      boxPolicyFileCopies(input.projectRoot),
+      boxPolicyFileCopies(input.projectRoot, input.runtime.name),
       await this.releaseFor(input.runtime.box?.version),
       folder,
     );

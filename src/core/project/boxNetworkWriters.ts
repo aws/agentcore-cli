@@ -4,7 +4,7 @@
  * agentcore.json: changes to agentcore.json, files, and `.env.local` entries. One output belongs
  * to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
  */
-import { copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { EnvLocalEntry } from "../../handlers/project/types";
@@ -36,6 +36,8 @@ import {
 import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  boxAwsDir,
+  boxLocalDir,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
   renderRuntimeBoxProfile,
@@ -308,8 +310,8 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime, and
- * a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
+ * its own box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime,
+ * and a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
@@ -321,6 +323,8 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     })),
   ],
   edits: (networks, { spec, projectRoot }) => {
+    // Each box runtime reads its own .box/<name>/local profile, so each one gets the policy of its
+    // own telemetry only.
     const files: BoxNetworkFile[] = [];
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
@@ -337,6 +341,25 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     return { spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)], files };
   },
 };
+
+/**
+ * Writes a copy of `files`, what the runtime profile writer wrote into the staged folder `dist` of
+ * `runtime`, into the runtime's `.box/<name>/aws/` folder, so people can read the AgentCore
+ * Runtime profile that deploys. The folder gets nothing else: the box release is only in `dist`.
+ */
+export function writeRenderedBoxFiles(
+  projectRoot: string,
+  runtime: string,
+  dist: string,
+  files: readonly BoxNetworkFile[],
+): void {
+  const aws = boxAwsDir(runtime);
+  rmSync(join(projectRoot, ...aws.split("/")), { recursive: true, force: true });
+  writeBoxNetworkFiles(
+    projectRoot,
+    files.map((file) => ({ ...file, path: `${aws}/${file.path.slice(dist.length + 1)}` })),
+  );
+}
 
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
 export interface StagedRuntime {
@@ -389,7 +412,7 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             : []),
           ...(network?.policyFiles ?? []).map((file) => ({
             path: `${dist}/${file}`,
-            copyOf: `.box/${file}`,
+            copyOf: `${boxLocalDir(runtime)}/${file}`,
           })),
         ];
       }),
