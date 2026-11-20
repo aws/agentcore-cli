@@ -4,7 +4,8 @@ import type { ProjectSpec } from "../../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { profileKeyPlaces, runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
-import type { RuntimeProfileProblem, TomlTable } from "../types";
+import type { ThirdPartyTelemetry } from "../../boxNetwork";
+import type { RuntimeProfileContext, RuntimeProfileProblem, TomlTable } from "../types";
 import { apply } from "./refusals";
 
 const CODEZIP = {
@@ -254,7 +255,10 @@ describe("the refusals rule", () => {
           reason:
             '[telemetry.collector] kind is "otlp". At this time, a box on AgentCore Runtime can ' +
             'send telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". ' +
-            "Remove [telemetry.collector], or change its kind to one of these.",
+            "Remove [telemetry.collector], or change its kind to one of these. With a box build " +
+            "that has the @box/aws-secrets-manager plugin, you can set " +
+            "AGENTCORE_BOX_SECRETS_MANAGER=1 instead: then build carries the target, and deploy " +
+            "moves its key to AWS Secrets Manager.",
           place: `${PROFILE}:7:1`,
         },
         {
@@ -269,6 +273,59 @@ describe("the refusals rule", () => {
       ]);
     },
   );
+
+  describe("a third-party [telemetry] target, which goes to AgentCore Runtime only through AWS Secrets Manager", () => {
+    const text = toml(
+      "[telemetry.langfuse]",
+      'kind = "langfuse"',
+      'destination = "https://cloud.langfuse.com"',
+      'secret.ref = "env://LANGFUSE_KEY"',
+    );
+    const carried: ThirdPartyTelemetry = {
+      name: "langfuse",
+      kind: "langfuse",
+      keys: [["destination", "https://cloud.langfuse.com"]],
+      secret: { variable: "LANGFUSE_KEY", keys: [] },
+    };
+    const problems = (context: Partial<RuntimeProfileContext>) =>
+      apply(parse(text) as TomlTable, { ...contextOf(text, CONTAINER), ...context }).problems;
+
+    test("stops for no target that the Box network model carries", () => {
+      expect(problems({ thirdPartyTelemetry: [carried], secretsManager: true })).toEqual([]);
+    });
+
+    test("names AGENTCORE_BOX_SECRETS_MANAGER when it is off", () => {
+      expect(problems({ secretsManager: false })).toEqual([
+        {
+          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+          key: ["telemetry", "langfuse", "kind"],
+          reason:
+            '[telemetry.langfuse] kind is "langfuse". At this time, a box on AgentCore Runtime ' +
+            'can send telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". ' +
+            "Remove [telemetry.langfuse], or change its kind to one of these. With a box build " +
+            "that has the @box/aws-secrets-manager plugin, you can set " +
+            "AGENTCORE_BOX_SECRETS_MANAGER=1 instead: then build carries the target, and deploy " +
+            "moves its key to AWS Secrets Manager.",
+          place: `${PROFILE}:2:1`,
+        },
+      ]);
+    });
+
+    test("names the warning of the Box network model when the switch is on and the model leaves the target out", () => {
+      expect(problems({ thirdPartyTelemetry: [], secretsManager: true })).toEqual([
+        {
+          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+          key: ["telemetry", "langfuse", "kind"],
+          reason:
+            '[telemetry.langfuse] kind is "langfuse", and build cannot carry this target to ' +
+            "AgentCore Runtime: the warning for [telemetry.langfuse] gives the reason. Correct " +
+            'that, remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
+            '"cloudwatch_traces".',
+          place: `${PROFILE}:2:1`,
+        },
+      ]);
+    });
+  });
 
   test("reads no path of [egress], of an HTTP [mcp], or of [telemetry]: other rules write them", () => {
     const text = toml(

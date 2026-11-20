@@ -237,6 +237,8 @@ export function buildBoxNetwork(
         gateway: { name: project.gateway, targets: project.targets },
         hosts: targets.hosts,
         telemetry: telemetry?.telemetry ?? [],
+        thirdPartyTelemetry: thirdParty.targets,
+        secretsManager: project.secretsManager ?? false,
         policyFiles: parsed.profile.policyFiles,
         places: source.places,
       }),
