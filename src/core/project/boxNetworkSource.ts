@@ -56,6 +56,7 @@ export async function readBoxNetworks(
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
   assertNoProjectBoxProfile(projectRoot);
+  assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
   // The model sees the targets build adds for the model and Memory calls, so no host takes a
   // second target for their endpoints.
   const withDefaults = structuredClone(spec);
@@ -89,6 +90,30 @@ export async function readBoxNetworks(
     });
   }
   return networks;
+}
+
+/**
+ * Throws, naming each profile to create, when a runtime that runs its agent in a box has no local
+ * box profile of its own: build has nothing to derive its AgentCore Runtime profile from.
+ */
+function assertBoxRuntimesHaveProfiles(
+  projectRoot: string,
+  runtimes: readonly ProjectSpec["runtimes"][number][],
+): void {
+  const missing = runtimes.filter(
+    ({ name }) => !existsSync(boxLocalProfilePath(projectRoot, name)),
+  );
+  if (missing.length === 0) return;
+  throw new ProjectStateError(
+    missing
+      .map(
+        ({ name }) =>
+          `runtime "${name}" runs its agent in a box (it has box.version in agentcore.json), but ` +
+          `${boxLocalProfileFile(name)} does not exist. Create that box profile for the runtime, ` +
+          "or remove its box.version, then retry.",
+      )
+      .join("\n"),
+  );
 }
 
 /** By API key credential, the variable and the runtime of the first entry that takes it. */
