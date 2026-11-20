@@ -11,7 +11,7 @@ import {
   CommandRunMetricEventKey,
   ProjectKey,
 } from "../router";
-import type { AppIO } from "../io";
+import { stringifyJson, type AppIO } from "../io";
 import type { Core } from "../handlers/types";
 import { JsonKey } from "../handlers/keys";
 import {
@@ -33,7 +33,7 @@ import { TuiHandoffKey, handoffArgs } from "./handoff";
 // destination is injectable (`writer`, default console.log) so output can be
 // redirected — most importantly captured in tests.
 export function renderJson(data: unknown, writer: (line: string) => void = console.log): void {
-  writer(JSON.stringify(data, null, 2));
+  writer(stringifyJson(data, 2));
 }
 
 // JsonRenderer is the JSON output capability handlers consume from the context.

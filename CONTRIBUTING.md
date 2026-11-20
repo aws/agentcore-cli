@@ -112,6 +112,17 @@ TARBALL=$(npm pack --silent)
 npm i -g "./$TARBALL"
 ```
 
+To check project-local npm installation with TypeScript 5, 6, 7, and no host TypeScript:
+
+```bash
+bun run build
+bun run test:package
+```
+
+This smoke test needs npm registry access. It packs the built CLI, installs it into temporary
+projects without peer-dependency overrides, and checks `--version` and `--help`. It runs separately
+from the offline unit suite and does not deploy AWS resources.
+
 ### Windows notes
 
 - **`agentcore.ps1 cannot be loaded because running scripts is disabled`**: the

@@ -110,7 +110,10 @@ export interface BoxNetwork {
   readonly hosts: readonly BoxNetworkHost[];
   /** The `env://` route of each target that sends an API key, for the credentials writer. */
   readonly envRoutes: readonly BoxEnvRoute[];
-  /** The policy files, relative to `.box/`, to copy beside the AgentCore Runtime profile. */
+  /**
+   * The policy files, relative to the agent's local box folder, to copy beside the AgentCore
+   * Runtime profile.
+   */
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
   readonly telemetry?: readonly CloudWatchTelemetry[];

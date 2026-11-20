@@ -31,7 +31,6 @@ export function DatasetGetScreen(props: ScreenProps) {
         version: dataset?.datasetVersion ?? "DRAFT",
         status: dataset?.status ?? "-",
         draftStatus: dataset?.draftStatus ?? "-",
-        schema: dataset?.schemaType ?? "-",
         examples: dataset?.exampleCount?.toString() ?? "-",
         ...(dataset?.description ? { description: dataset.description } : {}),
         ...(dataset?.failureReason ? { failureReason: dataset.failureReason } : {}),

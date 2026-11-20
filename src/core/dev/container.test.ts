@@ -809,7 +809,7 @@ describe("ContainerDevRunner", () => {
     async function boxedScene(
       options: {
         profile?: boolean;
-        /** The text of `.box/profile.toml`. */
+        /** The text of `.box/Hello_World/local/profile.toml`. */
         profileText?: string;
         dockerfile?: string;
         /** Whether the runtime has box.version, which create writes only for a box template. */
@@ -823,11 +823,9 @@ describe("ContainerDevRunner", () => {
       await mkdir(join(root, "agentcore"));
       await writeFile(join(root, "agentcore", "agentcore.json"), '{"name":"Demo"}');
       if (options.profile ?? true) {
-        await mkdir(join(root, ".box"));
-        await writeFile(
-          join(root, ".box", "profile.toml"),
-          options.profileText ?? "# local profile\n",
-        );
+        const local = join(root, ".box", projectRuntime.name, "local");
+        await mkdir(local, { recursive: true });
+        await writeFile(join(local, "profile.toml"), options.profileText ?? "# local profile\n");
       }
       return { projectRuntime, root, context };
     }
@@ -860,21 +858,6 @@ describe("ContainerDevRunner", () => {
 
       expect(await readdir(context)).not.toContain(".box-dist");
       expect(commandCall(calls, "run").command).not.toContain("--cap-add");
-    });
-
-    test("refuses a box profile written for a CodeZip runtime", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      await writeFile(
-        join(root, ".box", "profile.toml"),
-        'read = ["${{ workspace }}/app/other"]\n',
-      );
-      const { calls, runner } = harness({ processEnv: credentials });
-
-      const run = collect(runner.run(input(root, projectRuntime)));
-
-      await expect(run).rejects.toBeInstanceOf(InputValidationError);
-      await expect(run).rejects.toThrow("is the box profile of another runtime");
-      expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
 
     test("stages the local profile in .box-dist/, and lets box's sandbox run", async () => {
@@ -1023,9 +1006,10 @@ describe("ContainerDevRunner", () => {
       const { projectRuntime, root, context } = await boxedScene({
         profileText: 'policies = ["policy.dw", "rules/extra.dw"]\n',
       });
-      await mkdir(join(root, ".box", "rules"));
-      await writeFile(join(root, ".box", "policy.dw"), "// rules\n");
-      await writeFile(join(root, ".box", "rules", "extra.dw"), "// extra\n");
+      const local = join(root, ".box", projectRuntime.name, "local");
+      await mkdir(join(local, "rules"));
+      await writeFile(join(local, "policy.dw"), "// rules\n");
+      await writeFile(join(local, "rules", "extra.dw"), "// extra\n");
       const { runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, projectRuntime)));
@@ -1040,20 +1024,21 @@ describe("ContainerDevRunner", () => {
       [
         "a TOML error",
         'policies = ["policy.dw"]\n[agent\n',
-        ".box/profile.toml:2:7  This is not valid TOML (illegal character in key). Correct the " +
-          "syntax.",
+        ".box/Hello_World/local/profile.toml:2:7  This is not valid TOML (illegal character in " +
+          "key). Correct the syntax.",
       ],
       [
         "the `policy` key",
         '# one file\npolicy = "policy.dw"\n',
-        ".box/profile.toml:2:1  Box does not take the key `policy`. List your policy files under " +
-          '`policies` instead, such as policies = ["policy.dw"].',
+        ".box/Hello_World/local/profile.toml:2:1  Box does not take the key `policy`. List your " +
+          'policy files under `policies` instead, such as policies = ["policy.dw"].',
       ],
       [
-        "a policy file outside .box/",
+        "a policy file outside .box/Hello_World/local/",
         'policies = ["../../elsewhere.dw"]\n',
-        '.box/profile.toml:1:1  `policies` names "../../elsewhere.dw", which is outside .box/. ' +
-          "Move the file into .box/, and name it from there.",
+        '.box/Hello_World/local/profile.toml:1:1  `policies` names "../../elsewhere.dw", which is ' +
+          "outside .box/Hello_World/local/. Move the file into .box/Hello_World/local/, and name it " +
+          "from there.",
       ],
     ])("stops, and stages nothing, for a profile with %s", async (_, profileText, line) => {
       const { projectRuntime, root, context } = await boxedScene({ profileText });

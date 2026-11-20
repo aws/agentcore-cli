@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { ProjectStateError } from "../../../errors/errors";
-import { BOX_PROFILE_FILE } from "../templates/boxProfile";
+import { boxLocalProfileFile } from "../templates/boxProfile";
 
 /** A `COPY` of the whole staged folder, which takes the policy files in with the profile. */
 const COPIES_WHOLE_DIST = /^\s*COPY\s+(?:--\S+\s+)*(?:\.box-dist|\$\{BOX_DIST\})\/?\s/m;
@@ -16,7 +16,7 @@ export function assertImageCopiesPolicyFiles(
 ): void {
   if (policyFiles.length === 0 || COPIES_WHOLE_DIST.test(readFileSync(dockerfile, "utf8"))) return;
   throw new ProjectStateError(
-    `runtime "${runtimeName}" takes the policy files of ${BOX_PROFILE_FILE} to AgentCore Runtime ` +
+    `runtime "${runtimeName}" takes the policy files of ${boxLocalProfileFile(runtimeName)} to AgentCore Runtime ` +
       `(${policyFiles.join(", ")}), but ${dockerfile} does not copy .box-dist/ whole into the ` +
       "image. Box would refuse its profile there. Copy the box steps of the Dockerfile of a new " +
       "`agentcore create --template agent-python-strands-box-container` project: they copy " +

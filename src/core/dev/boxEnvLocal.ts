@@ -4,7 +4,7 @@ import { EnvLocalFile, ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 
 /**
  * Writes into `agentcore/.env.local`, under its own name, each variable that a
- * `[egress.<name>] secret.ref = "env://<VAR>"` route of the project's box profile
+ * `[egress.<name>] secret.ref = "env://<VAR>"` route of the agent's box profile
  * names and `env` holds, so `box run` finds it under `agentcore dev`, on the host
  * and in a container alike. A variable `.env.local` holds already keeps its value,
  * and one that is unset or blank in `env` is left out, so box names it. A profile
@@ -13,9 +13,10 @@ import { EnvLocalFile, ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
  */
 export async function writeBoxDevEnvLocal(
   projectRoot: string,
+  agentName: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string[]> {
-  const routes = readBoxEnvRoutes(projectRoot)?.routes ?? [];
+  const routes = readBoxEnvRoutes(projectRoot, agentName)?.routes ?? [];
 
   const entries: (EnvLocalEntry & { route: string })[] = [];
   for (const { route, variable: key } of routes) {

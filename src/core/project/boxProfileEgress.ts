@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseToml } from "smol-toml";
-import { boxProfilePath } from "./templates/boxProfile";
+import { boxLocalProfilePath } from "./templates/boxProfile";
 
 const ENV_SCHEME = "env://";
 
@@ -42,11 +42,11 @@ export function parseBoxEnvRoutes(text: string): BoxEnvRoutes {
 }
 
 /**
- * The `env://` routes of the box profile of the project at `projectRoot`, or `undefined` when the
- * project has no box profile.
+ * The `env://` routes of the local box profile of agent `agentName` in the project at
+ * `projectRoot`, or `undefined` when the agent has no local box profile.
  */
-export function readBoxEnvRoutes(projectRoot: string): BoxEnvRoutes | undefined {
-  const path = boxProfilePath(projectRoot);
+export function readBoxEnvRoutes(projectRoot: string, agentName: string): BoxEnvRoutes | undefined {
+  const path = boxLocalProfilePath(projectRoot, agentName);
   if (!existsSync(path)) return undefined;
   return parseBoxEnvRoutes(readFileSync(path, "utf8"));
 }

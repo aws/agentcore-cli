@@ -5,8 +5,6 @@ import type { Example, RunContext } from "./types";
 // Not shipped: replaying a simulated example needs an LLM actor we don't run yet. Throw
 // at construction (= load time) so the user fails early, not with a per-row misdiagnosis.
 export class SimulatedExample implements Example {
-  readonly schemaType = "AGENTCORE_EVALUATION_SIMULATED_V1" as const;
-
   constructor(
     readonly exampleId: string,
     _row: Record<string, unknown>,
