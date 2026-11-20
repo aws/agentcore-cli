@@ -1567,6 +1567,37 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toEqual([]);
     });
 
+    test.each(["ap-south-2", "us-west-1", "us-gov-west-1"])(
+      "deploy of a Box project to %s fails before anything is written",
+      async (region) => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget(
+          region,
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const before = await readFile(specPath, "utf8");
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+        expect(String(error)).toContain(
+          `Cannot deploy Box project 'example' to target 'primary' in ${region}`,
+        );
+        expect(await readFile(specPath, "utf8")).toBe(before);
+        expect(deployCalls).toEqual([]);
+      },
+    );
+
+    test("deploy of a project that is not a Box project to us-west-1 is not refused", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
+    });
+
     test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
       await inTempDirectory();
       const { subject, project, deployCalls } = await projectWithTarget(

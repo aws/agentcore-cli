@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isChinaContext, isChinaRegion } from "./partition";
+import { isChinaContext, isChinaRegion, supportsRuntimeV2 } from "./partition";
 
 describe("isChinaRegion", () => {
   test.each(["cn-north-1", "cn-northwest-1"])("returns true for %s", (region) => {
@@ -11,6 +11,28 @@ describe("isChinaRegion", () => {
 
   test.each(["us-east-1", "eu-west-1", "us-gov-west-1", ""])("returns false for %j", (region) => {
     expect(isChinaRegion(region)).toBe(false);
+  });
+});
+
+describe("supportsRuntimeV2", () => {
+  // ap-east-9 is not a region: one this CLI does not know of counts as having V2.
+  test.each(["us-west-2", "us-east-1", "eu-west-1", "cn-north-1", "ap-east-9"])(
+    "returns true for %s",
+    (region) => {
+      expect(supportsRuntimeV2(region)).toBe(true);
+    },
+  );
+
+  test.each([
+    "ap-south-2",
+    "us-west-1",
+    "us-gov-west-1",
+    "us-gov-east-1",
+    "us-iso-east-1",
+    "us-isob-east-1",
+    "us-isof-south-1",
+  ])("returns false for %s", (region) => {
+    expect(supportsRuntimeV2(region)).toBe(false);
   });
 });
 

@@ -75,7 +75,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { validateBoxRuntimes } from "./boxValidation";
+import { assertBoxRegionSupported, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -1828,6 +1828,9 @@ export class FsProjectManager implements ProjectManager {
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
       );
     }
+
+    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
+    assertBoxRegionSupported(project.spec, target);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.

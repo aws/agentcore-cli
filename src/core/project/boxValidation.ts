@@ -3,8 +3,9 @@
  * agent with no box. The runtime sync asks the sync rules before it writes agentcore.json, and
  * build and deploy call {@link validateBoxRuntimes} before they read the box profiles.
  */
-import { ProjectStateError } from "../../errors/errors";
+import { ProjectStateError, RegionUnsupportedFeatureError } from "../../errors/errors";
 import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
+import { supportsRuntimeV2 } from "../partition";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, runsInBox } from "./templates/boxProfile";
@@ -99,4 +100,20 @@ export function assertBoxCodeZipRuntimesStartBox(spec: ProjectSpec): void {
 export function validateBoxRuntimes(spec: ProjectSpec): void {
   assertBoxRuntimesHaveBoxVersion(spec);
   assertBoxCodeZipRuntimesStartBox(spec);
+}
+
+/**
+ * Throws for a Box project deployed to a region where AgentCore Runtime has no platformVersion V2.
+ * Box runs only on V2, so the runtimes could not be created there.
+ */
+export function assertBoxRegionSupported(
+  spec: ProjectSpec,
+  target: { name: string; region: string },
+): void {
+  if (!isBoxProject(spec) || supportsRuntimeV2(target.region)) return;
+  throw new RegionUnsupportedFeatureError(
+    `Cannot deploy Box project '${spec.name}' to target '${target.name}' in ${target.region}: ` +
+      `Box runs on AgentCore Runtime V2, which is not available in ${target.region}. ` +
+      `Set a target in another region in agentcore/aws-targets.json, then retry.`,
+  );
 }

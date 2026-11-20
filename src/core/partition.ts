@@ -15,6 +15,31 @@ export function isChinaRegion(region: string): boolean {
 }
 
 /**
+ * Regions where AgentCore Runtime offers no platformVersion V2. Box runs only on V2. The source
+ * of truth is the `runtimeVersion` flag in YggdrasillControlPlaneServiceConfigCDK
+ * (configuration/dynamic-configuration/feature-flags/prod-<region>.json): a region without it has
+ * no V2. Remove a region here once V2 launches in it.
+ */
+const NO_RUNTIME_V2_REGIONS: ReadonlySet<string> = new Set(["ap-south-2", "us-west-1"]);
+/** Partitions with no V2 in any region: GovCloud, and the isolated (ADC) partitions. */
+const NO_RUNTIME_V2_PARTITIONS: ReadonlySet<string> = new Set([
+  "aws-us-gov",
+  "aws-iso",
+  "aws-iso-b",
+  "aws-iso-f",
+]);
+
+/**
+ * Whether AgentCore Runtime offers platformVersion V2 in `region`. A region not listed counts as
+ * having V2, so a new region needs no CLI release; one without V2 fails at CreateAgentRuntime.
+ */
+export function supportsRuntimeV2(region: string): boolean {
+  return (
+    !NO_RUNTIME_V2_REGIONS.has(region) && !NO_RUNTIME_V2_PARTITIONS.has(partition(region).name)
+  );
+}
+
+/**
  * True when the CLI is operating in a China (aws-cn) context: the caller's
  * resolved region (when provided — telemetry resolves through the same chain
  * as withRegion) or the ambient AWS region env vars point at a China region,
