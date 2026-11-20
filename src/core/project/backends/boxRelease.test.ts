@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
+import { gte } from "semver";
 import {
+  BOX_INSTALL_HINT,
   BOX_MINIMUM_VERSION,
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
@@ -281,6 +283,18 @@ describe("the pinned releases", () => {
     expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(BOX_RELEASE_PAGE).toBe(
       `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+    );
+  });
+
+  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
+    // 0.1.11-mquang.preview.9 has only the Linux arm64 build; 0.1.11-linux-preview.7 has macOS too.
+    expect(BOX_INSTALL_HINT).toBe(
+      "Install box: download the build for your machine from " +
+        `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
+        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
+        "release has no build for your machine, use box 0.1.11-linux-preview.7 " +
+        "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a " +
+        "later release that has one.",
     );
   });
 });

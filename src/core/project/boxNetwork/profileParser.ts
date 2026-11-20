@@ -7,6 +7,7 @@
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
+import type { TomlTable } from "../runtimeProfile/types";
 import { cloudWatchTelemetry, type ProfileCloudWatchTelemetry } from "./telemetry";
 
 /** Where the profile's own text sets a key, as `<profile path>:line:column`. */
@@ -29,6 +30,14 @@ export interface ParsedProfile {
   readonly telemetry?: readonly ProfileCloudWatchTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
+  /**
+   * The profile's own text as a TOML table, which build derives the AgentCore Runtime profile from,
+   * and where the text sets each key, by its dotted path; absent when build has no profile text.
+   */
+  readonly source?: {
+    readonly table: Readonly<TomlTable>;
+    readonly places: ReadonlyMap<string, string>;
+  };
 }
 
 /** A failure of the profile, or of Box's resolution of it, at its line when one is known. */

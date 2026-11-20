@@ -21,8 +21,10 @@ Runtime. Each box runtime names its box release in `agentcore.json` with
 container they write the release and its checksum into `.box-dist/box-release.env` instead.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
 CodeZip agent, `agentcore dev` runs the `box` on your PATH: download the build for your machine
-from the release, unpack it into a folder, and add that folder to your PATH. No local box checkout
-is needed.
+from the release, unpack it into a folder, and add that folder to your PATH. The pinned release,
+`0.1.11-mquang.preview.9`, has only the Linux arm64 build. On macOS, use the macOS build of
+`0.1.11-linux-preview.7`, the first box that reads the profiles the CLI writes, or of a later release.
+No local box checkout is needed.
 
 Dev, build and deploy run a runtime's agent in a box only when `agentcore.json` has
 `"projectType": "box"` and the runtime has `"box": { "version": ... }`. `create` writes both, and
@@ -110,13 +112,16 @@ credential's egress to any host not in the list. Each entry is a `<host>` or
 `<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
 
 ```
-printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/profile.toml"
+printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
 ```
 
 ### What build and deploy do with the box profile
 
-Build and deploy read `.box/profile.toml` and the policy files it lists under `policies`, and
-turn them into the runtime's Box network. They change nothing in `.box/`.
+Build and deploy read each runtime's own `.box/<runtime>/local/profile.toml` and the policy files
+it lists under `policies`, and turn them into that runtime's Box network. They change nothing in
+`.box/<runtime>/local/`. They stage the Runtime profile, its policy files, and box in the
+`.box-dist/` folder of the code folder or of the build context, and write a copy of the profile,
+the generated packs, and the policy files into `.box/<runtime>/aws/` for you to read.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry or a policy permit
   names, and that the policy allows at least one request to, gets one passthrough target on
@@ -131,9 +136,47 @@ turn them into the runtime's Box network. They change nothing in `.box/`.
 - **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
   method, or forbid), when an entry's host gets no target, and when a target is signed for an
   AWS service that no policy of the gateway's role grants.
-- **The AgentCore Runtime profile.** The staged `.box-dist/profile.toml` has one
-  `[egress.<target>]` route through the gateway for each target of `<runtime>-box-egress`. Each policy
-  file is copied beside it, byte for byte, and listed under `policies`.
+- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
+  profile. Each key of the local profile stays, and build changes
+  only what must differ on AgentCore Runtime:
+  - each `[egress]` host with a gateway target becomes one route to `<runtime>-box-egress`: the
+    first host of an entry keeps the name of the entry, so a pack's own entry of that name merges
+    with it, and each other host gets `[egress.<target>]`; an HTTP `[mcp.<name>]` server gets the
+    same gateway backend;
+  - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
+    `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
+    ingress on `0.0.0.0` on the port of the protocol;
+  - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
+    the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
+    `[tool.<name>]`;
+  - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
+    target signs with the execution role.
+
+  **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
+  `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
+  runtime, `/aws/bedrock-agentcore/runtimes/<runtime ID>-DEFAULT`, log stream `otel-rt-logs`. box
+  reads these two names from `OTEL_EXPORTER_OTLP_LOGS_HEADERS`, which the Runtime sets. If the
+  Runtime does not set it, box does not start. The Runtime makes that log group, so its retention
+  applies, and it stays after you remove the runtime. CloudWatch Logs charges for the records it
+  gets. To send none, set `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the `envVars` of the runtime
+  in `agentcore.json`. To send them to another log group, add a `cloudwatch_logs` target to the
+  local profile. `agentcore create` and `agentcore add runtime` give this notice for each box
+  runtime.
+
+  Build stops, and names the key and its line, for a value that cannot work on the Runtime: a
+  required grant or a command path in the project outside the code folder, in the venv, or in a
+  home folder (`${{ home }}`, `~`, `/Users`, `/home`); a CodeZip program that `PATH` finds, such as
+  `npx`; a CodeZip write grant in the code folder; `network.contain_egress = false`; a CloudWatch
+  target that box refuses; or a telemetry target that is not CloudWatch or `file`. Build warns, and
+  goes on, for what the Runtime does without: a `deny` entry or an optional grant with no place
+  there, a `deny` entry on the venv (the venv is the code folder on the Runtime), a `file` telemetry
+  target, and a program at an absolute path of the system, which build cannot see. Each policy file
+  is copied beside the profile, byte for byte.
+
+  Under `agentcore dev`, the CodeZip templates give the box `[project] access = "write"`, and box
+  then refuses a stdio server or a tool whose program is the venv's Python ("a link out of a folder
+  the box can write"). To run one, set `access = "read"` in `[project]` of the local profile.
+
 - **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
   only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
   local L3 build, as in step 5.

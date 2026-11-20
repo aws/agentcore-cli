@@ -14,7 +14,6 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { FsProjectManager } from "./manager";
-import { renderRuntimeBoxProfile } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -280,13 +279,14 @@ describe("build writes the Box network of the box profile", () => {
     expect(profile.policies).toEqual(["policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
     const egress = profile.egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual([
-      "egress-github",
-      "egress-httpbin-org",
-      "bedrock",
+    // The route of [egress.github] keeps the name of its entry, and goes to its target.
+    expect(Object.keys(egress).sort()).toEqual([
       "agentcore",
+      "bedrock",
+      "egress-httpbin-org",
+      "github",
     ]);
-    expect(egress["egress-github"]).toEqual(gatewayRoute("egress-github", "api.github.com"));
+    expect(egress.github).toEqual(gatewayRoute("egress-github", "api.github.com"));
     expect(egress["egress-httpbin-org"]).toEqual(gatewayRoute("egress-httpbin-org", "httpbin.org"));
     expect(egress.bedrock).toEqual(
       gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
@@ -326,6 +326,12 @@ describe("build writes the Box network of the box profile", () => {
         "the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential 'github' " +
         "to hold it",
     );
+    // With no target, the Runtime profile has no route to api.github.com, as the old renderer.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock"]);
   });
 
   test("changes nothing on a second build", async () => {
@@ -387,6 +393,32 @@ describe("build writes the Box network of the box profile", () => {
     });
   });
 
+  test("stages no Runtime [mcp] server for an HTTP MCP server whose key build cannot find", async () => {
+    const { manager, root, box } = await strandsProject();
+    const tools = {
+      type: "http",
+      destinations: ["tools.example.com"],
+      secret: { ref: "env://TOOLS_TOKEN" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n' +
+        'secret.ref = "env://TOOLS_TOKEN"\n',
+    });
+    box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(steps).toContain(
+      `not adding gateway target 'egress-tools' of '${GATEWAY}' for tools.example.com: it sends ` +
+        "the key of env://TOOLS_TOKEN, and agentcore.json has no API key credential 'tools' " +
+        "to hold it",
+    );
+    // With no target, the Runtime profile has no [mcp.tools] server, as it has no route above.
+    expect((await runtimeProfile(root)).mcp).toBeUndefined();
+  });
+
   test("routes a host through the target the gateway holds for it, and keeps every user target", async () => {
     const { manager, root, box } = await strandsProject({ env: { GITHUB_TOKEN: "ghp_123" } });
     await editProfile(root, { tables: GITHUB_ROUTE });
@@ -402,7 +434,7 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["gh", "weather", "bedrock", "agentcore"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(egress.gh).toMatchObject({ destinations: ["api.github.com"] });
+    expect(egress.github).toEqual(gatewayRoute("gh", "api.github.com"));
   });
 
   test("removes a target it added when the profile no longer allows its host, and only that one", async () => {
@@ -441,7 +473,11 @@ describe("build writes the Box network of the box profile", () => {
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual(["bedrock", "agentcore"]);
+    // The route of [egress.memory] keeps the name of its entry, and goes to the agentcore target.
+    expect(Object.keys(egress)).toEqual(["bedrock", "memory"]);
+    expect(egress.memory).toEqual(
+      gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
+    );
   });
 
   test("on a first build, stops with every problem, where it is, and writes nothing", async () => {
@@ -766,8 +802,7 @@ describe("build writes the telemetry policy of the box profile", () => {
       );
 
       const [network] = calls[0]!.boxNetworks;
-      const runtime = project.spec.runtimes[0]!;
-      expect(parse(renderRuntimeBoxProfile(project.spec, runtime, network)).telemetry).toEqual({
+      expect(network?.runtimeProfile?.telemetry).toEqual({
         logs: logsIn("ap-south-1"),
       });
       expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([

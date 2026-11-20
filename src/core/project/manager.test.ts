@@ -47,6 +47,7 @@ import {
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { MissingToolError } from "../../io/exec";
@@ -853,6 +854,10 @@ describe("FsProjectManager.create box profile", () => {
         renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
       );
       expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+      expect(events).toContainEqual({
+        type: "warning",
+        message: defaultLogTargetNotice(AGENT_PYTHON_STRANDS_BOX.runtimeName, BOX_PROFILE_FILE),
+      });
     },
   );
 
