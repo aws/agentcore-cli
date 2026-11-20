@@ -420,8 +420,14 @@ describe.skipIf(!BOX_ON_PATH)(
   { tags: [TAGS.BOX], sequential: true },
   () => {
     const cli = new CliRunner();
+    // The container template's dev needs a container tool, which a CI macOS runner cannot run
+    // (no nested virtualization), as py_strands_container notes. Linux arm64 runs it.
+    const noLocalContainers = process.env.CI === "true" && process.platform !== "linux";
+    const templates = BOX_TEMPLATES.filter(
+      (t) => !(noLocalContainers && t.template === "agent-python-strands-box-container"),
+    );
 
-    test.each(BOX_TEMPLATES)(
+    test.each(templates)(
       "$name",
       { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
       async (runtime) => {
