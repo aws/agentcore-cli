@@ -649,6 +649,38 @@ describe("the additions rule", () => {
     });
   });
 
+  test("listens on the port of the protocol on the Runtime when the user changed the local port, and says so", () => {
+    const local = createdProfile(CODEZIP);
+    agentOf(local).ingress = [{ listen: "127.0.0.1:8090", workload_port: 8081 }];
+
+    const { table, warnings } = apply(local, contextOf(CODEZIP));
+
+    expect(agentOf(table).ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 8081 }]);
+    expect(warnings).toEqual([
+      `[[agent.ingress]] listen is "127.0.0.1:8090" in ${PROFILE_FILE}. AgentCore Runtime sends ` +
+        "the HTTP requests only to port 8080, so the Runtime profile listens on 0.0.0.0:8080.",
+    ]);
+  });
+
+  test("forwards to the workload port of the template while the agent keeps its command, and else to the port of the user", () => {
+    const template = createdProfile(CODEZIP);
+    agentOf(template).ingress = [{ listen: "127.0.0.1:8080", workload_port: 9001 }];
+    const own = structuredClone(template);
+    agentOf(own).command = ["${{ workspace }}/.venv/bin/python", "serve.py", "--port", "9001"];
+
+    const kept = apply(template, contextOf(CODEZIP));
+    const moved = apply(own, contextOf(CODEZIP));
+
+    expect(agentOf(kept.table).ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 8081 }]);
+    expect(kept.warnings).toEqual([
+      `[[agent.ingress]] workload_port is 9001 in ${PROFILE_FILE}, but the agent keeps the ` +
+        "command and the port of the template, so on AgentCore Runtime it listens on 8081. The " +
+        "Runtime profile forwards there.",
+    ]);
+    expect(agentOf(moved.table).ingress).toEqual([{ listen: "0.0.0.0:8080", workload_port: 9001 }]);
+    expect(moved.warnings).toEqual([]);
+  });
+
   test("gives the template's ingress its Runtime ingress, and puts each other on 0.0.0.0", () => {
     const local = createdProfile(CODEZIP);
     agentOf(local).ingress.push({ listen: "127.0.0.1:9100", workload_port: 9101 });
