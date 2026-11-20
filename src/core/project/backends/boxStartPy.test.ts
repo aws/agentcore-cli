@@ -18,10 +18,16 @@ const START_PY = join(
 );
 
 /** A Python 3 on PATH, which the CI runners have; the tests skip without one. */
-const PYTHON = ["python3", "python"].find(
-  (name) =>
-    Bun.spawnSync([name, "-c", "import sys; assert sys.version_info >= (3,)"]).exitCode === 0,
-);
+const PYTHON = ["python3", "python"].find((name) => {
+  // On Windows, spawnSync throws, rather than failing, for a name not on PATH.
+  try {
+    return (
+      Bun.spawnSync([name, "-c", "import sys; assert sys.version_info >= (3,)"]).exitCode === 0
+    );
+  } catch {
+    return false;
+  }
+});
 
 /**
  * Runs start.py's staged_policies on `profile` as Python 3.10 does, with no tomllib: only the
