@@ -119,6 +119,50 @@ describe("the policy decision on each host", () => {
     });
   });
 
+  describe("an attribute that an action test keeps from the action, as Box reads it", () => {
+    const codes = (result: ReturnType<typeof map>) =>
+      result.failures.map(({ code, ruleId }) => [code, ruleId]);
+    const get = permit("get", on("a.example.com", 'context.input.method == "GET"'));
+
+    // The guard of `&&` is false on net:connect, so that rule never allows a connection.
+    test.each([
+      ["||", `(${NC} || context.input.method == "GET")`, true],
+      [
+        "&& with !=",
+        `(action != Box::Action::"net:connect" && context.input.method == "GET")`,
+        false,
+      ],
+      ["if", `(if ${NC} then true else context.input.method == "GET")`, true],
+    ])("accepts a connection rule that reads a request field behind %s", (_, guard, reachable) => {
+      const result = map(connect("guarded", on("a.example.com", guard)) + get);
+      expect(codes(result)).toEqual([]);
+      expect(host(result, "a.example.com")?.reachable).toBe(reachable);
+    });
+
+    test("accepts a request rule that reads a connection field behind an action test", () => {
+      const guarded = permit(
+        "guarded",
+        on("a.example.com", `(${HR} || context.input.ip4 == "1.2.3.4")`),
+      );
+      expect(codes(map(connect("c", on("a.example.com")) + guarded))).toEqual([]);
+    });
+
+    test("accepts a later condition that an earlier action test keeps from the action", () => {
+      const later = rule(
+        "later",
+        `permit (principal, ${NC}, resource) when { ${HR} } when { context.input.method == "GET" };`,
+      );
+      expect(codes(map(later + reach("get", "a.example.com")))).toEqual([]);
+    });
+
+    test("refuses the field when no action test keeps it from the action", () => {
+      const result = map(
+        connect("bare", on("a.example.com", 'context.input.method == "GET"')) + get,
+      );
+      expect(codes(result)).toEqual([["UNKNOWN_ATTRIBUTE", "bare"]]);
+    });
+  });
+
   test("gives a host only to a permit: a forbid with a fixed host makes no node", () => {
     expect(map(forbid("no_x", on("x.example.com"))).hosts).toEqual([]);
   });
