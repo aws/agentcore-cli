@@ -7,12 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { gte } from "semver";
 import {
   BOX_MINIMUM_VERSION,
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
   type BoxRelease,
+  boxPredatesPackNames,
   boxReleaseFor,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
@@ -213,12 +213,41 @@ describe("boxReleaseFor a runtime's box.version", () => {
       /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
     );
   });
+  test("refuses a box from before the @box/ pack names, and downloads nothing", async () => {
+    const home = await temp("box-home-");
+    const { runner, urls } = sumsServer("");
+
+    await expect(boxReleaseFor("0.1.11-linux-preview.6", {}, { runner, home })).rejects.toThrow(
+      new InvalidEnvironmentError(
+        "agentcore.json names box 0.1.11-linux-preview.6 under box.version, a box before " +
+          "0.1.11-linux-preview.7 that refuses the @box/<name> packs the CLI writes. Set " +
+          `box.version to ${BOX_RELEASE.version}, or remove it to use that box. Then retry.`,
+      ),
+    );
+    expect(urls).toEqual([]);
+  });
+});
+
+describe("boxPredatesPackNames", () => {
+  test.each([
+    ["0.1.11-linux-preview.2", true],
+    ["0.1.11-linux-preview.6", true],
+    ["0.1.10", true],
+    ["0.1.11-linux-preview.7", false],
+    ["0.1.11-linux-preview.10", false],
+    ["0.1.11-mquang.preview.9", false],
+    ["0.1.11", false],
+    ["0.2.0", false],
+    ["not-a-version", false],
+  ])("%s: %p", (version, old) => {
+    expect(boxPredatesPackNames(version)).toBe(old);
+  });
 });
 
 describe("the pinned releases", () => {
   test("box is at least the first release that reads the profiles the CLI writes", () => {
     expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
-    expect(gte(BOX_RELEASE.version, BOX_MINIMUM_VERSION)).toBe(true);
+    expect(boxPredatesPackNames(BOX_RELEASE.version)).toBe(false);
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );

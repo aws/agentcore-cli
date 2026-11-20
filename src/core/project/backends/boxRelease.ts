@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { lt, valid } from "semver";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
@@ -40,6 +41,34 @@ export const BOX_RELEASE: BoxRelease = PINNED.box;
  * the `key` of an input of the `@box/agentcore` pack.
  */
 export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
+
+/** The `0.1.11-linux-preview.<N>` line of box releases, the line {@link BOX_MINIMUM_VERSION} is in. */
+const LINUX_PREVIEW = /^0\.1\.11-linux-preview\.(\d+)$/;
+
+/**
+ * Whether box `version` is a release from before {@link BOX_MINIMUM_VERSION}, which refuses the
+ * `@box/<name>` packs the CLI writes: `0.1.11-linux-preview.<N>` below that release's N, or any
+ * box before 0.1.11. Releases are not ordered across prerelease lines (`mquang.preview.9` is not
+ * later than `linux-preview.7` by any rule they share), so a version on another line passes.
+ */
+export function boxPredatesPackNames(version: string): boolean {
+  const minimum = Number(LINUX_PREVIEW.exec(BOX_MINIMUM_VERSION)![1]);
+  const preview = LINUX_PREVIEW.exec(version);
+  if (preview) return Number(preview[1]) < minimum;
+  return valid(version) !== null && lt(version, "0.1.11-0");
+}
+
+/**
+ * The sentence that tells the user to move `box.version` off `version`, a box that
+ * {@link boxPredatesPackNames}.
+ */
+export function boxVersionTooOld(version: string): string {
+  return (
+    `agentcore.json names box ${version} under box.version, a box before ${BOX_MINIMUM_VERSION} ` +
+    `that refuses the @box/<name> packs the CLI writes. Set box.version to ${BOX_RELEASE.version}, ` +
+    "or remove it to use that box."
+  );
+}
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
@@ -243,7 +272,8 @@ async function download(
 /**
  * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
  * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE.
+ * SHA256SUMS.txt. No version means BOX_RELEASE. Refuses a box that {@link boxPredatesPackNames}:
+ * it would start on AgentCore Runtime with a profile it refuses, which build cannot see.
  */
 export async function boxReleaseFor(
   version: string | undefined,
@@ -251,6 +281,9 @@ export async function boxReleaseFor(
   options: { runner?: ProcessRunner; home?: string } = {},
 ): Promise<BoxRelease> {
   if (version === undefined || version === BOX_RELEASE.version) return BOX_RELEASE;
+  if (boxPredatesPackNames(version)) {
+    throw new InvalidEnvironmentError(`${boxVersionTooOld(version)} Then retry.`);
+  }
   const target = BOX_RELEASE.linux.target;
   const linux = `box-v${version}-${target}.tar.gz`;
   const release = { repo: BOX_RELEASE.repo, version };

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
@@ -162,9 +163,23 @@ describe("readBoxNetworks", () => {
         '"box/aws-secrets-manager". Box now names each pack and plugin that it ships ' +
         '"@box/<name>", and it refuses the old "box/<name>" name. In ' +
         '.box/agent/local/profile.toml, change "box/base" to "@box/base", "box/bedrock" to ' +
-        '"@box/bedrock", "box/aws-secrets-manager" to "@box/aws-secrets-manager", then build again.',
+        '"@box/bedrock", "box/aws-secrets-manager" to "@box/aws-secrets-manager". Then build again.',
     );
     expect(box.calls).toEqual([]);
+  });
+
+  test("also says to move box.version when it names a box from before the @box/ names", async () => {
+    const root = await project([]);
+    await writeFile(join(root, ...LOCAL, "profile.toml"), 'packs = ["box/base"]\n');
+    const spec = structuredClone(SPEC);
+    spec.runtimes[0]!.box = { version: "0.1.11-linux-preview.6" };
+
+    await expect(readBoxNetworks(spec, root, new FakeBoxProfileResolver())).rejects.toThrow(
+      'change "box/base" to "@box/base". agentcore.json names box 0.1.11-linux-preview.6 under ' +
+        "box.version, a box before 0.1.11-linux-preview.7 that refuses the @box/<name> packs the " +
+        `CLI writes. Set box.version to ${BOX_RELEASE.version}, or remove it to use that box. ` +
+        "Then build again.",
+    );
   });
 
   test("runs box for a profile with only @box/ names and names of its own", async () => {

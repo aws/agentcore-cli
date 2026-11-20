@@ -11,6 +11,7 @@ import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import type { PolicyFileCopy } from "./backends/boxContainer";
+import { boxPredatesPackNames, boxVersionTooOld } from "./backends/boxRelease";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
@@ -69,6 +70,7 @@ export async function readBoxNetworks(
       runtime.name,
       resolver,
       region,
+      runtime.box?.version,
     );
     const granted = grantedActions(projectRoot, entry.name, entry.additionalPolicies ?? []);
     const network = buildBoxNetwork(parsed, found, {
@@ -113,18 +115,19 @@ export function boxPolicyFileCopies(projectRoot: string, agentName: string): Pol
 /**
  * Box's resolution of the local box profile of `agentName` for a build in `region`, parsed, with
  * the profile's own policy files to place its rules and to stage; nothing when the agent has no
- * local box profile.
+ * local box profile. `boxVersion` is the runtime's `box.version`.
  */
 async function readResolvedPolicy(
   projectRoot: string,
   agentName: string,
   resolver: BoxProfileResolver,
   region: string,
+  boxVersion: string | undefined,
 ): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
   if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
-  refuseOldShippedNames(text, profileFile);
+  refuseOldShippedNames(text, profileFile, boxVersion);
   const named = profilePolicyFiles(text, profileFile);
   const places = profilePlaces(text, profileFile);
   const files = readPolicyFiles(
@@ -161,9 +164,15 @@ const OLD_SHIPPED_NAME = /^box\/[^/]+$/;
 /**
  * Throws when the `packs` or `plugins` of the box profile `text` at `profileFile` name a pack or a
  * plugin that box ships by its old `box/<name>` name, which box refuses. The message names each old
- * name and its `@box/<name>` name. Box reports a profile that is not TOML itself.
+ * name and its `@box/<name>` name, and also says to move `boxVersion`, the runtime's `box.version`,
+ * when it names a box from before those names, which would refuse the renamed profile on AgentCore
+ * Runtime. Box reports a profile that is not TOML itself.
  */
-function refuseOldShippedNames(text: string, profileFile: string): void {
+function refuseOldShippedNames(
+  text: string,
+  profileFile: string,
+  boxVersion: string | undefined,
+): void {
   let table: Record<string, unknown>;
   try {
     table = parseToml(text) as Record<string, unknown>;
@@ -180,10 +189,14 @@ function refuseOldShippedNames(text: string, profileFile: string): void {
   ];
   if (old.length === 0) return;
   const changes = old.map((name) => `"${name}" to "@${name}"`);
+  const version =
+    boxVersion !== undefined && boxPredatesPackNames(boxVersion)
+      ? ` ${boxVersionTooOld(boxVersion)}`
+      : "";
   throw new ProjectStateError(
     `The box profile ${profileFile} names ${old.map((name) => `"${name}"`).join(", ")}. Box now ` +
       'names each pack and plugin that it ships "@box/<name>", and it refuses the old "box/<name>" ' +
-      `name. In ${profileFile}, change ${changes.join(", ")}, then build again.`,
+      `name. In ${profileFile}, change ${changes.join(", ")}.${version} Then build again.`,
   );
 }
 
