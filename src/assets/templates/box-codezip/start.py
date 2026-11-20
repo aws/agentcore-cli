@@ -43,7 +43,16 @@ def staged_policies(path):
     if tomllib is not None:
         return tomllib.loads(text.decode("utf-8")).get("policies", [])
     match = re.search(rb"^policies = (\[.*\])$", text, re.MULTILINE)
-    return json.loads(match.group(1)) if match else []
+    if match is not None:
+        return json.loads(match.group(1))
+    # Any other `policies` line would leave box without its policy files, and failing later.
+    if re.search(rb"^\s*policies\s*=", text, re.MULTILINE):
+        sys.exit(
+            f"{path} has a `policies` line start.py cannot read on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}, which has no tomllib. Deploy "
+            "writes it as `policies = [\"a.dw\", ...]` on one line; run agentcore deploy again."
+        )
+    return []
 
 
 def box_python(executable, version):

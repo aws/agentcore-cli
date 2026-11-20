@@ -348,7 +348,7 @@ describe("gateway targets in a Box project", () => {
     );
     const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
     // dev starts this profile's box in app/search, the runtime's own folder.
-    expect(boxStartFolder(await readFile(profile, "utf8"))).toBe("app/search");
+    expect(boxStartFolder(search)).toBe("app/search");
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${profile}` });
     expect(existsSync(join(project.rootPath, "app", "search", "start.py"))).toBe(true);
     expect(existsSync(join(project.rootPath, "app", "search", ".venv"))).toBe(true);

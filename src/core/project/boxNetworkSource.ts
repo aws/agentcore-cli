@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type { ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import type { PolicyFileCopy } from "./backends/boxContainer";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
@@ -71,7 +72,7 @@ export async function readBoxNetworks(
     // Each boxed agent reads its own .box/<name>/local profile and policy files.
     const { parsed, failures: found } = await readResolvedPolicy(
       projectRoot,
-      runtime.name,
+      runtime,
       resolver,
       region,
     );
@@ -185,16 +186,17 @@ export function boxPolicyFileCopies(projectRoot: string, agentName: string): Pol
 }
 
 /**
- * Box's resolution of the local box profile of `agentName` for a build in `region`, parsed, with
+ * Box's resolution of the local box profile of `runtime` for a build in `region`, parsed, with
  * the profile's own policy files to place its rules and to stage; nothing when the agent has no
  * local box profile.
  */
 async function readResolvedPolicy(
   projectRoot: string,
-  agentName: string,
+  runtime: ProjectRuntime,
   resolver: BoxProfileResolver,
   region: string,
 ): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
+  const agentName = runtime.name;
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
   if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
@@ -212,13 +214,13 @@ async function readResolvedPolicy(
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
-  const startFolder = boxStartFolder(text);
+  const startFolder = boxStartFolder(runtime);
   const resolved =
     forRegion === undefined
       ? await resolver.resolve(projectRoot, profileFile, startFolder)
       : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
-  const source = profileSource(text, profileFile);
+  const source = profileSource(text, profileFile, startFolder);
   const policy = parseResolvedPolicy(
     { ...profile.profile, places, ...(source && { source }) },
     resolved.policy,
@@ -239,12 +241,16 @@ async function readResolvedPolicy(
  * The box profile `text` at `profileFile` as a TOML table, with where it sets each key, or
  * `undefined` when it is not TOML; the profile parser stops build for that.
  */
-function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
+function profileSource(
+  text: string,
+  profileFile: string,
+  startFolder: string,
+): ParsedProfileSource | undefined {
   try {
     return {
       table: parseToml(text) as TomlTable,
       places: profileKeyPlaces(text, profileFile),
-      startFolder: boxStartFolder(text),
+      startFolder,
     };
   } catch {
     return undefined;
