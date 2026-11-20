@@ -741,16 +741,20 @@ describe("the additions rule", () => {
       });
     });
 
-    test("leaves a target of another kind as it is", () => {
-      const others = {
-        records: { kind: "file", destination: "/tmp/records.jsonl" },
-        langfuse: { kind: "langfuse", secret: { ref: "env://LANGFUSE_AUTH" } },
+    test("leaves a target of another kind as it is, and leaves out a file target with a warning", () => {
+      const langfuse = { kind: "langfuse", secret: { ref: "env://LANGFUSE_AUTH" } };
+      const local = {
+        telemetry: { records: { kind: "file", destination: "/tmp/records.jsonl" }, langfuse },
       };
 
-      expect(apply({ telemetry: others }, contextOf(CODEZIP)).table.telemetry).toEqual({
-        ...others,
-        agentcore: DEFAULT_TARGET,
-      });
+      const { table, warnings } = apply(local, contextOf(CODEZIP));
+
+      expect(table.telemetry).toEqual({ langfuse, agentcore: DEFAULT_TARGET });
+      expect(warnings).toEqual([
+        "[telemetry.records] writes its records to a file. On AgentCore Runtime that file is in " +
+          "the microVM, where nothing reads it, so build leaves the target out of the Runtime " +
+          "profile.",
+      ]);
     });
 
     test("adds each CloudWatch target of the context that the local profile does not declare", () => {

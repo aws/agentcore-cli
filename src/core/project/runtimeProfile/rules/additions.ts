@@ -12,7 +12,7 @@
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | each listen address is `0.0.0.0`, on its own port |
  * | `[tool.<name>]` | a table of the template becomes its Runtime table, or goes when the Runtime has none; a table of the user stays |
- * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes |
+ * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
@@ -25,6 +25,7 @@ import {
 } from "../../templates/boxProfile";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { isTable } from "../projectPaths";
+import { FILE_TELEMETRY_KIND } from "./refusals";
 import {
   RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
@@ -158,7 +159,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (tool === undefined) delete result.tool;
     else result.tool = tool;
   }
-  result.telemetry = runtimeTelemetry(result.telemetry, context);
+  result.telemetry = runtimeTelemetry(result.telemetry, context, warnings);
   return { table: result, problems: [], warnings };
 }
 
@@ -417,12 +418,24 @@ function onAllAddresses(entry: unknown): unknown {
  * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
  * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}).
  */
-function runtimeTelemetry(telemetry: unknown, context: RuntimeProfileContext): unknown {
+function runtimeTelemetry(
+  telemetry: unknown,
+  context: RuntimeProfileContext,
+  warnings: string[],
+): unknown {
   if (telemetry !== undefined && !isTable(telemetry)) return telemetry;
   const local: TomlTable = telemetry ?? {};
   const resolved = new Map(context.telemetry.map((target) => [target.name, target]));
   const result: TomlTable = {};
   for (const [name, entry] of Object.entries(local)) {
+    if (isTable(entry) && entry.kind === FILE_TELEMETRY_KIND) {
+      warnings.push(
+        `[telemetry.${name}] writes its records to a file. On AgentCore Runtime that file is in ` +
+          "the microVM, where nothing reads it, so build leaves the target out of the Runtime " +
+          "profile.",
+      );
+      continue;
+    }
     // A table with no kind adds to the CloudWatch target of that name that a pack gives.
     const addsToPack = isTable(entry) && entry.kind === undefined && resolved.has(name);
     if (!isTable(entry) || (!CLOUDWATCH_KINDS.has(entry.kind) && !addsToPack)) {

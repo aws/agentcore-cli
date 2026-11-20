@@ -3,7 +3,8 @@ import { parse } from "smol-toml";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { profileKeyPlaces, runtimePaths, runtimeProfileContext, runtimeTemplate } from "./context";
-import { deriveRuntimeProfile, keyLabel, RUNTIME_PROFILE_RULES } from "./derive";
+import { deriveRuntimeProfile, RUNTIME_PROFILE_RULES } from "./derive";
+import { keyLabel } from "./projectPaths";
 import { serializeRuntimeProfile } from "./serialize";
 import type { TomlTable } from "./types";
 

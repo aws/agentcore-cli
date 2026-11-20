@@ -6,7 +6,7 @@
  * | Key | Problem |
  * | --- | --- |
  * | `network.contain_egress = false` on `[agent]`, a stdio `[mcp.<name>]`, or a `[tool.<name>]` | RUNTIME_EGRESS_NOT_CONTAINED |
- * | a `[telemetry.<name>]` that is not `cloudwatch_logs` or `cloudwatch_traces`, and that the Box network model does not carry (`context.thirdPartyTelemetry`) | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
+ * | a `[telemetry.<name>]` that is not `cloudwatch_logs`, `cloudwatch_traces`, or `file`, and that the Box network model does not carry (`context.thirdPartyTelemetry`) | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
  * | a CloudWatch `[telemetry.<name>]` that box refuses when a run starts, so it is not in `context.telemetry` | RUNTIME_TELEMETRY_REFUSED |
  * | CodeZip: a path of the project outside the code folder, of the home folder (`${{ home }}`, `~`, `/Users`, `/home`), or in the venv | RUNTIME_PATH_NOT_FOUND |
  * | CodeZip: an `[agent]`, stdio server, or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
@@ -16,12 +16,15 @@
  * the last three do not apply to it. The rule reads only the text of the local profile: a key that
  * a pack adds is not in that text, so the rule does not examine it.
  */
-import { keyLabel } from "../derive";
 import {
+  grantPath,
+  isDroppableGrant,
   isRuntimeProgram,
   isTable,
+  keyLabel,
   mapProjectPaths,
   moveProjectPath,
+  pathProblem,
   processTables,
   programOf,
   type PathProblem,
@@ -39,6 +42,9 @@ import type {
 /** The filesystem lists that let a process write. */
 const WRITE_LISTS = ["write", "write_file"] as const;
 
+/** The kind of a telemetry target that writes a file. */
+export const FILE_TELEMETRY_KIND = "file";
+
 /** The telemetry kinds that a box on AgentCore Runtime can send to, with the execution role. */
 const RUNTIME_TELEMETRY_KINDS: ReadonlySet<string> = new Set([
   "cloudwatch_logs",
@@ -47,6 +53,7 @@ const RUNTIME_TELEMETRY_KINDS: ReadonlySet<string> = new Set([
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const problems: RuntimeProfileProblem[] = [];
+  const warnings: string[] = [];
   const problem = (code: RuntimeProfileProblemCode, key: readonly string[], reason: string) =>
     problems.push({ code, key, reason: `${keyLabel(key)} ${reason}`, place: context.placeOf(key) });
 
@@ -82,6 +89,8 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     }
     // The additions rule carries each third-party target that the Box network model carries.
     if (context.thirdPartyTelemetry?.some((carried) => carried.name === name)) continue;
+    // The additions rule leaves out a file target, with a warning: nobody reads the microVM's files.
+    if (kind === FILE_TELEMETRY_KIND) continue;
     // A table with no kind adds to the target of that name that a pack gives, which box resolves.
     if (kind === undefined && context.telemetry.some((resolved) => resolved.name === name))
       continue;
@@ -107,25 +116,60 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
         `venv: the Runtime installs the dependencies in ${code}. Use the venv's Python, the ` +
         `venv, or a path in ${code}.`,
     };
+    const moved = (value: string) => {
+      const result = moveProjectPath(value, paths);
+      return typeof result === "string" ? undefined : result.problem;
+    };
     mapProjectPaths(table, (value, key) => {
-      const moved = moveProjectPath(value, paths);
-      if (typeof moved !== "string") {
-        problem("RUNTIME_PATH_NOT_FOUND", key, reasons[moved.problem](JSON.stringify(value)));
+      // Each grant of a filesystem list is read below, with its list.
+      if (key.at(-2) === "filesystem") return value;
+      // A word of a command or a program is a path; another value, such as an env value, can
+      // be any string, so only ${{ workspace }} and ${{ home }} mark a path in it.
+      const isPath = key.at(-1) === "command" || key.at(-1) === "program";
+      const found = isPath ? pathProblem(value, paths) : moved(value);
+      if (found !== undefined) {
+        problem("RUNTIME_PATH_NOT_FOUND", key, reasons[found](JSON.stringify(value)));
       }
       return value;
     });
+    for (const { key, table: process } of processTables(table)) {
+      const filesystem = isTable(process.filesystem) ? process.filesystem : {};
+      for (const [list, grants] of Object.entries(filesystem)) {
+        if (!Array.isArray(grants)) continue;
+        for (const grant of grants) {
+          const path = grantPath(grant);
+          const found = path === undefined ? undefined : pathProblem(path, paths);
+          // The paths rule leaves out a deny entry or an optional grant, with a warning.
+          if (found === undefined || isDroppableGrant(list, grant)) continue;
+          problem(
+            "RUNTIME_PATH_NOT_FOUND",
+            [...key, "filesystem", list],
+            reasons[found](JSON.stringify(path)),
+          );
+        }
+      }
+    }
     for (const { key, table: process, leaf } of processTables(table)) {
       // The command of the template moves to the Runtime's Python. A command of the user stays.
       const command = programOf(process);
-      const moved = command === undefined ? undefined : moveProjectPath(command, paths);
       const searched = leaf && typeof process.program === "string" ? process.program : undefined;
-      // A program with no place on the Runtime is a path problem of its command already.
-      const program = typeof moved === "string" ? moved : undefined;
-      if (program !== undefined && !isRuntimeProgram(program, paths)) {
-        problem("RUNTIME_PROGRAM_NOT_FOUND", [...key, "command"], notFound(command!, paths));
-      }
-      if (searched !== undefined) {
-        problem("RUNTIME_PROGRAM_NOT_FOUND", [...key, "program"], notFound(searched, paths));
+      for (const [name, program] of [
+        ["command", command],
+        ["program", searched],
+      ] as const) {
+        if (program === undefined || pathProblem(program, paths) !== undefined) continue;
+        // A program with no place on the Runtime is a path problem already.
+        const runtimeProgram = moveProjectPath(program, paths) as string;
+        if (isRuntimeProgram(runtimeProgram, paths)) continue;
+        if (runtimeProgram.startsWith("/")) {
+          warnings.push(
+            `${keyLabel([...key, name])} starts ${JSON.stringify(program)}, a program of the ` +
+              "system. Build cannot see the image of AgentCore Runtime, so it cannot check that " +
+              "the program is there. box stops the run when it is not.",
+          );
+          continue;
+        }
+        problem("RUNTIME_PROGRAM_NOT_FOUND", [...key, name], notFound(program, paths));
       }
     }
     // On the Runtime the agent gets exec on the code folder, and box refuses a write grant in a
@@ -154,7 +198,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   return {
     table: structuredClone(table) as TomlTable,
     problems: inProfileOrder(problems),
-    warnings: [],
+    warnings,
   };
 }
 
@@ -183,12 +227,6 @@ function notCloudWatch(name: string, kind: unknown, context: RuntimeProfileConte
     `${BOX_SECRETS_MANAGER_ENV}=1 instead: then build carries the target, and deploy moves its ` +
     "key to AWS Secrets Manager."
   );
-}
-
-/** The path of a filesystem grant: the string, or the `path` of a grant table. */
-function grantPath(grant: unknown): string | undefined {
-  if (typeof grant === "string") return grant;
-  return isTable(grant) && typeof grant.path === "string" ? grant.path : undefined;
 }
 
 /** Whether `path`, as a CodeZip Runtime profile names it, is the code folder or in it. */

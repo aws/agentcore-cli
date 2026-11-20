@@ -39,6 +39,13 @@ const NOT_READ: ReadonlySet<string> = new Set([
   "telemetry",
 ]);
 
+/** A key as a message names it: `[mcp.notes] command`, `[agent.filesystem] read`, `packs`. */
+export function keyLabel(key: readonly string[]): string {
+  if (key.length === 1) return key[0]!;
+  const table = key.slice(0, -1).join(".");
+  return `[${table}] ${key[key.length - 1]}`;
+}
+
 /** A plain TOML table: not a list, and not a date that smol-toml gives as an object. */
 export function isTable(value: unknown): value is TomlTable {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -55,6 +62,40 @@ const NAME_END = "(?![A-Za-z0-9_.+-])";
 /** A path in a home folder that names no `${{ home }}`: `~`, `~/...`, `/Users/...`, `/home/...`. */
 const HOST_HOME = /^(?:~(?:\/|$)|\/(?:Users|home)\/)/;
 
+/**
+ * Whether the path `value` names a home folder of the host with no `${{ home }}`: box expands `~`
+ * to the home folder, and a host keeps its homes under /Users or /home. As {@link moveProjectPath}
+ * does, it reads each part of a `:` list and the value of a `--flag=<path>`. Use it only for a
+ * value that is a path, such as a grant or a word of a command, and not for any string.
+ */
+export function namesHostHome(value: string): boolean {
+  return value
+    .split(":")
+    .some((part) => HOST_HOME.test(part) || HOST_HOME.test(part.slice(part.indexOf("=") + 1)));
+}
+
+/** Why the path `value` has no place on a CodeZip Runtime, or `undefined` when it has one. */
+export function pathProblem(value: string, paths: RuntimePaths): PathProblem | undefined {
+  if (namesHostHome(value)) return "home";
+  const moved = moveProjectPath(value, paths);
+  return typeof moved === "string" ? undefined : moved.problem;
+}
+
+/** The path of a filesystem grant: the string, or the `path` of a grant table. */
+export function grantPath(grant: unknown): string | undefined {
+  if (typeof grant === "string") return grant;
+  return isTable(grant) && typeof grant.path === "string" ? grant.path : undefined;
+}
+
+/**
+ * Whether a grant of the filesystem list `list` can go from the Runtime profile when its path is
+ * not on the Runtime: an entry of `deny` or `deny_write`, which only takes access away, or an
+ * optional grant, which box skips when its path is not there.
+ */
+export function isDroppableGrant(list: string, grant: unknown): boolean {
+  return list === "deny" || list === "deny_write" || (isTable(grant) && grant.optional === true);
+}
+
 /** The end of a path: no more of it follows, not even a `/`. */
 const PATH_END = "(?![A-Za-z0-9_.+/-])";
 
@@ -68,8 +109,6 @@ export function moveProjectPath(
   value: string,
   paths: RuntimePaths,
 ): string | { readonly problem: PathProblem } {
-  // box expands `~` to the home folder, and a host's own home is under /Users or /home.
-  if (HOST_HOME.test(value)) return { problem: "home" };
   const normal = value
     .replace(/\$\{\{\s*workspace\s*\}\}/g, () => WORKSPACE)
     .replace(/\$\{\{\s*home\s*\}\}/g, () => HOME);

@@ -157,19 +157,20 @@ describe("the refusals rule", () => {
       'write = ["${{ workspace }}/out", "${{ home }}/.local/share/uv/python/cpython-3.15"]',
     );
 
+    // The optional grant of ~/.aws is not a problem: the paths rule leaves it out, with a warning.
     expect(problemsOf(text).map(({ key, place }) => [key.join("."), place])).toEqual([
       ["agent.env.AWS_CONFIG_FILE", `${PROFILE}:4:1`],
-      ["agent.filesystem.read", `${PROFILE}:6:1`],
       ["tool.lister.filesystem.write", `${PROFILE}:10:1`],
       ["tool.lister.filesystem.write", `${PROFILE}:10:1`],
     ]);
   });
 
   test.each([
-    ["a program that PATH finds", ["mcp", "files"], '"npx", "-y", "files-server"', "npx"],
-    ["a system program", ["tool", "grep"], '"/usr/bin/grep", "-r"', "/usr/bin/grep"],
+    ["a stdio server", ["mcp", "files"], '"npx", "-y", "files-server"', "npx"],
+    ["a tool", ["tool", "jq"], '"jq", "."', "jq"],
+    ["the agent", ["agent"], '"uv", "run", "main.py"', "uv"],
   ])(
-    "stops for %s that build cannot find on a CodeZip Runtime (RUNTIME_PROGRAM_NOT_FOUND)",
+    "stops for a program of %s that PATH finds, on a CodeZip Runtime only (RUNTIME_PROGRAM_NOT_FOUND)",
     (_label, table, command, program) => {
       const header = `[${table.join(".")}]`;
       const text = toml(
@@ -236,13 +237,39 @@ describe("the refusals rule", () => {
     expect(problemsOf(text, CONTAINER)).toEqual([]);
   });
 
-  test("stops for an [agent] program of the user that build cannot find, on a CodeZip Runtime only", () => {
-    const text = toml("[agent]", 'command = ["/opt/homebrew/bin/python3", "main.py"]');
+  test.each([
+    ["the agent", ["agent"], "/opt/homebrew/bin/python3"],
+    ["a tool", ["tool", "grep"], "/usr/bin/grep"],
+  ])(
+    "carries a system program of %s, with a warning that build cannot check it, on a CodeZip Runtime only",
+    (_label, table, program) => {
+      const text = toml(`[${table.join(".")}]`, `command = ["${program}", "main.py"]`);
 
-    expect(problemsOf(text).map(({ code, key, place }) => [code, key, place])).toEqual([
-      ["RUNTIME_PROGRAM_NOT_FOUND", ["agent", "command"], `${PROFILE}:2:1`],
+      const result = apply(parse(text) as TomlTable, contextOf(text));
+
+      expect(result.problems).toEqual([]);
+      expect(result.warnings).toEqual([
+        `[${table.join(".")}] command starts "${program}", a program of the system. Build cannot ` +
+          "see the image of AgentCore Runtime, so it cannot check that the program is there. box " +
+          "stops the run when it is not.",
+      ]);
+      expect(apply(parse(text) as TomlTable, contextOf(text, CONTAINER)).warnings).toEqual([]);
+    },
+  );
+
+  test("reads each part of a : list and the value of a --flag= in a command for a host home path", () => {
+    const text = toml(
+      "[tool.lister]",
+      `command = ["${APP}/bin/lister", "--root=~/data", "${APP}/a:/Users/me/b"]`,
+      "[agent.env]",
+      // An env value can be any string: it is not a path unless it names ${{ home }}.
+      'PAGE = "/home/page"',
+    );
+
+    expect(problemsOf(text).map(({ code, key }) => [code, key.join(".")])).toEqual([
+      ["RUNTIME_PATH_NOT_FOUND", "tool.lister.command"],
+      ["RUNTIME_PATH_NOT_FOUND", "tool.lister.command"],
     ]);
-    expect(problemsOf(text, CONTAINER)).toEqual([]);
   });
 
   test.each(["~", "~/data", "/Users/me/data", "/home/me/data"])(
@@ -369,6 +396,11 @@ describe("the refusals rule", () => {
         "",
         "[telemetry.local]",
         'path = "/tmp/box.jsonl"',
+        "",
+        // A file target is not a problem: the additions rule leaves it out, with a warning.
+        "[telemetry.records]",
+        'kind = "file"',
+        'destination = "/tmp/records.jsonl"',
       );
 
       expect(problemsOf(text, runtime)).toEqual([
