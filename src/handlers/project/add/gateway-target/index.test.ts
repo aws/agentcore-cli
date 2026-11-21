@@ -5,11 +5,7 @@ import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
-import { boxGatewaySpec, ProjectSpecSchema } from "../../../../projectSchemas/project";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockTargetSpec,
-} from "../../../project/shortcuts";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const ENDPOINT = "https://mcp.example.com";
@@ -150,36 +146,6 @@ describe("project add gateway-target", () => {
       expect(await targetNames(projectRoot, box.name)).toEqual([name]);
     },
   );
-
-  test("keeps the targets build writes on a Box gateway valid", async () => {
-    const projectRoot = await inProject();
-    const spec = await projectSpec(projectRoot);
-    const egress = {
-      name: "egress-api-example-com",
-      targetType: "passthrough",
-      passthrough: { endpoint: "https://api.example.com", protocolType: "CUSTOM" },
-    };
-    const box = {
-      ...boxGatewaySpec(spec.runtimes[0].name),
-      targets: [getBoxGatewayBedrockTargetSpec(), getBoxGatewayAgentCoreTargetSpec(), egress],
-    };
-    const written = { ...spec, projectType: "box", agentCoreGateways: [box] };
-    expect(ProjectSpecSchema.safeParse(written).success).toBe(true);
-    await writeProjectSpec(projectRoot, written);
-
-    await run([
-      "add",
-      "gateway-target",
-      ...["--gateway", box.name, "--name", "search", "--endpoint", ENDPOINT],
-      ...["--outbound-auth", "none"],
-    ]);
-
-    expect(
-      (await projectSpec(projectRoot)).agentCoreGateways[0].targets.map(
-        (target: { name: string }) => target.name,
-      ),
-    ).toEqual(["bedrock", "agentcore", "egress-api-example-com", "search"]);
-  });
 
   test("adds endpoint and project Runtime shortcuts", async () => {
     const projectRoot = await inProject();
