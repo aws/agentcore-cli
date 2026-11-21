@@ -743,6 +743,17 @@ describe("the gateway rule for a gateway of the project", () => {
     expect(result.table.mcp).toBeUndefined();
   });
 
+  test("adds the server of a gateway whose name is a key of every object, such as constructor", () => {
+    const named = { ...TOOLS, name: "constructor", target: "egress-gateway-constructor" };
+    const result = apply(parse(PROFILE_TEXT) as TomlTable, {
+      ...contextOf(PROFILE_TEXT, []),
+      projectGateways: [named],
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(Object.keys(result.table.mcp as TomlTable)).toEqual(["constructor"]);
+  });
+
   test("stops for a server of the local profile with the gateway's name", () => {
     const text = `${PROFILE_TEXT}\n[mcp.tools]\ncommand = ["/usr/bin/tools"]\n`;
 

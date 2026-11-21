@@ -86,7 +86,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 
   const problems: RuntimeProfileProblem[] = [];
   for (const gateway of context.projectGateways ?? []) {
-    if (gateway.name in mcp) {
+    if (Object.hasOwn(mcp, gateway.name)) {
       problems.push({
         code: "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
         key: ["mcp", gateway.name],
