@@ -15,6 +15,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
+/** A Box project with the runtime `agent`, with OTEL off: only the OTEL tests turn it on. */
 const SPEC = {
   name: "demo",
   projectType: "box",
@@ -24,6 +25,7 @@ const SPEC = {
       build: "CodeZip",
       entrypoint: "start.py",
       codeLocation: "app/agent",
+      instrumentation: { enableOtel: false },
       box: { version: "1.0.0" },
     },
   ],
@@ -430,6 +432,97 @@ describe("the telemetry of each box runtime", () => {
       ["second", [logsOf("group-b")]],
       ["quiet", undefined],
     ]);
+  });
+});
+
+describe("the default X-Ray target of a runtime with OTEL on", () => {
+  const OTEL_SPEC = {
+    ...SPEC,
+    runtimes: [{ ...SPEC.runtimes[0]!, instrumentation: undefined }],
+  } as unknown as ProjectSpec;
+  const TRACES = {
+    name: "agentcore_traces",
+    kind: "cloudwatch_traces" as const,
+    region: "us-west-2",
+    include: ["deny", "permit", "trace"],
+  };
+  const X_RAY = {
+    Sid: "BoxTelemetryToXRay",
+    Effect: "Allow",
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+    Resource: "*",
+  };
+
+  /** The telemetry policy file that build writes for the model `network`. */
+  const policyOf = (network: NonNullable<Awaited<ReturnType<typeof readBoxNetworks>>[number]>) =>
+    telemetryPolicyWriter.edits([network], {
+      spec: OTEL_SPEC,
+      projectRoot: "/project",
+      env: {},
+      envLocal: {},
+    }).files ?? [];
+
+  test("gets the grant of the execution role for X-Ray, and with OTEL off gets none", async () => {
+    const root = await project([]);
+    const box = new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE }));
+
+    const [on] = await readBoxNetworks(OTEL_SPEC, root, box);
+    const [off] = await readBoxNetworks(SPEC, root, box);
+
+    expect(on?.telemetry).toEqual([TRACES]);
+    const telemetry = on?.runtimeProfile?.telemetry as Record<string, unknown>;
+    expect(telemetry.agentcore_traces).toEqual({
+      kind: "cloudwatch_traces",
+      region: "${{ inputs.aws.region }}",
+      include: ["deny", "permit", "trace"],
+      secret: { ref: "aws://" },
+    });
+    const [file] = policyOf(on!);
+    expect(JSON.parse((file as { text: string }).text)).toEqual({
+      Version: "2012-10-17",
+      Statement: [X_RAY],
+    });
+    expect(off?.telemetry).toBeUndefined();
+    expect(policyOf(off!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
+  });
+
+  test("is not added, and gets no grant, when the envVars set DISABLE_ADOT_OBSERVABILITY to true", async () => {
+    const root = await project([]);
+    const box = new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE }));
+    const spec = {
+      ...OTEL_SPEC,
+      runtimes: [
+        {
+          ...OTEL_SPEC.runtimes[0]!,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, box);
+
+    expect(network?.runtimeProfile?.telemetry).toEqual({});
+    expect(network?.telemetry).toBeUndefined();
+    expect(policyOf(network!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
+  });
+
+  test("is not added, and gets no second grant, when the profile has its own cloudwatch_traces target", async () => {
+    const root = await project([]);
+    const shown = boxShowOf({ egress: API_ROUTE });
+    const own = { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } };
+    const box = new FakeBoxProfileResolver({
+      ...shown,
+      boxToml: { ...shown.boxToml, telemetry: { mine: own } },
+    });
+
+    const [network] = await readBoxNetworks(OTEL_SPEC, root, box);
+
+    expect(network?.telemetry).toEqual([
+      { name: "mine", kind: "cloudwatch_traces", region: "eu-west-1" },
+    ]);
+    expect(network?.runtimeProfile?.telemetry).not.toHaveProperty("agentcore_traces");
+    const [file] = policyOf(network!);
+    expect(JSON.parse((file as { text: string }).text).Statement).toEqual([X_RAY]);
   });
 });
 

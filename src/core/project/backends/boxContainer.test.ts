@@ -90,7 +90,9 @@ describe("stageBoxContainers", () => {
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
     // The container also stages the @box/agentcore pack, beside box's own packs in the image.
-    expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
+    expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(
+      renderAgentCorePack(demo.spec, demo.spec.runtimes[0]!),
+    );
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
     // The runtime's .box/agent/aws/ holds a copy of what the profile writer stages, and no box.
     const aws = join(demo.rootPath, ".box", "agent", "aws");

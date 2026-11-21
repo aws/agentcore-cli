@@ -50,6 +50,12 @@ export interface RuntimePaths {
   readonly runtimePython: string;
   /** The prefix of that Python, for the uv Pythons: `${{ inputs.python.prefix }}` on CodeZip. */
   readonly runtimePythonPrefix: string;
+  /**
+   * The words before a command that start it under opentelemetry-instrument on the Runtime. The
+   * CodeZip zip has the script with a `#!/usr/bin/env python3` line, which the box cannot run, so
+   * the Runtime's Python runs it.
+   */
+  readonly otelInstrument: readonly string[];
   /** The code folder as a message names it: `app/agent/`. */
   readonly shownCode: string;
 }

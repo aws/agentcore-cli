@@ -17,7 +17,14 @@ import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
 import type { TomlTable } from "../types";
-import { apply, DEFAULT_TELEMETRY_TARGET, runtimeProfileHeader } from "./additions";
+import {
+  agentStartsUnderOtel,
+  apply,
+  DEFAULT_TELEMETRY_TARGET,
+  DEFAULT_TRACES_TARGET,
+  defaultTracesTelemetry,
+  runtimeProfileHeader,
+} from "./additions";
 
 const PROFILE_FILE = ".box/agent/local/profile.toml";
 /** The region create resolved, which the local profile names: not the build region. */
@@ -27,7 +34,16 @@ const BUILD_REGION = "us-west-2";
 type Build = "CodeZip" | "Container";
 type Protocol = NonNullable<ProjectRuntime["protocol"]>;
 
-function runtimeOf(build: Build, protocol: Protocol = "HTTP", modelProvider = "Bedrock") {
+/**
+ * A box runtime, with OTEL off unless `otel`: only the OTEL tests depend on it. With OTEL on it has
+ * no `instrumentation`, as `agentcore create` writes it.
+ */
+function runtimeOf(
+  build: Build,
+  protocol: Protocol = "HTTP",
+  modelProvider = "Bedrock",
+  otel = false,
+) {
   return {
     name: "agent",
     build,
@@ -35,6 +51,7 @@ function runtimeOf(build: Build, protocol: Protocol = "HTTP", modelProvider = "B
     codeLocation: "app/agent",
     protocol,
     modelProvider,
+    ...(!otel && { instrumentation: { enableOtel: false } }),
     box: { version: "1.0.0" },
   } as ProjectRuntime;
 }
@@ -129,6 +146,36 @@ const DEFAULT_TARGET = {
   secret: { ref: "aws://" },
 };
 
+/** The default X-Ray target of a Runtime profile with OTEL on. */
+const DEFAULT_TRACES = {
+  kind: "cloudwatch_traces",
+  region: "${{ inputs.aws.region }}",
+  include: ["deny", "permit", "trace"],
+  secret: { ref: "aws://" },
+};
+
+/** The words that start the agent under opentelemetry-instrument on the Runtime. */
+const OTEL_START: Record<Build, string[]> = {
+  CodeZip: ["${{ inputs.python.path }}", "${{ inputs.code.dir }}/bin/opentelemetry-instrument"],
+  Container: ["${{ workspace }}/.venv/bin/opentelemetry-instrument"],
+};
+
+/**
+ * `profile`, a Runtime profile with OTEL off, as OTEL on gives it: the agent starts under
+ * opentelemetry-instrument, and the default X-Ray target comes last when no target is
+ * `cloudwatch_traces`. Nothing else changes.
+ */
+function withOtel(profile: TomlTable, build: Build): TomlTable {
+  const result = structuredClone(profile);
+  const agent = result.agent as TomlTable;
+  agent.command = [...OTEL_START[build], ...(agent.command as string[])];
+  const telemetry = result.telemetry as Record<string, TomlTable>;
+  if (!Object.values(telemetry).some(({ kind }) => kind === "cloudwatch_traces")) {
+    telemetry.agentcore_traces = DEFAULT_TRACES;
+  }
+  return result;
+}
+
 /** The CloudWatch targets that box takes from the local profile `local`, as build gives them. */
 const acceptedTelemetry = (local: TomlTable) =>
   withDeployRegion(cloudWatchTelemetry(local), BUILD_REGION, PROFILE_FILE).telemetry;
@@ -186,21 +233,17 @@ describe("deriveRuntimeProfile on the created templates", () => {
   ).flatMap(([build, protocol]) =>
     ["Bedrock", "OpenAI"].flatMap((provider) =>
       [[], ["agentMemory"]].flatMap((memories) =>
-        Object.keys(TELEMETRY_CASES).map((telemetry) => ({
-          build,
-          protocol,
-          provider,
-          memories,
-          telemetry,
-        })),
+        Object.keys(TELEMETRY_CASES).flatMap((telemetry) =>
+          [false, true].map((otel) => ({ build, protocol, provider, memories, telemetry, otel })),
+        ),
       ),
     ),
   );
 
   test.each(cases)(
-    "gives the tables the old renderer wrote (recorded in __fixtures__), and the default target with no cloudwatch_logs target ($build $protocol $provider, memories $memories, telemetry $telemetry)",
-    ({ build, protocol, provider, memories, telemetry: telemetryCase }) => {
-      const runtime = runtimeOf(build, protocol, provider);
+    "gives the tables the old renderer wrote (recorded in __fixtures__), and the default target with no cloudwatch_logs target, and with OTEL on only the OTEL start and the default X-Ray target ($build $protocol $provider, memories $memories, telemetry $telemetry, OTEL $otel)",
+    ({ build, protocol, provider, memories, telemetry: telemetryCase, otel }) => {
+      const runtime = runtimeOf(build, protocol, provider, otel);
       const local = createdProfile(runtime);
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
@@ -218,9 +261,10 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const expected = OLD_RENDERER.templates[
+      const recorded = OLD_RENDERER.templates[
         `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
       ] as TomlTable;
+      const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
       for (const key of OWNED)
         expect([key, profile[key]]).toEqual([key, expected[key] ?? undefined]);
@@ -233,8 +277,11 @@ const BOX_TEMPLATES = (Object.keys(RUNTIME_TEMPLATE_SHORTCUTS) as RuntimeTemplat
   .filter((name) => (RUNTIME_TEMPLATE_SHORTCUTS[name] as { box?: boolean }).box === true)
   .sort();
 
-/** The runtime that `agentcore create` writes into agentcore.json for the template `input`. */
-function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
+/**
+ * The runtime that `agentcore create` writes into agentcore.json for the template `input`, with
+ * `instrumentation.enableOtel` false unless `otel`.
+ */
+function createdRuntime(input: ScaffoldRuntimeInput, otel: boolean): ProjectRuntime {
   return {
     name: input.runtimeName,
     build: input.build,
@@ -242,6 +289,7 @@ function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
     codeLocation: `app/${input.runtimeName}`,
     ...(input.protocol !== undefined && { protocol: input.protocol }),
     ...(input.modelProvider !== undefined && { modelProvider: input.modelProvider }),
+    ...(!otel && { instrumentation: { enableOtel: false } }),
     box: { version: "1.0.0" },
   } as ProjectRuntime;
 }
@@ -253,24 +301,21 @@ describe("deriveRuntimeProfile on each box template of create", () => {
       : ["of the template"];
     return providers.flatMap((provider) =>
       [[], ["agentMemory"]].flatMap((memories) =>
-        Object.keys(TELEMETRY_CASES).map((telemetry) => ({
-          template,
-          provider,
-          memories,
-          telemetry,
-        })),
+        Object.keys(TELEMETRY_CASES).flatMap((telemetry) =>
+          [false, true].map((otel) => ({ template, provider, memories, telemetry, otel })),
+        ),
       ),
     );
   });
 
   test.each(cases)(
-    "gives the whole profile that the old renderer wrote (recorded in __fixtures__), with the default target when no target is cloudwatch_logs ($template, provider $provider, memories $memories, telemetry $telemetry)",
-    ({ template, provider, memories, telemetry: telemetryCase }) => {
+    "gives the whole profile that the old renderer wrote (recorded in __fixtures__), with the default target when no target is cloudwatch_logs, and with OTEL on only the OTEL start and the default X-Ray target ($template, provider $provider, memories $memories, telemetry $telemetry, OTEL $otel)",
+    ({ template, provider, memories, telemetry: telemetryCase, otel }) => {
       const input = resolveRuntimeTemplateShortcut(
         template as RuntimeTemplateShortcutName,
         provider === "OpenAI" ? { modelProvider: "OpenAI", apiKey: "sk-test" } : {},
       );
-      const runtime = createdRuntime(input);
+      const runtime = createdRuntime(input, otel);
       const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
@@ -289,12 +334,12 @@ describe("deriveRuntimeProfile on each box template of create", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      expect(problems).toEqual([]);
-      expect(profile).toEqual(
+      const recorded =
         OLD_RENDERER.boxTemplates[
           `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
-        ]!,
-      );
+        ]!;
+      expect(problems).toEqual([]);
+      expect(profile).toEqual(otel ? withOtel(recorded, input.build as Build) : recorded);
     },
   );
 });
@@ -816,7 +861,7 @@ describe("the additions rule", () => {
     });
 
     test("reads each value through an input that the @box/agentcore pack declares", () => {
-      const { inputs } = parse(renderAgentCorePack(specOf(CODEZIP))) as {
+      const { inputs } = parse(renderAgentCorePack(specOf(CODEZIP), CODEZIP)) as {
         inputs: Record<string, Record<string, unknown>>;
       };
       const declared = (placeholder: string) => {
@@ -919,6 +964,223 @@ describe("the additions rule", () => {
       );
       expect(runtimeProfileHeader(context, withOwn)).toHaveLength(3);
     });
+  });
+
+  describe("with OTEL on", () => {
+    const OTEL_CODEZIP = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
+    const OTEL_CONTAINER = runtimeOf("Container", "HTTP", "Bedrock", true);
+    const otelRuntime = (build: Build) => (build === "CodeZip" ? OTEL_CODEZIP : OTEL_CONTAINER);
+    const BUILDS: Build[] = ["CodeZip", "Container"];
+
+    test.each(BUILDS)(
+      "starts the template's own command under opentelemetry-instrument, and with OTEL off does not (%s)",
+      (build) => {
+        const local = createdProfile(otelRuntime(build));
+        const off = agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile);
+        const on = agentOf(deriveRuntimeProfile(local, contextOf(otelRuntime(build))).profile);
+
+        expect(on.command).toEqual([...OTEL_START[build], ...off.command]);
+        expect(off.command.join(" ")).not.toContain("opentelemetry-instrument");
+      },
+    );
+
+    test.each(["MCP", "A2A", "AGUI"] as const)(
+      "starts a CodeZip %s template with the Runtime's Python and the script of the zip",
+      (protocol) => {
+        const runtime = runtimeOf("CodeZip", protocol, "Bedrock", true);
+
+        expect(
+          agentOf(deriveRuntimeProfile(createdProfile(runtime), contextOf(runtime)).profile)
+            .command,
+        ).toEqual([...OTEL_START.CodeZip, "${{ inputs.python.path }}", "-m", "main"]);
+      },
+    );
+
+    test.each(BUILDS)(
+      "starts a command of the user that runs the venv's Python under opentelemetry-instrument (%s)",
+      (build) => {
+        const command = ["${{workspace}}/.venv/bin/python3.12", "-m", "main", "--debug"];
+
+        expect(
+          agentOf(apply({ agent: { command } }, contextOf(otelRuntime(build))).table).command,
+        ).toEqual([...OTEL_START[build], ...command]);
+      },
+    );
+
+    test.each(BUILDS)(
+      "does not start a command under opentelemetry-instrument twice (%s)",
+      (build) => {
+        const python = "${{ workspace }}/.venv/bin/python";
+        const script = "${{ workspace }}/.venv/bin/opentelemetry-instrument";
+        // The script as the program, and as the script that the venv's Python runs.
+        for (const own of [
+          [script, python, "-m", "main"],
+          [python, script, python, "-m", "main"],
+        ]) {
+          expect(
+            agentOf(apply({ agent: { command: own } }, contextOf(otelRuntime(build))).table)
+              .command,
+          ).toEqual(own);
+        }
+      },
+    );
+
+    test("leaves a command of another program as it is, and an [agent] with no command", () => {
+      const command = ["/usr/local/bin/node", "${{ workspace }}/server.js"];
+
+      expect(
+        agentOf(apply({ agent: { command } }, contextOf(OTEL_CONTAINER)).table).command,
+      ).toEqual(command);
+      expect(agentOf(apply({ agent: {} }, contextOf(OTEL_CONTAINER)).table)).not.toHaveProperty(
+        "command",
+      );
+    });
+
+    test("tells whether the agent of a Runtime profile starts under opentelemetry-instrument", () => {
+      const started = (command: unknown) => agentStartsUnderOtel({ agent: { command } });
+
+      expect(started([...OTEL_START.Container, "${{ workspace }}/.venv/bin/python"])).toBe(true);
+      expect(started([...OTEL_START.CodeZip, "${{ inputs.python.path }}"])).toBe(true);
+      expect(started(["${{ workspace }}/.venv/bin/python", "-m", "main"])).toBe(false);
+      expect(started(undefined)).toBe(false);
+      expect(agentStartsUnderOtel({})).toBe(false);
+    });
+
+    test.each(BUILDS)(
+      "adds the default X-Ray target when no target is cloudwatch_traces, and with OTEL off does not (%s)",
+      (build) => {
+        expect(tableOf(apply({}, contextOf(otelRuntime(build))).table)).toEqual({
+          agentcore: DEFAULT_TARGET,
+          agentcore_traces: DEFAULT_TRACES,
+        });
+        expect(tableOf(apply({}, contextOf(runtimeOf(build))).table)).toEqual({
+          agentcore: DEFAULT_TARGET,
+        });
+        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(DEFAULT_TRACES);
+      },
+    );
+
+    test("adds the default X-Ray target beside a cloudwatch_logs target of the user", () => {
+      const local = { telemetry: { logs: CLOUDWATCH.logs } };
+
+      expect(
+        Object.keys(
+          tableOf(
+            apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+          ),
+        ),
+      ).toEqual(["logs", "agentcore_traces"]);
+    });
+
+    test("adds no default X-Ray target when the profile has its own cloudwatch_traces target", () => {
+      const local = { telemetry: { "x-ray": CLOUDWATCH["x-ray"] } };
+
+      expect(
+        tableOf(
+          apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+        ),
+      ).toEqual({
+        "x-ray": { kind: "cloudwatch_traces", region: BUILD_REGION, secret: { ref: "aws://" } },
+        agentcore: DEFAULT_TARGET,
+      });
+    });
+
+    test("adds no default X-Ray target when box resolves a cloudwatch_traces target that the profile does not declare", () => {
+      const telemetry: CloudWatchTelemetry[] = [
+        { name: "pack-traces", kind: "cloudwatch_traces", region: "eu-west-1" },
+      ];
+
+      expect(Object.keys(tableOf(apply({}, contextOf(OTEL_CODEZIP, { telemetry })).table))).toEqual(
+        ["pack-traces", "agentcore"],
+      );
+    });
+
+    test.each([
+      ["true", false],
+      [" TRUE ", false],
+      ["false", true],
+    ])(
+      "adds the default X-Ray target only when the envVars do not set DISABLE_ADOT_OBSERVABILITY to true (%j)",
+      (value, added) => {
+        const runtime = {
+          ...OTEL_CODEZIP,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value }],
+        } as ProjectRuntime;
+        const { table } = apply({}, contextOf(runtime));
+
+        expect(Object.hasOwn(tableOf(table), "agentcore_traces")).toBe(added);
+        expect(defaultTracesTelemetry(table, BUILD_REGION)).toHaveLength(added ? 1 : 0);
+      },
+    );
+
+    test.each(BUILDS)(
+      "does not start the agent under opentelemetry-instrument when the envVars set DISABLE_ADOT_OBSERVABILITY to true (%s)",
+      (build) => {
+        const optedOut = {
+          ...otelRuntime(build),
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        } as ProjectRuntime;
+        const local = createdProfile(optedOut);
+
+        expect(agentOf(deriveRuntimeProfile(local, contextOf(optedOut)).profile)).toEqual(
+          agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile),
+        );
+      },
+    );
+
+    test("names the default X-Ray target agentcore_traces_default when a target is agentcore_traces", () => {
+      const local = { telemetry: { agentcore_traces: CLOUDWATCH.logs } };
+      const telemetry = tableOf(
+        apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+      );
+
+      expect(Object.keys(telemetry)).toEqual(["agentcore_traces", "agentcore_traces_default"]);
+      expect(telemetry.agentcore_traces_default).toEqual(DEFAULT_TRACES);
+    });
+
+    test("reads the region of the default X-Ray target through the input of @box/agentcore", () => {
+      const { inputs } = parse(renderAgentCorePack(specOf(OTEL_CODEZIP), OTEL_CODEZIP)) as {
+        inputs: { aws: { region: unknown } };
+      };
+
+      expect(DEFAULT_TRACES.region).toBe("${{ inputs.aws.region }}");
+      expect(inputs.aws.region).toMatchObject({ from: "env:AWS_REGION" });
+    });
+
+    test("names the default X-Ray target in the header", () => {
+      const context = contextOf(OTEL_CODEZIP);
+
+      expect(runtimeProfileHeader(context, apply({}, context).table).at(-1)).toBe(
+        "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
+          `own, in the Runtime's region. Add a cloudwatch_traces target to ${PROFILE_FILE} to ` +
+          "use another, or set instrumentation.enableOtel to false in agentcore.json to send none.",
+      );
+    });
+
+    test("gives the default X-Ray target to the grant of the execution role, and no other target", () => {
+      const { table } = apply({ telemetry: { logs: CLOUDWATCH.logs } }, contextOf(OTEL_CODEZIP));
+
+      expect(defaultTracesTelemetry(table, BUILD_REGION)).toEqual([
+        {
+          name: "agentcore_traces",
+          kind: "cloudwatch_traces",
+          region: BUILD_REGION,
+          include: ["deny", "permit", "trace"],
+        },
+      ]);
+      expect(defaultTracesTelemetry(apply({}, contextOf(CODEZIP)).table, BUILD_REGION)).toEqual([]);
+    });
+
+    test.each(BUILDS)(
+      "keeps each OTEL variable that the user sets in [agent.env], so it wins over the pack (%s)",
+      (build) => {
+        const env = { OTEL_TRACES_EXPORTER: "none", OTEL_RESOURCE_ATTRIBUTES: "service.name=mine" };
+
+        expect(
+          agentOf(apply({ agent: { env } }, contextOf(otelRuntime(build))).table).env,
+        ).toMatchObject(env);
+      },
+    );
   });
 
   test("keeps the policies list as the local profile names it", () => {

@@ -103,7 +103,7 @@ describe("stageBoxCodeZip", () => {
     // The profile imports these generated packs, which box finds beside its binary. They are
     // written after box's own resources are copied, so the copy does not remove them.
     expect(await readFile(join(dist, AGENTCORE_PACK_PATH), "utf8")).toBe(
-      renderAgentCorePack(demo.spec),
+      renderAgentCorePack(demo.spec, demo.spec.runtimes[0]!),
     );
     expect(await readFile(join(dist, AGENTCORE_CODEZIP_PACK_PATH), "utf8")).toBe(
       renderAgentCoreCodeZipPack(),
