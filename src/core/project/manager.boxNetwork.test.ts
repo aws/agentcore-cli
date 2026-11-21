@@ -663,6 +663,26 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([]);
   });
 
+  test("lets remove gateway remove the gateway after a build, with the target build wrote for it", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const user = userTarget("mine", "https://mine.example.com");
+    await editGateway(root, (gateway) => gateway.targets.push(user));
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.agentCoreGateways.map(({ name }: { name: string }) => name)).toEqual([GATEWAY]);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect((await boxGateway(root)).targets).toContainEqual(user);
+    // The next build writes no target for the gateway that is gone.
+    await build(manager, root);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);
