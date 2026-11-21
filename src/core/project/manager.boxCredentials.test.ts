@@ -248,6 +248,16 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect(built).toHaveLength(1);
   });
 
+  test("builds with no box routes when .env.local holds an undecryptable entry", async () => {
+    const { subject, built } = manager({}, boxShowOf({}));
+    const created = await project(subject, "");
+    await appendEnvLocal(created.rootPath, `GITHUB_TOKEN='${UNDECRYPTABLE}'`);
+
+    await drain(subject.build(created));
+
+    expect(built).toHaveLength(1);
+  });
+
   test("builds when the shell sets the variable of an undecryptable .env.local entry", async () => {
     const { subject, built } = manager({ GITHUB_TOKEN: "ghp_shell" });
     const created = await project(subject, GITHUB_PROFILE);

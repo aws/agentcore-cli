@@ -1684,12 +1684,11 @@ export class FsProjectManager implements ProjectManager {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
     const envLocal = new EnvLocalFile(project.rootPath);
-    const keyReads = boxKeyReads(networks, project.spec, this.processEnv);
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
-      envLocal: keyReads ? await envLocal.read(keyReads) : {},
+      envLocal: await envLocal.read(boxKeyReads(networks, project.spec, this.processEnv)),
     });
     const messages = [...edits.messages];
     let result = project;
