@@ -556,8 +556,8 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
 });
 
 describe("a passthrough target that names a gateway", () => {
-  const target = (passthrough: Record<string, unknown>) => ({
-    name: "egress-gateway-tools",
+  const target = (passthrough: Record<string, unknown>, name = "tools-call") => ({
+    name,
     targetType: "passthrough",
     passthrough: { protocolType: "CUSTOM", ...passthrough },
     outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
@@ -570,11 +570,15 @@ describe("a passthrough target that names a gateway", () => {
     });
     return result.success ? [] : result.error.issues.map(({ message }) => message);
   };
-  const front = (passthrough: Record<string, unknown>, fields: Record<string, unknown> = {}) => ({
+  const front = (
+    passthrough: Record<string, unknown>,
+    fields: Record<string, unknown> = {},
+    name?: string,
+  ) => ({
     name: "front",
     authorizerType: "AWS_IAM",
     protocolType: "None",
-    targets: [target(passthrough)],
+    targets: [target(passthrough, name)],
     ...fields,
   });
   const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
@@ -597,6 +601,19 @@ describe("a passthrough target that names a gateway", () => {
     ],
   ])("refuses %s", (_, gateways, message) => {
     expect(messages(gateways)).toContainEqual(expect.stringContaining(message));
+  });
+
+  test.each([
+    ["no gateway of that name", [front({ gateway: "gone" }, {}, "egress-gateway-gone")]],
+    [
+      "a gateway bound to a runtime",
+      [
+        front({ gateway: "tools" }, {}, "egress-gateway-tools"),
+        { ...TOOLS, boundRuntime: "agent" },
+      ],
+    ],
+  ])("accepts a target that build owns and that names %s, as build removes it", (_, gateways) => {
+    expect(messages(gateways)).toEqual([]);
   });
 
   test.each([

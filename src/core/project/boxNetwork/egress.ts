@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BOX_EGRESS_TARGET_PREFIX } from "../../../projectSchemas/project";
 import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
 
@@ -160,11 +161,7 @@ export function signingService(host: string): { service: string; region: string 
   return endpoint && { service: endpoint.service, region: endpoint.region };
 }
 
-/**
- * The start of the name of each target that build adds to a Box gateway. Build manages every
- * target whose name has it, and no other.
- */
-export const BOX_EGRESS_TARGET_PREFIX = "egress-";
+export { BOX_EGRESS_TARGET_PREFIX };
 
 /**
  * The gateway target name build gives `name`: {@link BOX_EGRESS_TARGET_PREFIX}, then the letters
