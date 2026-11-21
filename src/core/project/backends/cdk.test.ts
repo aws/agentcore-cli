@@ -341,6 +341,7 @@ describe("CdkBackend.build", () => {
     region: "us-west-2",
     hosts: [],
     envRoutes: [],
+    managedTargets: new Set<string>(),
     policyFiles: [],
     runtimeProfile,
     grantedActions: [],

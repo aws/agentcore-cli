@@ -31,6 +31,29 @@ export const ProjectNameSchema = z
 export const ProjectTypeSchema = z.enum(["box"]);
 /** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
+
+/**
+ * The folder, from the project root, that build stages the box of a box runtime in: the code
+ * folder of a CodeZip runtime, and the build context of a container runtime.
+ */
+function boxFolderOf(runtime: {
+  readonly build: string;
+  readonly codeLocation: string;
+  readonly buildContextPath?: string;
+}): string {
+  const folder =
+    runtime.build === "Container"
+      ? (runtime.buildContextPath ?? runtime.codeLocation)
+      : runtime.codeLocation;
+  const parts: string[] = [];
+  for (const part of folder.replace(/\\/g, "/").split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.length > 0 ? parts.join("/") : ".";
+}
+
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /**
@@ -164,6 +187,27 @@ export const ProjectSpecSchema = z
     // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
     // deployed gateway, so every command stops here and prints the entry to add back.
     if (isBoxProject(spec)) {
+      // Build stages the box of each box runtime in .box-dist of its folder, so two in one folder
+      // would write one file twice.
+      const byFolder = new Map<string, string>();
+      for (const runtime of spec.runtimes) {
+        if (runtime.box === undefined) continue;
+        const folder = boxFolderOf(runtime);
+        const other = byFolder.get(folder);
+        if (other === undefined) {
+          byFolder.set(folder, runtime.name);
+          continue;
+        }
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtimes "${other}" and "${runtime.name}" both run in a box from the folder ` +
+            `${folder}, and build stages the box of each in ` +
+            `${folder === "." ? "" : `${folder}/`}.box-dist. ` +
+            "Give each runtime its own folder.",
+          path: ["runtimes"],
+        });
+      }
       const bound = new Set(spec.agentCoreGateways.map((gateway) => gateway.boundRuntime));
       for (const runtime of spec.runtimes) {
         if (bound.has(runtime.name)) continue;

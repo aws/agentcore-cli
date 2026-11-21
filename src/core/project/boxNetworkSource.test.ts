@@ -239,6 +239,36 @@ describe("readBoxNetworks", () => {
     );
   });
 
+  test("takes the credential of another runtime for the credential's own variable", async () => {
+    const root = await project([]);
+    const profiles: Record<string, { variable: string; host: string }> = {
+      ".box/agent/local/profile.toml": { variable: "GITHUB_TOKEN", host: "api.github.com" },
+      ".box/second/local/profile.toml": {
+        variable: "AGENTCORE_CREDENTIAL_GITHUB",
+        host: "uploads.github.com",
+      },
+    };
+    for (const [file, { variable, host }] of Object.entries(profiles)) {
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(
+        join(root, file),
+        `[egress.github]\ndestinations = ["${host}"]\nsecret.ref = "env://${variable}"\n`,
+      );
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        const { variable, host } = profiles[profilePath]!;
+        return boxShowOf({
+          egress: { github: { destinations: [host], secret: { ref: `env://${variable}` } } },
+        });
+      },
+    };
+
+    const networks = await readBoxNetworks(specWith("second"), root, resolver);
+
+    expect(networks.map(({ failures }) => failures)).toEqual([[], []]);
+  });
+
   test("places a rule of a policy file at its line, and an entry at its line in the profile", async () => {
     const root = await project(["policy.dw"]);
     await writeFile(
@@ -564,6 +594,56 @@ describe("two routes of one profile to one host", () => {
   });
 });
 
+describe("the record of the targets build writes", () => {
+  const mine = {
+    name: "egress-mine",
+    targetType: "passthrough",
+    passthrough: { endpoint: "https://mine.example.com", protocolType: "CUSTOM" },
+  };
+  const withTarget = {
+    ...SPEC,
+    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets: [mine] }],
+  } as unknown as ProjectSpec;
+  const managed = async (root: string) => [
+    ...(await readBoxNetworks(withTarget, root, new FakeBoxProfileResolver()))[0]!.managedTargets,
+  ];
+
+  test("makes only the targets it names build's", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"agent-box-egress": []}',
+    );
+    expect(await managed(root)).not.toContain("egress-mine");
+  });
+
+  test("makes each egress- target of the shape build writes build's, for a gateway it does not name", async () => {
+    const root = await project([]);
+    expect(await managed(root)).toContain("egress-mine");
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"other-box-egress": []}',
+    );
+    expect(await managed(root)).toContain("egress-mine");
+  });
+
+  test("stops on a record that is not the one build writes, and names the file", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    await writeFile(
+      join(root, "agentcore", "box-gateway-targets.json"),
+      '{"agent-box-egress": "x"}',
+    );
+    await expect(readBoxNetworks(withTarget, root, new FakeBoxProfileResolver())).rejects.toThrow(
+      "agentcore/box-gateway-targets.json is not the record of the gateway targets that build " +
+        "writes: a JSON object with a list of target names for each Box gateway. Remove the " +
+        "file, and build writes it again.",
+    );
+  });
+});
+
 describe("the IAM policy files of the Box gateway", () => {
   test("counts the actions of each listed file, and warns for one it cannot count", async () => {
     const root = await project([]);
@@ -594,6 +674,33 @@ describe("the IAM policy files of the Box gateway", () => {
       `agentcore/list.json, ${listing}, is not a JSON object, ${check} Make it an IAM policy ` +
         "document.",
     ]);
+  });
+
+  test("counts the actions of an Allow statement in each form IAM takes, and of no other", async () => {
+    const root = await project([]);
+    await mkdir(join(root, "agentcore"));
+    const files: Record<string, unknown> = {
+      one: { Statement: { Effect: "Allow", Action: "lambda:InvokeFunctionUrl" } },
+      mixed: { Statement: [{ Effect: "Deny", Action: "s3:*" }, null, "text", { Effect: "Allow" }] },
+      none: { Version: "2012-10-17" },
+    };
+    for (const [name, document] of Object.entries(files)) {
+      await writeFile(join(root, "agentcore", `${name}.json`), JSON.stringify(document));
+    }
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [
+        {
+          ...boxGatewaySpec("agent"),
+          additionalPolicies: Object.keys(files).map((name) => `agentcore/${name}.json`),
+        },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+
+    expect(network?.grantedActions).toEqual(["lambda:InvokeFunctionUrl"]);
+    expect(network?.warnings).toEqual([]);
   });
 
   test("gives no warning for the Memory policy file that build writes before it writes it", async () => {

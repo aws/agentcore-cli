@@ -160,20 +160,30 @@ describe("planBoxProfileCredentials", () => {
       messages: [],
       added: [],
       entries: [],
+      unprovisioned: new Map(),
     });
   });
 
-  test("skips, with no message, the model-provider routes create writes", () => {
+  test("adds a credential for a model-provider route create writes, from the provider's variable", () => {
     const s = spec();
 
     const plan = planBoxProfileCredentials(
       s,
       [route("openai", "OPENAI_API_KEY"), route("anthropic", "ANTHROPIC_API_KEY")],
-      shell({ OPENAI_API_KEY: "sk-x", ANTHROPIC_API_KEY: "sk-ant-x" }),
+      shell({ OPENAI_API_KEY: "sk-x" }),
     );
 
-    expect(plan).toEqual({ messages: [], added: [], entries: [] });
-    expect(s.credentials).toEqual([]);
+    expect(plan.added).toEqual([{ authorizerType: "ApiKeyCredentialProvider", name: "openai" }]);
+    expect(plan.entries).toMatchObject([{ key: "AGENTCORE_CREDENTIAL_OPENAI", value: "sk-x" }]);
+    expect(plan.unprovisioned).toEqual(
+      new Map([
+        [
+          "anthropic",
+          `ANTHROPIC_API_KEY is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. Set ` +
+            "ANTHROPIC_API_KEY, or AGENTCORE_CREDENTIAL_ANTHROPIC, and build again.",
+        ],
+      ]),
+    );
   });
 
   test("skips, with no message, a route whose variable an existing credential reserves", () => {
@@ -185,23 +195,18 @@ describe("planBoxProfileCredentials", () => {
       shell({}),
     );
 
-    expect(plan).toEqual({ messages: [], added: [], entries: [] });
+    expect(plan).toEqual({ messages: [], added: [], entries: [], unprovisioned: new Map() });
   });
 
-  test("reports a route that uses a model-provider name or variable in another way", () => {
+  test("adds a credential for a route that uses a model-provider name or variable in another way", () => {
     const plan = planBoxProfileCredentials(
       spec(),
       [route("openai", "MY_KEY"), route("my-llm", "GEMINI_API_KEY")],
       shell({ MY_KEY: "k", GEMINI_API_KEY: "k" }),
     );
 
-    expect(plan.added).toEqual([]);
-    expect(plan.messages).toEqual([
-      "skipping box egress 'openai' (env://MY_KEY): 'openai' is a model-provider route; " +
-        "agentcore create declares its key",
-      "skipping box egress 'my-llm' (env://GEMINI_API_KEY): GEMINI_API_KEY is a model provider's " +
-        "key variable; agentcore create declares its key",
-    ]);
+    expect(plan.added.map(({ name }) => name)).toEqual(["openai", "my-llm"]);
+    expect(plan.unprovisioned.size).toBe(0);
   });
 
   test("reports, but does not add, a name that is not a valid credential name", () => {
@@ -215,6 +220,9 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.messages).toEqual([
       "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
     ]);
+    expect(plan.unprovisioned.get("bad name!")).toBe(
+      "'bad name!' is not a valid credential name. Rename the entry.",
+    );
   });
 
   test("reports, but does not add, a name that ends in a credential field suffix", () => {

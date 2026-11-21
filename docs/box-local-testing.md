@@ -206,15 +206,29 @@ build context, and write a copy of the profile, the generated packs, and the pol
 Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
 A profile that names a pack `box/<name>` fails: box refuses it and names the `@box/<name>` pack.
 
-- **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
-  with `type = "http"`, or a policy permit names, and that the policy allows at least one
-  request to, gets one passthrough target on `<runtime>-box-egress`. The target of an MCP server is
+- **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server with
+  `type = "http"`, or a policy permit names, and that the policy allows at least one request to,
+  gets one passthrough target on `<runtime>-box-egress`. The target of an MCP server is
   `egress-<server>`. Its `protocolType` is `CUSTOM`, thus only Box makes the decision on each
-  `mcp:call`. A host the gateway already has a target for keeps that target. Build owns
-  only the targets whose name starts with `egress-`: it adds them, changes them, and removes
-  one when no host needs it. It never changes another target.
+  `mcp:call`. A host the gateway already has a target for keeps that target. Build owns only the
+  targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them, changes
+  them, and removes one when no host needs it. It never changes another target, also one whose name
+  starts with `egress-`. `agentcore create` and `agentcore add runtime` write an empty entry for
+  each new Box gateway, so build owns none of its targets until it writes one. For a gateway that
+  the file does not list, which an older CLI made, build takes each `egress-` target that has the
+  shape it writes as its own, once, and warns for each other `egress-` target, which it keeps as
+  yours. Commit `agentcore/box-gateway-targets.json` with `agentcore.json`: in a clone without it,
+  build goes back to that `egress-` rule, and can take or give up the wrong targets. The
+  `.gitignore` that `agentcore create` writes does not exclude it. Build writes the file, but you
+  edit it in one case: when you change a target that build wrote, build stops and tells you to
+  remove that target's name from the file to keep the target as yours. Then build no longer records,
+  changes, or removes it.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
+  This includes the model-provider route that `agentcore create` writes when you give it no key,
+  such as `[egress.openai]` with `env://OPENAI_API_KEY` (also for Anthropic and Gemini). When that
+  key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
+  `openai`, and deploy provisions your key in AgentCore Identity.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
   host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
   host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the

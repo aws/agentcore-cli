@@ -8,6 +8,7 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { BOX_RELEASE } from "../backends/boxRelease";
+import { BOX_GATEWAY_TARGETS_NAME } from "../boxGatewayTargets";
 import {
   BOX_CODEZIP_ENTRYPOINT,
   hasBoxProfile,
@@ -62,6 +63,14 @@ export async function createProjectTree(
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
   const boxProject = options?.runtime !== undefined && hasBoxProfile(options.runtime);
 
+  const spec = newProjectSpec(
+    input.projectName,
+    templates.map(({ spec }) => spec),
+  );
+  // Build owns no target of a new Box gateway yet: an empty entry in the record says so.
+  const boxGateways = (spec.agentCoreGateways ?? []).flatMap(({ name, boundRuntime }) =>
+    boundRuntime === undefined ? [] : [name],
+  );
   const tree = FsTreeNode.createDirectory(".", [
     FsTreeNode.createFile(".gitignore", async () => {
       const shared = await config.assetSource.read("templates/shared/gitignore.template");
@@ -69,14 +78,15 @@ export async function createProjectTree(
     }),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
-      FsTreeNode.createFile("agentcore.json", async () =>
-        json(
-          newProjectSpec(
-            input.projectName,
-            templates.map(({ spec }) => spec),
-          ),
-        ),
-      ),
+      // The record comes first: a failed write of either file leaves no project with one alone.
+      ...(boxGateways.length > 0
+        ? [
+            FsTreeNode.createFile(BOX_GATEWAY_TARGETS_NAME, async () =>
+              json(Object.fromEntries(boxGateways.map((name) => [name, []]))),
+            ),
+          ]
+        : []),
+      FsTreeNode.createFile("agentcore.json", async () => json(spec)),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () =>
         config.assetSource.read("templates/shared/env.local.template"),

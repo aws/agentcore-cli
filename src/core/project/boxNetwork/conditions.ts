@@ -123,8 +123,13 @@ export function clausesFor(statement: Statement, action: NetworkAction): ClauseS
     const parts: Formula[] = [
       scopeFormula(statement.principal, "principal", SELF),
       scopeFormula(statement.resource, "resource", UNUSED_RESOURCE),
-      ...statement.conditions.map((condition) => conditionFormula(condition, action)),
     ];
+    for (const condition of statement.conditions) {
+      parts.push(conditionFormula(condition, action));
+      // Box does not read a condition after one that an action test makes false.
+      if (condition.body.kind !== "cedar") continue;
+      if (actionValue(condition.body.expr, action) === (condition.polarity !== "when")) break;
+    }
     const clauses: Clause[] = [];
     const dead: DeadCause[] = [];
     for (const atoms of disjunctiveNormalForm({ kind: "and", items: parts }, false)) {
@@ -246,14 +251,63 @@ function attributePath(expr: Expr): string[] | undefined {
   return undefined;
 }
 
-/** Refuses an attribute the action's context does not declare, as Box refuses it at load. */
+/**
+ * Refuses an attribute the action's context does not declare, as Box refuses it at load. As Box
+ * reads a rule, an operand that an action test keeps from the action is not read: the right of
+ * `||` after a test that holds, the right of `&&` after one that does not, and the other branch of
+ * `if`.
+ */
 function checkAttributes(expr: Expr, action: NetworkAction): void {
   const path = attributePath(expr);
   if (path && path.length > 1) {
     checkPath(path, action, expr.text);
     return;
   }
+  if (expr.kind === "and" || expr.kind === "or") {
+    for (const item of expr.items) {
+      checkAttributes(item, action);
+      if (actionValue(item, action) === (expr.kind === "or")) return;
+    }
+    return;
+  }
+  if (expr.kind === "if") {
+    checkAttributes(expr.test, action);
+    const test = actionValue(expr.test, action);
+    if (test !== false) checkAttributes(expr.then, action);
+    if (test !== true) checkAttributes(expr.otherwise, action);
+    return;
+  }
   for (const child of children(expr)) checkAttributes(child, action);
+}
+
+/** The value of `expr` on `action` when only action tests and constants decide it. */
+function actionValue(expr: Expr, action: NetworkAction): boolean | undefined {
+  switch (expr.kind) {
+    case "literal":
+      return typeof expr.value === "boolean" ? expr.value : undefined;
+    case "not": {
+      const value = actionValue(expr.operand, action);
+      return value === undefined ? undefined : !value;
+    }
+    case "and":
+    case "or": {
+      const values = expr.items.map((item) => actionValue(item, action));
+      const decides = expr.kind === "or";
+      if (values.includes(decides)) return decides;
+      return values.every((value) => value === !decides) ? !decides : undefined;
+    }
+    case "binary": {
+      if (expr.op !== "==" && expr.op !== "!=" && expr.op !== "in") return undefined;
+      const variable = attributePath(expr.left);
+      if (variable?.length !== 1 || variable[0] !== "action") return undefined;
+      const entities = namedEntities(expr);
+      if (!entities) return undefined;
+      const matches = entities.some((e) => sameEntity(e, { type: ["Box", "Action"], id: action }));
+      return expr.op === "!=" ? !matches : matches;
+    }
+    default:
+      return undefined;
+  }
 }
 
 function checkPath(path: string[], action: NetworkAction, text: string): void {
@@ -448,14 +502,7 @@ function identityFormula(
 ): Formula | undefined {
   const variable = attributePath(expr.left);
   if (variable?.length !== 1) return undefined;
-  const entities =
-    expr.right.kind === "entity"
-      ? [expr.right.entity]
-      : expr.op === "in" &&
-          expr.right.kind === "set" &&
-          expr.right.items.every((i) => i.kind === "entity")
-        ? expr.right.items.map((i) => (i as Extract<Expr, { kind: "entity" }>).entity)
-        : undefined;
+  const entities = namedEntities(expr);
   if (!entities) return undefined;
   let matches: boolean;
   if (variable[0] === "action") {
@@ -468,6 +515,18 @@ function identityFormula(
     return undefined;
   }
   return constant(expr.op === "!=" ? !matches : matches, expr.text);
+}
+
+/** The entities the right of `==`, `!=`, or `in` names: one entity, or a set of entities. */
+function namedEntities(expr: Extract<Expr, { kind: "binary" }>): EntityRef[] | undefined {
+  const right = expr.right;
+  if (right.kind === "entity") return [right.entity];
+  if (expr.op !== "in" || right.kind !== "set" || !right.items.every(isEntity)) return undefined;
+  return right.items.map((item) => item.entity);
+}
+
+function isEntity(expr: Expr): expr is Extract<Expr, { kind: "entity" }> {
+  return expr.kind === "entity";
 }
 
 /** Why a rule that names the `Box::Action` `id`, which Box does not have, fails. */

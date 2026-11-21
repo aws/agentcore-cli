@@ -13,6 +13,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -181,6 +182,8 @@ async function strandsProject(
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
+/** The `host` or `host:port` a host warning starts with, before its first ": ". */
+const authorityOf = (warning: string) => warning.slice(0, Math.max(warning.indexOf(": "), 0));
 
 /** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/agent_python_strands/local/policy.dw`. */
 async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
@@ -360,14 +363,15 @@ describe("build writes the Box network of the box profile", () => {
     await editProfile(root, { tables: GITHUB_ROUTE });
     box.answer = shows({ github: GITHUB });
 
-    const { steps } = await build(manager, root);
+    const { steps, warnings } = await build(manager, root);
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     expect(JSON.parse(await text(root, SPEC)).credentials ?? []).toEqual([]);
-    expect(steps).toContain(
-      `not adding gateway target 'egress-github' of '${GATEWAY}' for api.github.com: it sends ` +
-        "the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential 'github' " +
-        "to hold it",
+    expect(steps.some((step) => step.startsWith("not adding gateway target"))).toBe(false);
+    expect(warnings).toContain(
+      "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. GITHUB_TOKEN is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set GITHUB_TOKEN, or AGENTCORE_CREDENTIAL_GITHUB, and build again.",
     );
     // With no target, the Runtime profile has no route to api.github.com, as the old renderer.
     const egress = (await runtimeProfile(root)).egress as Record<
@@ -375,6 +379,83 @@ describe("build writes the Box network of the box profile", () => {
       { destinations: string[] }
     >;
     expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock"]);
+  });
+
+  test("writes the target of a model-provider route once its key is set, as the warning says", async () => {
+    const { manager, root, box } = await strandsProject();
+    const openai = {
+      destinations: ["api.openai.com"],
+      secret: { ref: "env://OPENAI_API_KEY" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[egress.openai]\ndestinations = ["api.openai.com"]\n' +
+        'secret.ref = "env://OPENAI_API_KEY"\n',
+    });
+    box.answer = shows({ openai });
+
+    const first = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(first.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toHaveLength(1);
+    expect(first.warnings).toContain(
+      "api.openai.com: build gives [egress.openai] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. OPENAI_API_KEY is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set OPENAI_API_KEY, or AGENTCORE_CREDENTIAL_OPENAI, and build again.",
+    );
+
+    await new EnvLocalFile(root).insertIfNew([
+      { key: "OPENAI_API_KEY", value: "sk-test", comment: "the key the agent reads locally" },
+    ]);
+    const second = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-openai"]);
+    expect(second.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toEqual([]);
+  });
+
+  test("keeps a user's egress- target that a new project has before its first build", async () => {
+    const { manager, root } = await strandsProject();
+    // create wrote an empty entry for the Box gateway, so build owns none of its targets yet.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-mine", "bedrock", "agentcore"]);
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+    // The Runtime profile routes the user's target, as a target build does not own.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(egress["egress-mine"]?.destinations).toEqual(["mine.example.com"]);
+  });
+
+  test("takes the old egress- targets of a gateway that an older CLI made, one time", async () => {
+    const { manager, root } = await strandsProject();
+    // A project of an older CLI has no record, and build wrote egress-old for a host it has left.
+    await rm(path(root, "agentcore/box-gateway-targets.json"));
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-old", "https://old.example.com")),
+    );
+
+    const first = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(first.steps).toContain(
+      `removing gateway target 'egress-old' from '${GATEWAY}': the Box profile no longer allows ` +
+        "old.example.com",
+    );
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+
+    // Once the record names the gateway, a user's egress- target of the shape build writes stays.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+    await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-mine"]);
   });
 
   test("changes nothing on a second build", async () => {
@@ -450,13 +531,13 @@ describe("build writes the Box network of the box profile", () => {
     });
     box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
 
-    const { steps } = await build(manager, root);
+    const { warnings } = await build(manager, root);
 
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
-    expect(steps).toContain(
-      `not adding gateway target 'egress-tools' of '${GATEWAY}' for tools.example.com: it sends ` +
-        "the key of env://TOOLS_TOKEN, and agentcore.json has no API key credential 'tools' " +
-        "to hold it",
+    expect(warnings).toContain(
+      "tools.example.com: build gives [mcp.tools] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. TOOLS_TOKEN is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set TOOLS_TOKEN, or AGENTCORE_CREDENTIAL_TOOLS, and build again.",
     );
     // With no target, the Runtime profile has no [mcp.tools] server, as it has no route above.
     expect((await runtimeProfile(root)).mcp).toBeUndefined();

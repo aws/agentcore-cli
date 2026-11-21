@@ -128,10 +128,6 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// ---------------------------------------------------------------------------
-// Tokens
-// ---------------------------------------------------------------------------
-
 type TokenKind = "ident" | "string" | "number" | "punct";
 
 interface Token {
@@ -288,10 +284,6 @@ function decodePattern(raw: string, span: SourceSpan): LikePattern {
   return { parts };
 }
 
-// ---------------------------------------------------------------------------
-// Statements
-// ---------------------------------------------------------------------------
-
 const VARIABLES = new Set(["principal", "action", "resource", "context"]);
 const RELATION_OPERATORS = new Set(["==", "!=", "<", "<=", ">", ">="]);
 
@@ -439,10 +431,6 @@ class Parser {
     const text = this.textOf(body);
     return { polarity, body: { kind, text }, span: keyword.span };
   }
-
-  // -------------------------------------------------------------------------
-  // Expressions, by Cedar's precedence
-  // -------------------------------------------------------------------------
 
   private expr(): Expr {
     if (!this.isIdent("if")) return this.or();
@@ -711,10 +699,6 @@ class Parser {
     }
     return this.fail("expected an attribute name after has", t);
   }
-
-  // -------------------------------------------------------------------------
-  // Token helpers
-  // -------------------------------------------------------------------------
 
   private peek(): Token {
     const t = this.tokens[this.i];

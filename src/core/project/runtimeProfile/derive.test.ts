@@ -29,6 +29,7 @@ const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
     gateway: { name: "agent-box-egress", targets: [] },
     hosts: [],
     telemetry: [],
+    ruleIds: new Set(),
     places,
   });
 

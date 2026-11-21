@@ -286,25 +286,6 @@ const GEMINI: ApiKeyRoute = {
 const OPENAI_COMPATIBLE_ROUTE = "openai-compatible";
 
 /**
- * The `[egress.<name>]` routes `agentcore create` writes for a model provider's API key. Their key
- * is the project's model-provider credential, which `create` declares when it is given a key, or
- * else a provider variable that LiteLLM reads; build does not declare a credential for them.
- */
-export const MODEL_PROVIDER_EGRESS_ROUTES: ReadonlySet<string> = new Set([
-  OPENAI.name,
-  ANTHROPIC.name,
-  GEMINI.name,
-  OPENAI_COMPATIBLE_ROUTE,
-]);
-
-/** The provider variables a model-provider route reads its key from when `create` had no key. */
-export const MODEL_PROVIDER_KEY_VARIABLES: ReadonlySet<string> = new Set(
-  [OPENAI, ANTHROPIC, GEMINI].flatMap(({ providerVariable }) =>
-    providerVariable === undefined ? [] : [providerVariable],
-  ),
-);
-
-/**
  * The route the agent's model calls take when they carry an API key, or
  * `undefined` when the agent calls Bedrock, calls no model, or calls a host the
  * template does not name.
