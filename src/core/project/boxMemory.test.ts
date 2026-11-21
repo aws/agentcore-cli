@@ -153,6 +153,18 @@ describe("boxMemoryPolicy", () => {
     ]);
   });
 
+  test("names the partition of the region it is given", () => {
+    const resources = (region: string) =>
+      (boxMemoryPolicy(spec(), region) as Policy).Statement[0]!.Resource;
+
+    expect(resources("cn-north-1")).toEqual([
+      "arn:aws-cn:bedrock-agentcore:cn-north-1:*:memory/demo_*agentMemory-*",
+    ]);
+    expect(resources("us-gov-west-1")).toEqual([
+      "arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:*:memory/demo_*agentMemory-*",
+    ]);
+  });
+
   test("is undefined when no boxed runtime has its default Memory", () => {
     expect(boxMemoryPolicy(spec({ memories: ["ordersMemory"] }), "us-west-2")).toBeUndefined();
     expect(boxMemoryPolicy(spec({ entrypoint: "main.py" }), "us-west-2")).toBeUndefined();

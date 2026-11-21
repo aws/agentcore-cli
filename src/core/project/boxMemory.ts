@@ -90,9 +90,9 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec): ProjectRuntime[] {
  * no boxed runtime has its default Memory. The Memory ARN is known only after
  * deploy, so each resource matches the physical name the L3 gives the Memory,
  * `<project>_<target>_<memory>-<suffix>`, in any target, in `region`, the region of
- * the `agentcore` target that build writes. One file serves every deploy target, so
- * the ARN names no account, and the condition holds the Memory to the gateway role's
- * own account.
+ * the `agentcore` target that build writes, and in the partition of `region`. One file
+ * serves every deploy target, so the ARN names no account, and the condition holds the
+ * Memory to the gateway role's own account.
  */
 export function boxMemoryPolicy(
   spec: ProjectSpec,
@@ -108,7 +108,8 @@ export function boxMemoryPolicy(
         Effect: "Allow",
         Action: MEMORY_DATA_PLANE_ACTIONS,
         Resource: memories.map(
-          (memory) => `arn:aws:bedrock-agentcore:${region}:*:memory/${spec.name}_*${memory}-*`,
+          (memory) =>
+            `arn:${partition(region).name}:bedrock-agentcore:${region}:*:memory/${spec.name}_*${memory}-*`,
         ),
         Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
       },
