@@ -48,8 +48,8 @@ function projectGatewayTargetName(name: string): string {
 /**
  * The gateways of `spec` that `runtime` calls through its Box gateway: each gateway without
  * `boundRuntime`, as the CDK library binds it to a runtime without a box. A `PRIVATE_VPC` runtime
- * gets none, and a `CUSTOM_JWT` gateway gets a warning, because the Box gateway cannot get its
- * token. With `targets` false, because the @aws/agentcore-cdk of the project refuses
+ * gets none, and no `CUSTOM_JWT` gateway, because the Box gateway cannot get its token;
+ * `add gateway` gives {@link customJwtGatewayNotice} for it once. With `targets` false, because the @aws/agentcore-cdk of the project refuses
  * `passthrough.gateway`, the runtime gets none, and one warning names them.
  */
 export function projectGatewaysOf(
@@ -62,15 +62,7 @@ export function projectGatewaysOf(
   if (runtime.containment === "PRIVATE_VPC") return { gateways, warnings };
   for (const gateway of spec.agentCoreGateways) {
     if (gateway.boundRuntime !== undefined) continue;
-    if (gateway.authorizerType === "CUSTOM_JWT") {
-      warnings.push(
-        `The gateway '${gateway.name}' takes CUSTOM_JWT tokens, and the Box gateway of runtime ` +
-          `'${runtime.name}' signs only with its IAM role, so the boxed agent cannot call ` +
-          `'${gateway.name}' on AgentCore Runtime. Set its authorizerType to AWS_IAM to let the ` +
-          "agent call it.",
-      );
-      continue;
-    }
+    if (gateway.authorizerType === "CUSTOM_JWT") continue;
     gateways.push({
       name: gateway.name,
       target: projectGatewayTargetName(gateway.name),
@@ -109,6 +101,15 @@ export function projectGatewayTargetFor(
       outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
     }),
   };
+}
+
+/** What `add gateway` tells the user once about a `CUSTOM_JWT` gateway in a Box project. */
+export function customJwtGatewayNotice(gatewayName: string): string {
+  return (
+    `the gateway '${gatewayName}' takes CUSTOM_JWT tokens, and a Box gateway signs only with its ` +
+    `IAM role, so a boxed agent cannot call '${gatewayName}' on AgentCore Runtime, and build adds ` +
+    "no route to it. Set its authorizerType to AWS_IAM to let a boxed agent call it"
+  );
 }
 
 /** The `@box/agentcore` inputs that carry the URL and the host of `gateway` on the Runtime. */

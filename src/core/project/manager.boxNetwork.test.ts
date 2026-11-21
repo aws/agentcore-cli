@@ -765,6 +765,40 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await targetNames(root)).not.toContain("egress-gateway-tools");
   });
 
+  test("add gateway gives one notice for a CUSTOM_JWT gateway, and build gives none", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    const jwt = {
+      name: "secure",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+          allowedAudience: ["agentcore"],
+        },
+      },
+      enableSemanticSearch: false,
+      exceptionLevel: "NONE",
+      protocolType: "MCP",
+      targets: [],
+    };
+
+    const added = await drain(
+      manager.addResource(project, {
+        resourceType: "gateway",
+        resourceConfig: jwt,
+      } as unknown as Parameters<FsProjectManager["addResource"]>[1]),
+    );
+    const built = await build(manager, root);
+
+    const notice =
+      "the gateway 'secure' takes CUSTOM_JWT tokens, and a Box gateway signs only with its IAM " +
+      "role, so a boxed agent cannot call 'secure' on AgentCore Runtime, and build adds no route " +
+      "to it. Set its authorizerType to AWS_IAM to let a boxed agent call it";
+    expect(added.warnings).toEqual([notice]);
+    expect(built.warnings.filter((warning) => warning.includes("CUSTOM_JWT"))).toEqual([]);
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);
