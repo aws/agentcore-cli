@@ -36,6 +36,11 @@ export const ProjectNameSchema = z
 export const ProjectTypeSchema = z.enum(["box"]);
 /** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
+/**
+ * The start of the name of each target that build adds to a Box gateway. Build manages every
+ * target whose name has it, and no other.
+ */
+export const BOX_EGRESS_TARGET_PREFIX = "egress-";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /**
@@ -182,11 +187,13 @@ export const ProjectSpecSchema = z
       }
     }
     // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
-    // a runtime belongs to that runtime, so no target of another gateway calls it.
+    // a runtime belongs to that runtime, so no target of another gateway calls it. Build writes
+    // and removes each target whose name starts with BOX_EGRESS_TARGET_PREFIX, so such a target
+    // that names no such gateway is not refused here: the next build removes it.
     for (const gateway of spec.agentCoreGateways) {
       for (const target of gateway.targets) {
         const reached = target.passthrough?.gateway;
-        if (reached === undefined) continue;
+        if (reached === undefined || target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)) continue;
         const named = spec.agentCoreGateways.find((other) => other.name === reached);
         const problem =
           named === undefined

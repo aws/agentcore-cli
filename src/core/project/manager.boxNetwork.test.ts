@@ -731,6 +731,40 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await targetNames(root)).not.toContain("egress-gateway-tools");
   });
 
+  test("reads the project and removes the target after a build when the gateway gets boundRuntime", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools").boundRuntime =
+      "agent_python_strands";
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect(steps).toContain(
+      "removing gateway target 'egress-gateway-tools' from 'agent-python-strands-box-egress': " +
+        "the boxed agent no longer calls the gateway 'tools'",
+    );
+  });
+
+  test("reads the project and removes the target when the gateway is gone from agentcore.json", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways = spec.agentCoreGateways.filter(
+      ({ name }: { name: string }) => name !== "tools",
+    );
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);
