@@ -284,8 +284,8 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 ## 6. Test locally with `agentcore dev`
 
 `agentcore dev` runs the agent in a box on your machine, so you can try the project before you
-deploy. It deploys nothing. The agent signs its Bedrock calls with your `[default]` AWS profile
-(`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
+deploy. It deploys nothing. The agent signs its Bedrock calls with the AWS default credential
+chain (`secret.ref = "aws://"` in `.box/agent/local/profile.toml`), and Memory is off
 (`LOCAL_DEV=1`).
 
 Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
