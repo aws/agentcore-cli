@@ -48,17 +48,7 @@ export function findPath(
   filler: string,
 ): PathSearch {
   if (excluded.some((group) => group.length === 0)) return { kind: "none" };
-  const patterns: LikePattern[] = [];
-  const indexOf = (pattern: LikePattern) => {
-    const at = patterns.indexOf(pattern);
-    return at === -1 ? patterns.push(pattern) - 1 : at;
-  };
-  const wanted = [ROOTED, ...required].map((test) => ({ ...test, at: indexOf(test.pattern) }));
-  const groups = excluded.map((group) =>
-    group.map((test) => ({ ...test, at: indexOf(test.pattern) })),
-  );
-  const machines = patterns.map(machineOf);
-  const literals = new Set(patterns.flatMap((p) => p.parts.flatMap(literalChars)));
+  const { machines, wanted, groups, literals } = machinesFor(required, excluded);
   const alphabet = [...literals, freeChar(literals, filler)];
 
   const start = machines.map((machine) => machine.closure([0]));
@@ -87,6 +77,42 @@ export function findPath(
     }
   }
   return { kind: "none" };
+}
+
+/**
+ * One machine for each different pattern of the tests, with the leading `/` that each path has,
+ * and each test with the index of its pattern's machine. Equal patterns share one machine.
+ */
+export function machinesFor(
+  required: readonly PathTest[],
+  excluded: readonly (readonly PathTest[])[],
+) {
+  const patterns: LikePattern[] = [];
+  const byKey = new Map<string, number>();
+  const indexOf = (pattern: LikePattern) => {
+    const key = patternKey(pattern);
+    const at = byKey.get(key) ?? patterns.push(pattern) - 1;
+    byKey.set(key, at);
+    return at;
+  };
+  const wanted = [ROOTED, ...required].map((test) => ({ ...test, at: indexOf(test.pattern) }));
+  const groups = excluded.map((group) =>
+    group.map((test) => ({ ...test, at: indexOf(test.pattern) })),
+  );
+  return {
+    machines: patterns.map(machineOf),
+    count: patterns.length,
+    wanted,
+    groups,
+    literals: new Set(patterns.flatMap((p) => p.parts.flatMap(literalChars))),
+  };
+}
+
+/** A pattern as text, with each wildcard as `*` and each literal `*` and `\` escaped. */
+function patternKey(pattern: LikePattern): string {
+  return pattern.parts
+    .map((part) => (part.kind === "wildcard" ? "*" : part.text.replace(/[\\*]/g, "\\$&")))
+    .join("");
 }
 
 /** A pattern as a machine whose state is the set of places in the pattern a prefix reaches. */

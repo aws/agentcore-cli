@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Comparison, FieldAtom } from "./conditions";
 import type { LikePattern } from "./dogwood";
-import { findPath, pathTest, type PathTest } from "./pathSolver";
+import { findPath, machinesFor, pathTest, type PathTest } from "./pathSolver";
 
 /** A `like` pattern, with each `*` as a wildcard. */
 function like(text: string): LikePattern {
@@ -83,5 +83,23 @@ describe("findPath", () => {
 
   test("stops undecided when the search has too many states", () => {
     expect(path([..."abcdefghijklm"].map((c) => must(`*${c}*`)))).toBe("undecided");
+  });
+});
+
+describe("machinesFor", () => {
+  test("gives equal patterns from different atoms one machine, beside the one for the leading /", () => {
+    const a = pathTest(atom({ op: "==", value: "/a" })) as PathTest;
+    const b = pathTest(atom({ op: "!=", value: "/a" }, true)) as PathTest;
+    expect(a.pattern).not.toBe(b.pattern);
+    expect(machinesFor([a, must("/v1/*")], [[b], [must("/v1/*")]]).count).toBe(3);
+  });
+
+  test("keeps a literal * apart from a wildcard", () => {
+    const star: PathTest = {
+      pattern: { parts: [{ kind: "literal", text: "/a*" }] },
+      matches: true,
+    };
+    expect(machinesFor([star, must("/a*")], []).count).toBe(3);
+    expect(findPath([star], [], "§")).toEqual({ kind: "path", path: "/a*" });
   });
 });
