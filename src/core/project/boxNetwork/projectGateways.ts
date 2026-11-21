@@ -49,11 +49,13 @@ function projectGatewayTargetName(name: string): string {
  * The gateways of `spec` that `runtime` calls through its Box gateway: each gateway without
  * `boundRuntime`, as the CDK library binds it to a runtime without a box. A `PRIVATE_VPC` runtime
  * gets none, and a `CUSTOM_JWT` gateway gets a warning, because the Box gateway cannot get its
- * token.
+ * token. With `targets` false, because the @aws/agentcore-cdk of the project refuses
+ * `passthrough.gateway`, the runtime gets none, and one warning names them.
  */
 export function projectGatewaysOf(
   spec: ProjectSpec,
   runtime: Pick<ProjectRuntime, "name" | "containment">,
+  targets = true,
 ): { gateways: BoxProjectGateway[]; warnings: string[] } {
   const gateways: BoxProjectGateway[] = [];
   const warnings: string[] = [];
@@ -75,6 +77,18 @@ export function projectGatewaysOf(
       variablePrefix: gatewayDiscoveryPrefix(gateway),
       auth: gateway.authorizerType === "AWS_IAM" ? "iam" : "none",
     });
+  }
+  if (!targets && gateways.length > 0) {
+    const names = gateways.map(({ name }) => `'${name}'`);
+    const list =
+      names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+    warnings.push(
+      `The gateways ${list} of this project get no route for a boxed agent on AgentCore ` +
+        "Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
+        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
+        "version that accepts it, then build again.",
+    );
+    return { gateways: [], warnings };
   }
   return { gateways, warnings };
 }

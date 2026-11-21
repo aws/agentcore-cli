@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assertCdkLocalContainerSupport,
+  cdkAcceptsPassthroughGateway,
   cdkCompatibilityWarning,
   MINIMUM_COMPATIBLE_CDK_VERSION,
 } from "./compatibility";
@@ -100,4 +101,59 @@ describe("cdkCompatibilityWarning", () => {
     tempDirectories.push(directory);
     expect(await cdkCompatibilityWarning(directory)).toBeUndefined();
   });
+});
+
+describe("cdkAcceptsPassthroughGateway", () => {
+  /** A CDK app whose @aws/agentcore-cdk exports `PassthroughConfigSchema` as `schema`, a JS text. */
+  async function cdkDirectoryExporting(schema: string | undefined): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-passthrough-gateway-"));
+    tempDirectories.push(directory);
+    if (schema === undefined) return directory;
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await mkdir(packageDirectory, { recursive: true });
+    await writeFile(
+      join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@aws/agentcore-cdk", version: "1.1.0", main: "index.js" }),
+    );
+    await writeFile(
+      join(packageDirectory, "index.js"),
+      `exports.PassthroughConfigSchema = ${schema};\n`,
+    );
+    return directory;
+  }
+  /** As each @aws/agentcore-cdk parses a passthrough: with `gateway`, or with `endpoint` only. */
+  const WITH_GATEWAY =
+    "{ safeParse: (config) => ({ success: typeof config.gateway === 'string' }) }";
+  const ENDPOINT_ONLY =
+    "{ safeParse: (config) => ({ success: typeof config.endpoint === 'string' }) }";
+
+  test.skipIf(!Bun.which("node"))(
+    "is true when the installed library accepts passthrough.gateway",
+    async () => {
+      expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryExporting(WITH_GATEWAY))).toBe(
+        true,
+      );
+    },
+  );
+
+  test.skipIf(!Bun.which("node"))(
+    "is false when the installed library requires passthrough.endpoint",
+    async () => {
+      expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryExporting(ENDPOINT_ONLY))).toBe(
+        false,
+      );
+    },
+  );
+
+  test.skipIf(!Bun.which("node"))(
+    "is false when the library is not installed, or has no PassthroughConfigSchema",
+    async () => {
+      expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryExporting(undefined))).toBe(
+        false,
+      );
+      expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryExporting("undefined"))).toBe(
+        false,
+      );
+    },
+  );
 });

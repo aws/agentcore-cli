@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import semver from "semver";
 import { createRequire } from "node:module";
 import { ProjectStateError } from "../../../../errors";
@@ -61,4 +63,30 @@ export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<str
     `${MINIMUM_COMPATIBLE_CDK_VERSION} or newer for full compatibility. ` +
     `Update the CDK dependency, then rebuild or redeploy.`
   );
+}
+
+/**
+ * Asks the @aws/agentcore-cdk that the CDK app in `cdkDirectory` loads whether its schema takes a
+ * passthrough target with `gateway` in place of `endpoint`. Node runs the check in that folder, so
+ * it loads the same library as synth. False when the library is missing or the check fails.
+ */
+const PASSTHROUGH_GATEWAY_CHECK = `
+let accepts = false;
+try {
+  const { PassthroughConfigSchema } = require("@aws/agentcore-cdk");
+  accepts = PassthroughConfigSchema.safeParse({ gateway: "check", protocolType: "CUSTOM" }).success === true;
+} catch {}
+process.stdout.write(accepts ? "accepts" : "refuses");
+`;
+
+export async function cdkAcceptsPassthroughGateway(cdkDirectory: string): Promise<boolean> {
+  try {
+    const { stdout } = await promisify(execFile)("node", ["-e", PASSTHROUGH_GATEWAY_CHECK], {
+      cwd: cdkDirectory,
+      timeout: 60_000,
+    });
+    return stdout.trim() === "accepts";
+  } catch {
+    return false;
+  }
 }
