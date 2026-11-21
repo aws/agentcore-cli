@@ -225,6 +225,10 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   changes, or removes it.
 - **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
   sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
+  This includes the model-provider route that `agentcore create` writes when you give it no key,
+  such as `[egress.openai]` with `env://OPENAI_API_KEY` (also for Anthropic and Gemini). When that
+  key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
+  `openai`, and deploy provisions your key in AgentCore Identity.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
   host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
   host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the

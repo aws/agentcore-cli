@@ -75,7 +75,10 @@ flags: for templates that take a model provider (`agent-python-strands` and its 
 variant, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) the wizard asks
 for the provider (Amazon Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or
 LiteLLM, which is Python-only), the model id, and an API-key file. The API key is kept in
-`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy.
+`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy. For a Box
+template created with no API key, build reads the provider's key (such as `OPENAI_API_KEY`) from
+your shell or `agentcore/.env.local`, adds a credential such as `openai`, and deploy provisions
+that key in AgentCore Identity.
 
 To bring your own code into a project instead, add a runtime for it:
 
