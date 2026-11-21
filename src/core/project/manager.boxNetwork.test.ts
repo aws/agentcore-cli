@@ -182,6 +182,8 @@ async function strandsProject(
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
+/** The `host` or `host:port` a host warning starts with, before its first ": ". */
+const authorityOf = (warning: string) => warning.slice(0, Math.max(warning.indexOf(": "), 0));
 
 /** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/agent_python_strands/local/policy.dw`. */
 async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
@@ -380,6 +382,7 @@ describe("build writes the Box network of the box profile", () => {
 
     const first = await build(manager, root);
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(first.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toHaveLength(1);
     expect(first.warnings).toContain(
       "api.openai.com: build gives [egress.openai] no gateway target, so the agent cannot reach " +
         `this host on AgentCore Runtime. OPENAI_API_KEY is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
@@ -391,7 +394,7 @@ describe("build writes the Box network of the box profile", () => {
     ]);
     const second = await build(manager, root);
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-openai"]);
-    expect(second.warnings.filter((w) => w.split(":", 1)[0] === "api.openai.com")).toEqual([]);
+    expect(second.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toEqual([]);
   });
 
   test("keeps a user's egress- target that a new project has before its first build", async () => {
