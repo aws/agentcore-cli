@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
+import {
+  boxKeyVariables,
+  planBoxProfileCredentials,
+  type BoxKeySources,
+} from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
@@ -274,5 +278,22 @@ describe("planBoxProfileCredentials", () => {
       "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
         "OAuthCredentialProvider credential, not an API key",
     ]);
+  });
+});
+
+describe("boxKeyVariables", () => {
+  test("holds the variables of each route the planner looks up a key for", () => {
+    expect(boxKeyVariables([], [GITHUB])).toEqual(new Set(["GITHUB_TOKEN", RESERVED]));
+  });
+
+  test("skips a model-provider route and a route whose variable a credential reserves", () => {
+    const reserved = credentialEnvVarName("agentOpenAIApiKey");
+
+    const variables = boxKeyVariables(
+      [{ authorizerType: "ApiKeyCredentialProvider", name: "agentOpenAIApiKey" }],
+      [route("openai", "OPENAI_API_KEY"), route("my-llm", reserved)],
+    );
+
+    expect(variables).toEqual(new Set());
   });
 });

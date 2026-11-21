@@ -47,12 +47,39 @@ export function boxEgressCredentialName(
 }
 
 /**
- * The variables {@link planBoxProfileCredentials} looks up in its key sources for `routes`: each
- * route's `env://` variable, and the reserved variable of the credential named for the route.
- * Build reads only these from `.env.local`, so an entry no route uses cannot stop it.
+ * Whether {@link planBoxProfileCredentials} skips `route` before it looks up any key, because
+ * something else holds the key: a credential whose variables `reserved` holds reserves the route's
+ * variable, or the route is a model-provider route as `agentcore create` writes it (`openai`,
+ * `anthropic`, `gemini` or `openai-compatible`, reading the provider variable such as
+ * `OPENAI_API_KEY`), whose key is the variable LiteLLM reads.
  */
-export function boxKeyVariables(routes: readonly BoxEnvRoute[]): Set<string> {
-  return new Set(routes.flatMap(({ route, variable }) => [variable, credentialEnvVarName(route)]));
+function boxRouteKeyHeldElsewhere(
+  { route, variable }: BoxEnvRoute,
+  reserved: { has(variable: string): boolean },
+): boolean {
+  return (
+    reserved.has(variable) ||
+    (MODEL_PROVIDER_EGRESS_ROUTES.has(route) && MODEL_PROVIDER_KEY_VARIABLES.has(variable))
+  );
+}
+
+/**
+ * The variables {@link planBoxProfileCredentials} can look up in its key sources for `routes` in a
+ * project with `credentials`: for each route it does not skip first, the route's `env://` variable
+ * and the reserved variable of the credential named for the route. Build reads only these from
+ * `.env.local`, so an entry no route uses cannot stop it. A credential that the planner adds for
+ * one route can reserve the variable of a later route, which the set then still holds.
+ */
+export function boxKeyVariables(
+  credentials: readonly Credential[],
+  routes: readonly BoxEnvRoute[],
+): Set<string> {
+  const reserved = new Set(credentials.flatMap(credentialEnvironmentVariableNames));
+  return new Set(
+    routes
+      .filter((route) => !boxRouteKeyHeldElsewhere(route, reserved))
+      .flatMap(({ route, variable }) => [variable, credentialEnvVarName(route)]),
+  );
 }
 
 /**
@@ -68,10 +95,7 @@ export function boxKeyVariables(routes: readonly BoxEnvRoute[]): Set<string> {
  * is kept, and gets the same message if its key has gone.
  *
  * Mutates `spec.credentials` in place, and is idempotent. It skips, with no message:
- *   - a route whose variable an existing credential reserves: that credential holds the key;
- *   - a model-provider route as `agentcore create` writes it (`openai`, `anthropic`, `gemini` or
- *     `openai-compatible`, reading the provider variable such as `OPENAI_API_KEY`): its key is
- *     the variable LiteLLM reads, not a credential;
+ *   - a route whose key something else holds ({@link boxRouteKeyHeldElsewhere});
  *   - a route named for an API key credential that keeps its key in Secrets Manager.
  *
  * It skips, with a message, a route that uses a model-provider name or variable in any other way,
@@ -136,10 +160,9 @@ export function planBoxProfileCredentials(
 
   for (const entry of routes) {
     const { route, variable } = entry;
-    if (reservedVars.has(variable)) continue;
+    if (boxRouteKeyHeldElsewhere(entry, reservedVars)) continue;
     const providerName = MODEL_PROVIDER_EGRESS_ROUTES.has(route);
     const providerVariable = MODEL_PROVIDER_KEY_VARIABLES.has(variable);
-    if (providerName && providerVariable) continue;
 
     const skip = (reason: string) =>
       messages.push(`skipping box egress '${route}' (env://${variable}): ${reason}`);

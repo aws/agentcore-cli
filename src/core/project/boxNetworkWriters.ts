@@ -203,11 +203,12 @@ export const credentialsWriter: BoxNetworkWriter = {
  */
 export function boxKeyReads(
   networks: readonly BoxNetwork[],
+  spec: ProjectSpec,
   env: NodeJS.ProcessEnv,
 ): ReadEnvFileOptions | undefined {
   const routes = uniqueRoutes(networks);
   if (routes.length === 0) return undefined;
-  const variables = boxKeyVariables(routes);
+  const variables = boxKeyVariables(spec.credentials, routes);
   return {
     select: (name) => variables.has(name),
     // A blank value in `env` does not win, so build reads that variable from the file instead.

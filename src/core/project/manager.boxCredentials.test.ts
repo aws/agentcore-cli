@@ -35,7 +35,10 @@ afterEach(async () => {
 });
 
 /** A manager whose CDK backend records the project it builds, and runs nothing. */
-function manager(processEnv: NodeJS.ProcessEnv): { subject: FsProjectManager; built: Project[] } {
+function manager(
+  processEnv: NodeJS.ProcessEnv,
+  shown = GITHUB_SHOWN,
+): { subject: FsProjectManager; built: Project[] } {
   const built: Project[] = [];
   const backend: ProjectBackend = {
     async *build(project) {
@@ -61,7 +64,7 @@ function manager(processEnv: NodeJS.ProcessEnv): { subject: FsProjectManager; bu
     runner: async () => {},
     checkTool: async () => {},
     backends: { CDK: backend },
-    boxProfileResolver: new FakeBoxProfileResolver(GITHUB_SHOWN),
+    boxProfileResolver: new FakeBoxProfileResolver(shown),
   });
   return { subject, built };
 }
@@ -85,10 +88,17 @@ async function project(subject: FsProjectManager, profile: string): Promise<Proj
   return created;
 }
 
-async function drain(generator: AsyncGenerator<ProjectEvent, void>): Promise<string[]> {
-  const messages: string[] = [];
-  for await (const event of generator) if (event.type === "step") messages.push(event.message);
-  return messages;
+/** The step messages of `generator`, then its warnings. */
+async function drain(
+  generator: AsyncGenerator<ProjectEvent, void>,
+): Promise<{ steps: string[]; warnings: string[] }> {
+  const steps: string[] = [];
+  const warnings: string[] = [];
+  for await (const event of generator) {
+    if (event.type === "step") steps.push(event.message);
+    else if (event.type === "warning") warnings.push(event.message);
+  }
+  return { steps, warnings };
 }
 
 /** Appends `line` to the project's `.env.local` as written, so no value in it is encrypted. */
@@ -112,7 +122,7 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     const created = await project(subject, GITHUB_PROFILE);
     const before = await specOf(created.rootPath);
 
-    const messages = await drain(subject.build(created));
+    const { steps } = await drain(subject.build(created));
 
     const after = await specOf(created.rootPath);
     expect(after.credentials).toEqual([
@@ -125,7 +135,7 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect(others(after)).toEqual(others(before));
     const stored = await new EnvLocalFile(created.rootPath).read();
     expect(stored[RESERVED]).toBe("ghp_shell");
-    expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect(steps).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);
     expect(built[0]?.spec.credentials).toContainEqual({
       authorizerType: "ApiKeyCredentialProvider",
       name: "github",
@@ -139,12 +149,27 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
     const reread = await subject.resolve({ filePath: created.rootPath });
 
-    const messages = await drain(subject.build(reread!));
+    const { steps, warnings } = await drain(subject.build(reread!));
 
-    expect(messages.filter((message) => message.includes("github"))).toEqual([]);
+    expect([...steps, ...warnings].filter((message) => message.includes("github"))).toEqual([]);
     expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
       spec,
     );
+  });
+
+  test("a second build finds the key stored only under the credential's reserved variable", async () => {
+    const { subject: first } = manager({ GITHUB_TOKEN: "ghp_shell" });
+    const created = await project(first, GITHUB_PROFILE);
+    await drain(first.build(created));
+    const { subject } = manager({});
+    const reread = await subject.resolve({ filePath: created.rootPath });
+
+    const { steps, warnings } = await drain(subject.build(reread!));
+
+    expect(
+      [...steps, ...warnings].filter((message) => message.includes("env://GITHUB_TOKEN")),
+    ).toEqual([]);
+    expect(await storedKey(created.rootPath)).toBe("ghp_shell");
   });
 
   test("seeds the key that agentcore dev stored in .env.local under the box variable", async () => {
@@ -167,9 +192,9 @@ describe("FsProjectManager.build: box env:// credentials", () => {
         .credentials;
     const before = await credentials();
 
-    const messages = await drain(subject.build(created));
+    const { steps } = await drain(subject.build(created));
 
-    expect(messages).toContain(
+    expect(steps).toContain(
       "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not " +
         `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
         `Set GITHUB_TOKEN, or ${RESERVED}, and build again`,
@@ -201,6 +226,26 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     await drain(subject.build(created));
 
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+  });
+
+  test("builds when .env.local holds an undecryptable key of a model-provider route", async () => {
+    const { subject, built } = manager(
+      {},
+      boxShowOf({
+        egress: {
+          openai: { destinations: ["api.openai.com"], secret: { ref: "env://OPENAI_API_KEY" } },
+        },
+      }),
+    );
+    const created = await project(
+      subject,
+      '[egress.openai]\ndestinations = ["api.openai.com"]\nsecret.ref = "env://OPENAI_API_KEY"\n',
+    );
+    await appendEnvLocal(created.rootPath, `OPENAI_API_KEY='${UNDECRYPTABLE}'`);
+
+    await drain(subject.build(created));
+
+    expect(built).toHaveLength(1);
   });
 
   test("builds when the shell sets the variable of an undecryptable .env.local entry", async () => {
