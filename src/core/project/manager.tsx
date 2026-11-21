@@ -71,6 +71,7 @@ import {
   hasBoxProfile,
   renderBoxProfile,
   runsInBox,
+  runtimeRunsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
@@ -121,6 +122,7 @@ import {
 import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
+import { cdkAcceptsPassthroughGateway } from "./backends/cdk/compatibility";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -437,6 +439,11 @@ type ProjectManagerConfig = {
    * PATH by default.
    */
   boxProfileResolver?: BoxProfileResolver;
+  /**
+   * Whether the @aws/agentcore-cdk of the CDK app in a folder accepts a passthrough target with
+   * `gateway`; build writes such a target only then. `cdkAcceptsPassthroughGateway` by default.
+   */
+  cdkAcceptsPassthroughGateway?: (cdkDirectory: string) => Promise<boolean>;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -461,6 +468,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly boxProfileResolver: BoxProfileResolver;
+  private readonly cdkAcceptsPassthroughGateway: (cdkDirectory: string) => Promise<boolean>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -485,6 +493,8 @@ export class FsProjectManager implements ProjectManager {
     this.processEnv = config.processEnv ?? process.env;
     this.boxProfileResolver =
       config.boxProfileResolver ?? new BoxCliProfileResolver({ env: this.processEnv });
+    this.cdkAcceptsPassthroughGateway =
+      config.cdkAcceptsPassthroughGateway ?? cdkAcceptsPassthroughGateway;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -1669,11 +1679,19 @@ export class FsProjectManager implements ProjectManager {
     command: "build" | "deploy",
     region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
+    // Only a box runtime and a gateway without boundRuntime need the check of the CDK app.
+    const unbound = project.spec.agentCoreGateways.some(({ boundRuntime }) => !boundRuntime);
+    const boxed = project.spec.runtimes.some((runtime) => runtimeRunsInBox(project.spec, runtime));
+    const projectGatewayTargets =
+      unbound &&
+      boxed &&
+      (await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk")));
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
       this.boxProfileResolver,
       region,
+      projectGatewayTargets,
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
@@ -1721,10 +1739,15 @@ export class FsProjectManager implements ProjectManager {
       const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    const warnings = networks.flatMap((network) => [
-      ...network.warnings,
-      ...boxGatewayIamWarnings(edits.spec, network),
-    ]);
+    // Each box runtime gives the same warning for the CDK app, so it appears once.
+    const warnings = [
+      ...new Set(
+        networks.flatMap((network) => [
+          ...network.warnings,
+          ...boxGatewayIamWarnings(edits.spec, network),
+        ]),
+      ),
+    ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),
       ...warnings.map((message) => ({ type: "warning" as const, message })),

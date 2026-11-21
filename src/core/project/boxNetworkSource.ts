@@ -55,6 +55,8 @@ export async function readBoxNetworks(
   projectRoot: string,
   resolver: BoxProfileResolver,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+  /** Whether the @aws/agentcore-cdk of the project accepts `passthrough.gateway`. */
+  projectGatewayTargets = false,
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
@@ -84,6 +86,7 @@ export async function readBoxNetworks(
       region,
       targets: entry.targets,
       grantedActions: granted.actions,
+      projectGatewayTargets,
     });
     networks.push({
       ...network,

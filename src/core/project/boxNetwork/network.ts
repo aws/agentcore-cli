@@ -163,6 +163,11 @@ export interface BoxNetworkProject {
   readonly targets: readonly AgentCoreGatewayTarget[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant, except build's own. */
   readonly grantedActions: readonly string[];
+  /**
+   * Whether the @aws/agentcore-cdk of the project accepts a target with `passthrough.gateway`
+   * (`cdkAcceptsPassthroughGateway`); absent means it does not, and no gateway gets a target.
+   */
+  readonly projectGatewayTargets?: boolean;
 }
 
 /** The Box gateway of `runtime`: the gateway bound to it. */
@@ -201,7 +206,11 @@ export function buildBoxNetwork(
     return { ...rest, reason: `${where.subject} ${reason}`, place: where.place };
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
-  const reached = projectGatewaysOf(project.spec, project.runtime);
+  const reached = projectGatewaysOf(
+    project.spec,
+    project.runtime,
+    project.projectGatewayTargets ?? false,
+  );
   const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);
   const telemetry =

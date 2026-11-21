@@ -48,6 +48,8 @@ interface Options {
   /** The other gateways of the project, after the Box gateway. */
   readonly gateways?: Record<string, unknown>[];
   readonly runtime?: Partial<ProjectRuntime>;
+  /** Whether the @aws/agentcore-cdk of the project accepts `passthrough.gateway`; true here. */
+  readonly projectGatewayTargets?: boolean;
 }
 
 /** The local box profile of runtime `agent`. */
@@ -99,6 +101,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
+    projectGatewayTargets: options.projectGatewayTargets ?? true,
   });
   return {
     spec,
@@ -1220,6 +1223,19 @@ describe("the gateways of the project", () => {
       },
     ]);
     expect(network.failures).toEqual([]);
+  });
+
+  test("gives the agent no gateway when the @aws/agentcore-cdk of the project refuses passthrough.gateway, and warns once", () => {
+    const { network } = model("", {}, { gateways: [TOOLS, OPEN], projectGatewayTargets: false });
+
+    expect(network.projectGateways).toEqual([]);
+    expect(network.failures).toEqual([]);
+    expect(network.warnings).toEqual([
+      "The gateways 'tools' and 'open-tools' of this project get no route for a boxed agent on " +
+        "AgentCore Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
+        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
+        "version that accepts it, then build again.",
+    ]);
   });
 
   test("gives a PRIVATE_VPC runtime no gateway, as the CDK library binds none to it", () => {
