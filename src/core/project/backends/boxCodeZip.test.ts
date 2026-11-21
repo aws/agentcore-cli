@@ -120,18 +120,18 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, ".gitignore"), "utf8")).toBe(BOX_DIST_GITIGNORE);
   });
 
-  test("asks for the box of the runtime's box.version", async () => {
+  test("asks for the pinned box once, for every runtime", async () => {
     const build = await linuxBuild();
-    const demo = await project("start.py");
-    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
-    const versions: (string | undefined)[] = [];
+    const demo = await project("start.py", "PYTHON_3_14", ["agent", "second"]);
+    demo.spec.runtimes[1]!.box = { version: "2.0.0" };
+    let asked = 0;
 
-    await stageBoxCodeZip(demo, [model([])], async (version) => {
-      versions.push(version);
+    await stageBoxCodeZip(demo, [model([]), model([], "second")], async () => {
+      asked++;
       return build;
     });
 
-    expect(versions).toEqual(["2.0.0"]);
+    expect(asked).toBe(1);
   });
 
   test.each([
@@ -142,15 +142,15 @@ describe("stageBoxCodeZip", () => {
     const runtime = demo.spec.runtimes[0]!;
     if (!boxVersion) delete runtime.box;
     (demo.spec as { projectType?: string }).projectType = projectType;
-    const asked: (string | undefined)[] = [];
+    let asked = 0;
 
     expect(
-      await stageBoxCodeZip(demo, [model([])], async (version) => {
-        asked.push(version);
+      await stageBoxCodeZip(demo, [model([])], async () => {
+        asked++;
         return linuxBuild();
       }),
     ).toEqual([]);
-    expect(asked).toEqual([]);
+    expect(asked).toBe(0);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 

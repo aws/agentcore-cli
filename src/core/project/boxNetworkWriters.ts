@@ -46,6 +46,7 @@ import { isTable } from "./runtimeProfile/projectPaths";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
 import { RUNTIME_INPUTS, type TomlTable } from "./runtimeProfile/types";
 import { ProjectStateError } from "../../errors/errors";
+import { BOX_RELEASE } from "./backends/boxRelease";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
@@ -53,6 +54,7 @@ export type BoxNetworkOutput =
   | { readonly kind: "defaultTargets" }
   | { readonly kind: "credentials" }
   | { readonly kind: "runtimePolicies" }
+  | { readonly kind: "boxVersions" }
   | { readonly kind: "envLocal" }
   | { readonly kind: "file"; readonly path: string };
 
@@ -484,8 +486,35 @@ function withoutUnsentRoutes(
   return result;
 }
 
+/**
+ * Sets the `box.version` of each box runtime to the box this CLI pins, which build and deploy
+ * stage: the box features and the profiles that the CLI writes change together, so a runtime runs
+ * only the pinned box. A runtime that names another version, as one created by an earlier CLI
+ * does, says so.
+ */
+export const boxVersionWriter: BoxNetworkWriter = {
+  name: "box versions",
+  writes: () => [{ kind: "boxVersions" }],
+  edits: (networks) => ({
+    spec: [
+      (copy) =>
+        networks.flatMap(({ runtime: name }) => {
+          const runtime = copy.runtimes.find((candidate) => candidate.name === name);
+          const version = runtime?.box?.version;
+          if (!runtime?.box || version === BOX_RELEASE.version) return [];
+          runtime.box = { ...runtime.box, version: BOX_RELEASE.version };
+          return [
+            `updating box.version of runtime '${name}' from ${version} to ${BOX_RELEASE.version}, ` +
+              "the box this CLI ships",
+          ];
+        }),
+    ],
+  }),
+};
+
 /** The writers that build and deploy run before synth, in order. */
 export const BOX_NETWORK_WRITERS: readonly BoxNetworkWriter[] = [
+  boxVersionWriter,
   credentialsWriter,
   gatewayTargetsWriter,
   defaultTargetsWriter,

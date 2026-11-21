@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
@@ -56,10 +56,10 @@ import {
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
-import { DEFAULT_REGION, regionFromConfigFile } from "../region";
+import { resolveRegion } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
-import { createProjectTree } from "./templates/project";
+import { boxCodeZipFiles, createProjectTree } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
@@ -603,18 +603,15 @@ export class FsProjectManager implements ProjectManager {
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
-    if (input.skipInstall && scaffoldRuntimeInput && startsInBoxOnCodeZip(scaffoldRuntimeInput)) {
-      // The box profile keeps the venv out of the project's write grant with an optional
-      // deny_write, which box drops while `.venv` is missing; box then refuses the profile, as the
-      // venv's Python would be writable. An empty `.venv` keeps the profile valid, and `uv sync`
-      // fills it later.
-      await mkdir(join(destination, "app", scaffoldRuntimeInput.runtimeName, ".venv"), {
-        recursive: true,
-      });
-    }
-
     if (scaffoldRuntimeInput) {
-      yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
+      // Both create paths pass the region they resolved; without one, create resolves it as
+      // --region does with no flag.
+      yield* this.writeBoxProfile(
+        destination,
+        input.name,
+        scaffoldRuntimeInput,
+        input.region ?? (await resolveRegion(undefined, this.processEnv)),
+      );
     }
 
     if (!input.skipGit) {
@@ -895,7 +892,7 @@ export class FsProjectManager implements ProjectManager {
                 projectSpec,
                 boxInput,
                 scaffoldedPaths,
-                options.region ?? (await this.boxBuildRegion()),
+                await resolveRegion(options.region, this.processEnv),
               );
             } catch (err) {
               await this.discardStaged(scaffoldedPaths);
@@ -1626,7 +1623,10 @@ export class FsProjectManager implements ProjectManager {
     return { spec: result.spec, envEntries: result.envEntries ?? [] };
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(
+    project: Project,
+    options: { region?: string } = {},
+  ): AsyncGenerator<ProjectEvent, void> {
     assertV1Project(project, "build");
     // Half-written project files from an interrupted `agentcore migrate` must not
     // be synced or synthesized; build has no target, so only that state stops it.
@@ -1635,24 +1635,16 @@ export class FsProjectManager implements ProjectManager {
     for (const message of synced.messages) yield { type: "step", message };
     // Every runtime of a Box project runs in a box, so stop before anything is written.
     validateBoxRuntimes(synced.project.spec);
-    const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
+    // The region build writes the Box gateway's `bedrock` and `agentcore` targets and the
+    // AgentCore Runtime profiles for: --region, else AWS_REGION, AWS_DEFAULT_REGION, the AWS config
+    // file, then DEFAULT_REGION. Deploy uses its target's region instead.
+    const boxed = await this.applyBoxNetwork(
+      synced.project,
+      "build",
+      await resolveRegion(options.region, this.processEnv),
+    );
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
-  }
-
-  /**
-   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
-   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
-   * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
-   * DEFAULT_REGION. Deploy uses its target's region instead.
-   */
-  private async boxBuildRegion(): Promise<string> {
-    return (
-      this.processEnv.AWS_REGION ||
-      this.processEnv.AWS_DEFAULT_REGION ||
-      (await regionFromConfigFile(this.processEnv)) ||
-      DEFAULT_REGION
-    );
   }
 
   /**
@@ -2141,24 +2133,14 @@ export class FsProjectManager implements ProjectManager {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
 
+    // start.py and an empty .venv, as create writes them. A file or folder the user has stays.
     const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
-    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
-    if (!existsSync(startScript)) {
-      scaffoldedPaths.push(startScript);
-      await writeFile(
-        startScript,
-        await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
-        { flag: "wx" },
-      );
-    }
-    // The profile keeps the venv out of the write grant with an optional deny_write, which box
-    // drops while `.venv` is missing, and then refuses the profile. An empty `.venv` keeps the
-    // profile valid until `uv sync` fills it.
     const venv = join(appDir, ".venv");
-    if (!existsSync(venv)) {
-      scaffoldedPaths.push(venv);
-      await mkdir(venv, { recursive: true });
-    }
+    if (!existsSync(venv)) scaffoldedPaths.push(venv);
+    await FsTreeNode.createDirectory(basename(appDir), boxCodeZipFiles(this.assetSource)).write(
+      dirname(appDir),
+      { skipExisting: true, written: scaffoldedPaths },
+    );
     const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
     if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
     yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
@@ -2193,7 +2175,7 @@ export class FsProjectManager implements ProjectManager {
     projectRoot: string,
     projectName: string,
     runtime: ScaffoldRuntimeInput,
-    region: string | undefined,
+    region: string,
   ): AsyncGenerator<ProjectEvent, void> {
     const text = renderBoxProfile(projectName, runtime, region);
     if (text === undefined) return;

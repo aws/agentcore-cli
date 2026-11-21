@@ -47,14 +47,18 @@ export async function regionFromConfigFile(
 /**
  * Picks the effective AWS region: an explicit --region value, then
  * AWS_REGION / AWS_DEFAULT_REGION, then the shared config file, finally
- * DEFAULT_REGION. It always resolves to a value.
+ * DEFAULT_REGION. The variables and the config file come from `env`. It always
+ * resolves to a value.
  */
-export async function resolveRegion(flagRegion: string | undefined): Promise<string> {
+export async function resolveRegion(
+  flagRegion: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
   return (
     flagRegion ||
-    process.env.AWS_REGION ||
-    process.env.AWS_DEFAULT_REGION ||
-    (await regionFromConfigFile()) ||
+    env.AWS_REGION ||
+    env.AWS_DEFAULT_REGION ||
+    (await regionFromConfigFile(env)) ||
     DEFAULT_REGION
   );
 }

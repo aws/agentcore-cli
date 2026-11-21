@@ -1,7 +1,7 @@
 import { createHandler, ProjectKey, type Middleware } from "../../../router";
 import type { AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
-import { JsonKey } from "../../keys";
+import { JsonKey, RegionKey } from "../../keys";
 import { renderJsonError, reportMessage } from "../../utils";
 import type { Project, ProjectManager } from "../types";
 
@@ -32,7 +32,9 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
       // carries it on failure). --json forces the plain path so no ANSI
       // reaches a scripted caller's stderr.
       try {
-        await runWithProgress(config.projectManager.build(project), {
+        // withRegion resolved --region, else the environment and the AWS config file.
+        const region = ctx.value(RegionKey);
+        await runWithProgress(config.projectManager.build(project, { region }), {
           io: config.io,
           interactive: jsonOutput ? false : undefined,
         });

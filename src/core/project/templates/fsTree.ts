@@ -72,6 +72,18 @@ export class FsTreeNode {
     return written;
   }
 
+  /**
+   * Puts each node of `nodes` in place of the child of its name, or after the children when no
+   * child has its name.
+   */
+  replaceChildren(nodes: readonly FsTreeNode[]): void {
+    for (const node of nodes) {
+      const index = this.children.findIndex((child) => child.name === node.name);
+      if (index === -1) this.children.push(node);
+      else this.children[index] = node;
+    }
+  }
+
   static createFile(name: string, bytes: () => Promise<string>): FsTreeNode {
     return new FsTreeNode(name, false, [], bytes);
   }
