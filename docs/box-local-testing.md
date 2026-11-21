@@ -219,7 +219,8 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   the gateway's name. The L3 sets the target's endpoint to that gateway's URL, gives the Box
   gateway's role `bedrock-agentcore:InvokeGateway` on that gateway only, and sets
   `AGENTCORE_GATEWAY_<NAME>_URL` and `_HOST` on the runtime. A `PRIVATE_VPC` runtime gets none of
-  them. A `CUSTOM_JWT` gateway gets no target, and `agentcore add gateway` gives one notice for it. You write nothing for them. A profile
+  them. A `CUSTOM_JWT` gateway gets no target, and `agentcore add gateway`, and `agentcore add runtime` for a
+  box runtime, give one notice for it. You write nothing for them. A profile
   entry that signs for a gateway host with `aws://` stops build. Build writes these targets only when
   the `@aws/agentcore-cdk` in `agentcore/cdk` accepts `passthrough.gateway`: it asks that library
   with `node`. Otherwise build writes none of them, and gives one warning.

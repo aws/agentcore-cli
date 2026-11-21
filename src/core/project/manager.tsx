@@ -1133,6 +1133,18 @@ export class FsProjectManager implements ProjectManager {
       yield* boxGatewayLogsWarnings(
         newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
       );
+      // A new boxed runtime cannot call a CUSTOM_JWT gateway that is in the project already.
+      const runtime = newProjectSpec.runtimes.find(({ name }) => name === added);
+      if (
+        runtime &&
+        runtimeRunsInBox(newProjectSpec, runtime) &&
+        runtime.containment !== "PRIVATE_VPC"
+      ) {
+        for (const gateway of newProjectSpec.agentCoreGateways) {
+          if (gateway.boundRuntime || gateway.authorizerType !== "CUSTOM_JWT") continue;
+          yield { type: "warning", message: customJwtGatewayNotice(gateway.name) };
+        }
+      }
     }
 
     return {
