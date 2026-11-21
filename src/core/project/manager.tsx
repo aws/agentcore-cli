@@ -55,6 +55,7 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
@@ -672,6 +673,13 @@ export class FsProjectManager implements ProjectManager {
           `a gateway target with name '${input.resourceConfig.name}' already exists in gateway '${gateway.name}'`,
         );
       }
+      // Build owns some target names on the Box gateway of a boxed runtime.
+      const parent = projectSpec.agentCoreGateways.find(
+        (candidate) => candidate.name === input.gatewayName,
+      );
+      const reserved =
+        parent && reservedBoxTargetNameProblem(projectSpec, parent, input.resourceConfig.name);
+      if (reserved) throw new InputValidationError(reserved);
     } else if (input.resourceType === "policy") {
       // Policy names are account-unique on the service, so the check spans engines.
       const engine = projectSpec.policyEngines.find((candidate) =>

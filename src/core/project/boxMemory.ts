@@ -3,6 +3,7 @@ import { partition } from "@aws-sdk/util-endpoints";
 import { InputValidationError } from "../../errors/errors";
 import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
   DEFAULT_EGRESS_BEDROCK_REGION,
   callsBedrockModel,
   getBoxGatewayAgentCoreTargetSpec,
@@ -12,6 +13,7 @@ import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSche
 import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { BOX_EGRESS_TARGET_PREFIX } from "./boxNetwork/egress";
 import { runtimeRunsInBox } from "./templates/boxProfile";
 
 /** The Box gateway's target, and the box route, that the agent's AgentCore Memory calls take. */
@@ -177,6 +179,39 @@ function refuseTargetNameOutsideBoxGateways(spec: ProjectSpec, name: string, cal
         `${calls}. Rename that target.`,
     );
   }
+}
+
+/** The names of the Box gateway targets that build writes for the agent's model and Memory calls. */
+const BOX_DEFAULT_TARGET_NAMES: readonly string[] = [
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  BOX_GATEWAY_AGENTCORE_TARGET_NAME,
+];
+
+/**
+ * The refusal of a user target named `name` on `gateway`, or `undefined` when build does not own
+ * the name there. On the Box gateway of a runtime that runs in a box, build writes the `bedrock`
+ * and `agentcore` targets, and names each egress target it writes with the `egress-` prefix. A
+ * user target of such a name would take the agent's Bedrock or Memory route, or the name of an
+ * egress target that build writes. Build writes none of these for another runtime.
+ */
+export function reservedBoxTargetNameProblem(
+  spec: ProjectSpec,
+  gateway: AgentCoreGateway,
+  name: string,
+): string | undefined {
+  const boxed = boxedRuntimes(spec).some((runtime) => runtime.name === gateway.boundRuntime);
+  if (!isBoundGateway(gateway) || !boxed) return undefined;
+  if (!BOX_DEFAULT_TARGET_NAMES.includes(name) && !name.startsWith(BOX_EGRESS_TARGET_PREFIX)) {
+    return undefined;
+  }
+  const reserved = [
+    ...BOX_DEFAULT_TARGET_NAMES.map((n) => `'${n}'`),
+    `'${BOX_EGRESS_TARGET_PREFIX}*'`,
+  ];
+  return (
+    `the gateway target name '${name}' is reserved on Box gateway '${gateway.name}': build writes the ` +
+    `targets ${reserved.join(", ")} for the agent's model, Memory, and egress calls. Choose another name.`
+  );
 }
 
 /**

@@ -1,4 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
+import {
+  getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
+} from "../handlers/project/shortcuts";
 import { boxGatewaySpec, ProjectSpecSchema, ProjectNameSchema } from "./project";
 
 const minimalProject = { name: "project", version: 2 };
@@ -586,6 +590,19 @@ describe("Box project gateways", () => {
 
   test("finds the Box gateway by boundRuntime, not by name", () => {
     expect(parse(["agent"], [{ ...boxGatewaySpec("agent"), name: "renamed" }]).success).toBe(true);
+  });
+
+  test("accepts the targets build writes on a Box gateway", () => {
+    const egress = {
+      name: "egress-api-example-com",
+      targetType: "passthrough",
+      passthrough: { endpoint: "https://api.example.com", protocolType: "CUSTOM" },
+    };
+    const box = {
+      ...boxGatewaySpec("agent"),
+      targets: [getBoxGatewayBedrockTargetSpec(), getBoxGatewayAgentCoreTargetSpec(), egress],
+    };
+    expect(messages(parse(["agent"], [box]))).toEqual([]);
   });
 
   test("does not ask for Box gateways in a project without projectType", () => {
