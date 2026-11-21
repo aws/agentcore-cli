@@ -1032,6 +1032,24 @@ describe("the record of build's targets and agentcore.json, when a write fails",
     },
   );
 
+  test("remove all keeps the record and agentcore.json as they were when it cannot remove a key", async () => {
+    const project = await createdProject(subject(), ["agent", "search"]);
+    const spec = JSON.parse(await specText(project)) as { credentials?: unknown[] };
+    spec.credentials = [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }];
+    await writeFile(join(project.rootPath, "agentcore", "agentcore.json"), JSON.stringify(spec));
+    await writeFile(recordOf(project), RECORD);
+    // A folder in the place of .env.local makes the removal of the credential's key fail.
+    const envLocal = join(project.rootPath, "agentcore", ".env.local");
+    await rm(envLocal, { force: true });
+    await mkdir(envLocal);
+    const before = await specText(project);
+
+    await expect(subject().removeAllResources(project)).rejects.toThrow();
+
+    expect(await specText(project)).toBe(before);
+    expect(await readFile(recordOf(project), "utf8")).toBe(RECORD);
+  });
+
   test("create writes the record before agentcore.json, so a failed record write leaves no project", async () => {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
     tempDirectories.push(directory);

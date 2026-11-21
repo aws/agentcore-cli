@@ -1320,19 +1320,13 @@ export class FsProjectManager implements ProjectManager {
       }
     }
 
-    // A Box gateway that goes takes its entry in the record of build's targets with it. The record
-    // changes first, and goes back when agentcore.json cannot lose the gateway.
-    const restoreRecord = removeBoxGatewaysFromRecord(
-      project.rootPath,
-      removedGateways.map(({ name }) => name),
+    // A Box gateway that goes takes its entry in the record of build's targets with it.
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile, () =>
+      removeBoxGatewaysFromRecord(
+        project.rootPath,
+        removedGateways.map(({ name }) => name),
+      ),
     );
-    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
-    try {
-      newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    } catch (err) {
-      this.restoreRecord(restoreRecord);
-      throw err;
-    }
     // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
     // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
     if (input.resourceType === "runtime") {
@@ -1355,12 +1349,6 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
-    // The record changes first, so a failed write of it changes nothing, and it goes back when
-    // agentcore.json cannot lose the gateways.
-    const restoreRecord = removeBoxGatewaysFromRecord(
-      project.rootPath,
-      existingProjectSpec.agentCoreGateways.map(({ name }) => name),
-    );
     let envFile: EnvLocalFile | undefined;
     let removedEnvKeys: string[] = [];
     const envKeys = existingProjectSpec.credentials.flatMap((credential) =>
@@ -1394,13 +1382,12 @@ export class FsProjectManager implements ProjectManager {
       payments: undefined,
     };
 
-    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
-    try {
-      newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    } catch (err) {
-      this.restoreRecord(restoreRecord);
-      throw err;
-    }
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile, () =>
+      removeBoxGatewaysFromRecord(
+        project.rootPath,
+        existingProjectSpec.agentCoreGateways.map(({ name }) => name),
+      ),
+    );
 
     return {
       project: { ...project, spec: newProjectSpec },
@@ -1410,19 +1397,27 @@ export class FsProjectManager implements ProjectManager {
 
   // Validates and writes an updated spec; a failure rolls back any .env.local
   // edit staged for the same removal so the two files stay consistent.
+  /**
+   * Writes `newSpec` to agentcore.json. `changeRecord` changes the record of build's targets just
+   * before the write. When either fails, the record and `envFile` go back to what they were.
+   */
   private async commitSpec(
     agentCoreSpecPath: string,
     newSpec: unknown,
     envFile: EnvLocalFile | undefined,
+    changeRecord?: () => RestoreRecord | undefined,
   ): Promise<z.infer<typeof ProjectSpecSchema>> {
+    let restoreRecord: RestoreRecord | undefined;
     try {
       const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
       if (!newSpecParseResult.success)
         throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
           cause: newSpecParseResult.error,
         });
+      restoreRecord = changeRecord?.();
       return await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
+      this.restoreRecord(restoreRecord);
       await envFile?.rollback().catch((e) => {
         const error = AgentCoreCLIError.fromError(e);
         this.logger
