@@ -204,6 +204,13 @@ async function setOtel(root: string, enableOtel: boolean) {
   await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
 }
 
+/** Sets `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the envVars of the runtime in agentcore.json. */
+async function optOut(root: string) {
+  const spec = JSON.parse(await text(root, SPEC));
+  spec.runtimes[0].envVars = [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }];
+  await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+}
+
 async function build(manager: FsProjectManager, root: string) {
   const project = (await manager.resolve({ filePath: root })) as Project;
   return drain(manager.build(project));
@@ -900,9 +907,12 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect(warnings.filter((warning) => warning.includes("opentelemetry-instrument"))).toEqual([]);
   });
 
-  test("adds nothing for OTEL when enableOtel is false", async () => {
+  test.each([
+    ["enableOtel is false", (root: string) => setOtel(root, false)],
+    ["the envVars set DISABLE_ADOT_OBSERVABILITY to true", (root: string) => optOut(root)],
+  ])("adds nothing for OTEL when %s", async (_label, turnOff) => {
     const { manager, root } = await strandsProject();
-    await setOtel(root, false);
+    await turnOff(root);
 
     await build(manager, root);
 

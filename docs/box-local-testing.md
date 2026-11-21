@@ -256,9 +256,10 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   Runtime does not set it, box does not start. The Runtime makes that log group, so its retention
   applies, and it stays after you remove the runtime. CloudWatch Logs charges for the records it
   gets. To send none, set `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the `envVars` of the runtime
-  in `agentcore.json`. Then the Runtime profile also gets no default X-Ray target. To send them to
-  another log group, add a `cloudwatch_logs` target to the local profile. `agentcore create` and
-  `agentcore add runtime` give this notice for each box runtime.
+  in `agentcore.json`. Then the Runtime profile also gets no default X-Ray target. The agent does
+  not start with `opentelemetry-instrument`, and the `@box/agentcore` pack gives it no ADOT
+  variable. To send the records to another log group, add a `cloudwatch_logs` target to the local
+  profile. `agentcore create` and `agentcore add runtime` give this notice for each box runtime.
 
   **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the
   Runtime profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its

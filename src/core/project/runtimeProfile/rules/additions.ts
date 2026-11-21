@@ -14,7 +14,7 @@
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
- * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`, unless observability is off: X-Ray in the Runtime's region |
+ * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
@@ -25,10 +25,11 @@ import {
   BOX_BEDROCK_PACK,
   boxIngressPort,
   boxWorkloadPort,
+  OBSERVABILITY_OFF_ENV,
+  observabilityOff,
   otelOn,
   RUNTIME_LOGS_HEADERS_ENV,
 } from "../../templates/boxProfile";
-import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import type { CloudWatchTelemetry } from "../../boxNetwork";
 import { isTable, isVenvPython } from "../projectPaths";
 import { FILE_TELEMETRY_KIND } from "./refusals";
@@ -84,9 +85,9 @@ export const DEFAULT_TELEMETRY_TARGET = {
 } as const;
 
 /**
- * The X-Ray target of a Runtime profile with OTEL on that has no `cloudwatch_traces` target, unless
- * the envVars of the runtime turn observability off: the agent's spans and box's own, in the
- * Runtime's region, signed with the execution role.
+ * The X-Ray target of a Runtime profile with OTEL on ({@link otelOn}) that has no
+ * `cloudwatch_traces` target: the agent's spans and box's own, in the Runtime's region, signed with
+ * the execution role.
  */
 export const DEFAULT_TRACES_TARGET = {
   kind: "cloudwatch_traces",
@@ -115,19 +116,6 @@ function startsUnderOtel(command: unknown): boolean {
 function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
   const region = RUNTIME_INPUTS.awsRegion;
   return { ...(!bedrock && { AWS_REGION: region }), AWS_DEFAULT_REGION: region };
-}
-
-/**
- * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
- * of the runtime set it to `true`, the Runtime profile gets no default log target.
- */
-const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
-
-/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
-export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
-  return (runtime.envVars ?? []).some(
-    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
-  );
 }
 
 /**
@@ -521,7 +509,7 @@ function onAllAddresses(entry: unknown): unknown {
  * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
  * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}). With OTEL on and no
  * `cloudwatch_traces` target, {@link DEFAULT_TRACES_TARGET} comes last, as `agentcore_traces`, or
- * as `agentcore_traces_default` when a target has that name, unless observability is off.
+ * as `agentcore_traces_default` when a target has that name ({@link otelOn}).
  */
 function runtimeTelemetry(
   telemetry: unknown,
@@ -578,7 +566,7 @@ function runtimeTelemetry(
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
     result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
   }
-  if (!has("cloudwatch_traces") && otelOn(context.runtime) && !observabilityOff(context.runtime)) {
+  if (!has("cloudwatch_traces") && otelOn(context.runtime)) {
     const name = Object.hasOwn(result, "agentcore_traces")
       ? "agentcore_traces_default"
       : "agentcore_traces";

@@ -1112,6 +1112,21 @@ describe("the additions rule", () => {
       },
     );
 
+    test.each(BUILDS)(
+      "does not start the agent under opentelemetry-instrument when the envVars set DISABLE_ADOT_OBSERVABILITY to true (%s)",
+      (build) => {
+        const optedOut = {
+          ...otelRuntime(build),
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        } as ProjectRuntime;
+        const local = createdProfile(optedOut);
+
+        expect(agentOf(deriveRuntimeProfile(local, contextOf(optedOut)).profile)).toEqual(
+          agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile),
+        );
+      },
+    );
+
     test("names the default X-Ray target agentcore_traces_default when a target is agentcore_traces", () => {
       const local = { telemetry: { agentcore_traces: CLOUDWATCH.logs } };
       const telemetry = tableOf(

@@ -224,9 +224,27 @@ export function runsInBox(boxProject: boolean, runtime: Pick<ProjectRuntime, "bo
   return boxProject && runtime.box !== undefined;
 }
 
-/** Whether `runtime` turns OTEL on: `instrumentation.enableOtel`, which is `true` when absent. */
-export function otelOn(runtime: Pick<ProjectRuntime, "instrumentation">): boolean {
-  return runtime.instrumentation?.enableOtel ?? true;
+/**
+ * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
+ * of the runtime set it to `true`, the Runtime profile gets no default log target, and the agent
+ * gets no OTEL ({@link otelOn}).
+ */
+export const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
+
+/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
+export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
+  return (runtime.envVars ?? []).some(
+    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
+  );
+}
+
+/**
+ * Whether the agent of `runtime` sends OTEL on AgentCore Runtime: `instrumentation.enableOtel`,
+ * which is `true` when absent, and the envVars do not turn observability off. It decides the
+ * opentelemetry-instrument start, the ADOT variables, and the default X-Ray target together.
+ */
+export function otelOn(runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">): boolean {
+  return (runtime.instrumentation?.enableOtel ?? true) && !observabilityOff(runtime);
 }
 
 /** {@link runsInBox} for a runtime of `spec`. */
@@ -642,7 +660,7 @@ const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
  */
 export function renderAgentCorePack(
   spec: ProjectSpec,
-  runtime: Pick<ProjectRuntime, "name" | "instrumentation">,
+  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
 ): string {
   const otel = otelOn(runtime);
   const memories = spec.memories ?? [];

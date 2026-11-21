@@ -508,6 +508,18 @@ describe("renderAgentCorePack", () => {
     });
   });
 
+  test("gives the agent no ADOT variable and declares no resource attributes input when the envVars set DISABLE_ADOT_OBSERVABILITY to true", () => {
+    const spec = { name: "V3Demo" } as unknown as ProjectSpec;
+    const optedOut = renderAgentCorePack(spec, {
+      name: "agent",
+      envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+    });
+
+    expect(optedOut).toBe(
+      renderAgentCorePack(spec, { name: "agent", instrumentation: { enableOtel: false } }),
+    );
+  });
+
   test("turns OTEL on when the runtime has no instrumentation, as create writes it", () => {
     const text = renderAgentCorePack({ name: "V3Demo" } as unknown as ProjectSpec, {
       name: "agent",

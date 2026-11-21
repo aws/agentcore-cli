@@ -410,6 +410,27 @@ describe("CdkBackend.build", () => {
     },
   );
 
+  test("gives no OTEL warning for a box runtime whose envVars set DISABLE_ADOT_OBSERVABILITY to true", () => {
+    const spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+          box: { version: BOX_RELEASE.version },
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent")],
+    });
+
+    expect(boxOtelWarnings(spec, [boxNetwork({ agent: { command: PLAIN } })])).toEqual([]);
+  });
+
   test("gives no OTEL warning for a box runtime that has no Box network model", () => {
     const spec = ProjectSpecSchema.parse({
       name: "example",
