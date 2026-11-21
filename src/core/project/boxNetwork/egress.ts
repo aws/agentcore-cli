@@ -1,3 +1,4 @@
+import { partition } from "@aws-sdk/util-endpoints";
 import { z } from "zod";
 import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
@@ -134,9 +135,14 @@ const AWS_ENDPOINTS = [
   },
 ] as const;
 
+/** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
+export function boxGatewayBedrockHost(region: string): string {
+  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
+}
+
 /** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
 export function boxGatewayAgentCoreHost(region: string): string {
-  return `bedrock-agentcore.${region}.amazonaws.com`;
+  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
 }
 
 /** The API of an AWS endpoint that the gateway signs for. */

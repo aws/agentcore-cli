@@ -33,7 +33,7 @@ const GITHUB_ROUTE =
 /** Box's resolution of the Bedrock route of the profile `create` writes, with @box/bedrock. */
 const BEDROCK = {
   destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
-  secret: { ref: "aws://default" },
+  secret: { ref: "aws://" },
 };
 const GITHUB = { destinations: ["api.github.com"], secret: { ref: "env://GITHUB_TOKEN" } };
 /** What box resolves the created profile to, with `routes` beside its Bedrock route. */
@@ -1152,7 +1152,7 @@ describe("deploy writes the Box network before the backend deploys", () => {
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
   });
 
-  test("moves the Memory policy with the agentcore target to the region of its target", async () => {
+  test("moves the Memory and Bedrock policies with their targets to the region of the targets", async () => {
     const backend: ProjectBackend = {
       async *build() {},
       async *deploy() {
@@ -1169,8 +1169,12 @@ describe("deploy writes the Box network before the backend deploys", () => {
     const { manager, root } = await strandsProject({ backends: { CDK: backend } });
     const memoryStatements = async () =>
       JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
-    const agentcoreAuth = async () =>
-      (await boxGateway(root)).targets.find(({ name }) => name === "agentcore")?.outboundAuth;
+    const bedrockResources = async () =>
+      JSON.parse(await text(root, "agentcore/box-bedrock-policy.json")).Statement.map(
+        ({ Resource }: { Resource: string[] }) => Resource,
+      );
+    const authOf = async (target: string) =>
+      (await boxGateway(root)).targets.find(({ name }) => name === target)?.outboundAuth;
     const statementsFor = (region: string) => [
       expect.objectContaining({
         Resource: [
@@ -1179,9 +1183,16 @@ describe("deploy writes the Box network before the backend deploys", () => {
         Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
       }),
     ];
+    const bedrockFor = (region: string) => [
+      [`arn:aws:bedrock:${region}:*:inference-profile/*`],
+      [`arn:aws:bedrock:${region}::foundation-model/*`],
+      ["arn:aws:bedrock:*::foundation-model/*"],
+    ];
     await build(manager, root);
-    expect(await agentcoreAuth()).toMatchObject({ region: "us-west-2" });
+    expect(await authOf("agentcore")).toMatchObject({ region: "us-west-2" });
+    expect(await authOf("bedrock")).toMatchObject({ region: "us-west-2" });
     expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    expect(await bedrockResources()).toEqual(bedrockFor("us-west-2"));
     await writeFile(
       path(root, "agentcore/aws-targets.json"),
       JSON.stringify([{ name: "primary", account: "111122223333", region: "eu-west-1" }]),
@@ -1196,7 +1207,9 @@ describe("deploy writes the Box network before the backend deploys", () => {
       }),
     );
 
-    expect(await agentcoreAuth()).toMatchObject({ region: "eu-west-1" });
+    expect(await authOf("agentcore")).toMatchObject({ region: "eu-west-1" });
+    expect(await authOf("bedrock")).toMatchObject({ region: "eu-west-1" });
     expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
+    expect(await bedrockResources()).toEqual(bedrockFor("eu-west-1"));
   });
 });
