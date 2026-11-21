@@ -187,7 +187,9 @@ describe("assertPlatformVersions", () => {
     return assertPlatformVersions(json, directory, artifact, runtimes);
   }
   const notSet = (name: string, version: string) =>
-    `Runtime '${name}' has "platformVersion": "${version}", but the synthesized stack does not set it.`;
+    `Runtime '${name}' has "platformVersion": "${version}", but the synthesized stack does not ` +
+    "set it: the @aws/agentcore-cdk in agentcore/cdk does not support platformVersion, and no " +
+    "released @aws/agentcore-cdk does yet. Deploy again once agentcore/cdk has a release that does.";
 
   test.each(["V1", "V2"])("accepts a runtime that runs on its own %s", async (version) => {
     await expect(

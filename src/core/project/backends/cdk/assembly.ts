@@ -223,8 +223,9 @@ export async function assertPlatformVersions(
     if (synthesized?.PlatformVersion === platformVersion) return [];
     return [
       `Runtime '${name}' has "platformVersion": "${platformVersion}", but the synthesized stack ` +
-        "does not set it. The @aws/agentcore-cdk in agentcore/cdk is older than platformVersion: " +
-        "update it to a release that has platformVersion, then deploy again.",
+        "does not set it: the @aws/agentcore-cdk in agentcore/cdk does not support platformVersion, " +
+        "and no released @aws/agentcore-cdk does yet. Deploy again once agentcore/cdk has a " +
+        "release that does.",
     ];
   });
   if (problems.length > 0) throw new ProjectStateError(problems.join("\n"));
