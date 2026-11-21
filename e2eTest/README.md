@@ -40,8 +40,10 @@ that can, for example one packed from the `box-integration` branch of
 
 The `dev` tests also need a machine where `box run` can start its sandbox, and for the container
 template a container tool. The container template's `dev` test skips when no `docker`, `podman`
-or `finch` runs from PATH, as on the CI macOS runner; the Linux arm64 runner runs it. Box listens on the protocol's fixed port (8080,
-8000 or 9000), so the `dev` tests run one at a time and need those ports free:
+or `finch` runs from PATH, as on the CI macOS runner; the Linux arm64 runner runs it. A tool that
+is installed but stopped, such as Docker Desktop, still counts, so that test then fails. Box
+listens on the protocol's fixed port (8080, 8000 or 9000), so the `dev` tests run one at a time
+and need those ports free:
 
 ```sh
 AGENTCORE_E2E_BOX_CDK=file:/path/to/aws-agentcore-cdk-1.1.0.tgz bun run test:e2e -- --tagsFilter='box'
