@@ -541,11 +541,26 @@ function hostTargets(
       place: profilePath,
     });
   }
-  const managed = new Set(existing.filter(isManaged).map(({ name }) => name));
+  const managed = managedTargetsOf(existing.filter(isManaged), hosts, reused);
+  return { hosts, failures, managed, warnings };
+}
+
+/**
+ * The targets of a Box gateway that build owns (`BoxNetwork.managedTargets`), which the writers
+ * change and remove and the record lists: each target of `owned`, and the new target of each host
+ * that takes no target the gateway has (`reused`). Each other kind of target that build writes
+ * belongs in this set too.
+ */
+function managedTargetsOf(
+  owned: readonly AgentCoreGatewayTarget[],
+  hosts: readonly BoxNetworkHost[],
+  reused: ReadonlySet<number>,
+): Set<string> {
+  const managed = new Set(owned.map(({ name }) => name));
   hosts.forEach(({ target }, index) => {
     if (target !== undefined && !reused.has(index)) managed.add(target);
   });
-  return { hosts, failures, managed, warnings };
+  return managed;
 }
 
 /** The source of the entry that names a host. */

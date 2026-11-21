@@ -236,21 +236,27 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
       filesAfter: (written) => [
         {
           path: BOX_GATEWAY_TARGETS_FILE,
-          text: boxGatewayTargetsText(
-            Object.fromEntries(
-              networks.map((network) => [
-                network.gateway,
-                (boxGatewayOf(written, network.runtime)?.targets ?? []).flatMap(({ name }) =>
-                  network.managedTargets.has(name) ? [name] : [],
-                ),
-              ]),
-            ),
-          ),
+          text: boxGatewayTargetsText(recordOf(written, networks)),
         },
       ],
     };
   },
 };
+
+/**
+ * The record of the targets build writes: for each Box gateway, the targets of the gateway in
+ * `spec`, agentcore.json as the writers changed it, that the model owns (`managedTargets`).
+ */
+function recordOf(spec: ProjectSpec, networks: readonly BoxNetwork[]): Record<string, string[]> {
+  return Object.fromEntries(
+    networks.map((network) => [
+      network.gateway,
+      (boxGatewayOf(spec, network.runtime)?.targets ?? []).flatMap(({ name }) =>
+        network.managedTargets.has(name) ? [name] : [],
+      ),
+    ]),
+  );
+}
 
 /**
  * Sets the build-owned targets of the network's Box gateway: a managed target that a host takes is
