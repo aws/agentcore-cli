@@ -262,11 +262,12 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
   });
 
-  for (const [label, env] of [
+  test.each([
     ["the shell does not set it", {}],
     ["the shell sets it blank", { GITHUB_TOKEN: " " }],
-  ] as const) {
-    test(`stops on an undecryptable .env.local entry that a route uses when ${label}`, async () => {
+  ])(
+    "stops on an undecryptable .env.local entry that a route uses when %s",
+    async (_label, env: NodeJS.ProcessEnv) => {
       const { subject, built } = manager(env);
       const created = await project(subject, GITHUB_PROFILE);
       await appendEnvLocal(created.rootPath, `GITHUB_TOKEN='${UNDECRYPTABLE}'`);
@@ -280,8 +281,8 @@ describe("FsProjectManager.build: box env:// credentials", () => {
       expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
         spec,
       );
-    });
-  }
+    },
+  );
 
   test("stops on a box profile that does not parse, and changes nothing", async () => {
     const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });
