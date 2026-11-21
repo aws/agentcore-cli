@@ -10,6 +10,7 @@ import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
 import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testing";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
+import type { BoxNetwork } from "./boxNetwork";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
@@ -255,13 +256,9 @@ describe("build writes the Box network of the box profile", () => {
     const { steps } = await build(manager, root);
 
     expect(counter.specWrites).toBe(1);
-    // create declares no target, so build adds the egress targets first, then bedrock and Memory.
-    expect(await targetNames(root)).toEqual([
-      "egress-github",
-      "egress-httpbin-org",
-      "bedrock",
-      "agentcore",
-    ]);
+    // create declares no target, so build adds the egress targets first, then bedrock. The agent's
+    // Memory calls take no target: they go to Memory directly.
+    expect(await targetNames(root)).toEqual(["egress-github", "egress-httpbin-org", "bedrock"]);
     const { targets } = await boxGateway(root);
     expect(targets.slice(0, 2)).toEqual([
       userTarget("egress-github", "https://api.github.com", { outboundAuth: GITHUB_KEY }),
@@ -289,6 +286,11 @@ describe("build writes the Box network of the box profile", () => {
     ]);
     expect(egress.github).toEqual(gatewayRoute("egress-github", "api.github.com"));
     expect(egress["egress-httpbin-org"]).toEqual(gatewayRoute("egress-httpbin-org", "httpbin.org"));
+    // The Memory route has no backend: box signs it with the execution role, for Memory itself.
+    expect(egress.agentcore).toEqual({
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      secret: { ref: "aws://" },
+    });
     expect(egress.bedrock).toEqual(
       gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
     );
@@ -348,7 +350,7 @@ describe("build writes the Box network of the box profile", () => {
 
     const { steps } = await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
     expect(JSON.parse(await text(root, SPEC)).credentials ?? []).toEqual([]);
     expect(steps).toContain(
       `not adding gateway target 'egress-github' of '${GATEWAY}' for api.github.com: it sends ` +
@@ -398,7 +400,7 @@ describe("build writes the Box network of the box profile", () => {
 
     const { steps, warnings } = await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["egress-tools", "bedrock"]);
     const { targets } = await boxGateway(root);
     // A CUSTOM passthrough target, so Box alone decides each mcp:call.
     expect(targets[0]).toEqual(
@@ -438,7 +440,7 @@ describe("build writes the Box network of the box profile", () => {
 
     const { steps } = await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
     expect(steps).toContain(
       `not adding gateway target 'egress-tools' of '${GATEWAY}' for tools.example.com: it sends ` +
         "the key of env://TOOLS_TOKEN, and agentcore.json has no API key credential 'tools' " +
@@ -461,7 +463,7 @@ describe("build writes the Box network of the box profile", () => {
 
     await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["gh", "weather", "bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["gh", "weather", "bedrock"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
     expect(egress.github).toEqual(gatewayRoute("gh", "api.github.com"));
   });
@@ -477,14 +479,14 @@ describe("build writes the Box network of the box profile", () => {
 
     const { steps } = await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
     expect(steps).toContain(
       `removing gateway target 'egress-github' from '${GATEWAY}': the Box profile no longer ` +
         "allows api.github.com",
     );
   });
 
-  test("gives the Memory endpoint to the agentcore target, and adds no second target for it", async () => {
+  test("routes an entry of the profile for the Memory host through the gateway, and adds no Memory route", async () => {
     const { manager, root, box } = await strandsProject();
     await editProfile(root, {
       tables:
@@ -500,12 +502,12 @@ describe("build writes the Box network of the box profile", () => {
 
     await build(manager, root);
 
-    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["egress-memory", "bedrock"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    // The route of [egress.memory] keeps the name of its entry, and goes to the agentcore target.
+    // The user's [egress.memory] keeps the host, so the box has one route to it: to its target.
     expect(Object.keys(egress)).toEqual(["bedrock", "memory"]);
     expect(egress.memory).toEqual(
-      gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
+      gatewayRoute("egress-memory", "bedrock-agentcore.us-west-2.amazonaws.com"),
     );
   });
 
@@ -890,7 +892,7 @@ describe("build reads the box profile as box resolves it", () => {
   });
 });
 
-describe("build writes the Bedrock and Memory targets for the region it builds for", () => {
+describe("build writes the Bedrock target and the Memory route for the region it builds for", () => {
   const bedrockTarget = (region: string) => ({
     name: "bedrock",
     targetType: "passthrough",
@@ -908,10 +910,7 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
     const { targets } = await boxGateway(root);
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("eu-central-1"));
-    expect(targets.find(({ name }) => name === "agentcore")).toMatchObject({
-      passthrough: { endpoint: "https://bedrock-agentcore.eu-central-1.amazonaws.com" },
-      outboundAuth: { region: "eu-central-1" },
-    });
+    expect(targets.find(({ name }) => name === "agentcore")).toBeUndefined();
     const profile = await runtimeProfile(root);
     expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
     const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
@@ -920,6 +919,11 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(JSON.stringify(egress.bedrock!.backends)).toContain(
       '"region":"${{ inputs.aws.region }}"',
     );
+    // The Memory route goes to the Memory host of that region, with no backend.
+    expect(egress.agentcore as unknown).toEqual({
+      destinations: ["bedrock-agentcore.eu-central-1.amazonaws.com"],
+      secret: { ref: "aws://" },
+    });
   });
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {
@@ -931,7 +935,7 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
     // @box/bedrock's route is for eu-central-1, so the bedrock target serves it, and no
     // egress-bedrock target is added for the us-west-2 host that `agentcore dev` calls.
-    expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
     const [call] = box.calls;
     expect(isAbsolute(call!.profilePath)).toBe(true);
     expect(existsSync(call!.profilePath)).toBe(false);
@@ -978,26 +982,13 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("eu-west-2"));
   });
 
-  test("moves a target it wrote for another region, and keeps one the user changed", async () => {
+  test("moves a target it wrote for another region", async () => {
     const { manager, root } = await strandsProject();
     await build(manager, root);
     await editGateway(root, (gateway) => {
-      gateway.targets = gateway.targets.map((target) => {
-        const { name } = target as { name: string };
-        if (name === "bedrock") return bedrockTarget("us-east-1");
-        if (name === "agentcore") {
-          return {
-            ...(target as object),
-            passthrough: { endpoint: "https://memory.example.com", protocolType: "CUSTOM" },
-            outboundAuth: {
-              type: "GATEWAY_IAM_ROLE",
-              service: "bedrock-agentcore",
-              region: "eu-west-1",
-            },
-          };
-        }
-        return target;
-      });
+      gateway.targets = gateway.targets.map((target) =>
+        (target as { name: string }).name === "bedrock" ? bedrockTarget("us-east-1") : target,
+      );
     });
 
     const { steps } = await build(manager, root);
@@ -1007,9 +998,6 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
     expect(steps).toContain(
       `updating target 'bedrock' of gateway '${GATEWAY}' in agentcore.json from us-east-1 to us-west-2`,
     );
-    expect(targets.find(({ name }) => name === "agentcore")).toMatchObject({
-      passthrough: { endpoint: "https://memory.example.com" },
-    });
   });
 });
 
@@ -1053,11 +1041,7 @@ describe("deploy writes the Box network before the backend deploys", () => {
     expect(calls).toHaveLength(1);
     const { spec } = calls[0]!.project;
     const gateway = spec.agentCoreGateways.find(({ name }) => name === GATEWAY);
-    expect(gateway?.targets.map(({ name }) => name)).toEqual([
-      "egress-github",
-      "bedrock",
-      "agentcore",
-    ]);
+    expect(gateway?.targets.map(({ name }) => name)).toEqual(["egress-github", "bedrock"]);
     // Deploy writes the targets for its target's region, not the AWS_REGION build would take.
     expect(gateway?.targets.find(({ name }) => name === "bedrock")?.outboundAuth?.region).toBe(
       "eu-west-1",
@@ -1071,10 +1055,16 @@ describe("deploy writes the Box network before the backend deploys", () => {
     expect(await text(root, "agentcore/.env.local")).toMatch(/^AGENTCORE_CREDENTIAL_GITHUB=./m);
   });
 
-  test("moves the Memory and Bedrock policies with their targets to the region of the targets", async () => {
+  test("moves the Bedrock policy with its target, and the Memory route, to the region of the targets", async () => {
+    // The networks build and deploy hand the backend, which this one does not stage.
+    const networks: (readonly BoxNetwork[])[] = [];
     const backend: ProjectBackend = {
-      async *build() {},
-      async *deploy() {
+      async *build(_project, input) {
+        networks.push(input?.boxNetworks ?? []);
+        yield { type: "step", message: "building" };
+      },
+      async *deploy(_project, input) {
+        networks.push(input.boxNetworks);
         yield { type: "step", message: "deploying" };
         return { outputs: {} };
       },
@@ -1086,31 +1076,28 @@ describe("deploy writes the Box network before the backend deploys", () => {
       },
     };
     const { manager, root } = await strandsProject({ backends: { CDK: backend } });
-    const memoryStatements = async () =>
-      JSON.parse(await text(root, "agentcore/box-memory-policy.json")).Statement as unknown[];
+    const memoryRoute = () =>
+      (networks.at(-1)![0]!.runtimeProfile!.egress as Record<string, unknown>).agentcore;
     const bedrockResources = async () =>
       JSON.parse(await text(root, "agentcore/box-bedrock-policy.json")).Statement.map(
         ({ Resource }: { Resource: string[] }) => Resource,
       );
     const authOf = async (target: string) =>
       (await boxGateway(root)).targets.find(({ name }) => name === target)?.outboundAuth;
-    const statementsFor = (region: string) => [
-      expect.objectContaining({
-        Resource: [
-          `arn:aws:bedrock-agentcore:${region}:*:memory/demo_*agent_python_strandsMemory-*`,
-        ],
-        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
-      }),
-    ];
+    const routeFor = (region: string) => ({
+      destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
+      secret: { ref: "aws://" },
+    });
     const bedrockFor = (region: string) => [
       [`arn:aws:bedrock:${region}:*:inference-profile/*`],
       [`arn:aws:bedrock:${region}::foundation-model/*`],
       ["arn:aws:bedrock:*::foundation-model/*"],
     ];
     await build(manager, root);
-    expect(await authOf("agentcore")).toMatchObject({ region: "us-west-2" });
+    expect(await authOf("agentcore")).toBeUndefined();
     expect(await authOf("bedrock")).toMatchObject({ region: "us-west-2" });
-    expect(await memoryStatements()).toEqual(statementsFor("us-west-2"));
+    expect(existsSync(path(root, "agentcore/box-memory-policy.json"))).toBe(false);
+    expect(memoryRoute()).toEqual(routeFor("us-west-2"));
     expect(await bedrockResources()).toEqual(bedrockFor("us-west-2"));
     await writeFile(
       path(root, "agentcore/aws-targets.json"),
@@ -1126,9 +1113,8 @@ describe("deploy writes the Box network before the backend deploys", () => {
       }),
     );
 
-    expect(await authOf("agentcore")).toMatchObject({ region: "eu-west-1" });
     expect(await authOf("bedrock")).toMatchObject({ region: "eu-west-1" });
-    expect(await memoryStatements()).toEqual(statementsFor("eu-west-1"));
+    expect(memoryRoute()).toEqual(routeFor("eu-west-1"));
     expect(await bedrockResources()).toEqual(bedrockFor("eu-west-1"));
   });
 });

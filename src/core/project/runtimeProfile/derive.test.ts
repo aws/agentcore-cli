@@ -18,7 +18,7 @@ const CODEZIP = {
   box: { version: "1.0.0" },
 } as ProjectRuntime;
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
-const SPEC = { name: "demo", runtimes: [CODEZIP] } as unknown as ProjectSpec;
+const SPEC = { name: "demo", runtimes: [CODEZIP], memories: [] } as unknown as ProjectSpec;
 
 const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
   runtimeProfileContext({

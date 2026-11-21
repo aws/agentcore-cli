@@ -503,12 +503,12 @@ describe("the IAM policy files of the Box gateway", () => {
     ]);
   });
 
-  test("gives no warning for the Memory policy file that build writes before it writes it", async () => {
+  test("gives no warning for the Bedrock policy file that build writes before it writes it", async () => {
     const root = await project([]);
     const spec = {
       ...SPEC,
       agentCoreGateways: [
-        { ...boxGatewaySpec("agent"), additionalPolicies: ["agentcore/box-memory-policy.json"] },
+        { ...boxGatewaySpec("agent"), additionalPolicies: ["agentcore/box-bedrock-policy.json"] },
       ],
     } as unknown as ProjectSpec;
 
@@ -523,15 +523,9 @@ describe("the IAM policy files of the Box gateway", () => {
     await mkdir(join(root, "agentcore"));
     const grant = (action: string) =>
       JSON.stringify({ Statement: [{ Effect: "Allow", Action: [action] }] });
-    await writeFile(
-      join(root, "agentcore", "box-memory-policy.json"),
-      grant("bedrock-agentcore:GetEvent"),
-    );
     await writeFile(join(root, "agentcore", "box-bedrock-policy.json"), "{ not json");
     await writeFile(join(root, "agentcore", "grants.json"), grant("lambda:InvokeFunctionUrl"));
-    const listed = ["box-memory-policy", "box-bedrock-policy", "grants"].map(
-      (name) => `agentcore/${name}.json`,
-    );
+    const listed = ["box-bedrock-policy", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
       agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],

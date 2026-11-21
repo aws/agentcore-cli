@@ -19,13 +19,7 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
-import {
-  addBoxGatewayTargets,
-  BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
-  boxBedrockPolicy,
-  boxMemoryPolicy,
-} from "./boxMemory";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
 import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import {
@@ -284,16 +278,12 @@ function undeclaredKey(
 }
 
 /**
- * The `bedrock` and `agentcore` targets that each box runtime's model and Memory calls take, and
- * the Bedrock and Memory policies of the gateways' role, as `addBoxGatewayTargets` adds them.
+ * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
+ * gateways' role, as `addBoxGatewayTargets` adds them.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
-  writes: () => [
-    { kind: "defaultTargets" },
-    { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
-    { kind: "file", path: BOX_MEMORY_POLICY_FILE },
-  ],
+  writes: () => [{ kind: "defaultTargets" }, { kind: "file", path: BOX_BEDROCK_POLICY_FILE }],
   edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
     const region = networks[0]?.region;
@@ -303,10 +293,6 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
         {
           path: BOX_BEDROCK_POLICY_FILE,
           policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
-        },
-        {
-          path: BOX_MEMORY_POLICY_FILE,
-          policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),
         },
       ].flatMap(({ path, policy }) =>
         policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],

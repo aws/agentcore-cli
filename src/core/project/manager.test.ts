@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { parse } from "smol-toml";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
@@ -2105,8 +2106,9 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    // Build adds the Bedrock and Memory targets, and grants the Box gateway's role each, since the
-    // gateway signs the agent's calls with that role.
+    // Build adds the Bedrock target, and grants it to the Box gateway's role, since the gateway signs
+    // the agent's model calls with that role. The Memory calls take no target: they go to Memory
+    // directly, signed with the execution role.
     expect(events).toEqual([
       {
         type: "step",
@@ -2118,18 +2120,7 @@ describe("FsProjectManager.build", () => {
         message:
           "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-strands-box-box-egress' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
       },
-      {
-        type: "step",
-        message:
-          "adding target 'agentcore' to gateway 'agent-python-strands-box-box-egress' in agentcore.json, for the boxed agent's Memory calls",
-      },
-      {
-        type: "step",
-        message:
-          "adding 'agentcore/box-memory-policy.json' to gateway 'agent-python-strands-box-box-egress' additionalPolicies in agentcore.json, so its role can call Memory",
-      },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
-      { type: "step", message: "writing agentcore/box-memory-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     // The zip carries box and the Runtime profile in the code folder's .box-dist.
@@ -2184,7 +2175,7 @@ describe("FsProjectManager.build", () => {
     expect(commands).toEqual([]);
   });
 
-  test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
+  test("sends a boxed agent's default Memory calls to Memory directly, not through the Box gateway", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager(await boxHome());
     const { project } = await runCreate(subject, {
@@ -2205,22 +2196,27 @@ describe("FsProjectManager.build", () => {
     const box = spec.agentCoreGateways.find(
       ({ name }: { name: string }) => name === boxGatewayName,
     );
-    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
-    expect(box.additionalPolicies).toEqual([
-      "agentcore/box-bedrock-policy.json",
-      "agentcore/box-memory-policy.json",
-    ]);
-    expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
-    expect(events).toContainEqual({
+    // The gateway gets no Memory target, and its role no Memory policy.
+    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock"]);
+    expect(box.additionalPolicies).toEqual(["agentcore/box-bedrock-policy.json"]);
+    expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(false);
+    expect(events).not.toContainEqual({
       type: "step",
       message: "writing agentcore/box-memory-policy.json",
     });
-    // The Runtime profile routes the Memory calls to that target.
-    const profile = await readFile(
-      join(root, "app", "agent_python_strands_box", ".box-dist", "profile.toml"),
-      "utf8",
-    );
-    expect(profile).toContain('url = "${{ inputs.gateway.url }}/agentcore"');
+    // The Runtime profile sends the Memory calls to Memory, signed with the execution role.
+    const profile = parse(
+      await readFile(
+        join(root, "app", "agent_python_strands_box", ".box-dist", "profile.toml"),
+        "utf8",
+      ),
+    ) as { egress: Record<string, unknown> };
+    // Build writes both for the region it builds for, which the environment of the test sets.
+    const region = box.targets[0].outboundAuth.region as string;
+    expect(profile.egress.agentcore).toEqual({
+      destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
+      secret: { ref: "aws://" },
+    });
 
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
