@@ -77,6 +77,8 @@ export interface BoxNetworkEdits {
   readonly files?: readonly BoxNetworkFile[];
   /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
+  /** Messages about what the writer could not do, for the user to act on. */
+  readonly warnings?: readonly string[];
 }
 
 /** What a writer reads besides the models: the project, and where build looks for each key. */
@@ -106,7 +108,9 @@ export interface CollectedEdits {
   readonly changedFields: readonly (keyof ProjectSpec)[];
   readonly files: readonly BoxNetworkFile[];
   readonly envLocal: readonly EnvLocalEntry[];
+  /** The step messages of the changes to agentcore.json. */
   readonly messages: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -134,11 +138,13 @@ export function boxNetworkEdits(
   const messages: string[] = [];
   const files: BoxNetworkFile[] = [];
   const envLocal: EnvLocalEntry[] = [];
+  const warnings: string[] = [];
   for (const writer of writers) {
     const edits = writer.edits(networks, context);
     for (const change of edits.spec ?? []) messages.push(...change(spec));
     files.push(...(edits.files ?? []));
     envLocal.push(...(edits.envLocal ?? []));
+    warnings.push(...(edits.warnings ?? []));
   }
   const changedFields = (Object.keys(spec) as (keyof ProjectSpec)[]).filter(
     (field) => !isDeepStrictEqual(spec[field], context.spec[field]),
@@ -150,6 +156,7 @@ export function boxNetworkEdits(
     files,
     envLocal,
     messages,
+    warnings,
   };
 }
 
@@ -191,6 +198,7 @@ export const credentialsWriter: BoxNetworkWriter = {
         },
       ],
       envLocal: plan.entries,
+      warnings: plan.warnings,
     };
   },
 };

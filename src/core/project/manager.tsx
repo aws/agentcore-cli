@@ -1726,10 +1726,13 @@ export class FsProjectManager implements ProjectManager {
       const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    const warnings = networks.flatMap((network) => [
-      ...network.warnings,
-      ...boxGatewayIamWarnings(edits.spec, network),
-    ]);
+    const warnings = [
+      ...edits.warnings,
+      ...networks.flatMap((network) => [
+        ...network.warnings,
+        ...boxGatewayIamWarnings(edits.spec, network),
+      ]),
+    ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),
       ...warnings.map((message) => ({ type: "warning" as const, message })),

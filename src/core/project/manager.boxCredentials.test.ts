@@ -192,13 +192,14 @@ describe("FsProjectManager.build: box env:// credentials", () => {
         .credentials;
     const before = await credentials();
 
-    const { steps } = await drain(subject.build(created));
+    const { steps, warnings } = await drain(subject.build(created));
 
-    expect(steps).toContain(
+    expect(warnings).toContain(
       "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not " +
         `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
         `Set GITHUB_TOKEN, or ${RESERVED}, and build again`,
     );
+    expect(steps.filter((message) => message.includes("not adding credential"))).toEqual([]);
     // Build still adds the model's target, so only the credentials stay as they were.
     expect(await credentials()).toEqual(before);
   });

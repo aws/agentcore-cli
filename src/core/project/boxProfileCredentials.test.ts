@@ -54,7 +54,7 @@ describe("planBoxProfileCredentials", () => {
     expect(s.credentials).toEqual([]);
     expect(plan.added).toEqual([]);
     expect(plan.entries).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "not adding credential 'github' for box egress 'env://GITHUB_TOKEN': GITHUB_TOKEN is not set " +
         `here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. Set GITHUB_TOKEN, or ${RESERVED}, ` +
         "and build again",
@@ -64,7 +64,7 @@ describe("planBoxProfileCredentials", () => {
   test("names the variable once when the route reads its own credential's variable", () => {
     const plan = planBoxProfileCredentials(spec(), [route("github", RESERVED)], shell({}));
 
-    expect(plan.messages[0]).toEndWith(`Set ${RESERVED} and build again`);
+    expect(plan.warnings[0]).toEndWith(`Set ${RESERVED} and build again`);
   });
 
   test("takes the key from .env.local under the box variable when the shell has none", () => {
@@ -149,7 +149,7 @@ describe("planBoxProfileCredentials", () => {
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
 
     expect(plan.added).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "box egress 'github' reads env://GITHUB_TOKEN, which is not set here or in " +
         `${ENV_LOCAL_RELATIVE_PATH}: set GITHUB_TOKEN, or ${RESERVED}, before deploy`,
     ]);
@@ -162,6 +162,7 @@ describe("planBoxProfileCredentials", () => {
 
     expect(planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "ghp_x" }))).toEqual({
       messages: [],
+      warnings: [],
       added: [],
       entries: [],
     });
@@ -176,7 +177,7 @@ describe("planBoxProfileCredentials", () => {
       shell({ OPENAI_API_KEY: "sk-x", ANTHROPIC_API_KEY: "sk-ant-x" }),
     );
 
-    expect(plan).toEqual({ messages: [], added: [], entries: [] });
+    expect(plan).toEqual({ messages: [], warnings: [], added: [], entries: [] });
     expect(s.credentials).toEqual([]);
   });
 
@@ -189,7 +190,7 @@ describe("planBoxProfileCredentials", () => {
       shell({}),
     );
 
-    expect(plan).toEqual({ messages: [], added: [], entries: [] });
+    expect(plan).toEqual({ messages: [], warnings: [], added: [], entries: [] });
   });
 
   test("reports a route that uses a model-provider name or variable in another way", () => {
@@ -200,7 +201,7 @@ describe("planBoxProfileCredentials", () => {
     );
 
     expect(plan.added).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "skipping box egress 'openai' (env://MY_KEY): 'openai' is a model-provider route; " +
         "agentcore create declares its key",
       "skipping box egress 'my-llm' (env://GEMINI_API_KEY): GEMINI_API_KEY is a model provider's " +
@@ -216,7 +217,7 @@ describe("planBoxProfileCredentials", () => {
     );
 
     expect(plan.added).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
     ]);
   });
@@ -229,8 +230,8 @@ describe("planBoxProfileCredentials", () => {
     );
 
     expect(plan.added).toEqual([]);
-    expect(plan.messages).toHaveLength(1);
-    expect(plan.messages[0]).toContain("ends in '_CLIENT_ID'");
+    expect(plan.warnings).toHaveLength(1);
+    expect(plan.warnings[0]).toContain("ends in '_CLIENT_ID'");
   });
 
   test("reports, but does not add, a name that derives an existing credential's variable", () => {
@@ -244,7 +245,7 @@ describe("planBoxProfileCredentials", () => {
 
     expect(plan.added).toEqual([]);
     expect(plan.entries).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
         "same variable, AGENTCORE_CREDENTIAL_GIT_HUB, as credential 'git-hub'",
     ]);
@@ -258,7 +259,7 @@ describe("planBoxProfileCredentials", () => {
     );
 
     expect(plan.added.map(({ name }) => name)).toEqual(["git-hub"]);
-    expect(plan.messages[1]).toContain("as credential 'git-hub'");
+    expect(plan.warnings[0]).toContain("as credential 'git-hub'");
   });
 
   test("reports, but does not use, a route named for a credential that is not an API key", () => {
@@ -274,7 +275,7 @@ describe("planBoxProfileCredentials", () => {
 
     expect(plan.added).toEqual([]);
     expect(plan.entries).toEqual([]);
-    expect(plan.messages).toEqual([
+    expect(plan.warnings).toEqual([
       "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
         "OAuthCredentialProvider credential, not an API key",
     ]);

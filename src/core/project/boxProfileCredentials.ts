@@ -22,8 +22,13 @@ export type BoxKeySources = {
 
 /** What {@link planBoxProfileCredentials} did with the box profile's `env://` routes. */
 export type BoxCredentialPlan = {
-  /** One message for each credential added, and for each route skipped for a reason to report. */
+  /** One step message for each credential added, and for each stored key replaced. */
   messages: string[];
+  /**
+   * One warning for each route skipped for a reason to report, and for each route whose key is in
+   * no key source, so deploy could not provision its credential.
+   */
+  warnings: string[];
   /** The credentials added to `spec.credentials`. */
   added: Credential[];
   /** The `.env.local` entries that store each key under its credential's reserved variable. */
@@ -91,14 +96,14 @@ export function boxKeyVariables(
  * The key comes from the credential's reserved variable when it is already set, else from `VAR`,
  * in `sources.env` first and then in `sources.envLocal`. Deploy provisions every declared
  * credential and fails on one with no key, so a route whose key is in neither place gets no
- * credential: only a message that names the variable to set. A credential an earlier build added
- * is kept, and gets the same message if its key has gone.
+ * credential: only a warning that names the variable to set. A credential an earlier build added
+ * is kept, and gets the same warning if its key has gone.
  *
  * Mutates `spec.credentials` in place, and is idempotent. It skips, with no message:
  *   - a route whose key something else holds ({@link boxRouteKeyHeldElsewhere});
  *   - a route named for an API key credential that keeps its key in Secrets Manager.
  *
- * It skips, with a message, a route that uses a model-provider name or variable in any other way,
+ * It skips, with a warning, a route that uses a model-provider name or variable in any other way,
  * and a route whose name `agentcore credentials add` would refuse: a name that is not a valid
  * credential name, that ends in a credential field suffix, that derives the same variable as an
  * existing credential, or that names a credential which is not an API key credential.
@@ -122,6 +127,7 @@ export function planBoxProfileCredentials(
   );
 
   const messages: string[] = [];
+  const warnings: string[] = [];
   const added: Credential[] = [];
   const entries: EnvLocalEntry[] = [];
   /**
@@ -165,7 +171,7 @@ export function planBoxProfileCredentials(
     const providerVariable = MODEL_PROVIDER_KEY_VARIABLES.has(variable);
 
     const skip = (reason: string) =>
-      messages.push(`skipping box egress '${route}' (env://${variable}): ${reason}`);
+      warnings.push(`skipping box egress '${route}' (env://${variable}): ${reason}`);
     if (providerName || providerVariable) {
       skip(
         providerName
@@ -179,7 +185,7 @@ export function planBoxProfileCredentials(
       if (existing.authorizerType !== "ApiKeyCredentialProvider") {
         skip(`credential '${route}' is a ${existing.authorizerType} credential, not an API key`);
       } else if (credentialEnvironmentVariableNames(existing).length > 0 && !seed(entry, route)) {
-        messages.push(
+        warnings.push(
           `box egress '${route}' reads env://${variable}, which is not set here or in ` +
             `${ENV_LOCAL_RELATIVE_PATH}: set ${toSet(variable, route)} before deploy`,
         );
@@ -210,7 +216,7 @@ export function planBoxProfileCredentials(
       continue;
     }
     if (!seed(entry, route)) {
-      messages.push(
+      warnings.push(
         `not adding credential '${route}' for box egress 'env://${variable}': ${variable} is not ` +
           `set here or in ${ENV_LOCAL_RELATIVE_PATH}, so deploy could not provision it. ` +
           `Set ${toSet(variable, route)} and build again`,
@@ -227,5 +233,5 @@ export function planBoxProfileCredentials(
         "so deploy provisions it in AgentCore Identity",
     );
   }
-  return { messages, added, entries };
+  return { messages, warnings, added, entries };
 }
