@@ -55,7 +55,7 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { boxGatewayIamWarnings, isManagedTarget, type BoxNetwork } from "./boxNetwork";
 import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { resolveRegion } from "../region";
@@ -1299,6 +1299,22 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
+      // Build writes a target on each Box gateway for each other gateway of the project. Such a
+      // target goes with its gateway; a target of the user's that names it stays, and fails.
+      if (input.resourceType === "gateway" && removed) {
+        newSpec = {
+          ...(newSpec as object),
+          agentCoreGateways: existingProjectSpec.agentCoreGateways
+            .filter((gateway) => gateway.name !== input.name)
+            .map((gateway) => ({
+              ...gateway,
+              targets: gateway.targets.filter(
+                (target) =>
+                  !(isManagedTarget(target) && target.passthrough?.gateway === input.name),
+              ),
+            })),
+        };
+      }
       // A gateway bound to the runtime (each Box gateway is) goes with the runtime, and its
       // targets go too. A gateway bound to a runtime that does not exist fails validation.
       if (input.resourceType === "runtime" && removed) {
