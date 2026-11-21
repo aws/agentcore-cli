@@ -313,6 +313,22 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
+  test("writes the Bedrock policy for the region of the bedrock target it writes", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
+
+    const bedrock = edits.spec.agentCoreGateways[0]!.targets.find(({ name }) => name === "bedrock");
+    expect(bedrock?.outboundAuth?.region).toBe("eu-central-1");
+    const policy = edits.files.find(({ path }) => path === BOX_BEDROCK_POLICY_FILE);
+    const resources = JSON.parse((policy as { text: string }).text).Statement.map(
+      ({ Resource }: { Resource: string[] }) => Resource,
+    );
+    expect(resources).toEqual([
+      ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
+      ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
+      ["arn:aws:bedrock:*::foundation-model/*"],
+    ]);
+  });
+
   test("writes the model and Memory targets for the region of the build", () => {
     const project = spec();
     project.memories.push({

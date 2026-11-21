@@ -1127,9 +1127,12 @@ describe("warnings", () => {
       expect(warningsFor(control)).toEqual([forService("egress-bedrock-control", "bedrock")]);
     });
 
-    test("a Bedrock runtime target needs bedrock:InvokeModel, which the Bedrock file grants", () => {
+    test("a Bedrock runtime target needs bedrock:InvokeModel, which the Bedrock file grants in the build region only", () => {
       expect(warningsFor(runtime, [], [BEDROCK_FILE])).toEqual([]);
       expect(warningsFor(getBoxGatewayBedrockTargetSpec(), [], [BEDROCK_FILE])).toEqual([]);
+      expect(warningsFor(getBoxGatewayBedrockTargetSpec("us-east-1"), [], [BEDROCK_FILE])).toEqual([
+        forHost("bedrock", "bedrock-runtime.us-east-1.amazonaws.com", "bedrock"),
+      ]);
       for (const granted of ["BEDROCK:invokemodel", "bedrock:Invoke*", "bedrock:InvokeMode?"]) {
         expect(warningsFor(runtime, [granted])).toEqual([]);
       }
@@ -1160,6 +1163,30 @@ describe("warnings", () => {
       expect(warningsFor(agentcoreControl)).toEqual([
         forService("egress-agentcore-control", "bedrock-agentcore"),
       ]);
+    });
+
+    test("the Bedrock and Memory files grant the amazonaws.com.cn hosts of a build for China", () => {
+      const china = (name: string, host: string, service: string) =>
+        passthrough(name, `https://${host}`, {
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "cn-north-1" },
+        });
+      const r = model(
+        "",
+        {},
+        {
+          targets: [
+            china("egress-models", "bedrock-runtime.cn-north-1.amazonaws.com.cn", "bedrock"),
+            china(
+              "egress-memory",
+              "bedrock-agentcore.cn-north-1.amazonaws.com.cn",
+              "bedrock-agentcore",
+            ),
+          ],
+        },
+      );
+      r.spec.agentCoreGateways[0]!.additionalPolicies = [BEDROCK_FILE, MEMORY_FILE];
+
+      expect(boxGatewayIamWarnings(r.spec, { ...r.network, region: "cn-north-1" })).toEqual([]);
     });
   });
 });
