@@ -408,35 +408,35 @@ describe("credentialsWriter", () => {
     ]);
   });
 
-  test.each([
-    ["the credential's own variable", "first"],
-    ["the other variable", "first"],
-  ])("stores a rotated key of a route that two runtimes read, with %s %s", (first) => {
-    const own = network({
-      envRoutes: [{ route: "github", variable: "AGENTCORE_CREDENTIAL_GITHUB" }],
-    });
-    const alias = network({
-      runtime: "other",
-      gateway: "other-box-egress",
-      envRoutes: [{ route: "github", variable: "GITHUB_TOKEN" }],
-    });
-    const project = spec();
-    project.credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: "github" });
+  test.each([["the credential's own variable"], ["the other variable"]])(
+    "stores a rotated key of a route that two runtimes read, with %s first",
+    (first) => {
+      const own = network({
+        envRoutes: [{ route: "github", variable: "AGENTCORE_CREDENTIAL_GITHUB" }],
+      });
+      const alias = network({
+        runtime: "other",
+        gateway: "other-box-egress",
+        envRoutes: [{ route: "github", variable: "GITHUB_TOKEN" }],
+      });
+      const project = spec();
+      project.credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: "github" });
 
-    const edits = boxNetworkEdits(
-      [credentialsWriter],
-      first === "the credential's own variable" ? [own, alias] : [alias, own],
-      {
-        ...contextFor(project),
-        env: { GITHUB_TOKEN: "ghp_new" },
-        envLocal: { AGENTCORE_CREDENTIAL_GITHUB: "ghp_old" },
-      },
-    );
+      const edits = boxNetworkEdits(
+        [credentialsWriter],
+        first === "the credential's own variable" ? [own, alias] : [alias, own],
+        {
+          ...contextFor(project),
+          env: { GITHUB_TOKEN: "ghp_new" },
+          envLocal: { AGENTCORE_CREDENTIAL_GITHUB: "ghp_old" },
+        },
+      );
 
-    expect(edits.envLocal).toEqual([
-      expect.objectContaining({ key: "AGENTCORE_CREDENTIAL_GITHUB", value: "ghp_new" }),
-    ]);
-  });
+      expect(edits.envLocal).toEqual([
+        expect.objectContaining({ key: "AGENTCORE_CREDENTIAL_GITHUB", value: "ghp_new" }),
+      ]);
+    },
+  );
 
   test("runs before the gateway targets, so a target gets the credential it adds", () => {
     const models = [
