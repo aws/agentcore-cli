@@ -672,15 +672,12 @@ export class FsProjectManager implements ProjectManager {
           `a gateway target with name '${input.resourceConfig.name}' already exists in gateway '${gateway.name}'`,
         );
       }
-      // Build owns some target names on a Box gateway. A user target of such a name would take
-      // the agent's Bedrock or Memory route, or build would rewrite or remove it.
+      // Build owns some target names on the Box gateway of a boxed runtime.
       const parent = projectSpec.agentCoreGateways.find(
         (candidate) => candidate.name === input.gatewayName,
       );
       const reserved =
-        parent && isBoundGateway(parent)
-          ? reservedBoxTargetNameProblem(input.resourceConfig.name, parent.name)
-          : undefined;
+        parent && reservedBoxTargetNameProblem(projectSpec, parent, input.resourceConfig.name);
       if (reserved) throw new InputValidationError(reserved);
     } else if (input.resourceType === "policy") {
       // Policy names are account-unique on the service, so the check spans engines.

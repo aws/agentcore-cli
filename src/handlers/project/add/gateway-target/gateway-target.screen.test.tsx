@@ -19,6 +19,7 @@ import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { authChoices, toGatewayTargetInput } from "./screen";
 import { boxGatewaySpec } from "../../../../projectSchemas/project";
+import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
 
 const ENDPOINT = "https://mcp.example.com";
 const OAUTH_CREDENTIAL = {
@@ -465,7 +466,12 @@ describe("project add gateway-target wizard", () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     const box = boxGatewaySpec(spec.runtimes[0].name);
-    await writeProjectSpec(projectRoot, { ...spec, projectType: "box", agentCoreGateways: [box] });
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: [{ ...spec.runtimes[0], box: { version: BOX_RELEASE.version } }],
+      agentCoreGateways: [box],
+    });
     const screen = renderScreen("/agentcore/add/gateway-target");
     await reachAuthStep(screen, "bedrock");
     await screen.press("return");

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../../../projectSchemas/project";
 import {
   getBoxGatewayAgentCoreTargetSpec,
@@ -83,7 +84,12 @@ describe("project add gateway-target", () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     const box = boxGatewaySpec(spec.runtimes[0].name);
-    await writeProjectSpec(projectRoot, { ...spec, projectType: "box", agentCoreGateways: [box] });
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: [{ ...spec.runtimes[0], box: { version: BOX_RELEASE.version } }],
+      agentCoreGateways: [box],
+    });
     await addGateway();
 
     for (const name of ["bedrock", "agentcore", "egress-api-example-com"]) {
@@ -116,6 +122,29 @@ describe("project add gateway-target", () => {
       gateways
         .find((gateway: { name: string }) => gateway.name === "tools")
         .targets.map((target: { name: string }) => target.name),
+    ).toEqual(["bedrock", "agentcore", "egress-api-example-com"]);
+  });
+
+  test("accepts the names on a bound gateway whose runtime does not run in a box", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const box = boxGatewaySpec(spec.runtimes[0].name);
+    // A Box project runtime with no box.version: build writes no targets on its gateway.
+    await writeProjectSpec(projectRoot, { ...spec, projectType: "box", agentCoreGateways: [box] });
+
+    for (const name of ["bedrock", "agentcore", "egress-api-example-com"]) {
+      await run([
+        "add",
+        "gateway-target",
+        ...["--gateway", box.name, "--name", name, "--endpoint", ENDPOINT],
+        ...["--outbound-auth", "none"],
+      ]);
+    }
+
+    expect(
+      (await projectSpec(projectRoot)).agentCoreGateways[0].targets.map(
+        (target: { name: string }) => target.name,
+      ),
     ).toEqual(["bedrock", "agentcore", "egress-api-example-com"]);
   });
 

@@ -188,12 +188,19 @@ const BOX_DEFAULT_TARGET_NAMES: readonly string[] = [
 ];
 
 /**
- * The refusal of a user target named `name` on a Box gateway, or `undefined` when build does not
- * own the name. Build writes the `bedrock` and `agentcore` targets, and names each egress target
- * it writes with the `egress-` prefix. A user target of such a name would take the agent's Bedrock
- * or Memory route, or the name of an egress target that build writes.
+ * The refusal of a user target named `name` on `gateway`, or `undefined` when build does not own
+ * the name there. On the Box gateway of a runtime that runs in a box, build writes the `bedrock`
+ * and `agentcore` targets, and names each egress target it writes with the `egress-` prefix. A
+ * user target of such a name would take the agent's Bedrock or Memory route, or the name of an
+ * egress target that build writes. Build writes none of these for another runtime.
  */
-export function reservedBoxTargetNameProblem(name: string, gateway: string): string | undefined {
+export function reservedBoxTargetNameProblem(
+  spec: ProjectSpec,
+  gateway: AgentCoreGateway,
+  name: string,
+): string | undefined {
+  const boxed = boxedRuntimes(spec).some((runtime) => runtime.name === gateway.boundRuntime);
+  if (!isBoundGateway(gateway) || !boxed) return undefined;
   if (!BOX_DEFAULT_TARGET_NAMES.includes(name) && !name.startsWith(BOX_EGRESS_TARGET_PREFIX)) {
     return undefined;
   }
@@ -202,7 +209,7 @@ export function reservedBoxTargetNameProblem(name: string, gateway: string): str
     `'${BOX_EGRESS_TARGET_PREFIX}*'`,
   ];
   return (
-    `the gateway target name '${name}' is reserved on Box gateway '${gateway}': build writes the ` +
+    `the gateway target name '${name}' is reserved on Box gateway '${gateway.name}': build writes the ` +
     `targets ${reserved.join(", ")} for the agent's model, Memory, and egress calls. Choose another name.`
   );
 }
