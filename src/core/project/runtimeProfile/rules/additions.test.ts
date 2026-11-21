@@ -1024,6 +1024,85 @@ describe("the additions rule", () => {
       expect(apply(served, context).table.egress).toBeUndefined();
     });
 
+    test("counts a direct route to the Memory host with :443, in another case, or as a wildcard", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      for (const destination of [
+        `bedrock-agentcore.${BUILD_REGION}.amazonaws.com:443`,
+        `Bedrock-AgentCore.${BUILD_REGION}.amazonaws.com`,
+        "*.amazonaws.com",
+      ]) {
+        const local = { egress: { memory: { destinations: [destination] } } };
+        const { table, problems } = apply(local, context);
+
+        expect([destination, problems]).toEqual([destination, []]);
+        expect(table.egress).toEqual(local.egress);
+      }
+      // Another port, or a wildcard of another domain, is not the Memory host.
+      const other = {
+        egress: {
+          memory: {
+            destinations: ["*.example.com", "bedrock-agentcore.us-west-2.amazonaws.com:8443"],
+          },
+        },
+      };
+      expect(Object.keys(apply(other, context).table.egress as TomlTable)).toEqual([
+        "memory",
+        MEMORY_ROUTE,
+      ]);
+    });
+
+    test("stops build for a route that sends the Memory calls through the Box gateway", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const backends = [{ url: "${{ inputs.gateway.url }}/egress-memory" }];
+      const local = {
+        egress: { memory: { destinations: [host], backends } },
+        mcp: { recall: { type: "http", destinations: [host], backends } },
+      };
+
+      const { table, problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems.map(({ code, key }) => [code, key])).toEqual([
+        ["RUNTIME_MEMORY_THROUGH_GATEWAY", ["egress", "memory"]],
+        ["RUNTIME_MEMORY_THROUGH_GATEWAY", ["mcp", "recall"]],
+      ]);
+      expect(problems[0]!.reason).toBe(
+        `[egress.memory] sends the calls to ${host} through the Box gateway on AgentCore Runtime, ` +
+          "and the gateway would sign the agent's Memory calls with its own role. Then Memory " +
+          "cannot hold each call to the session of the runtime. Remove that entry: build sends " +
+          "the Memory calls to Memory directly, signed with the execution role.",
+      );
+      expect(table.egress).not.toHaveProperty(MEMORY_ROUTE);
+    });
+
+    test("leaves a gateway route to the Memory host alone for a runtime with no default Memory", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = { egress: { memory: { destinations: [host], backends: [{ url: "x" }] } } };
+
+      expect(apply(local, contextOf(CODEZIP)).problems).toEqual([]);
+    });
+
+    test("names the gateway target when a target of the user takes the Memory route's name", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      const withTarget = {
+        ...context,
+        gateway: {
+          ...context.gateway,
+          targets: [
+            ...context.gateway.targets,
+            passthrough("agentcore", "https://memory.example.com"),
+          ],
+        },
+      };
+      const local = { egress: { [MEMORY_ROUTE]: { destinations: ["memory.example.com"] } } };
+
+      const [problem] = apply(local, withTarget).problems;
+
+      expect(problem?.place).toBe("agentcore/agentcore.json");
+      expect(problem?.reason).toEndWith(
+        `Rename the 'agentcore' target of gateway '${context.gateway.name}'.`,
+      );
+    });
+
     test("stops build for a route of the user under the name of the Memory route", () => {
       const local = { egress: { [MEMORY_ROUTE]: { destinations: ["api.example.com"] } } };
 

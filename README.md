@@ -261,7 +261,9 @@ second answer should say teal, and the runtime log shows `running profile ...` w
 
 A boxed agent gets the deployed Memory IDs and the Runtime's region inside the box. It does not get
 the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
-its Box gateway.
+its Box gateway. Its calls to its default Memory are the exception. Box signs them with the
+execution role and sends them to Memory directly, so Memory can hold each call to the session of
+the runtime. A runtime in VPC network mode needs a `bedrock-agentcore` VPC endpoint for them.
 
 A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
 and deploy now render profiles that those files cannot start. Create the project again, or copy

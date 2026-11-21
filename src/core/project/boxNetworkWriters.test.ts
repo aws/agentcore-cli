@@ -283,8 +283,12 @@ describe("defaultTargetsWriter", () => {
     const edits = run([defaultTargetsWriter], [network()], project);
 
     // The agent's Memory calls go to Memory directly, so they take no target and no gateway policy.
+    // The writer removes the Memory policy file that an earlier build wrote.
     expect(targetNames(edits.spec)).toEqual(["mine", "bedrock"]);
-    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
+    expect(edits.files).toEqual([
+      expect.objectContaining({ path: BOX_BEDROCK_POLICY_FILE }),
+      { path: "agentcore/box-memory-policy.json", remove: true },
+    ]);
   });
 
   test("writes the Bedrock policy for the region of the bedrock target it writes", () => {

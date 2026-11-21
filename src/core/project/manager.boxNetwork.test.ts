@@ -221,6 +221,7 @@ async function boxGateway(root: string) {
   const spec = JSON.parse(await text(root, SPEC));
   return spec.agentCoreGateways.find(({ name }: { name: string }) => name === GATEWAY) as {
     targets: Record<string, unknown>[];
+    additionalPolicies?: string[];
     enableApplicationLogs?: boolean;
   };
 }
@@ -500,7 +501,7 @@ describe("build writes the Box network of the box profile", () => {
     );
   });
 
-  test("routes an entry of the profile for the Memory host through the gateway, and adds no Memory route", async () => {
+  test("stops for an entry of the profile that would send the Memory calls through the gateway", async () => {
     const { manager, root, box } = await strandsProject();
     await editProfile(root, {
       tables:
@@ -514,15 +515,90 @@ describe("build writes the Box network of the box profile", () => {
       },
     });
 
-    await build(manager, root);
-
-    expect(await targetNames(root)).toEqual(["egress-memory", "bedrock"]);
-    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    // The user's [egress.memory] keeps the host, so the box has one route to it: to its target.
-    expect(Object.keys(egress)).toEqual(["bedrock", "memory"]);
-    expect(egress.memory).toEqual(
-      gatewayRoute("egress-memory", "bedrock-agentcore.us-west-2.amazonaws.com"),
+    const error = await build(manager, root).then(
+      () => undefined,
+      (caught: unknown) => caught,
     );
+
+    // On the Runtime the entry gets a gateway target, which would sign the Memory calls with the
+    // gateway's role, and Memory could not hold each call to the session of the runtime.
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(
+      "[egress.memory] sends the calls to bedrock-agentcore.us-west-2.amazonaws.com through the " +
+        "Box gateway on AgentCore Runtime",
+    );
+    expect(await targetNames(root)).not.toContain("egress-memory");
+  });
+
+  test("removes the Memory target, policy listing, and policy file of an earlier build, and sends Memory directly", async () => {
+    const { manager, root } = await strandsProject();
+    const MEMORY_FILE = "agentcore/box-memory-policy.json";
+    // What a build before Memory went direct wrote for the agent's Memory calls.
+    await editGateway(root, (gateway) => {
+      gateway.targets.push({
+        name: "agentcore",
+        targetType: "passthrough",
+        passthrough: {
+          endpoint: "https://bedrock-agentcore.us-west-2.amazonaws.com",
+          protocolType: "CUSTOM",
+        },
+        outboundAuth: {
+          type: "GATEWAY_IAM_ROLE",
+          service: "bedrock-agentcore",
+          region: "us-west-2",
+        },
+      });
+      (gateway as { additionalPolicies?: string[] }).additionalPolicies = [MEMORY_FILE];
+    });
+    await writeFile(path(root, MEMORY_FILE), '{ "Version": "2012-10-17", "Statement": [] }\n');
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["bedrock"]);
+    expect((await boxGateway(root)).additionalPolicies).toEqual([
+      "agentcore/box-bedrock-policy.json",
+    ]);
+    expect(existsSync(path(root, MEMORY_FILE))).toBe(false);
+    expect(steps).toEqual(
+      expect.arrayContaining([
+        `removing target 'agentcore' from gateway '${GATEWAY}' in agentcore.json: the boxed ` +
+          "agent's Memory calls go to Memory directly",
+        `removing '${MEMORY_FILE}' from gateway '${GATEWAY}' additionalPolicies in ` +
+          "agentcore.json: its role no longer calls Memory",
+        `removing ${MEMORY_FILE}`,
+      ]),
+    );
+    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
+    expect(egress.agentcore).toEqual({
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      secret: { ref: "aws://" },
+    });
+  });
+
+  test("keeps an agentcore target that the user changed, and stops until the user renames it", async () => {
+    const { manager, root, box } = await strandsProject();
+    const mine = {
+      name: "agentcore",
+      targetType: "passthrough",
+      passthrough: { endpoint: "https://memory.example.com", protocolType: "CUSTOM" },
+      outboundAuth: { type: "NONE" },
+    };
+    await editGateway(root, (gateway) => gateway.targets.push(mine));
+    box.answer = shows({});
+
+    const error = await build(manager, root).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    // Build does not remove a target it did not write, and its route would take the Memory route's name.
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(
+      `agentcore/agentcore.json  [egress.agentcore] is the name of the route that the agent's ` +
+        "Memory calls take on AgentCore Runtime, to bedrock-agentcore.us-west-2.amazonaws.com. " +
+        `Rename the 'agentcore' target of gateway '${GATEWAY}'.`,
+    );
+    expect((await boxGateway(root)).targets).toContainEqual(mine);
   });
 
   test("on a first build, stops with every problem, where it is, and writes nothing", async () => {

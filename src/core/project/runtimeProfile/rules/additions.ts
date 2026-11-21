@@ -22,6 +22,7 @@
 import { posix } from "node:path";
 import { agentCoreDataPlaneHost } from "../../../../handlers/project/shortcuts";
 import { hasDefaultMemory } from "../../boxMemory";
+import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
@@ -232,9 +233,10 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 /**
  * `[egress]` with the {@link MEMORY_ROUTE} route when the runtime has its default Memory: one
  * destination, the AgentCore host of the build region, signed with a bare `aws://`, the execution
- * role, and no backend. A route or HTTP MCP server of the profile that already has that host keeps
- * it, so the box has one route to the host. A route of the user named {@link MEMORY_ROUTE} for
- * another host is a problem.
+ * role, and no backend. A direct route or HTTP MCP server of the profile, one with no backend, that
+ * already has that host keeps it, so the box has one route to the host. One that sends the host's
+ * calls through the Box gateway is a problem: the gateway would sign the Memory calls with its own
+ * role. A route of the user named {@link MEMORY_ROUTE} for another host is a problem too.
  */
 function runtimeEgress(
   egress: unknown,
@@ -246,19 +248,38 @@ function runtimeEgress(
   // box refuses `[egress]` that is not a table before build gets the profile.
   if (egress !== undefined && !isTable(egress)) return egress;
   const host = agentCoreDataPlaneHost(context.region);
-  const routes = [...Object.values(egress ?? {}), ...Object.values(tableOf(mcp))];
-  const hasHost = (entry: unknown) =>
-    isTable(entry) && Array.isArray(entry.destinations) && entry.destinations.includes(host);
-  if (routes.some(hasHost)) return egress;
-  if (egress !== undefined && Object.hasOwn(egress, MEMORY_ROUTE)) {
-    const key = ["egress", MEMORY_ROUTE];
+  const routes = [
+    ...Object.entries(egress ?? {}).map(([name, entry]) => ({ key: ["egress", name], entry })),
+    ...Object.entries(tableOf(mcp)).map(([name, entry]) => ({ key: ["mcp", name], entry })),
+  ].filter(({ entry }) => isTable(entry) && hasDestination(entry.destinations, host));
+  const throughGateway = routes.filter(({ entry }) => (entry as TomlTable).backends !== undefined);
+  for (const { key } of throughGateway) {
     problems.push({
-      code: "RUNTIME_ROUTE_NAME_TAKEN",
+      code: "RUNTIME_MEMORY_THROUGH_GATEWAY",
       key,
       place: context.placeOf(key),
       reason:
+        `[${key.join(".")}] sends the calls to ${host} through the Box gateway on AgentCore ` +
+        "Runtime, and the gateway would sign the agent's Memory calls with its own role. Then " +
+        "Memory cannot hold each call to the session of the runtime. Remove that entry: build " +
+        "sends the Memory calls to Memory directly, signed with the execution role.",
+    });
+  }
+  if (routes.length > 0) return egress;
+  if (egress !== undefined && Object.hasOwn(egress, MEMORY_ROUTE)) {
+    const key = ["egress", MEMORY_ROUTE];
+    // The gateway rule names a route for a target that no entry of the profile names after it.
+    const target = context.gateway.targets.some(({ name }) => name === MEMORY_ROUTE);
+    problems.push({
+      code: "RUNTIME_ROUTE_NAME_TAKEN",
+      key,
+      place: target ? "agentcore/agentcore.json" : context.placeOf(key),
+      reason:
         `[egress.${MEMORY_ROUTE}] is the name of the route that the agent's Memory calls take ` +
-        `on AgentCore Runtime, to ${host}. Rename that entry.`,
+        `on AgentCore Runtime, to ${host}. ` +
+        (target
+          ? `Rename the '${MEMORY_ROUTE}' target of gateway '${context.gateway.name}'.`
+          : "Rename that entry."),
     });
     return egress;
   }
@@ -266,6 +287,22 @@ function runtimeEgress(
     ...egress,
     [MEMORY_ROUTE]: { destinations: [host], secret: { ref: RUNTIME_AWS_SIGNER } },
   };
+}
+
+/**
+ * Whether `destinations` has one that box matches to `host` on port 443: the host itself, in any
+ * case, with or without `:443`, or a `*.` wildcard of its parent domains.
+ */
+function hasDestination(destinations: unknown, host: string): boolean {
+  if (!Array.isArray(destinations)) return false;
+  return destinations.some((text) => {
+    const destination = typeof text === "string" ? parseDestination(text) : undefined;
+    if (destination === undefined || destination.port !== 443) return false;
+    const name = destination.host.toLowerCase();
+    return destination.wildcard
+      ? name.startsWith("*.") && host.endsWith(name.slice(1))
+      : name === host;
+  });
 }
 
 /** The user's packs in their order, then each Runtime pack that they do not import. */
