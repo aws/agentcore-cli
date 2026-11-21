@@ -25,7 +25,7 @@ import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
 import { runtimeProfileContext } from "../runtimeProfile/context";
 import { deriveRuntimeProfile } from "../runtimeProfile/derive";
-import { runtimeProfileHeader } from "../runtimeProfile/rules/additions";
+import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
 import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -119,7 +119,10 @@ export interface BoxNetwork {
    * Runtime profile.
    */
   readonly policyFiles: readonly string[];
-  /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
+  /**
+   * The CloudWatch targets of the profile's `[telemetry]`, then the default X-Ray target of
+   * {@link runtimeProfile} (`DEFAULT_TRACES_TARGET`); absent means none.
+   */
   readonly telemetry?: readonly CloudWatchTelemetry[];
   /**
    * The AgentCore Runtime profile that build derives from the local profile (`deriveRuntimeProfile`
@@ -214,6 +217,11 @@ export function buildBoxNetwork(
   failures.push(
     ...(derived?.problems ?? []).map(({ code, reason, place }) => ({ code, reason, place })),
   );
+  const defaultTraces = derived ? defaultTracesTelemetry(derived.profile, project.region) : [];
+  const sent =
+    telemetry || defaultTraces.length > 0
+      ? [...(telemetry?.telemetry ?? []), ...defaultTraces]
+      : undefined;
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -221,7 +229,7 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     envRoutes: envRoutesOf(targets.hosts),
     policyFiles: parsed.profile.policyFiles,
-    ...(telemetry && { telemetry: telemetry.telemetry }),
+    ...(sent && { telemetry: sent }),
     ...(derived &&
       context && {
         runtimeProfile: derived.profile,

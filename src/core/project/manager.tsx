@@ -69,11 +69,12 @@ import {
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
+  observabilityOff,
   renderBoxProfile,
   runsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
-import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import { validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";

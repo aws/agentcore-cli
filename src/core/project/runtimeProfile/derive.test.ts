@@ -82,6 +82,10 @@ describe("runtimePaths", () => {
       runtimeCode: "${{ inputs.code.dir }}",
       runtimePython: "${{ inputs.python.path }}",
       runtimePythonPrefix: "${{ inputs.python.prefix }}",
+      otelInstrument: [
+        "${{ inputs.python.path }}",
+        "${{ inputs.code.dir }}/bin/opentelemetry-instrument",
+      ],
       shownCode: "app/agent/",
     });
     expect(runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime)).toEqual(
@@ -94,6 +98,7 @@ describe("runtimePaths", () => {
 
     expect(paths.runtimeCode).toBe(paths.localCode);
     expect(paths.runtimePython).toBe("${{ workspace }}/.venv/bin/python");
+    expect(paths.otelInstrument).toEqual(["${{ workspace }}/.venv/bin/opentelemetry-instrument"]);
   });
 });
 
