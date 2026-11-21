@@ -233,9 +233,13 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     await writeFile(join(created.rootPath, ENV_LOCAL_RELATIVE_PATH), `${RESERVED}=\n`);
     await appendEnvLocal(created.rootPath, `OTHER_API_KEY='${UNDECRYPTABLE}'`);
 
-    await drain(subject.build(created));
+    const { steps } = await drain(subject.build(created));
 
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
+    expect(steps).toContain(
+      `filling in the blank ${RESERVED} in ${ENV_LOCAL_RELATIVE_PATH} with the key in ` +
+        "GITHUB_TOKEN, so deploy provisions it",
+    );
   });
 
   test("builds when .env.local holds an undecryptable key of a model-provider route", async () => {

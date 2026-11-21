@@ -22,7 +22,7 @@ export type BoxKeySources = {
 
 /** What {@link planBoxProfileCredentials} did with the box profile's `env://` routes. */
 export type BoxCredentialPlan = {
-  /** One step message for each credential added, and for each stored key replaced. */
+  /** One step message for each credential added, and for each stored key replaced or filled in. */
   messages: string[];
   /**
    * One warning for each route skipped for a reason to report, and for each route whose key is in
@@ -159,6 +159,11 @@ export function planBoxProfileCredentials(
       messages.push(
         `updating ${key} in ${ENV_LOCAL_RELATIVE_PATH}: ${variable} holds a different key, which ` +
           "agentcore dev uses, so deploy provisions it too",
+      );
+    } else if (stored !== undefined) {
+      messages.push(
+        `filling in the blank ${key} in ${ENV_LOCAL_RELATIVE_PATH} with the key in ${variable}, ` +
+          "so deploy provisions it",
       );
     }
     entries.push({

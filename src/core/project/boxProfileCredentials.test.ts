@@ -124,6 +124,19 @@ describe("planBoxProfileCredentials", () => {
     ]);
   });
 
+  test("fills in a blank stored key, and says so", () => {
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env: { GITHUB_TOKEN: "ghp_new" },
+      envLocal: { [RESERVED]: "" },
+    });
+
+    expect(plan.entries.map(({ key, value }) => [key, value])).toEqual([[RESERVED, "ghp_new"]]);
+    expect(plan.messages).toEqual([
+      `filling in the blank ${RESERVED} in ${ENV_LOCAL_RELATIVE_PATH} with the key in ` +
+        "GITHUB_TOKEN, so deploy provisions it",
+    ]);
+  });
+
   test("leaves a stored key alone when the variable holds it, or when nothing sets the variable", () => {
     for (const env of [{ GITHUB_TOKEN: "ghp_same" }, {}]) {
       const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
