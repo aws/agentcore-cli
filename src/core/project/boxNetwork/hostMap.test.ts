@@ -172,22 +172,30 @@ describe("the policy decision on each host", () => {
       expect(codes(map(later + reach("get", "a.example.com")))).toEqual([]);
     });
 
-    test("reads a host condition after a temporal condition, which no action test decides", () => {
-      const temporal =
+    // Box 0.1.11-preview.10 accepts each of these bodies before a host `when`.
+    test.each([
+      [
+        "temporal",
         "exists (n: Long). ((count for (t: Timepoint). where (formerly within 10m (" +
-        'Box::Action::"http:request"::response{ input.host: "api.github.com" } && tp(t)))) == n ' +
-        "&& n < 3)";
-      const limited = rule(
-        "limited",
-        `permit (principal, ${HR}, resource) when temporal { ${temporal} } when { ${on("a.example.com")} };`,
-      );
-      const result = map(connect("c", on("a.example.com")) + limited);
-      expect(codes(result)).toEqual([]);
-      expect(host(result, "a.example.com")).toMatchObject({
-        reachable: true,
-        enforcedByBox: ["limited"],
-      });
-    });
+          'Box::Action::"http:request"::response{ input.host: "api.github.com" } && tp(t)))) == n ' +
+          "&& n < 3)",
+      ],
+      ["guardrails", 'context.input.method == "GET"'],
+    ])(
+      "reads a host condition after a %s condition, which no action test decides",
+      (kind, body) => {
+        const limited = rule(
+          "limited",
+          `permit (principal, ${HR}, resource) when ${kind} { ${body} } when { ${on("a.example.com")} };`,
+        );
+        const result = map(connect("c", on("a.example.com")) + limited);
+        expect(codes(result)).toEqual([]);
+        expect(host(result, "a.example.com")).toMatchObject({
+          reachable: true,
+          enforcedByBox: ["limited"],
+        });
+      },
+    );
 
     test("refuses the field when no action test keeps it from the action", () => {
       const result = map(
