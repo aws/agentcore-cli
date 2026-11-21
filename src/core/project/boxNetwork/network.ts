@@ -4,7 +4,10 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
+import {
+  boxGatewayAgentCoreHost,
+  boxGatewayBedrockHost,
+} from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -608,8 +611,9 @@ function sourceLabel(source: EntrySource): string {
 /**
  * A warning for each target of the network's Box gateway in `spec`, as build writes it, that the
  * gateway signs with its own role for an endpoint that no policy of that role allows. The Bedrock
- * policy file that build writes allows the Bedrock runtime host, and the Memory policy file the
- * Memory host; a gateway that imports its role is the user's to grant.
+ * policy file that build writes allows the Bedrock runtime host of the build region, and the Memory
+ * policy file the Memory host of that region; a gateway that imports its role is the user's to
+ * grant.
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
@@ -633,7 +637,10 @@ export function boxGatewayIamWarnings(
   const allows = (api: AwsEndpointApi, host: string): boolean => {
     switch (api) {
       case "bedrock-runtime":
-        return bedrockListed || grants("bedrock:InvokeModel");
+        return (
+          (bedrockListed && host === boxGatewayBedrockHost(network.region)) ||
+          grants("bedrock:InvokeModel")
+        );
       case "bedrock-control":
         return granted.some(grantsBedrockControlPlane);
       case "bedrock-agentcore":

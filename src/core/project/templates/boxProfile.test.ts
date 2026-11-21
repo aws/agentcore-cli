@@ -74,7 +74,7 @@ describe("renderBoxProfile", () => {
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
       tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
-      egress: { bedrock: { secret: { ref: "aws://default" } } },
+      egress: { bedrock: { secret: { ref: "aws://" } } },
     });
   });
 
@@ -121,7 +121,7 @@ describe("renderBoxProfile", () => {
       expect(packs).toEqual(["@box/base", "@box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
-      expect(egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+      expect(egress.bedrock).toEqual({ secret: { ref: "aws://" } });
     },
   );
 
@@ -225,7 +225,7 @@ describe("renderBoxProfile", () => {
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
     const { packs, egress } = profile("agent-python-strands-box", { modelProvider: "LiteLLM" });
     expect(packs).toEqual(["@box/base", "@box/bedrock"]);
-    expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
+    expect(egress).toEqual({ bedrock: { secret: { ref: "aws://" } } });
   });
 
   test.each([
