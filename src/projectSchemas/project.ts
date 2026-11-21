@@ -31,6 +31,11 @@ export const ProjectNameSchema = z
 export const ProjectTypeSchema = z.enum(["box"]);
 /** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
+/**
+ * The start of the name of each target that build adds to a Box gateway. Build manages every
+ * target whose name has it, and no other.
+ */
+export const BOX_EGRESS_TARGET_PREFIX = "egress-";
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /**
@@ -157,6 +162,36 @@ export const ProjectSpecSchema = z
         ctx.addIssue({
           code: "custom",
           message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}", but no runtime has that name`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
+    // a runtime belongs to that runtime, so no target of another gateway calls it. On the Box
+    // gateway of a runtime of a Box project, build writes and removes each target whose name starts
+    // with BOX_EGRESS_TARGET_PREFIX, so such a target that names no such gateway is not refused
+    // here: the next build removes it.
+    const buildOwns = (gateway: { boundRuntime?: string }, target: { name: string }) =>
+      isBoxProject(spec) &&
+      isBoundGateway(gateway) &&
+      target.name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+    for (const gateway of spec.agentCoreGateways) {
+      for (const target of gateway.targets) {
+        const reached = target.passthrough?.gateway;
+        if (reached === undefined || buildOwns(gateway, target)) continue;
+        const named = spec.agentCoreGateways.find((other) => other.name === reached);
+        const problem =
+          named === undefined
+            ? "but the project has no gateway of that name"
+            : named === gateway
+              ? "which is its own gateway"
+              : named.boundRuntime !== undefined
+                ? `which is bound to the runtime "${named.boundRuntime}"`
+                : undefined;
+        if (problem === undefined) continue;
+        ctx.addIssue({
+          code: "custom",
+          message: `Target "${target.name}" of gateway "${gateway.name}" names the gateway "${reached}" in passthrough.gateway, ${problem}. Name a gateway of this project without boundRuntime`,
           path: ["agentCoreGateways"],
         });
       }

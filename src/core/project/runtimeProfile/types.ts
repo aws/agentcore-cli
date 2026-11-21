@@ -7,6 +7,7 @@ import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetworkHost, CloudWatchTelemetry } from "../boxNetwork";
+import type { BoxProjectGateway } from "../boxNetwork/projectGateways";
 
 /** A TOML table as smol-toml parses it: a key holds a string, a number, a boolean, a list, or a table. */
 export type TomlTable = Record<string, unknown>;
@@ -72,6 +73,8 @@ export interface RuntimeProfileContext {
   readonly gateway: { readonly name: string; readonly targets: readonly AgentCoreGatewayTarget[] };
   /** The hosts of the Box network model, each with the gateway target it gets. */
   readonly hosts: readonly BoxNetworkHost[];
+  /** The gateways of the project that the agent calls through the Box gateway; absent means none. */
+  readonly projectGateways?: readonly BoxProjectGateway[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */
   readonly telemetry: readonly CloudWatchTelemetry[];
   readonly paths: RuntimePaths;
@@ -98,6 +101,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
   /** A CloudWatch telemetry target that box refuses when a run starts. */
   "RUNTIME_TELEMETRY_REFUSED",
+  /** An `[mcp]` server with the name of a gateway of the project, which build adds on the Runtime. */
+  "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 

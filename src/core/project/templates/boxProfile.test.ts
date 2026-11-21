@@ -411,6 +411,68 @@ describe("renderAgentCorePack", () => {
     ) as Record<string, any>;
   }
 
+  describe("for a gateway of the project that the agent calls", () => {
+    const TOOLS = {
+      name: "tools",
+      target: "egress-gateway-tools",
+      variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+      auth: "iam",
+    } as const;
+    const withTools = (memories: { name: string }[] = []) =>
+      parse(
+        renderAgentCorePack(
+          { name: "V3Demo", memories } as unknown as ProjectSpec,
+          { name: "agent", instrumentation: { enableOtel: false } },
+          [TOOLS],
+        ),
+      ) as Record<string, any>;
+    const HOST =
+      "v3demo-default-tools-abcdefghij.gateway.bedrock-agentcore.us-west-2.amazonaws.com";
+
+    test("reads its host and its URL from the variables the CDK library sets for it", () => {
+      const { inputs } = withTools();
+      expect(inputs.gateways.tools.host.from).toBe("env:AGENTCORE_GATEWAY_TOOLS_HOST");
+      expect(inputs.gateways.tools.url.from).toBe("env:AGENTCORE_GATEWAY_TOOLS_URL");
+    });
+
+    test("gives the agent the URL under the name a runtime without a box reads, beside the memory IDs", () => {
+      expect(withTools([{ name: "notes" }]).agent.env).toEqual({
+        MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
+        AGENTCORE_GATEWAY_TOOLS_URL: "${{ inputs.gateways.tools.url }}",
+      });
+    });
+
+    const CHINA_HOST =
+      "v3demo-default-tools-abcdefghij.gateway.bedrock-agentcore.cn-north-1.amazonaws.com.cn";
+
+    test.each([
+      [HOST, true],
+      [CHINA_HOST, true],
+      [`${HOST}.cn.evil.example.com`, false],
+      [`https://${HOST}`, false],
+      [`${HOST}/mcp`, false],
+      ["evil.example.com", false],
+      ["x.gateway.bedrock-agentcore.us-west-2.amazonaws.com.evil.example.com", false],
+    ])("the host pattern takes %s: %p", (host, matches) => {
+      expect(new RegExp(`^${withTools().inputs.gateways.tools.host.pattern}$`).test(host)).toBe(
+        matches,
+      );
+    });
+
+    test.each([
+      [`https://${HOST}/mcp`, true],
+      [`https://${HOST}`, true],
+      [`https://${CHINA_HOST}/mcp`, true],
+      [`http://${HOST}/mcp`, false],
+      [`https://${HOST}/mcp/x`, false],
+      ["https://evil.example.com/mcp", false],
+    ])("the URL pattern takes %s: %p", (url, matches) => {
+      expect(new RegExp(`^${withTools().inputs.gateways.tools.url.pattern}$`).test(url)).toBe(
+        matches,
+      );
+    });
+  });
+
   test("names itself @box/agentcore and ships as a support pack", () => {
     const toml = pack([]);
     expect(toml.pack).toEqual({ name: "@box/agentcore", version: 1, kind: "support" });

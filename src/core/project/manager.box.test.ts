@@ -12,6 +12,7 @@ import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
+import { customJwtGatewayNotice } from "./boxNetwork/projectGateways";
 import { boxStartFolder } from "./templates/boxProfile";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
@@ -370,6 +371,36 @@ describe("gateway targets in a Box project", () => {
       'Gateways "box" and "agent-box-egress" both set AGENTCORE_GATEWAY_BOX_* on runtime "agent".',
     );
     expect(await specText(project)).toBe(before);
+  });
+
+  test("add runtime gives the notice of each CUSTOM_JWT gateway without boundRuntime, as the new runtime is boxed", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const spec = await specOnDisk(project);
+    spec.agentCoreGateways.push({
+      name: "secure",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+          allowedAudience: ["agentcore"],
+        },
+      },
+      protocolType: "MCP",
+      targets: [],
+    } as never);
+    await writeFile(join(project.rootPath, "agentcore", "agentcore.json"), JSON.stringify(spec));
+
+    const warnings: string[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      if (next.value.type === "warning") warnings.push(next.value.message);
+    }
+
+    expect(warnings).toContain(customJwtGatewayNotice("secure"));
   });
 
   test("add runtime gives the new runtime a box, its Box gateway, and its own box profile", async () => {

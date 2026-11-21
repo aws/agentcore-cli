@@ -278,11 +278,17 @@ export const PassthroughConfigSchema = z
     endpoint: z
       .string()
       .min(1)
-      .regex(/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/, "Must be a valid HTTPS URL"),
+      .regex(/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/, "Must be a valid HTTPS URL")
+      .optional(),
+    /** A gateway of this project, in place of `endpoint`: the CDK library calls its URL. */
+    gateway: GatewayNameSchema.optional(),
     protocolType: PassthroughProtocolTypeSchema.default("CUSTOM"),
     stickinessConfiguration: StickinessConfigSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((config) => (config.endpoint === undefined) !== (config.gateway === undefined), {
+    message: "A passthrough configuration needs exactly one of endpoint and gateway.",
+  });
 export type PassthroughConfig = z.infer<typeof PassthroughConfigSchema>;
 const TARGET_CONFIGURATION_FIELDS = [
   "toolDefinitions",

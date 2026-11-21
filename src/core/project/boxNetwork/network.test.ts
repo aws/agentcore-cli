@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   getBoxGatewayAgentCoreTargetSpec,
   getBoxGatewayBedrockTargetSpec,
@@ -7,6 +8,7 @@ import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
+import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
@@ -45,6 +47,11 @@ interface Options {
   readonly credentials?: ProjectSpec["credentials"];
   readonly grantedActions?: string[];
   readonly executionRoleArn?: string;
+  /** The other gateways of the project, after the Box gateway. */
+  readonly gateways?: Record<string, unknown>[];
+  readonly runtime?: Partial<ProjectRuntime>;
+  /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
+  readonly projectGatewayCheck?: PassthroughGatewayCheck;
 }
 
 /** The local box profile of runtime `agent`. */
@@ -56,10 +63,11 @@ const PROFILE = ".box/agent/local/profile.toml";
  * sets `packs` on line 1, then each entry of `egress` and `mcp` on a line of its own.
  */
 function model(policy: string, egress: Record<string, unknown> = {}, options: Options = {}) {
+  const runtime = { ...RUNTIME, ...options.runtime } as ProjectRuntime;
   const spec = {
     name: "demo",
     projectType: "box",
-    runtimes: [RUNTIME],
+    runtimes: [runtime],
     memories: [],
     credentials: options.credentials ?? [],
     agentCoreGateways: [
@@ -68,6 +76,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
         targets: options.targets ?? [],
         ...(options.executionRoleArn && { executionRoleArn: options.executionRoleArn }),
       },
+      ...(options.gateways ?? []),
     ],
   } as unknown as ProjectSpec;
   const mcp = options.mcp ?? {};
@@ -89,11 +98,12 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
   );
   const network = buildBoxNetwork(parsed, failures, {
     spec,
-    runtime: RUNTIME,
+    runtime,
     gateway: "agent-box-egress",
     region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
+    projectGatewayCheck: options.projectGatewayCheck ?? { accepts: true },
   });
   return {
     spec,
@@ -1188,5 +1198,240 @@ describe("warnings", () => {
 
       expect(boxGatewayIamWarnings(r.spec, { ...r.network, region: "cn-north-1" })).toEqual([]);
     });
+  });
+});
+
+describe("the gateways of the project", () => {
+  const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
+  const OPEN = { name: "open-tools", authorizerType: "NONE", targets: [] };
+  const JWT = { name: "jwt-tools", authorizerType: "CUSTOM_JWT", targets: [] };
+  const OTHER_BOX = { ...boxGatewaySpec("other"), targets: [] };
+
+  test("gives the agent each gateway without boundRuntime, with its target and its variables", () => {
+    const { network } = model("", {}, { gateways: [TOOLS, OPEN, OTHER_BOX] });
+
+    expect(network.projectGateways).toEqual([
+      {
+        name: "tools",
+        target: "egress-gateway-tools",
+        variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+        auth: "iam",
+      },
+      {
+        name: "open-tools",
+        target: "egress-gateway-open-tools",
+        variablePrefix: "AGENTCORE_GATEWAY_OPEN_TOOLS",
+        auth: "none",
+      },
+    ]);
+    expect(network.failures).toEqual([]);
+  });
+
+  test.each([
+    [
+      { accepts: false, reason: "refuses" },
+      "the @aws/agentcore-cdk in agentcore/cdk does not accept passthrough.gateway. Update " +
+        "@aws/agentcore-cdk in agentcore/cdk/package.json to a version that accepts it, then " +
+        "build again.",
+    ],
+    [
+      { accepts: false, reason: "not-installed" },
+      "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, " +
+        "then build again.",
+    ],
+    [
+      { accepts: false, reason: "no-node" },
+      "build cannot run node to check the @aws/agentcore-cdk in agentcore/cdk. Put node on " +
+        "PATH, then build again.",
+    ],
+    [
+      { accepts: false, reason: "timed-out" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk took more than 60 seconds. Build " +
+        "again.",
+    ],
+    [
+      { accepts: false, reason: "failed", detail: "the library is broken" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk failed: the library is broken. " +
+        "Build again.",
+    ],
+  ] as const)(
+    "gives the agent no gateway, and one warning that says why, when the check gives %o",
+    (projectGatewayCheck, why) => {
+      const { network } = model("", {}, { gateways: [TOOLS, OPEN], projectGatewayCheck });
+
+      expect(network.projectGateways).toEqual([]);
+      expect(network.failures).toEqual([]);
+      expect(network.warnings).toEqual([
+        "The gateways 'tools' and 'open-tools' of this project get no route for a boxed agent " +
+          `on AgentCore Runtime, because ${why}`,
+      ]);
+    },
+  );
+
+  test("gives a PRIVATE_VPC runtime no gateway, as the CDK library binds none to it", () => {
+    const { network } = model(
+      "",
+      {},
+      { gateways: [TOOLS], runtime: { containment: "PRIVATE_VPC" } },
+    );
+
+    expect(network.projectGateways).toEqual([]);
+  });
+
+  test("gives the agent no route to a CUSTOM_JWT gateway, and no warning on each build", () => {
+    const { network } = model("", {}, { gateways: [JWT] });
+
+    expect(network.projectGateways).toEqual([]);
+    expect(network.warnings).toEqual([]);
+  });
+
+  test("fails two gateways whose targets still have one name, as for two hosts", () => {
+    // The target of "a--b" ends in the hash of its name, which a second gateway can have as a name.
+    const hash = createHash("sha256").update("a--b").digest("hex").slice(0, 8);
+    const first = { name: "a--b", authorizerType: "AWS_IAM", targets: [] };
+    const second = { name: `a-b-${hash}`, authorizerType: "AWS_IAM", targets: [] };
+    const r = model("", {}, { gateways: [first, second] });
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", `egress-gateway-a-b-${hash}`]]);
+    expect(r.reasons()).toEqual([
+      `The gateways 'a--b' and 'a-b-${hash}' of this project would both get the gateway target ` +
+        `'egress-gateway-a-b-${hash}'. Rename one of the gateways.`,
+    ]);
+  });
+
+  test("fails an entry whose target would take the name of a gateway's target", () => {
+    const r = model(
+      "",
+      { "gateway-tools": { destinations: ["x.example.com"] } },
+      { gateways: [TOOLS] },
+    );
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "gateway-tools"]]);
+    expect(r.reasons()[0]).toContain("the target that build adds for the gateway 'tools'");
+  });
+
+  test("keeps the target that build wrote for a gateway as build's own", () => {
+    const written = {
+      name: "egress-gateway-tools",
+      targetType: "passthrough",
+      passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+    } as AgentCoreGatewayTarget;
+
+    expect(model("", {}, { gateways: [TOOLS], targets: [written] }).failures()).toEqual([]);
+  });
+
+  test("counts the gateways' targets toward the limit of 100", () => {
+    const egress = Object.fromEntries(
+      Array.from({ length: 100 }, (_, i) => [`h${i}`, { destinations: [`h${i}.example.com`] }]),
+    );
+    const r = model("", egress, { gateways: [TOOLS] });
+
+    expect(r.reasons()).toEqual([
+      "The gateway 'agent-box-egress' needs 101 targets, 100 for the hosts of the Box profile, 1 " +
+        "for the gateways of the project, and 0 of your own, and a gateway can have at most 100. " +
+        "Remove hosts from the profile, or targets from the gateway.",
+    ]);
+  });
+
+  test.each([
+    [
+      "an [egress] entry",
+      { tools: { destinations: [GATEWAY_HOST], secret: { ref: "aws://" } } },
+      {},
+    ],
+    [
+      "an HTTP [mcp] server",
+      {},
+      { mcp: { tools: { type: "http", destinations: [GATEWAY_HOST], secret: { ref: "aws://" } } } },
+    ],
+  ])(
+    "refuses %s that signs for a gateway host, and names the route build adds",
+    (_, egress, options) => {
+      const r = model("", egress, { ...options, gateways: [TOOLS] });
+
+      expect(r.failures().map(([code]) => code)).toEqual(["UNSIGNABLE_HOST"]);
+      expect(r.reasons()[0]).toContain(
+        `signs requests to ${GATEWAY_HOST}, the host of an AgentCore gateway, with aws://. Build ` +
+          "signs only for the gateways of this project, and it adds the route to each of them on " +
+          "AgentCore Runtime itself, as [mcp.<gateway name>]",
+      );
+    },
+  );
+});
+
+const GATEWAY_HOST =
+  "other-project-tools-abcdefghij.gateway.bedrock-agentcore.us-west-2.amazonaws.com";
+
+describe("boxGatewayIamWarnings for a gateway of the project", () => {
+  test("gives no warning for a target that names a gateway, which the CDK library grants", () => {
+    const spec = {
+      name: "demo",
+      projectType: "box",
+      runtimes: [RUNTIME],
+      agentCoreGateways: [
+        {
+          ...boxGatewaySpec("agent"),
+          targets: [
+            {
+              name: "egress-gateway-tools",
+              targetType: "passthrough",
+              passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+              outboundAuth: {
+                type: "GATEWAY_IAM_ROLE",
+                service: "bedrock-agentcore",
+                region: "us-west-2",
+              },
+            },
+          ],
+        },
+        { name: "tools", authorizerType: "AWS_IAM", targets: [] },
+      ],
+    } as unknown as ProjectSpec;
+
+    expect(
+      boxGatewayIamWarnings(spec, {
+        runtime: "agent",
+        gateway: "agent-box-egress",
+        grantedActions: [],
+        region: "us-west-2",
+      }),
+    ).toEqual([]);
+  });
+
+  test("warns for a target to a gateway host that the role has no InvokeGateway for", () => {
+    const spec = {
+      name: "demo",
+      projectType: "box",
+      runtimes: [RUNTIME],
+      agentCoreGateways: [
+        {
+          ...boxGatewaySpec("agent"),
+          targets: [
+            passthrough("mine", `https://${GATEWAY_HOST}`, {
+              outboundAuth: {
+                type: "GATEWAY_IAM_ROLE",
+                service: "bedrock-agentcore",
+                region: "us-west-2",
+              },
+            }),
+          ],
+          additionalPolicies: ["agentcore/box-memory-policy.json"],
+        },
+      ],
+    } as unknown as ProjectSpec;
+    const network = { runtime: "agent", gateway: "agent-box-egress", region: "us-west-2" };
+
+    expect(boxGatewayIamWarnings(spec, { ...network, grantedActions: [] })).toEqual([
+      `Target 'mine' calls ${GATEWAY_HOST} with the gateway's role, which has no bedrock-agentcore ` +
+        "permissions for that host. Add an IAM policy file to additionalPolicies of the " +
+        "'agent-box-egress' gateway.",
+    ]);
+    expect(
+      boxGatewayIamWarnings(spec, {
+        ...network,
+        grantedActions: ["bedrock-agentcore:InvokeGateway"],
+      }),
+    ).toEqual([]);
   });
 });

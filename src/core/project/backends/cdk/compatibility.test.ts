@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { cdkCompatibilityWarning, MINIMUM_COMPATIBLE_CDK_VERSION } from "./compatibility";
+import {
+  cdkAcceptsPassthroughGateway,
+  cdkCompatibilityWarning,
+  MINIMUM_COMPATIBLE_CDK_VERSION,
+} from "./compatibility";
 
 const tempDirectories: string[] = [];
 
@@ -55,5 +59,79 @@ describe("cdkCompatibilityWarning", () => {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-compatibility-"));
     tempDirectories.push(directory);
     expect(await cdkCompatibilityWarning(directory)).toBeUndefined();
+  });
+});
+
+describe("cdkAcceptsPassthroughGateway", () => {
+  /** A CDK app whose @aws/agentcore-cdk has the module text `index`. */
+  async function cdkDirectoryWithIndex(index: string | undefined): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-passthrough-gateway-"));
+    tempDirectories.push(directory);
+    if (index === undefined) return directory;
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await mkdir(packageDirectory, { recursive: true });
+    await writeFile(
+      join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@aws/agentcore-cdk", version: "1.1.0", main: "index.js" }),
+    );
+    await writeFile(join(packageDirectory, "index.js"), index);
+    return directory;
+  }
+  /** A library that exports `AgentCoreGatewayTargetSchema` as `schema`, a JS text. */
+  const exporting = (schema: string) => `exports.AgentCoreGatewayTargetSchema = ${schema};\n`;
+  /** As each @aws/agentcore-cdk parses the passthrough of a target: with `gateway`, or `endpoint` only. */
+  const WITH_GATEWAY = exporting(
+    "{ safeParse: (target) => ({ success: typeof target.passthrough.gateway === 'string' }) }",
+  );
+  const ENDPOINT_ONLY = exporting(
+    "{ safeParse: (target) => ({ success: typeof target.passthrough.endpoint === 'string' }) }",
+  );
+  const withNode = test.skipIf(!Bun.which("node"));
+
+  withNode("accepts when the installed library accepts passthrough.gateway", async () => {
+    expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryWithIndex(WITH_GATEWAY))).toEqual({
+      accepts: true,
+    });
+  });
+
+  withNode.each([
+    ["requires passthrough.endpoint", ENDPOINT_ONLY],
+    ["has no AgentCoreGatewayTargetSchema", "exports.Other = 1;\n"],
+  ])("refuses when the installed library %s", async (_, index) => {
+    expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryWithIndex(index))).toEqual({
+      accepts: false,
+      reason: "refuses",
+    });
+  });
+
+  withNode("says that the library is not installed", async () => {
+    expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryWithIndex(undefined))).toEqual({
+      accepts: false,
+      reason: "not-installed",
+    });
+  });
+
+  withNode("says that the check failed, with the error of the library", async () => {
+    const directory = await cdkDirectoryWithIndex('throw new Error("the library is broken");\n');
+    expect(await cdkAcceptsPassthroughGateway(directory)).toEqual({
+      accepts: false,
+      reason: "failed",
+      detail: "the library is broken",
+    });
+  });
+
+  withNode("says that the check took too long", async () => {
+    const directory = await cdkDirectoryWithIndex("while (true) {}\n");
+    expect(await cdkAcceptsPassthroughGateway(directory, { timeoutMs: 500 })).toEqual({
+      accepts: false,
+      reason: "timed-out",
+    });
+  });
+
+  test("says that build cannot run node", async () => {
+    const directory = await cdkDirectoryWithIndex(WITH_GATEWAY);
+    expect(
+      await cdkAcceptsPassthroughGateway(directory, { node: "/nonexistent/agentcore-test/node" }),
+    ).toEqual({ accepts: false, reason: "no-node" });
   });
 });

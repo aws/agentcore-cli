@@ -707,3 +707,68 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
     expect(old.mcp).toBeUndefined();
   });
 });
+
+describe("the gateway rule for a gateway of the project", () => {
+  const TOOLS = {
+    name: "tools",
+    target: "egress-gateway-tools",
+    variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+    auth: "iam",
+  } as const;
+  const PROFILE_TEXT = 'packs = ["@box/base"]\n\n[profile]\nname = "demo"\n';
+  const withGateways = (text: string) =>
+    apply(parse(text) as TomlTable, { ...contextOf(text, []), projectGateways: [TOOLS] });
+
+  test("adds an HTTP server under the gateway's name, to its host on the Runtime, through its target", () => {
+    const result = withGateways(PROFILE_TEXT);
+
+    expect(result.problems).toEqual([]);
+    expect(serializeRuntimeProfile({ mcp: result.table.mcp as TomlTable })).toBe(
+      "[mcp.tools]\n" +
+        'type = "http"\n' +
+        'destinations = [ "${{ inputs.gateways.tools.host }}" ]\n\n' +
+        "[[mcp.tools.backends]]\n" +
+        'url = "${{ inputs.gateway.url }}/egress-gateway-tools"\n\n' +
+        "[mcp.tools.backends.auth]\n" +
+        'ref = "aws://"\n\n' +
+        "[mcp.tools.backends.auth.aws]\n" +
+        'service = "bedrock-agentcore"\n' +
+        'region = "${{ inputs.aws.region }}"\n\n',
+    );
+  });
+
+  test("adds no server to the local profile's own tables when the project has no gateway", () => {
+    const result = apply(parse(PROFILE_TEXT) as TomlTable, contextOf(PROFILE_TEXT, []));
+
+    expect(result.table.mcp).toBeUndefined();
+  });
+
+  test("adds the server of a gateway whose name is a key of every object, such as constructor", () => {
+    const named = { ...TOOLS, name: "constructor", target: "egress-gateway-constructor" };
+    const result = apply(parse(PROFILE_TEXT) as TomlTable, {
+      ...contextOf(PROFILE_TEXT, []),
+      projectGateways: [named],
+    });
+
+    expect(result.problems).toEqual([]);
+    expect(Object.keys(result.table.mcp as TomlTable)).toEqual(["constructor"]);
+  });
+
+  test("stops for a server of the local profile with the gateway's name", () => {
+    const text = `${PROFILE_TEXT}\n[mcp.tools]\ncommand = ["/usr/bin/tools"]\n`;
+
+    const result = withGateways(text);
+
+    expect(result.problems).toEqual([
+      {
+        code: "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
+        key: ["mcp", "tools"],
+        reason:
+          "[mcp.tools] has the name of the gateway 'tools' of this project. On AgentCore " +
+          "Runtime, build adds the server [mcp.tools] so the agent can call that gateway. Rename " +
+          "your server.",
+        place: `${PROFILE}:6:1`,
+      },
+    ]);
+  });
+});
