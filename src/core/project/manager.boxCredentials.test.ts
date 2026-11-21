@@ -172,6 +172,15 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect(await storedKey(created.rootPath)).toBe("ghp_shell");
   });
 
+  test("warns when the shell's reserved variable holds a key other than the route's", async () => {
+    const { subject } = manager({ GITHUB_TOKEN: "ghp_dev", [RESERVED]: "ghp_explicit" });
+    const created = await project(subject, GITHUB_PROFILE);
+
+    const { warnings } = await drain(subject.build(created));
+
+    expect(warnings).toContainEqual(expect.stringContaining("so dev and deploy can differ"));
+  });
+
   test("seeds the key that agentcore dev stored in .env.local under the box variable", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);

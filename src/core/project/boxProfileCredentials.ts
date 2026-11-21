@@ -135,14 +135,23 @@ export function planBoxProfileCredentials(
    * route's variable from the environment, else from `.env.local`. A stored key that differs is
    * replaced, so dev and deploy use the same key after a rotation. False when there is none.
    */
-  const seed = ({ variable }: BoxEnvRoute, credential: string): boolean => {
+  const seed = ({ route, variable }: BoxEnvRoute, credential: string): boolean => {
     const key = credentialEnvVarName(credential);
-    // Set in the environment itself, it is what deploy provisions; nothing to store.
-    if (hasValue(sources.env[key])) return true;
-    if (entries.some((entry) => entry.key === key)) return true;
     const value = hasValue(sources.env[variable])
       ? sources.env[variable]
       : sources.envLocal[variable];
+    // Set in the environment itself, it is what deploy provisions; nothing to store.
+    if (hasValue(sources.env[key])) {
+      if (hasValue(value) && value !== sources.env[key]) {
+        warnings.push(
+          `box egress '${route}': deploy provisions ${key} from the environment, but agentcore ` +
+            `dev uses env://${variable}, which holds a different key, so dev and deploy can ` +
+            `differ. Unset ${key}, or set it to the key in ${variable}`,
+        );
+      }
+      return true;
+    }
+    if (entries.some((entry) => entry.key === key)) return true;
     const stored = sources.envLocal[key];
     if (!hasValue(value)) return hasValue(stored);
     if (value === stored) return true;

@@ -146,6 +146,38 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.entries).toEqual([]);
   });
 
+  test("warns when the shell's reserved variable and the route's variable hold different keys", () => {
+    // Deploy provisions the reserved variable, but agentcore dev hands box the route's variable.
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env: { [RESERVED]: "ghp_explicit" },
+      envLocal: { GITHUB_TOKEN: "ghp_dev" },
+    });
+
+    expect(plan.warnings).toEqual([
+      `box egress 'github': deploy provisions ${RESERVED} from the environment, but agentcore ` +
+        "dev uses env://GITHUB_TOKEN, which holds a different key, so dev and deploy can differ. " +
+        `Unset ${RESERVED}, or set it to the key in GITHUB_TOKEN`,
+    ]);
+    expect(plan.messages).toEqual([]);
+  });
+
+  test.each([
+    ["holds the same key", { GITHUB_TOKEN: "ghp_explicit" }],
+    ["is not set", {}],
+    ["is blank", { GITHUB_TOKEN: " " }],
+  ])(
+    "does not warn about the shell's reserved variable when the route's variable %s",
+    (_label, routeEnv: NodeJS.ProcessEnv) => {
+      const plan = planBoxProfileCredentials(
+        spec([API_KEY]),
+        [GITHUB],
+        shell({ ...routeEnv, [RESERVED]: "ghp_explicit" }),
+      );
+
+      expect(plan.warnings).toEqual([]);
+    },
+  );
+
   test("keeps an earlier build's credential and says what to set when its key has gone", () => {
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
 
