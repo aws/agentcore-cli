@@ -78,7 +78,7 @@ export async function createProjectTree(
     }),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
-      FsTreeNode.createFile("agentcore.json", async () => json(spec)),
+      // The record comes first: a failed write of either file leaves no project with one alone.
       ...(boxGateways.length > 0
         ? [
             FsTreeNode.createFile(BOX_GATEWAY_TARGETS_NAME, async () =>
@@ -86,6 +86,7 @@ export async function createProjectTree(
             ),
           ]
         : []),
+      FsTreeNode.createFile("agentcore.json", async () => json(spec)),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () =>
         config.assetSource.read("templates/shared/env.local.template"),

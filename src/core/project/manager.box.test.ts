@@ -969,6 +969,93 @@ describe("gateway targets in a Box project", () => {
   });
 });
 
+describe("the record of build's targets and agentcore.json, when a write fails", () => {
+  const RECORD = '{\n  "agent-box-egress": ["egress-a"],\n  "search-box-egress": ["egress-s"]\n}\n';
+  const addSearch = (manager: FsProjectManager, project: Project) =>
+    drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+  const flows: [
+    string,
+    string[],
+    (manager: FsProjectManager, project: Project) => Promise<unknown>,
+  ][] = [
+    ["add runtime", ["agent"], addSearch],
+    [
+      "remove runtime",
+      ["agent", "search"],
+      (manager, project) =>
+        manager.removeResource(project, { resourceType: "runtime", name: "search" }),
+    ],
+    ["remove all", ["agent", "search"], (manager, project) => manager.removeAllResources(project)],
+  ];
+
+  test.each(flows)(
+    "%s keeps the record as it was when the write of agentcore.json fails",
+    async (_, runtimes, flow) => {
+      const project = await createdProject(subject(), runtimes);
+      const record = runtimes.length === 1 ? '{\n  "agent-box-egress": ["egress-a"]\n}\n' : RECORD;
+      await writeFile(recordOf(project), record);
+      const before = await specText(project);
+      const specFile = join(project.rootPath, "agentcore", "agentcore.json");
+
+      await expect(flow(subject(refusingSpecWrites(specFile)), project)).rejects.toThrow(
+        `the test refuses the write of ${specFile}`,
+      );
+
+      expect(await specText(project)).toBe(before);
+      expect(await readFile(recordOf(project), "utf8")).toBe(record);
+    },
+  );
+
+  // A read-only record makes its own write fail. Windows has no mode bits, and root writes through them.
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0).each(flows)(
+    "%s keeps agentcore.json as it was when the write of the record fails",
+    async (_, runtimes, flow) => {
+      const project = await createdProject(subject(), runtimes);
+      const record = runtimes.length === 1 ? '{\n  "agent-box-egress": ["egress-a"]\n}\n' : RECORD;
+      await writeFile(recordOf(project), record);
+      await chmod(recordOf(project), 0o444);
+      const before = await specText(project);
+
+      try {
+        await expect(flow(subject(), project)).rejects.toThrow();
+      } finally {
+        await chmod(recordOf(project), 0o644);
+      }
+
+      expect(await specText(project)).toBe(before);
+      expect(await readFile(recordOf(project), "utf8")).toBe(record);
+    },
+  );
+
+  test("create writes the record before agentcore.json, so a failed record write leaves no project", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    await mkdir(join(directory, "example", "agentcore"), { recursive: true });
+    await writeFile(join(directory, "example", "agentcore", "box-gateway-targets.json"), "{}\n");
+
+    await expect(
+      drain(
+        subject().create({
+          name: "example",
+          skipInstall: true,
+          skipGit: true,
+          scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+            runtimeName: "agent",
+          }),
+        }),
+      ),
+    ).rejects.toThrow("File already exists");
+
+    expect(existsSync(join(directory, "example", "agentcore", "agentcore.json"))).toBe(false);
+  });
+});
+
 describe("a project without projectType", () => {
   test("add gateway-target --gateway box fails as before and adds no projectType", async () => {
     const manager = subject();

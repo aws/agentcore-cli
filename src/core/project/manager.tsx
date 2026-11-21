@@ -62,6 +62,7 @@ import {
   addBoxGatewaysToRecord,
   BOX_GATEWAY_TARGETS_FILE,
   removeBoxGatewaysFromRecord,
+  type RestoreRecord,
 } from "./boxGatewayTargets";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
@@ -1077,17 +1078,29 @@ export class FsProjectManager implements ProjectManager {
     yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
 
     let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
+    let restoreRecord: RestoreRecord | undefined;
     try {
       const newSpecParseResult = ProjectSpecSchema.safeParse(projectSpec);
       if (!newSpecParseResult.success)
         throw new ProjectStateError(z.prettifyError(newSpecParseResult.error), {
           cause: newSpecParseResult.error,
         });
+      // Build owns no target of a new Box gateway yet: an empty entry in the record says so. The
+      // record changes first, and goes back when agentcore.json cannot take the gateway.
+      if (input.resourceType === "runtime") {
+        restoreRecord = addBoxGatewaysToRecord(
+          project.rootPath,
+          newSpecParseResult.data.agentCoreGateways.flatMap(({ name, boundRuntime }) =>
+            boundRuntime === input.resourceConfig.name ? [name] : [],
+          ),
+        );
+      }
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
         `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
+      this.restoreRecord(restoreRecord);
       await Promise.all([
         this.discardStaged(scaffoldedPaths),
         envFile?.rollback().catch((e) => {
@@ -1110,21 +1123,25 @@ export class FsProjectManager implements ProjectManager {
         ({ boundRuntime }) => boundRuntime === added,
       );
       yield* boxGatewayLogsWarnings(boxGateways);
-      // Build owns no target of the new Box gateway yet: an empty entry in the record says so.
-      if (
-        addBoxGatewaysToRecord(
-          project.rootPath,
-          boxGateways.map(({ name }) => name),
-        )
-      ) {
-        yield { type: "step", message: `writing ${BOX_GATEWAY_TARGETS_FILE}` };
-      }
+      if (restoreRecord) yield { type: "step", message: `writing ${BOX_GATEWAY_TARGETS_FILE}` };
     }
 
     return {
       ...project,
       spec: newProjectSpec,
     };
+  }
+
+  /** Puts the record of build's targets back after a failed spec write; a failure is logged. */
+  private restoreRecord(restore: RestoreRecord | undefined): void {
+    try {
+      restore?.();
+    } catch (e) {
+      const error = AgentCoreCLIError.fromError(e);
+      this.logger
+        .child({ errorName: error.name, errorMessage: error.message })
+        .warn(`failed to restore ${BOX_GATEWAY_TARGETS_FILE}`);
+    }
   }
 
   /** Best-effort removal of paths an add created; failures are logged, not thrown. */
@@ -1303,12 +1320,19 @@ export class FsProjectManager implements ProjectManager {
       }
     }
 
-    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    // A Box gateway that goes takes its entry in the record of build's targets with it.
-    removeBoxGatewaysFromRecord(
+    // A Box gateway that goes takes its entry in the record of build's targets with it. The record
+    // changes first, and goes back when agentcore.json cannot lose the gateway.
+    const restoreRecord = removeBoxGatewaysFromRecord(
       project.rootPath,
       removedGateways.map(({ name }) => name),
     );
+    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
+    try {
+      newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    } catch (err) {
+      this.restoreRecord(restoreRecord);
+      throw err;
+    }
     // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
     // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
     if (input.resourceType === "runtime") {
@@ -1331,6 +1355,12 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
+    // The record changes first, so a failed write of it changes nothing, and it goes back when
+    // agentcore.json cannot lose the gateways.
+    const restoreRecord = removeBoxGatewaysFromRecord(
+      project.rootPath,
+      existingProjectSpec.agentCoreGateways.map(({ name }) => name),
+    );
     let envFile: EnvLocalFile | undefined;
     let removedEnvKeys: string[] = [];
     const envKeys = existingProjectSpec.credentials.flatMap((credential) =>
@@ -1364,11 +1394,13 @@ export class FsProjectManager implements ProjectManager {
       payments: undefined,
     };
 
-    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
-    removeBoxGatewaysFromRecord(
-      project.rootPath,
-      existingProjectSpec.agentCoreGateways.map(({ name }) => name),
-    );
+    let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
+    try {
+      newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    } catch (err) {
+      this.restoreRecord(restoreRecord);
+      throw err;
+    }
 
     return {
       project: { ...project, spec: newProjectSpec },

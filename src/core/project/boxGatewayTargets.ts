@@ -3,7 +3,7 @@
  * owns those targets, and no other. `agentcore create` and `agentcore add runtime` write an empty
  * entry for each new Box gateway, so the `egress-` rule applies only to a gateway an older CLI made.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { ProjectStateError } from "../../errors/errors";
@@ -43,47 +43,64 @@ export function readBoxGatewayTargets(projectRoot: string): Record<string, strin
   );
 }
 
+/** Puts the record back as it was before a change: its old text, or no file. */
+export type RestoreRecord = () => void;
+
 /**
- * Adds an empty entry for each of `gateways` that the record does not name yet. Returns whether it
- * wrote the record; it leaves a file that is not the record to build, which refuses it.
+ * Adds an empty entry for each of `gateways` that the record does not name yet. Returns the
+ * function that puts the record back, when it wrote the record; it leaves a file that is not the
+ * record to build, which refuses it.
  */
-export function addBoxGatewaysToRecord(projectRoot: string, gateways: readonly string[]): boolean {
-  let record: Record<string, string[]>;
-  try {
-    record = readBoxGatewayTargets(projectRoot) ?? {};
-  } catch (error) {
-    if (error instanceof ProjectStateError) return false;
-    throw error;
-  }
-  const added = gateways.filter((gateway) => !Object.hasOwn(record, gateway));
-  if (added.length === 0) return false;
-  for (const gateway of added) record[gateway] = [];
-  const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
-  writeFileSync(path, boxGatewayTargetsText(record));
-  return true;
+export function addBoxGatewaysToRecord(
+  projectRoot: string,
+  gateways: readonly string[],
+): RestoreRecord | undefined {
+  return changeRecord(projectRoot, (record) => {
+    const added = gateways.filter((gateway) => !Object.hasOwn(record ?? {}, gateway));
+    if (added.length === 0) return undefined;
+    return { ...record, ...Object.fromEntries(added.map((gateway) => [gateway, []])) };
+  });
 }
 
 /**
- * Removes the entry of each of `gateways` from the record, when the record names it. Returns
- * whether it wrote the record; it leaves a file that is not the record to build, which refuses it.
+ * Removes the entry of each of `gateways` from the record, when the record names it. Returns the
+ * function that puts the record back, when it wrote the record; it leaves a file that is not the
+ * record to build, which refuses it.
  */
 export function removeBoxGatewaysFromRecord(
   projectRoot: string,
   gateways: readonly string[],
-): boolean {
+): RestoreRecord | undefined {
+  return changeRecord(projectRoot, (record) => {
+    if (!record || !gateways.some((gateway) => Object.hasOwn(record, gateway))) return undefined;
+    return Object.fromEntries(
+      Object.entries(record).filter(([gateway]) => !gateways.includes(gateway)),
+    );
+  });
+}
+
+/**
+ * Writes the record that `change` makes of the record, or of no record; `undefined` from `change`
+ * writes nothing. Returns the function that puts the old text back, or removes the file.
+ */
+function changeRecord(
+  projectRoot: string,
+  change: (record: Record<string, string[]> | undefined) => Record<string, string[]> | undefined,
+): RestoreRecord | undefined {
   let record: Record<string, string[]> | undefined;
   try {
     record = readBoxGatewayTargets(projectRoot);
   } catch (error) {
-    if (error instanceof ProjectStateError) return false;
+    if (error instanceof ProjectStateError) return undefined;
     throw error;
   }
-  const named = gateways.filter(
-    (gateway) => record !== undefined && Object.hasOwn(record, gateway),
-  );
-  if (record === undefined || named.length === 0) return false;
-  for (const gateway of named) delete record[gateway];
+  const changed = change(record);
+  if (changed === undefined) return undefined;
   const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
-  writeFileSync(path, boxGatewayTargetsText(record));
-  return true;
+  const before = record === undefined ? undefined : readFileSync(path, "utf8");
+  writeFileSync(path, boxGatewayTargetsText(changed));
+  return () => {
+    if (before === undefined) rmSync(path, { force: true });
+    else writeFileSync(path, before);
+  };
 }
