@@ -509,8 +509,13 @@ describe("renderAgentCorePack", () => {
       });
     });
 
+    const CHINA_HOST =
+      "v3demo-default-tools-abcdefghij.gateway.bedrock-agentcore.cn-north-1.amazonaws.com.cn";
+
     test.each([
       [HOST, true],
+      [CHINA_HOST, true],
+      [`${HOST}.cn.evil.example.com`, false],
       [`https://${HOST}`, false],
       [`${HOST}/mcp`, false],
       ["evil.example.com", false],
@@ -524,6 +529,7 @@ describe("renderAgentCorePack", () => {
     test.each([
       [`https://${HOST}/mcp`, true],
       [`https://${HOST}`, true],
+      [`https://${CHINA_HOST}/mcp`, true],
       [`http://${HOST}/mcp`, false],
       [`https://${HOST}/mcp/x`, false],
       ["https://evil.example.com/mcp", false],
