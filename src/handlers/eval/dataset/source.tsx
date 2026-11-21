@@ -15,8 +15,8 @@ export const MAX_INLINE_EXAMPLES = 1000;
 export const sourceFlag = flag(
   "source",
   "dataset examples: a JSONL file (file://<path>), an S3 JSONL object (s3://<bucket>/<key>), " +
-    "or - for stdin",
-  z.string().min(1),
+    "or - for stdin; omit to create an empty dataset",
+  z.string().min(1).optional(),
 );
 
 // resolveDatasetSource turns the single --source value into the API's

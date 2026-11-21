@@ -1,3 +1,4 @@
+import { partition } from "@aws-sdk/util-endpoints";
 import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -38,6 +39,11 @@ export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 /** The name of the Box gateway's Bedrock model target, which build and deploy add. */
 export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
+/** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
+export function boxGatewayBedrockHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
+  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
+}
+
 /** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
 export function getBoxGatewayBedrockTargetSpec(
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
@@ -45,10 +51,7 @@ export function getBoxGatewayBedrockTargetSpec(
   return {
     name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
     targetType: "passthrough",
-    passthrough: {
-      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-      protocolType: "CUSTOM",
-    },
+    passthrough: { endpoint: `https://${boxGatewayBedrockHost(region)}`, protocolType: "CUSTOM" },
     outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
   };
 }
@@ -61,7 +64,7 @@ export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
 
 /** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
 export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-agentcore.${region}.amazonaws.com`;
+  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
 }
 
 /**
@@ -130,6 +133,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     modelProvider: "Bedrock",
     includesMemory: false,
     box: false,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agent-python-minimal-box": {
+    runtimeName: "agent_python_minimal_box",
+    description: "minimal Python project in Strands Box, no agent framework",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -207,6 +222,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "agent-python-langchain-box": {
+    runtimeName: "agent_python_langchain_box",
+    description: "LangChain agent in Strands Box with Bedrock for inference",
+    build: "CodeZip",
+    language: "Python",
+    framework: "langchain",
+    modelProvider: "Bedrock",
+    includesMemory: false,
+    box: true,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "agent-typescript-vercel": {
     runtimeName: "agent_typescript_vercel",
     description: "Vercel AI SDK agent in TypeScript, Bedrock for inference",
@@ -243,6 +270,18 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     runtimeVersion: "PYTHON_3_14",
   },
+  "mcp-python-fastmcp-box": {
+    runtimeName: "mcp_python_fastmcp_box",
+    description: "MCP server exposing tools with FastMCP, in Strands Box",
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: "MCP",
+    includesMemory: false,
+    box: true,
+    supportsModelProviderOverride: false,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "a2a-python-strands": {
     runtimeName: "a2a_python_strands",
     description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
@@ -256,6 +295,20 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
+  "a2a-python-strands-box": {
+    runtimeName: "a2a_python_strands_box",
+    description:
+      "Strands agent speaking the A2A protocol in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "A2A",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
   "agui-python-strands": {
     runtimeName: "agui_python_strands",
     description: "Strands agent speaking AG-UI, Bedrock or another model provider",
@@ -266,6 +319,19 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     modelProvider: "Bedrock",
     includesMemory: true,
     box: false,
+    supportsModelProviderOverride: true,
+    runtimeVersion: "PYTHON_3_14",
+  },
+  "agui-python-strands-box": {
+    runtimeName: "agui_python_strands_box",
+    description: "Strands agent speaking AG-UI in Strands Box, Bedrock or another model provider",
+    build: "CodeZip",
+    language: "Python",
+    framework: "strands",
+    protocol: "AGUI",
+    modelProvider: "Bedrock",
+    includesMemory: true,
+    box: true,
     supportsModelProviderOverride: true,
     runtimeVersion: "PYTHON_3_14",
   },
@@ -323,6 +389,10 @@ export const PROJECT_TEMPLATE_NAMES = [
   ...RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   EMPTY_TEMPLATE_NAME,
 ] as unknown as readonly [TemplateName, ...TemplateName[]];
+
+/** Whether a template runs its agent in Strands Box, the only case where `--containment` applies. */
+export const isBoxTemplate = (template: TemplateName): boolean =>
+  template !== EMPTY_TEMPLATE_NAME && RUNTIME_TEMPLATE_SHORTCUTS[template].box;
 
 /**
  * Long-form `--template` help generated from the same registry used to resolve

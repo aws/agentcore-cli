@@ -3,7 +3,7 @@ import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
 
 /** One `[egress.<name>]` `secret` table, as Box reads it. */
-const BoxEgressSecretSchema = z
+export const BoxEgressSecretSchema = z
   .object({
     ref: z.string().min(1),
     header: z.string().min(1).optional(),

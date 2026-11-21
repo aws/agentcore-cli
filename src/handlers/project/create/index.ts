@@ -7,10 +7,14 @@ import { runWithProgress } from "../../../tui/progress";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   formatTemplateParameterHelp,
+  isBoxTemplate,
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
+  CONTAINMENT_LEVELS,
+  PRIVATE_VPC_NOTE,
   type CreateProjectInput,
   type ModelProvider,
   type ProjectManager,
@@ -110,6 +114,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
+        "containment",
+        "how contained the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(CONTAINMENT_LEVELS).default("sandboxed"),
+      ),
+      flag(
         "skip-install",
         "skip installing dependencies (npm install, uv sync)",
         z.boolean().default(false),
@@ -130,6 +139,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
+        containment: flags["containment"],
         region,
       };
 
@@ -142,6 +152,12 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
                 runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
               }),
             };
+
+      if (flags["containment"] === "private-vpc" && !isBoxTemplate(template)) {
+        throw new InputValidationError(
+          `--containment private-vpc needs a box template: ${RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter(isBoxTemplate).join(", ")}.`,
+        );
+      }
 
       try {
         validateCreateRegionSupport(createInput, region);
@@ -179,12 +195,14 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
-            return;
+          } else {
+            config.io.stderr.write(`created project '${name}' in ./${name}\n`);
+            config.io.stderr.write(
+              `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            );
           }
-          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
-          config.io.stderr.write(
-            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
-          );
+          if (flags["containment"] === "private-vpc")
+            config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
         },
       );
     },

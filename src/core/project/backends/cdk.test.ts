@@ -10,7 +10,7 @@ import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
-import { CdkBackend } from "./cdk";
+import { boxOtelWarnings, CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisionInput,
@@ -67,6 +67,10 @@ function unusedIdentity(): CredentialProviderCalls {
 
 /** A build of a project that has no box runtime. */
 const NO_BOX_NETWORKS = { boxNetworks: [] };
+
+const OTEL_WARNING =
+  "Runtime 'agent' runs its agent in a box, where the agent does not run under " +
+  "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.";
 
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
   return { target: TARGET, confirmTeardown: async () => false, boxNetworks: [], ...overrides };
@@ -328,20 +332,22 @@ describe("CdkBackend.build", () => {
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
   });
 
+  // A CodeZip box build downloads box before it warns, so the cases check the warning itself.
   test.each([
-    ["a box container", "box", true, true],
-    ["a box container with enableOtel false", "box", false, false],
-    ["a container outside a Box project", undefined, true, false],
-  ] as const)("warns that %s sends no traces: %p", async (_label, projectType, otel, warns) => {
-    const input = await project();
-    input.spec = ProjectSpecSchema.parse({
+    ["a box container", "box", "Container", true, true],
+    ["a box CodeZip runtime", "box", "CodeZip", true, true],
+    ["a box container with enableOtel false", "box", "Container", false, false],
+    ["a container outside a Box project", undefined, "Container", true, false],
+  ] as const)("warns that %s sends no traces: %p", (_label, projectType, build, otel, warns) => {
+    const spec = ProjectSpecSchema.parse({
       name: "example",
       version: 2,
       ...(projectType && { projectType }),
       runtimes: [
         {
           name: "agent",
-          build: "Container",
+          build,
+          ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
           entrypoint: "main.py",
           codeLocation: "app/agent",
           ...(projectType && { box: { version: BOX_RELEASE.version } }),
@@ -350,19 +356,48 @@ describe("CdkBackend.build", () => {
       ],
       agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
     });
+
+    expect(boxOtelWarnings(spec)).toEqual(warns ? [OTEL_WARNING] : []);
+  });
+
+  test("build yields the OTEL warning of a box runtime", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent")],
+    });
     await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
     await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
 
-    const events = await collect(harness().backend.build(input, NO_BOX_NETWORKS));
+    // Build stages box from the runtime's Box network model, with its derived Runtime profile.
+    const boxNetworks = [
+      {
+        runtime: "agent",
+        gateway: "agent-box-egress",
+        region: "us-west-2",
+        hosts: [],
+        envRoutes: [],
+        policyFiles: [],
+        runtimeProfile: { packs: ["@box/base", "@box/agentcore"] },
+        grantedActions: [],
+        warnings: [],
+        failures: [],
+      },
+    ];
+    const events = await collect(harness().backend.build(input, { boxNetworks }));
 
-    const warning: ProjectEvent = {
-      type: "warning",
-      message:
-        "Runtime 'agent' runs its agent in a box, whose image does not run " +
-        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
-    };
-    if (warns) expect(events).toContainEqual(warning);
-    else expect(events).not.toContainEqual(warning);
+    expect(events).toContainEqual({ type: "warning", message: OTEL_WARNING } as ProjectEvent);
   });
 
   test("warns but continues when the installed CDK is legacy", async () => {
@@ -1566,6 +1601,174 @@ describe("CdkBackend.resolveProjectResources", () => {
     ]);
     expect(subject.stackReads).toEqual([]);
     expect(subject.accountCredentials).toEqual([]);
+  });
+
+  /** Each gateway's targets as `[gateway, [[target, id]...]]`; a target with no id has none. */
+  const gatewayTargetIds = (resources: ResolvedProjectResource[]) =>
+    resources
+      .filter(({ resourceType }) => resourceType === "gateway")
+      .map(({ name, children }) => [
+        name,
+        (children ?? []).map((child) => [
+          child.name,
+          child.deploymentState === "deployed" && "id" in child ? child.id : undefined,
+        ]),
+      ]);
+
+  const ONE = boxGatewaySpec("agent").name;
+  const TWO = boxGatewaySpec("second_agent").name;
+  /** A gateway and its target names; a deployed gateway, the target id exports, and the ids expected. */
+  test.each([
+    {
+      title: "a target name that two gateways share gets the id of its own gateway",
+      gateways: [
+        [ONE, ["bedrock", "egress-github"]],
+        [TWO, ["bedrock"]],
+      ],
+      deployed: [ONE, TWO],
+      exports: {
+        [`${ONE}:bedrock`]: "bedrock-of-one",
+        [`${TWO}:bedrock`]: "bedrock-of-two",
+        "egress-github": "github-of-one",
+      },
+      expected: [
+        [
+          ONE,
+          [
+            ["bedrock", "bedrock-of-one"],
+            ["egress-github", "github-of-one"],
+          ],
+        ],
+        [TWO, [["bedrock", "bedrock-of-two"]]],
+      ],
+    },
+    {
+      title: "the target of one gateway gets the export name without the gateway",
+      gateways: [[ONE, ["bedrock"]]],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-1" },
+      expected: [[ONE, [["bedrock", "bedrock-1"]]]],
+    },
+    {
+      title:
+        "a target name with a hyphen does not take the id of a gateway and target joined by a hyphen",
+      gateways: [
+        ["a", ["b"]],
+        ["tools", ["a-b"]],
+      ],
+      deployed: ["a", "tools"],
+      exports: { b: "b-of-a", "a-b": "a-b-of-tools" },
+      expected: [
+        ["a", [["b", "b-of-a"]]],
+        ["tools", [["a-b", "a-b-of-tools"]]],
+      ],
+    },
+    {
+      title: "a target of one gateway does not take the id of a target named after the gateway",
+      gateways: [["tools", ["search", "tools-search"]]],
+      deployed: ["tools"],
+      exports: { search: "search-1", "tools-search": "tools-search-1" },
+      expected: [
+        [
+          "tools",
+          [
+            ["search", "search-1"],
+            ["tools-search", "tools-search-1"],
+          ],
+        ],
+      ],
+    },
+    {
+      title:
+        "a shared target name with a hyphen does not give its id to the target of another gateway",
+      gateways: [
+        ["a", ["b-c"]],
+        ["x", ["b-c"]],
+        ["a-b", ["c"]],
+      ],
+      deployed: ["a", "x", "a-b"],
+      exports: { "a:b-c": "b-c-of-a", "x:b-c": "b-c-of-x", c: "c-of-a-b" },
+      expected: [
+        ["a", [["b-c", "b-c-of-a"]]],
+        ["x", [["b-c", "b-c-of-x"]]],
+        ["a-b", [["c", "c-of-a-b"]]],
+      ],
+    },
+    {
+      title:
+        "a shared target name of a gateway with an underscore gets the export name with a hyphen",
+      gateways: [
+        ["my_tools", ["search"]],
+        ["other", ["search"]],
+      ],
+      deployed: ["my_tools", "other"],
+      exports: { "my-tools:search": "search-of-my-tools", "other:search": "search-of-other" },
+      expected: [
+        ["my_tools", [["search", "search-of-my-tools"]]],
+        ["other", [["search", "search-of-other"]]],
+      ],
+    },
+    {
+      title:
+        "a target name that two gateways share gives no id while the stack has only the export without the gateway",
+      gateways: [
+        [ONE, ["bedrock"]],
+        [TWO, ["bedrock"]],
+      ],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-of-one" },
+      expected: [
+        [ONE, [["bedrock", undefined]]],
+        [TWO, [["bedrock", undefined]]],
+      ],
+    },
+    {
+      title:
+        "a target of a gateway that is not deployed gives no id, also when an export has its name",
+      gateways: [
+        [ONE, ["bedrock"]],
+        [TWO, ["egress-github"]],
+      ],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-of-one", "egress-github": "github-of-a-previous-deploy" },
+      expected: [
+        [ONE, [["bedrock", "bedrock-of-one"]]],
+        [TWO, [["egress-github", undefined]]],
+      ],
+    },
+  ] as {
+    title: string;
+    gateways: [string, string[]][];
+    deployed: string[];
+    exports: Record<string, string>;
+    expected: [string, [string, string | undefined][]][];
+  }[])("$title", async ({ gateways, deployed, exports, expected }) => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      agentCoreGateways: gateways.map(([name, targets]) => ({
+        name,
+        targets: targets.map((target) => ({ name: target })),
+      })),
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          ...deployed.map((gateway) =>
+            out(`${S}-Gateway-${gateway.replace(/_/g, "-")}-Arn`, `arn:gateway/${gateway}`),
+          ),
+          ...Object.entries(exports).map(([name, id]) => out(`${S}-GatewayTarget-${name}-Id`, id)),
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(gatewayTargetIds(resources)).toEqual(expected);
   });
 
   test("nests a gateway's targets under the gateway", async () => {

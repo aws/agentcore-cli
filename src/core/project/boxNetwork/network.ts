@@ -8,6 +8,7 @@ import {
   BOX_GATEWAY_AGENTCORE_TARGET_NAME,
   BOX_GATEWAY_BEDROCK_TARGET_NAME,
   boxGatewayAgentCoreHost,
+  boxGatewayBedrockHost,
 } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
@@ -27,6 +28,10 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
+import { runtimeProfileContext } from "../runtimeProfile/context";
+import { deriveRuntimeProfile } from "../runtimeProfile/derive";
+import { runtimeProfileHeader } from "../runtimeProfile/rules/additions";
+import type { TomlTable } from "../runtimeProfile/types";
 import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import {
@@ -114,10 +119,22 @@ export interface BoxNetwork {
   readonly hosts: readonly BoxNetworkHost[];
   /** The `env://` route of each target that sends an API key, for the credentials writer. */
   readonly envRoutes: readonly BoxEnvRoute[];
-  /** The policy files, relative to `.box/`, to copy beside the AgentCore Runtime profile. */
+  /**
+   * The policy files, relative to the agent's local box folder, to copy beside the AgentCore
+   * Runtime profile.
+   */
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
   readonly telemetry?: readonly CloudWatchTelemetry[];
+  /**
+   * The AgentCore Runtime profile that build derives from the local profile (`deriveRuntimeProfile`
+   * in runtimeProfile/derive.ts), which the runtime profile writer stages; absent when build has no
+   * profile text. It can name a route that the staged file does not have: the writer removes each
+   * route to a target that build does not write (withoutUnsentRoutes in boxNetworkWriters.ts).
+   */
+  readonly runtimeProfile?: TomlTable;
+  /** The comment lines above {@link runtimeProfile} in the staged file. */
+  readonly runtimeProfileHeader?: readonly string[];
   /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
@@ -185,6 +202,23 @@ export function buildBoxNetwork(
   const telemetry =
     parsed.profile.telemetry &&
     withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
+  const source = parsed.profile.source;
+  const context =
+    source &&
+    runtimeProfileContext({
+      spec: project.spec,
+      runtime: project.runtime,
+      profileFile: parsed.profile.path,
+      region: project.region,
+      gateway: { name: project.gateway, targets: project.targets },
+      hosts: targets.hosts,
+      telemetry: telemetry?.telemetry ?? [],
+      places: source.places,
+    });
+  const derived = source && context && deriveRuntimeProfile(source.table, context);
+  failures.push(
+    ...(derived?.problems ?? []).map(({ code, reason, place }) => ({ code, reason, place })),
+  );
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
@@ -193,6 +227,11 @@ export function buildBoxNetwork(
     envRoutes: envRoutesOf(targets.hosts),
     policyFiles: parsed.profile.policyFiles,
     ...(telemetry && { telemetry: telemetry.telemetry }),
+    ...(derived &&
+      context && {
+        runtimeProfile: derived.profile,
+        runtimeProfileHeader: runtimeProfileHeader(context, derived.profile),
+      }),
     grantedActions: project.grantedActions,
     warnings: [
       ...hostWarnings(targets.hosts),
@@ -204,6 +243,7 @@ export function buildBoxNetwork(
         );
       }),
       ...(telemetry?.warnings ?? []),
+      ...(derived?.warnings ?? []),
     ],
     failures,
   };
@@ -589,8 +629,9 @@ function sourceLabel(source: EntrySource): string {
 /**
  * A warning for each target of the network's Box gateway in `spec`, as build writes it, that the
  * gateway signs with its own role for an endpoint that no policy of that role allows. The Bedrock
- * policy file that build writes allows the Bedrock runtime host, and the Memory policy file the
- * Memory host; a gateway that imports its role is the user's to grant.
+ * policy file that build writes allows the Bedrock runtime host of the build region, and the Memory
+ * policy file the Memory host of that region; a gateway that imports its role is the user's to
+ * grant.
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
@@ -614,7 +655,10 @@ export function boxGatewayIamWarnings(
   const allows = (api: AwsEndpointApi, host: string): boolean => {
     switch (api) {
       case "bedrock-runtime":
-        return bedrockListed || grants("bedrock:InvokeModel");
+        return (
+          (bedrockListed && host === boxGatewayBedrockHost(network.region)) ||
+          grants("bedrock:InvokeModel")
+        );
       case "bedrock-control":
         return granted.some(grantsBedrockControlPlane);
       case "bedrock-agentcore":

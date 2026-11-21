@@ -12,8 +12,6 @@ dependencies = [
     "aws-opentelemetry-distro ~= 0.21.0",
     "bedrock-agentcore[strands-agents] >= 1.18.1, < 2.0.0",
     "botocore[crt] ~= 1.43.0",
-    # start.py reads the box profile with tomllib, which Python 3.10 does not have.
-    "tomli >= 2.0.0; python_version < '3.11'",
     "strands-agents{{#if (eq modelProvider "Anthropic")}}[anthropic]{{else}}{{#if (or (eq modelProvider "OpenAI") (eq modelProvider "OpenAICompatible"))}}[openai]{{else}}{{#if (eq modelProvider "Gemini")}}[gemini]{{else}}{{#if (eq modelProvider "LiteLLM")}}[litellm]{{/if}}{{/if}}{{/if}}{{/if}} >= 1.62.0, < 2.0.0",
 ]
 

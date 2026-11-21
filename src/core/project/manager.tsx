@@ -61,15 +61,21 @@ import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileReso
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
-  boxProfilePath,
+  BOX_CODEZIP_ENTRYPOINT,
+  boxAgentDir,
+  boxAwsDir,
+  boxLocalProfileFile,
+  boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
   renderBoxProfile,
+  runsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
-import { assertBoxRuntimesHaveBoxVersion } from "./backends/boxContainer";
-import { BOX_INSTALL_HINT } from "./backends/boxRelease";
+import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
+import { validateBoxRuntimes } from "./boxValidation";
+import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -80,12 +86,14 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
+  boxGatewaySpec,
   isBoundGateway,
   isBoxProject,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   CredentialSchema,
   credentialEnvVarName,
@@ -124,6 +132,7 @@ import {
 import { V0AwsDeploymentTargetsSchema } from "../../projectSchemas/v0";
 import {
   isRuntimeDocsConfig,
+  type RuntimeDocsConfig,
   type RuntimeResourceConfig,
 } from "../../handlers/project/add/runtime/types";
 import { buildDocsRuntimeSpec, runtimeDocsTree } from "./templates/runtimeDocs";
@@ -137,7 +146,7 @@ import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
-import { prepareRuntimes } from "./runtimeBuild";
+import { LATEST_PYTHON, prepareRuntimes } from "./runtimeBuild";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -544,7 +553,7 @@ export class FsProjectManager implements ProjectManager {
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name },
+      { projectName: input.name, privateVpc: input.containment === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -594,6 +603,15 @@ export class FsProjectManager implements ProjectManager {
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
+    if (input.skipInstall && scaffoldRuntimeInput && startsInBoxOnCodeZip(scaffoldRuntimeInput)) {
+      // The box profile keeps the venv out of the project's write grant with an optional
+      // deny_write, which box drops while `.venv` is missing; box then refuses the profile, as the
+      // venv's Python would be writable. An empty `.venv` keeps the profile valid, and `uv sync`
+      // fills it later.
+      await mkdir(join(destination, "app", scaffoldRuntimeInput.runtimeName, ".venv"), {
+        recursive: true,
+      });
+    }
 
     if (scaffoldRuntimeInput) {
       yield* this.writeBoxProfile(destination, input.name, scaffoldRuntimeInput, input.region);
@@ -613,6 +631,8 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
+    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes);
+    if (isBoxProject(project.spec)) yield* boxGatewayLogsWarnings(project.spec.agentCoreGateways);
     return project;
   }
 
@@ -832,7 +852,11 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
-        assertNoSecondBoxRuntime(projectSpec, `runtime '${input.resourceConfig.name}'`);
+        // Every runtime of a Box project runs in a box, so a runtime added to one gets what
+        // create gives a box runtime, with its own box profile in .box/<name>/local/.
+        const boxInput = isBoxProject(projectSpec)
+          ? boxRuntimeInput(projectSpec, input.resourceConfig)
+          : undefined;
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         // The folder may hold the user's own code, but never another resource's.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
@@ -842,6 +866,7 @@ export class FsProjectManager implements ProjectManager {
               `overlaps the files of ${owner}. Choose a different --name.`,
           );
         }
+        if (boxInput) await this.assertNoOtherStartScript(outputPath, input.resourceConfig.name);
         // Rollback removes only what this add created, never a folder the user already had.
         const folderExisted = existsSync(outputPath);
         if (isRuntimeDocsConfig(input.resourceConfig)) {
@@ -871,6 +896,22 @@ export class FsProjectManager implements ProjectManager {
             }
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          if (boxInput) {
+            // A failure here comes before the spec write, whose catch removes what this add
+            // created, so the box scaffold removes it itself.
+            try {
+              yield* this.addBoxRuntime(
+                project.rootPath,
+                projectSpec,
+                boxInput,
+                scaffoldedPaths,
+                options.region ?? (await this.boxBuildRegion()),
+              );
+            } catch (err) {
+              await this.discardStaged(scaffoldedPaths);
+              throw err;
+            }
+          }
           break;
         }
 
@@ -1062,6 +1103,17 @@ export class FsProjectManager implements ProjectManager {
       ]);
       throw err;
     }
+    // After the write, so a failed write gives no notice for a runtime that was not written.
+    if (input.resourceType === "runtime") {
+      const added = input.resourceConfig.name;
+      yield* defaultLogTargetNotices(
+        newProjectSpec,
+        newProjectSpec.runtimes.filter(({ name }) => name === added),
+      );
+      yield* boxGatewayLogsWarnings(
+        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
+      );
+    }
 
     return {
       ...project,
@@ -1071,8 +1123,17 @@ export class FsProjectManager implements ProjectManager {
 
   /** Best-effort removal of paths an add created; failures are logged, not thrown. */
   private async discardStaged(paths: string[]): Promise<void> {
+    // A path inside another one goes with it. Removing both at the same time races: the
+    // recursive remove of the folder can stop on a child the other remove took first.
+    const inside = (child: string, parent: string) => {
+      const path = relative(parent, child);
+      return path !== "" && !path.startsWith("..") && !isAbsolute(path);
+    };
+    const outermost = [...new Set(paths)].filter(
+      (path) => !paths.some((other) => inside(path, other)),
+    );
     await Promise.all(
-      paths.map((p) =>
+      outermost.map((p) =>
         rm(p, { recursive: true, force: true }).catch((e) => {
           const error = AgentCoreCLIError.fromError(e);
           this.logger
@@ -1237,6 +1298,14 @@ export class FsProjectManager implements ProjectManager {
     }
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
+    // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
+    if (input.resourceType === "runtime") {
+      await rm(join(project.rootPath, ...boxAwsDir(input.name).split("/")), {
+        recursive: true,
+        force: true,
+      });
+    }
 
     return {
       project: { ...project, spec: newProjectSpec },
@@ -1323,7 +1392,7 @@ export class FsProjectManager implements ProjectManager {
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
     if (project) assertV1Project(project, "export harness");
     // Export adds a runtime, which a Box project cannot take.
-    if (project) assertNoSecondBoxRuntime(project.spec, "the exported harness as a runtime");
+    if (project) assertNotBoxProject(project.spec, "the exported harness as a runtime");
     if (!project) {
       if (!input.prefetched) {
         throw new ProjectStateError(
@@ -1574,6 +1643,8 @@ export class FsProjectManager implements ProjectManager {
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
     const boxed = await this.applyBoxNetwork(synced.project, "build", await this.boxBuildRegion());
     yield* boxed.events;
     yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
@@ -1597,18 +1668,17 @@ export class FsProjectManager implements ProjectManager {
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
    * (`box profile show --format json --full`) for `region`, then writes what the Box network
-   * writers derive from it, before synth reads agentcore.json and staging renders each Runtime
-   * profile's routes from its Box gateway's targets: agentcore.json once, patched in the raw file
-   * so unknown fields and key order survive and checked against the schema first, then the files,
-   * then `.env.local`. A failure of any model stops `command` before anything is written.
+   * writers derive from it, before synth reads agentcore.json and staging writes the Runtime
+   * profile that each model derives (`BoxNetwork.runtimeProfile`): agentcore.json once, patched in
+   * the raw file so unknown fields and key order survive and checked against the schema first,
+   * then the files, then `.env.local`. A failure of any model stops `command` before anything is
+   * written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
     region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    // Every runtime of a Box project runs in a box, so stop before anything is written.
-    assertBoxRuntimesHaveBoxVersion(project.spec);
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
@@ -1657,7 +1727,8 @@ export class FsProjectManager implements ProjectManager {
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {
-      const { written } = await envLocal.insertIfNew([...edits.envLocal]);
+      // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
+      const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
     const warnings = networks.flatMap((network) => [
@@ -1680,7 +1751,9 @@ export class FsProjectManager implements ProjectManager {
     const runtimes = input.runtimeNames
       ? project.spec.runtimes.filter((runtime) => input.runtimeNames!.includes(runtime.name))
       : project.spec.runtimes;
-    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose);
+    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose, {
+      boxProject: isBoxProject(project.spec),
+    });
     if (prepared.changed.length === 0) {
       return { project, messages: prepared.messages, written: false };
     }
@@ -1769,6 +1842,8 @@ export class FsProjectManager implements ProjectManager {
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
     const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
@@ -2056,9 +2131,73 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * Writes the box profile that runs the scaffolded agent into the project's
-   * `.box` folder, named after the project, calling Bedrock in `region`. An
-   * existing profile is the user's, so it is never overwritten.
+   * Gives the runtime `boxInput` names, just added to the Box project `projectSpec`, what create
+   * gives a CodeZip box runtime: `box.version`, start.py as its entry point, its own Box gateway,
+   * and its own box profile in `.box/<name>/local/`. Each path it creates goes into
+   * `scaffoldedPaths`, so a failed add removes it; a file or folder the user already had stays.
+   */
+  private async *addBoxRuntime(
+    projectRoot: string,
+    projectSpec: z.infer<typeof ProjectSpecSchema>,
+    boxInput: ScaffoldRuntimeInput,
+    scaffoldedPaths: string[],
+    region: string,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const name = boxInput.runtimeName;
+    const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
+    // The box release build and deploy ship, as create pins it.
+    runtime.box = { version: BOX_RELEASE.version };
+    // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
+    runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+    projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
+
+    const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
+    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
+    if (!existsSync(startScript)) {
+      scaffoldedPaths.push(startScript);
+      await writeFile(
+        startScript,
+        await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+        { flag: "wx" },
+      );
+    }
+    // The profile keeps the venv out of the write grant with an optional deny_write, which box
+    // drops while `.venv` is missing, and then refuses the profile. An empty `.venv` keeps the
+    // profile valid until `uv sync` fills it.
+    const venv = join(appDir, ".venv");
+    if (!existsSync(venv)) {
+      scaffoldedPaths.push(venv);
+      await mkdir(venv, { recursive: true });
+    }
+    const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
+    if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
+    yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
+  }
+
+  /**
+   * Throws when `appDir` already holds a start.py that is not the one that starts box. A box
+   * runtime runs start.py as its entry point, so AgentCore Runtime would run the user's file with
+   * no box, while build still writes the runtime's box profile and Box gateway.
+   */
+  private async assertNoOtherStartScript(appDir: string, runtimeName: string): Promise<void> {
+    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
+    if (!existsSync(startScript)) return;
+    const boxStart = await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`);
+    if ((await readFile(startScript, "utf8")) === boxStart) return;
+    const shown = `app/${runtimeName}/${BOX_CODEZIP_ENTRYPOINT}`;
+    throw new InputValidationError(
+      `cannot add runtime '${runtimeName}' to a Box project: ${shown} exists, and it is not the ` +
+        `${BOX_CODEZIP_ENTRYPOINT} that starts box. A box runtime runs ${BOX_CODEZIP_ENTRYPOINT} as ` +
+        `its entry point, so AgentCore Runtime would run your file with no box. Rename ${shown}, ` +
+        "then retry.",
+    );
+  }
+
+  /**
+   * Writes the box profile that runs the scaffolded agent into the agent's
+   * `.box/<runtime>/local/` folder, named after the project and the runtime,
+   * calling Bedrock in `region`. An existing profile is the user's, so it is
+   * never overwritten.
    */
   private async *writeBoxProfile(
     projectRoot: string,
@@ -2068,9 +2207,20 @@ export class FsProjectManager implements ProjectManager {
   ): AsyncGenerator<ProjectEvent, void> {
     const text = renderBoxProfile(projectName, runtime, region);
     if (text === undefined) return;
-    const path = boxProfilePath(projectRoot);
+    const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
       yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
+      const kept = ingressPort(await readFile(path, "utf8"));
+      const wanted = ingressPort(text);
+      if (kept !== undefined && wanted !== undefined && kept !== wanted) {
+        yield {
+          type: "warning",
+          message:
+            `box profile ${path} is for another protocol: it listens on port ${kept}, and a ` +
+            `${runtime.protocol ?? "HTTP"} runtime listens on port ${wanted}. Remove ` +
+            `${dirname(path)}, then add the runtime again, or edit the profile.`,
+        };
+      }
       return;
     }
     yield { type: "step", message: `writing box profile ${path}` };
@@ -2241,6 +2391,28 @@ function isInside(path: string, dir: string): boolean {
   );
 }
 
+/** What the CLI tells the user about the `APPLICATION_LOGS` of a Box gateway that it writes. */
+export function boxGatewayLogsNotice(gatewayName: string): string {
+  return (
+    `the Box gateway '${gatewayName}' sends its APPLICATION_LOGS to CloudWatch Logs, which keeps ` +
+    "them for 90 days. They can hold the request and response bodies of its calls, prompts and " +
+    `completions included. To stop them, set "enableApplicationLogs": false on that gateway in ` +
+    "agentcore/agentcore.json"
+  );
+}
+
+/**
+ * A warning for each gateway of `gateways` that is a Box gateway and sends its `APPLICATION_LOGS`.
+ * Each command that writes a new Box gateway gives these warnings: `create` and `add runtime`.
+ */
+function boxGatewayLogsWarnings(
+  gateways: readonly { name: string; boundRuntime?: string; enableApplicationLogs?: boolean }[],
+): ProjectEvent[] {
+  return gateways
+    .filter((gateway) => isBoundGateway(gateway) && gateway.enableApplicationLogs)
+    .map((gateway) => ({ type: "warning", message: boxGatewayLogsNotice(gateway.name) }));
+}
+
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */
 async function readStrandsVersion(agentDir: string): Promise<string> {
   try {
@@ -2252,20 +2424,83 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   }
 }
 
+/** The port of the first `[[agent.ingress]] listen` in the box profile `text`, if it names one. */
+function ingressPort(text: string): string | undefined {
+  return /^\s*listen\s*=\s*"[^"]*:(\d+)"/m.exec(text)?.[1];
+}
+
 /**
- * Refuses to add a runtime to a Box project. A Box project holds one runtime, the one `agentcore
- * create` made from a box template, and runs it in a box with its box profile. The project has
- * one box profile, so a second runtime could not run in a box, and a Box project has no runtime
- * outside one.
+ * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
+ * runs in a box in `spec`, and that does not turn observability off.
  */
-function assertNoSecondBoxRuntime(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
+function defaultLogTargetNotices(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  runtimes: readonly z.infer<typeof ProjectSpecSchema>["runtimes"][number][],
+): ProjectEvent[] {
+  return runtimes
+    .filter((runtime) => runsInBox(isBoxProject(spec), runtime) && !observabilityOff(runtime))
+    .map((runtime) => ({
+      type: "warning",
+      message: defaultLogTargetNotice(runtime.name, boxLocalProfileFile(runtime.name)),
+    }));
+}
+
+/**
+ * Refuses to export a harness as a runtime into a Box project. Every runtime of a Box project runs
+ * in a box, and the exported harness runs its agent the usual way.
+ */
+function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
   if (!isBoxProject(spec)) return;
   throw new ProjectStateError(
-    `cannot add ${what}: a Box project holds one runtime, which \`agentcore ` +
-      "create` makes from a box template (agent-python-strands-box or " +
-      "agent-python-strands-box-container), and every runtime of a Box project runs in a box. " +
-      "Create a separate project for this runtime.",
+    `cannot add ${what}: every runtime of a Box project runs in a box, and the exported ` +
+      "harness does not. Export it into a project that is not a Box project.",
   );
+}
+
+/**
+ * The input that the box profile of `config`, a docs-only runtime added to the Box project `spec`,
+ * renders from: a Python CodeZip agent with the framework `none` and Bedrock, as
+ * agent-python-minimal-box has. Throws for a Bedrock Agent import, for a TypeScript runtime, and
+ * for a runtime whose Box gateway name is taken.
+ */
+function boxRuntimeInput(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  config: RuntimeResourceConfig | RuntimeDocsConfig,
+): ScaffoldRuntimeInput {
+  // The imported agent can call Bedrock Agent and action group hosts that the box profile of a
+  // new runtime does not allow, so a Box project does not take an import yet.
+  if (!isRuntimeDocsConfig(config)) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project from a Bedrock Agent import: every ` +
+        "runtime of a Box project runs in a box, and the box profile of an added runtime does not " +
+        "allow the hosts an imported agent calls. Import it into a project that is not a Box " +
+        "project, or add a runtime with --language python.",
+    );
+  }
+  if (config.language !== "Python") {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project: every runtime of a Box project ` +
+        "runs in a box, and add runtime adds a box runtime only as a Python CodeZip agent. Add " +
+        "it with --language python.",
+    );
+  }
+  const gateway = boxGatewaySpec(config.name).name;
+  if (spec.agentCoreGateways.some(({ name }) => name === gateway)) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}': its Box gateway needs the name '${gateway}', and a ` +
+        "gateway with that name already exists. Choose a different --name.",
+    );
+  }
+  return {
+    runtimeName: config.name,
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: config.protocol ?? "HTTP",
+    modelProvider: "Bedrock",
+    runtimeVersion: LATEST_PYTHON,
+    boxTemplate: true,
+  };
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
 import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
+import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
@@ -25,6 +26,8 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
     hosts: [],
     envRoutes: [],
     policyFiles: [],
+    runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
+    runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
     failures: [],
@@ -310,6 +313,22 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
+  test("writes the Bedrock policy for the region of the bedrock target it writes", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
+
+    const bedrock = edits.spec.agentCoreGateways[0]!.targets.find(({ name }) => name === "bedrock");
+    expect(bedrock?.outboundAuth?.region).toBe("eu-central-1");
+    const policy = edits.files.find(({ path }) => path === BOX_BEDROCK_POLICY_FILE);
+    const resources = JSON.parse((policy as { text: string }).text).Statement.map(
+      ({ Resource }: { Resource: string[] }) => Resource,
+    );
+    expect(resources).toEqual([
+      ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
+      ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
+      ["arn:aws:bedrock:*::foundation-model/*"],
+    ]);
+  });
+
   test("writes the model and Memory targets for the region of the build", () => {
     const project = spec();
     project.memories.push({
@@ -445,7 +464,9 @@ describe("runtimeProfileWriter", () => {
     const writer = runtimeProfileWriter([
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "codezip" },
     ]);
-    const models = [network({ policyFiles: ["policy.dw", "rules/extra.dw"] })];
+    const policies = ["policy.dw", "rules/extra.dw"];
+    const runtimeProfile = { packs: ["@box/base", "@box/agentcore"], policies };
+    const models = [network({ policyFiles: policies, runtimeProfile })];
 
     const { files } = run([writer], models);
 
@@ -461,15 +482,26 @@ describe("runtimeProfileWriter", () => {
       writer.writes(models, contextFor()),
     );
     expect(files.slice(3)).toEqual([
-      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/policy.dw" },
-      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/rules/extra.dw" },
+      { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/agent/local/policy.dw" },
+      { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/agent/local/rules/extra.dw" },
     ]);
-    expect("text" in files[0]! && files[0].text).toContain(
-      'policies = ["policy.dw", "rules/extra.dw"]',
+    // The profile is the one build derived from the local profile, after its header.
+    expect("text" in files[0]! && files[0].text).toBe(
+      serializeRuntimeProfile(runtimeProfile, ["Derived from .box/agent/local/profile.toml."]),
     );
   });
 
-  test("stages only the box/agentcore pack for a container", () => {
+  test("stops for a runtime that it stages with no derived Runtime profile", () => {
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: ".box/agent/aws", kind: "codezip" },
+    ]);
+
+    expect(() => run([writer], [])).toThrow(
+      'runtime "agent" runs its agent in a box, but build has no AgentCore Runtime profile for it',
+    );
+  });
+
+  test("stages only the @box/agentcore pack for a container", () => {
     const writer = runtimeProfileWriter([
       { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
     ]);

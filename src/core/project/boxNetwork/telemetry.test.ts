@@ -107,7 +107,7 @@ describe("cloudWatchTelemetry", () => {
 });
 
 describe("withDeployRegion", () => {
-  const PROFILE = ".box/profile.toml";
+  const PROFILE = ".box/agent/local/profile.toml";
   const logs = { name: "logs", kind: "cloudwatch_logs", logGroup: "g", logStream: "s" } as const;
   const traces = { name: "traces", kind: "cloudwatch_traces" } as const;
 

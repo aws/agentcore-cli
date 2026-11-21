@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
 import { join, relative } from "node:path";
@@ -46,7 +46,8 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { BOX_PROFILE_FILE, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { MissingToolError } from "../../io/exec";
@@ -63,6 +64,7 @@ const AGENT_PYTHON_STRANDS_BOX = resolveRuntimeTemplateShortcut("agent-python-st
 const AGENT_PYTHON_STRANDS_BOX_CONTAINER = resolveRuntimeTemplateShortcut(
   "agent-python-strands-box-container",
 );
+const BOX_PROFILE_FILE = boxLocalProfileFile(AGENT_PYTHON_STRANDS_BOX.runtimeName);
 const AGENT_TYPESCRIPT_STRANDS = resolveRuntimeTemplateShortcut("agent-typescript-strands");
 const A2A_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("a2a-python-strands");
 const AGUI_PYTHON_STRANDS = resolveRuntimeTemplateShortcut("agui-python-strands");
@@ -624,6 +626,34 @@ describe("FsProjectManager.create", () => {
     expect(skipInstall.checkedTools).toEqual(["git"]);
   });
 
+  test("with --skip-install, makes an empty .venv only for a CodeZip box agent", async () => {
+    const directory = await inTempDirectory();
+    const venv = (name: string, runtime: { runtimeName: string }) =>
+      join(directory, name, "app", runtime.runtimeName, ".venv");
+
+    // box drops the profile's optional .venv deny_write while the folder is missing, and then
+    // refuses the profile, as the venv's Python would be under the project's write grant.
+    await runCreate(manager().manager, {
+      name: "codezip",
+      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      skipInstall: true,
+    });
+    expect(readdirSync(venv("codezip", AGENT_PYTHON_STRANDS_BOX))).toEqual([]);
+
+    // A container's image builds its own venv, and an agent outside a box has no profile.
+    for (const [name, runtime] of [
+      ["container", AGENT_PYTHON_STRANDS_BOX_CONTAINER],
+      ["plain", AGENT_PYTHON],
+    ] as const) {
+      await runCreate(manager().manager, {
+        name,
+        scaffoldRuntimeInput: runtime,
+        skipInstall: true,
+      });
+      expect(existsSync(venv(name, runtime))).toBe(false);
+    }
+  });
+
   test("fails before writing files when box is not on PATH, with the install hint", async () => {
     const directory = await inTempDirectory();
     const subject = new FsProjectManager({
@@ -787,24 +817,49 @@ describe("FsProjectManager.create", () => {
 
 describe("FsProjectManager.create box profile", () => {
   test.each([
-    ["after installing", false],
-    ["with --skip-install", true],
-  ])("writes the box profile into the project's .box folder %s", async (_label, skipInstall) => {
+    ["a Box project gets the Box lines", AGENT_PYTHON_STRANDS_BOX, true],
+    ["a project with no box matches v1.x", AGENT_PYTHON, false],
+  ])("writes .gitignore: %s", async (_label, scaffoldRuntimeInput, boxed) => {
     const directory = await inTempDirectory();
-    const { events } = await runCreate(manager().manager, {
+    await runCreate(manager().manager, {
       name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall,
+      scaffoldRuntimeInput,
+      skipInstall: true,
       skipGit: true,
-      region: "eu-west-1",
     });
 
-    const path = join(directory, "example", BOX_PROFILE_FILE);
-    expect(await readFile(path, "utf8")).toBe(
-      renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
-    );
-    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+    const gitignore = await readFile(join(directory, "example", ".gitignore"), "utf8");
+    for (const line of [".box/*/aws/", ".box-dist/", ".box-dev/"]) {
+      expect(gitignore.split("\n").includes(line)).toBe(boxed);
+    }
   });
+
+  test.each([
+    ["after installing", false],
+    ["with --skip-install", true],
+  ])(
+    "writes the box profile into the agent's .box/<name>/local folder %s",
+    async (_label, skipInstall) => {
+      const directory = await inTempDirectory();
+      const { events } = await runCreate(manager().manager, {
+        name: "example",
+        scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+        skipInstall,
+        skipGit: true,
+        region: "eu-west-1",
+      });
+
+      const path = join(directory, "example", BOX_PROFILE_FILE);
+      expect(await readFile(path, "utf8")).toBe(
+        renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
+      );
+      expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+      expect(events).toContainEqual({
+        type: "warning",
+        message: defaultLogTargetNotice(AGENT_PYTHON_STRANDS_BOX.runtimeName, BOX_PROFILE_FILE),
+      });
+    },
+  );
 
   test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
     await inTempDirectory();
@@ -832,7 +887,7 @@ describe("FsProjectManager.create box profile", () => {
     });
 
     const appDir = join(directory, "example", "app", "agent_python_strands_box");
-    // start.py execs box run and exports the paths the box/agentcore-codezip pack reads; no start.sh.
+    // start.py execs box run and exports the paths the @box/agentcore-codezip pack reads; no start.sh.
     const startPy = await readFile(join(appDir, "start.py"), "utf8");
     expect(startPy).toContain("os.execve");
     expect(startPy).toContain("BOX_PYTHON");
@@ -845,7 +900,7 @@ describe("FsProjectManager.create box profile", () => {
   test("leaves an existing box profile unchanged", async () => {
     const directory = await inTempDirectory();
     const path = join(directory, "example", BOX_PROFILE_FILE);
-    await mkdir(join(directory, "example", ".box"), { recursive: true });
+    await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "# mine\n");
 
     const { events } = await runCreate(manager().manager, {
@@ -2077,10 +2132,16 @@ describe("FsProjectManager.build", () => {
       { type: "step", message: "writing agentcore/box-memory-policy.json" },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
-    // The zip carries box and the Runtime profile, staged before synth packages the code.
+    // The zip carries box and the Runtime profile in the code folder's .box-dist.
     const dist = join(directory, "example", "app", "agent_python_strands_box", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
-    expect(existsSync(join(dist, "profile.toml"))).toBe(true);
+    // .box/<agent>/aws has only the rendered Runtime profile, for people to read: box is staged once.
+    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
+    expect(await readFile(join(aws, "profile.toml"), "utf8")).toBe(
+      await readFile(join(dist, "profile.toml"), "utf8"),
+    );
+    expect(existsSync(join(aws, "box"))).toBe(false);
+    expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
   });
 
   test("downloads box from the public box release when it is not cached", async () => {
