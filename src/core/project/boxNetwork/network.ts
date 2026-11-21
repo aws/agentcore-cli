@@ -462,7 +462,21 @@ function hostTargets(
   for (const target of existing) {
     if (!isManagedTarget(target)) owners.set(target.name, `the gateway target '${target.name}'`);
   }
+  const gatewayOf = new Map<string, string>();
   for (const gateway of gateways) {
+    const other = gatewayOf.get(gateway.target);
+    if (other !== undefined) {
+      failures.push({
+        code: "TARGET_NAME_COLLISION",
+        target: gateway.target,
+        reason:
+          `The gateways '${other}' and '${gateway.name}' of this project would both get the ` +
+          `gateway target '${gateway.target}'. Rename one of the gateways.`,
+        place: PROJECT_SPEC_PLACE,
+      });
+      continue;
+    }
+    gatewayOf.set(gateway.target, gateway.name);
     owners.set(gateway.target, `the target that build adds for the gateway '${gateway.name}'`);
   }
   const describeHost = (host: MappedHost) =>

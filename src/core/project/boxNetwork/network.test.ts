@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   getBoxGatewayAgentCoreTargetSpec,
   getBoxGatewayBedrockTargetSpec,
@@ -1257,6 +1258,20 @@ describe("the gateways of the project", () => {
         "signs only with its IAM role, so the boxed agent cannot call 'jwt-tools' on AgentCore " +
         "Runtime. Set its authorizerType to AWS_IAM to let the agent call it.",
     );
+  });
+
+  test("fails two gateways whose targets still have one name, as for two hosts", () => {
+    // The target of "a--b" ends in the hash of its name, which a second gateway can have as a name.
+    const hash = createHash("sha256").update("a--b").digest("hex").slice(0, 8);
+    const first = { name: "a--b", authorizerType: "AWS_IAM", targets: [] };
+    const second = { name: `a-b-${hash}`, authorizerType: "AWS_IAM", targets: [] };
+    const r = model("", {}, { gateways: [first, second] });
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", `egress-gateway-a-b-${hash}`]]);
+    expect(r.reasons()).toEqual([
+      `The gateways 'a--b' and 'a-b-${hash}' of this project would both get the gateway target ` +
+        `'egress-gateway-a-b-${hash}'. Rename one of the gateways.`,
+    ]);
   });
 
   test("fails an entry whose target would take the name of a gateway's target", () => {
