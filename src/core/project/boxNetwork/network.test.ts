@@ -1249,15 +1249,11 @@ describe("the gateways of the project", () => {
     expect(network.projectGateways).toEqual([]);
   });
 
-  test("warns for a CUSTOM_JWT gateway, and gives the agent no route to it", () => {
+  test("gives the agent no route to a CUSTOM_JWT gateway, and no warning on each build", () => {
     const { network } = model("", {}, { gateways: [JWT] });
 
     expect(network.projectGateways).toEqual([]);
-    expect(network.warnings).toContain(
-      "The gateway 'jwt-tools' takes CUSTOM_JWT tokens, and the Box gateway of runtime 'agent' " +
-        "signs only with its IAM role, so the boxed agent cannot call 'jwt-tools' on AgentCore " +
-        "Runtime. Set its authorizerType to AWS_IAM to let the agent call it.",
-    );
+    expect(network.warnings).toEqual([]);
   });
 
   test("fails two gateways whose targets still have one name, as for two hosts", () => {

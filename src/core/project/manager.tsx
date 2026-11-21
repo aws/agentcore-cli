@@ -123,6 +123,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { cdkAcceptsPassthroughGateway } from "./backends/cdk/compatibility";
+import { customJwtGatewayNotice } from "./boxNetwork/projectGateways";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import type { ProjectBackend } from "./backends/types";
 import {
@@ -1102,6 +1103,19 @@ export class FsProjectManager implements ProjectManager {
         }),
       ]);
       throw err;
+    }
+    // After the write, so a failed write gives no notice for a gateway that was not written.
+    if (input.resourceType === "gateway") {
+      const added = newProjectSpec.agentCoreGateways.find(
+        ({ name }) => name === input.resourceConfig.name,
+      );
+      const boxed = newProjectSpec.runtimes.some(
+        (runtime) =>
+          runtimeRunsInBox(newProjectSpec, runtime) && runtime.containment !== "PRIVATE_VPC",
+      );
+      if (added && !added.boundRuntime && added.authorizerType === "CUSTOM_JWT" && boxed) {
+        yield { type: "warning", message: customJwtGatewayNotice(added.name) };
+      }
     }
     // After the write, so a failed write gives no notice for a runtime that was not written.
     if (input.resourceType === "runtime") {
