@@ -58,6 +58,7 @@ describe("the target name of each gateway", () => {
   test.each([
     ["a--b", "a-b"],
     ["x".repeat(95) + "1", "x".repeat(95) + "2"],
+    ["a".repeat(90) + "x1", "a".repeat(90) + "x2"],
   ])("is not the same for %s and %s", (first, second) => {
     const targets = targetsOf(first, second);
     expect(new Set(targets).size).toBe(2);
