@@ -187,13 +187,18 @@ export const ProjectSpecSchema = z
       }
     }
     // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
-    // a runtime belongs to that runtime, so no target of another gateway calls it. Build writes
-    // and removes each target whose name starts with BOX_EGRESS_TARGET_PREFIX, so such a target
-    // that names no such gateway is not refused here: the next build removes it.
+    // a runtime belongs to that runtime, so no target of another gateway calls it. On the Box
+    // gateway of a runtime of a Box project, build writes and removes each target whose name starts
+    // with BOX_EGRESS_TARGET_PREFIX, so such a target that names no such gateway is not refused
+    // here: the next build removes it.
+    const buildOwns = (gateway: { boundRuntime?: string }, target: { name: string }) =>
+      isBoxProject(spec) &&
+      isBoundGateway(gateway) &&
+      target.name.startsWith(BOX_EGRESS_TARGET_PREFIX);
     for (const gateway of spec.agentCoreGateways) {
       for (const target of gateway.targets) {
         const reached = target.passthrough?.gateway;
-        if (reached === undefined || target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)) continue;
+        if (reached === undefined || buildOwns(gateway, target)) continue;
         const named = spec.agentCoreGateways.find((other) => other.name === reached);
         const problem =
           named === undefined

@@ -668,17 +668,44 @@ describe("a passthrough target that names a gateway", () => {
     expect(messages(gateways)).toContainEqual(expect.stringContaining(message));
   });
 
-  test.each([
-    ["no gateway of that name", [front({ gateway: "gone" }, {}, "egress-gateway-gone")]],
-    [
-      "a gateway bound to a runtime",
-      [
-        front({ gateway: "tools" }, {}, "egress-gateway-tools"),
-        { ...TOOLS, boundRuntime: "agent" },
-      ],
-    ],
-  ])("accepts a target that build owns and that names %s, as build removes it", (_, gateways) => {
-    expect(messages(gateways)).toEqual([]);
+  describe("a target that build owns", () => {
+    /** The Box gateway of `agent`, with one egress- target that names `gateway`. */
+    const boxGateway = (gateway: string) => ({
+      ...boxGatewaySpec("agent"),
+      targets: [target({ gateway }, `egress-gateway-${gateway}`)],
+    });
+    const parse = (projectType: string | undefined, gateways: unknown[]) => {
+      const result = ProjectSpecSchema.safeParse({
+        ...minimalProject,
+        ...(projectType && { projectType }),
+        runtimes: [runtime],
+        agentCoreGateways: gateways,
+      });
+      return result.success ? [] : result.error.issues.map(({ message }) => message);
+    };
+
+    test.each([
+      ["no gateway of that name", [boxGateway("gone")]],
+      ["a gateway bound to a runtime", [boxGateway("tools"), { ...TOOLS, boundRuntime: "agent" }]],
+    ])(
+      "is accepted on the Box gateway of a Box project when it names %s, as build removes it",
+      (_, gateways) => {
+        expect(parse("box", gateways)).toEqual([]);
+      },
+    );
+
+    test("is refused on a gateway without boundRuntime, which build does not write", () => {
+      const ordinary = front({ gateway: "gone" }, {}, "egress-foo");
+      expect(parse("box", [boxGatewaySpec("agent"), ordinary])).toContainEqual(
+        expect.stringContaining('Target "egress-foo" of gateway "front" names the gateway "gone"'),
+      );
+    });
+
+    test("is refused in a project that is not a Box project", () => {
+      expect(parse(undefined, [boxGateway("gone")])).toContainEqual(
+        expect.stringContaining('names the gateway "gone" in passthrough.gateway'),
+      );
+    });
   });
 
   test.each([
