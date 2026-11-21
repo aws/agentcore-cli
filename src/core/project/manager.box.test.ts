@@ -233,6 +233,9 @@ describe("agentcore create", () => {
     expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
       projectType ? ["agent-box-egress"] : [],
     );
+    // Box runs only on AgentCore Runtime V2, so only a box runtime pins it.
+    const [runtime] = spec.runtimes as { platformVersion?: string }[];
+    expect(runtime?.platformVersion).toBe(projectType ? "V2" : undefined);
     expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
@@ -388,6 +391,7 @@ describe("gateway targets in a Box project", () => {
     const spec = await parsedSpec(project);
     const search = spec.runtimes.find(({ name }) => name === "search")!;
     expect(search.box).toEqual({ version: BOX_RELEASE.version });
+    expect(search.platformVersion).toBe("V2");
     expect(search.entrypoint).toBe("start.py");
     expect(spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === "search")).toEqual(
       expect.objectContaining(boxGatewaySpec("search")),

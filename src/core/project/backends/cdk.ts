@@ -49,6 +49,8 @@ import {
   type DeployedCredentials,
 } from "./cdk/credentials";
 import {
+  assertPlatformVersions,
+  runtimePlatformVersions,
   assertPrivateVpcs,
   countDeployableResources,
   stackArtifactForTarget,
@@ -364,6 +366,12 @@ export class CdkBackend implements ProjectBackend {
       project.spec.runtimes
         .filter((runtime) => runtime.containment === "PRIVATE_VPC")
         .map((runtime) => runtime.name),
+    );
+    await assertPlatformVersions(
+      this.json,
+      assemblyDirectory,
+      artifact,
+      runtimePlatformVersions(project.spec.runtimes),
     );
 
     // Only after a real deploy is confirmed: a teardown (empty assembly) returns

@@ -74,7 +74,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
-import { validateBoxRuntimes } from "./boxValidation";
+import { assertBoxRuntimesOnRuntimeV2, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -104,7 +104,7 @@ import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
-import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, RuntimeEndpointSchema } from "../../projectSchemas/runtime";
 import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
@@ -1631,6 +1631,8 @@ export class FsProjectManager implements ProjectManager {
     // Half-written project files from an interrupted `agentcore migrate` must not
     // be synced or synthesized; build has no target, so only that state stops it.
     await assertNoPendingMigration(project.rootPath);
+    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
+    assertBoxRuntimesOnRuntimeV2(project.spec);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
     // Every runtime of a Box project runs in a box, so stop before anything is written.
@@ -1827,6 +1829,9 @@ export class FsProjectManager implements ProjectManager {
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
       );
     }
+
+    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
+    assertBoxRuntimesOnRuntimeV2(project.spec);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
@@ -2137,6 +2142,8 @@ export class FsProjectManager implements ProjectManager {
     const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
     // The box release build and deploy ship, as create pins it.
     runtime.box = { version: BOX_RELEASE.version };
+    // Box runs only on AgentCore Runtime V2, as create pins it.
+    runtime.platformVersion = BOX_PLATFORM_VERSION;
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));

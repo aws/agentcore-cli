@@ -5,7 +5,7 @@
  */
 import { ProjectStateError } from "../../errors/errors";
 import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
-import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, type ProjectRuntime } from "../../projectSchemas/runtime";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, runsInBox } from "./templates/boxProfile";
 
@@ -99,4 +99,26 @@ export function assertBoxCodeZipRuntimesStartBox(spec: ProjectSpec): void {
 export function validateBoxRuntimes(spec: ProjectSpec): void {
   assertBoxRuntimesHaveBoxVersion(spec);
   assertBoxCodeZipRuntimesStartBox(spec);
+}
+
+/**
+ * Throws for a runtime of a Box project whose `platformVersion` is not `"V2"`. Box runs only on
+ * AgentCore Runtime V2, and without the field the service picks the platform, which can be V1.
+ * `agentcore create` and `add runtime` write it. Build and deploy call this before the runtime
+ * sync rewrites agentcore.json.
+ */
+export function assertBoxRuntimesOnRuntimeV2(spec: ProjectSpec): void {
+  if (!isBoxProject(spec)) return;
+  for (const runtime of spec.runtimes) {
+    if (runtime.platformVersion === BOX_PLATFORM_VERSION) continue;
+    const actual =
+      runtime.platformVersion === undefined
+        ? "has no platformVersion"
+        : `has "platformVersion": "${runtime.platformVersion}"`;
+    throw new ProjectStateError(
+      `runtime "${runtime.name}" ${actual} in agentcore.json, but every runtime of a Box project ` +
+        `runs on AgentCore Runtime ${BOX_PLATFORM_VERSION}. Set "platformVersion": ` +
+        `"${BOX_PLATFORM_VERSION}" on the runtime in agentcore.json, then retry.`,
+    );
+  }
 }
