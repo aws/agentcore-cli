@@ -9,6 +9,7 @@ import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
+import type { RecordFiles } from "./boxGatewayTargets";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
@@ -33,7 +34,7 @@ afterEach(async () => {
   );
 });
 
-function subject(json?: ReadWriteJson): FsProjectManager {
+function subject(json?: ReadWriteJson, recordFiles?: RecordFiles): FsProjectManager {
   return new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
@@ -41,8 +42,19 @@ function subject(json?: ReadWriteJson): FsProjectManager {
     runner: async () => {},
     checkTool: async () => {},
     ...(json && { json }),
+    ...(recordFiles && { recordFiles }),
   });
 }
+
+/** A writer of the record of build's targets that refuses each write and each removal. */
+const refusingRecordWrites: RecordFiles = {
+  write: (path) => {
+    throw new Error(`the test refuses the write of ${path}`);
+  },
+  remove: (path) => {
+    throw new Error(`the test refuses the removal of ${path}`);
+  },
+};
 
 /** A JSON reader and writer that refuses each write of `specFile`, for each user, root too. */
 function refusingSpecWrites(specFile: string): ReadWriteJson {
@@ -1011,21 +1023,17 @@ describe("the record of build's targets and agentcore.json, when a write fails",
     },
   );
 
-  // A read-only record makes its own write fail. Windows has no mode bits, and root writes through them.
-  test.skipIf(process.platform === "win32" || process.getuid?.() === 0).each(flows)(
+  test.each(flows)(
     "%s keeps agentcore.json as it was when the write of the record fails",
     async (_, runtimes, flow) => {
       const project = await createdProject(subject(), runtimes);
       const record = runtimes.length === 1 ? '{\n  "agent-box-egress": ["egress-a"]\n}\n' : RECORD;
       await writeFile(recordOf(project), record);
-      await chmod(recordOf(project), 0o444);
       const before = await specText(project);
 
-      try {
-        await expect(flow(subject(), project)).rejects.toThrow();
-      } finally {
-        await chmod(recordOf(project), 0o644);
-      }
+      await expect(flow(subject(undefined, refusingRecordWrites), project)).rejects.toThrow(
+        `the test refuses the write of ${recordOf(project)}`,
+      );
 
       expect(await specText(project)).toBe(before);
       expect(await readFile(recordOf(project), "utf8")).toBe(record);

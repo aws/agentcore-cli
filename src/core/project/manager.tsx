@@ -61,7 +61,9 @@ import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileReso
 import {
   addBoxGatewaysToRecord,
   BOX_GATEWAY_TARGETS_FILE,
+  FS_RECORD_FILES,
   removeBoxGatewaysFromRecord,
+  type RecordFiles,
   type RestoreRecord,
 } from "./boxGatewayTargets";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
@@ -434,6 +436,8 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  /** How the record of build's targets is written; the file on disk by default. */
+  recordFiles?: RecordFiles;
   /**
    * The environment the CDK backend reads HOME (the box cache) from, and build reads box `env://`
    * egress secrets from; process.env by default.
@@ -464,6 +468,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly recordFiles: RecordFiles;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
@@ -475,6 +480,7 @@ export class FsProjectManager implements ProjectManager {
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.recordFiles = config.recordFiles ?? FS_RECORD_FILES;
     this.backends = config.backends ?? {
       CDK: new CdkBackend({
         logger: config.logger,
@@ -1093,6 +1099,7 @@ export class FsProjectManager implements ProjectManager {
           newSpecParseResult.data.agentCoreGateways.flatMap(({ name, boundRuntime }) =>
             boundRuntime === input.resourceConfig.name ? [name] : [],
           ),
+          this.recordFiles,
         );
       }
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
@@ -1325,6 +1332,7 @@ export class FsProjectManager implements ProjectManager {
       removeBoxGatewaysFromRecord(
         project.rootPath,
         removedGateways.map(({ name }) => name),
+        this.recordFiles,
       ),
     );
     // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
@@ -1386,6 +1394,7 @@ export class FsProjectManager implements ProjectManager {
       removeBoxGatewaysFromRecord(
         project.rootPath,
         existingProjectSpec.agentCoreGateways.map(({ name }) => name),
+        this.recordFiles,
       ),
     );
 

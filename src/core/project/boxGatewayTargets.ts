@@ -46,6 +46,18 @@ export function readBoxGatewayTargets(projectRoot: string): Record<string, strin
 /** Puts the record back as it was before a change: its old text, or no file. */
 export type RestoreRecord = () => void;
 
+/** How the record file is written and removed. */
+export interface RecordFiles {
+  readonly write: (path: string, text: string) => void;
+  readonly remove: (path: string) => void;
+}
+
+/** The record file on disk. */
+export const FS_RECORD_FILES: RecordFiles = {
+  write: (path, text) => writeFileSync(path, text),
+  remove: (path) => rmSync(path, { force: true }),
+};
+
 /**
  * Adds an empty entry for each of `gateways` that the record does not name yet. Returns the
  * function that puts the record back, when it wrote the record; it leaves a file that is not the
@@ -54,8 +66,9 @@ export type RestoreRecord = () => void;
 export function addBoxGatewaysToRecord(
   projectRoot: string,
   gateways: readonly string[],
+  files: RecordFiles = FS_RECORD_FILES,
 ): RestoreRecord | undefined {
-  return changeRecord(projectRoot, (record) => {
+  return changeRecord(projectRoot, files, (record) => {
     const added = gateways.filter((gateway) => !Object.hasOwn(record ?? {}, gateway));
     if (added.length === 0) return undefined;
     return { ...record, ...Object.fromEntries(added.map((gateway) => [gateway, []])) };
@@ -70,8 +83,9 @@ export function addBoxGatewaysToRecord(
 export function removeBoxGatewaysFromRecord(
   projectRoot: string,
   gateways: readonly string[],
+  files: RecordFiles = FS_RECORD_FILES,
 ): RestoreRecord | undefined {
-  return changeRecord(projectRoot, (record) => {
+  return changeRecord(projectRoot, files, (record) => {
     if (!record || !gateways.some((gateway) => Object.hasOwn(record, gateway))) return undefined;
     return Object.fromEntries(
       Object.entries(record).filter(([gateway]) => !gateways.includes(gateway)),
@@ -85,6 +99,7 @@ export function removeBoxGatewaysFromRecord(
  */
 function changeRecord(
   projectRoot: string,
+  files: RecordFiles,
   change: (record: Record<string, string[]> | undefined) => Record<string, string[]> | undefined,
 ): RestoreRecord | undefined {
   let record: Record<string, string[]> | undefined;
@@ -98,9 +113,9 @@ function changeRecord(
   if (changed === undefined) return undefined;
   const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
   const before = record === undefined ? undefined : readFileSync(path, "utf8");
-  writeFileSync(path, boxGatewayTargetsText(changed));
+  files.write(path, boxGatewayTargetsText(changed));
   return () => {
-    if (before === undefined) rmSync(path, { force: true });
-    else writeFileSync(path, before);
+    if (before === undefined) files.remove(path);
+    else files.write(path, before);
   };
 }
