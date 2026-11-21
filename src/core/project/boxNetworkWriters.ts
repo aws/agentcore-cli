@@ -431,11 +431,12 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
     edits: (networks, { spec }) => ({
       files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
+        const entry = spec.runtimes.find(({ name }) => name === runtime) ?? { name: runtime };
         return [
           { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
           {
             path: `${dist}/${AGENTCORE_PACK_PATH}`,
-            text: renderAgentCorePack(spec, network?.projectGateways),
+            text: renderAgentCorePack(spec, entry, network?.projectGateways),
           },
           ...(kind === "codezip"
             ? [

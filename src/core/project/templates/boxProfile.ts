@@ -234,6 +234,29 @@ export function runsInBox(boxProject: boolean, runtime: Pick<ProjectRuntime, "bo
   return boxProject && runtime.box !== undefined;
 }
 
+/**
+ * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
+ * of the runtime set it to `true`, the Runtime profile gets no default log target, and the agent
+ * gets no OTEL ({@link otelOn}).
+ */
+export const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
+
+/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
+export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
+  return (runtime.envVars ?? []).some(
+    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
+  );
+}
+
+/**
+ * Whether the agent of `runtime` sends OTEL on AgentCore Runtime: `instrumentation.enableOtel`,
+ * which is `true` when absent, and the envVars do not turn observability off. It decides the
+ * opentelemetry-instrument start, the ADOT variables, and the default X-Ray target together.
+ */
+export function otelOn(runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">): boolean {
+  return (runtime.instrumentation?.enableOtel ?? true) && !observabilityOff(runtime);
+}
+
 /** {@link runsInBox} for a runtime of `spec`. */
 export function runtimeRunsInBox(spec: ProjectSpec, runtime: ProjectRuntime): boolean {
   return runsInBox(isBoxProject(spec), runtime);
@@ -616,22 +639,44 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
+ * The variables that set up the ADOT SDK of an agent with OTEL on: the AWS distro and its
+ * configurator, spans and logs over OTLP to the box's own receiver (box sets each
+ * `OTEL_EXPORTER_OTLP_*`), no metrics, and no span for each health check of the Runtime.
+ */
+const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
+  OTEL_PYTHON_DISTRO: "aws_distro",
+  OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
+  AGENT_OBSERVABILITY_ENABLED: "true",
+  OTEL_TRACES_EXPORTER: "otlp",
+  OTEL_LOGS_EXPORTER: "otlp",
+  OTEL_METRICS_EXPORTER: "none",
+  OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+};
+
+/** The variable in which AgentCore Runtime names the resource of the runtime's spans. */
+const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
+
+/**
  * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
  * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
  * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
  * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One
- * input per project memory carries its ID into the agent's environment. Each gateway of the project
- * that the agent calls through the Box gateway gets two inputs: its host, for the destination of
- * its `[mcp]` server, and its URL, which the agent gets under the variable name that a runtime
- * without a box reads. box finds the pack beside its binary at {@link AGENTCORE_PACK_PATH}; build
- * and deploy stage it there.
+ * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
+ * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
+ * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
+ * gateway of the project that the agent calls through the Box gateway gets two inputs: its host,
+ * for the destination of its `[mcp]` server, and its URL, which the agent gets under the variable
+ * name that a runtime without a box reads. box finds the pack beside its binary at
+ * {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
  */
 export function renderAgentCorePack(
   spec: ProjectSpec,
+  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
 ): string {
+  const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
   const memoryInputs = memories
     .map(
@@ -641,10 +686,27 @@ description = ${str(`The deployed '${memory.name}' Memory ID.`)}
 from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
     )
     .join("");
-  const memoryEnv = memories.map(
-    (memory) =>
-      `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
-  );
+  const memoryEnv = memories
+    .map(
+      (memory) =>
+        `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
+    )
+    .join("\n");
+  const otelEnv = otel
+    ? [
+        ...Object.entries(AGENT_OTEL_ENV).map(([name, value]) => `${name} = ${str(value)}`),
+        `${RUNTIME_RESOURCE_ATTRIBUTES_ENV} = "\${{ inputs.runtime.resource_attributes }}"`,
+      ].join("\n")
+    : "";
+  const otelInput = otel
+    ? `
+
+# The resource of the agent's spans, which the Runtime names so the console links them to it.
+[inputs.runtime.resource_attributes]
+description = "The OpenTelemetry resource attributes of the runtime."
+from = ${str(`env:${RUNTIME_RESOURCE_ATTRIBUTES_ENV}`)}
+default = ${str(`service.name=${runtime.name}`)}`
+    : "";
   const gatewayInputs = gateways
     .map((gateway) => {
       const inputs = projectGatewayInputs(gateway);
@@ -662,11 +724,13 @@ from = ${str(`env:${gateway.variablePrefix}_HOST`)}
 pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
     })
     .join("");
-  const gatewayEnv = gateways.map(
-    (gateway) =>
-      `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
-  );
-  const env = [...memoryEnv, ...gatewayEnv].join("\n");
+  const gatewayEnv = gateways
+    .map(
+      (gateway) =>
+        `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
+    )
+    .join("\n");
+  const env = [memoryEnv, otelEnv, gatewayEnv].filter((lines) => lines !== "").join("\n");
   const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.
@@ -705,7 +769,7 @@ key = "x-aws-log-stream"
 [inputs.runtime.url]
 description = "The URL an A2A agent card advertises on the Runtime."
 from = "env:AGENTCORE_RUNTIME_URL"
-default = "http://localhost:9000/"${memoryInputs}${gatewayInputs}
+default = "http://localhost:9000/"${memoryInputs}${otelInput}${gatewayInputs}
 ${agentEnv}`;
 }
 

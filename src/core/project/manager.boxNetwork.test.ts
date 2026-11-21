@@ -203,6 +203,20 @@ async function editGateway(root: string, edit: (gateway: { targets: unknown[] })
   await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
 }
 
+/** Sets `instrumentation.enableOtel` of the runtime in agentcore.json. */
+async function setOtel(root: string, enableOtel: boolean) {
+  const spec = JSON.parse(await text(root, SPEC));
+  spec.runtimes[0].instrumentation = { enableOtel };
+  await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+}
+
+/** Sets `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the envVars of the runtime in agentcore.json. */
+async function optOut(root: string) {
+  const spec = JSON.parse(await text(root, SPEC));
+  spec.runtimes[0].envVars = [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }];
+  await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+}
+
 async function build(manager: FsProjectManager, root: string) {
   const project = (await manager.resolve({ filePath: root })) as Project;
   return drain(manager.build(project));
@@ -799,6 +813,13 @@ describe("build writes the telemetry policy of the box profile", () => {
     `adding ${TELEMETRY_POLICY} to additionalPolicies of 'agent_python_strands', so its box can ` +
     "send telemetry to CloudWatch";
 
+  /** {@link strandsProject} with OTEL off, so its Runtime profile gets no default X-Ray target. */
+  async function otelOffProject(options?: Parameters<typeof strandsProject>[0]) {
+    const created = await strandsProject(options);
+    await setOtel(created.root, false);
+    return created;
+  }
+
   /** What box resolves the created profile to, with `telemetry` as its [telemetry] tables. */
   const showsTelemetry = (telemetry: Record<string, unknown>) => {
     const answer = shows();
@@ -817,7 +838,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   ])(
     "for %s, writes the grant and lists it on the box runtime",
     async (_label, telemetry, statements) => {
-      const { manager, root, box } = await strandsProject();
+      const { manager, root, box } = await otelOffProject();
       box.answer = showsTelemetry(telemetry);
 
       const { steps } = await build(manager, root);
@@ -836,7 +857,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   );
 
   test("sets only additionalPolicies of the runtime, and keeps its other keys in their place", async () => {
-    const { manager, root, box } = await strandsProject();
+    const { manager, root, box } = await otelOffProject();
     const spec = JSON.parse(await text(root, SPEC));
     spec.runtimes[0].myNote = "kept";
     await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
@@ -851,7 +872,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   });
 
   test("copies both CloudWatch targets into the Runtime profile, signed with the execution role", async () => {
-    const { manager, root, box } = await strandsProject();
+    const { manager, root, box } = await otelOffProject();
     const records = { kind: "file", destination: "/tmp/records.jsonl" };
     box.answer = showsTelemetry({ logs: LOGS, traces: TRACES, records });
 
@@ -866,7 +887,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   });
 
   test("changes nothing on a second build", async () => {
-    const { manager, root, counter, box } = await strandsProject();
+    const { manager, root, counter, box } = await otelOffProject();
     box.answer = showsTelemetry({ logs: LOGS, traces: TRACES });
     await build(manager, root);
     const policy = await text(root, TELEMETRY_POLICY);
@@ -880,7 +901,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   });
 
   test("writes no file and lists nothing when the profile sends no telemetry to CloudWatch", async () => {
-    const { manager, root, box } = await strandsProject();
+    const { manager, root, box } = await otelOffProject();
     box.answer = showsTelemetry({ langfuse: { kind: "langfuse", secret: { ref: "env://KEY" } } });
 
     const { steps } = await build(manager, root);
@@ -891,7 +912,7 @@ describe("build writes the telemetry policy of the box profile", () => {
   });
 
   test("removes the file and the entry when the profile no longer sends telemetry to CloudWatch", async () => {
-    const { manager, root, box } = await strandsProject();
+    const { manager, root, box } = await otelOffProject();
     box.answer = showsTelemetry({ logs: LOGS });
     await build(manager, root);
     box.answer = shows();
@@ -916,7 +937,7 @@ describe("build writes the telemetry policy of the box profile", () => {
     });
 
     test("on build, sets the region build builds for, keeps a target's own region, and warns that dev needs a region", async () => {
-      const { manager, root, box } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+      const { manager, root, box } = await otelOffProject({ env: { AWS_REGION: "eu-central-1" } });
       box.answer = showsTelemetry({
         logs: REGIONLESS_LOGS,
         traces: { ...TRACES, region: "eu-west-1" },
@@ -956,7 +977,7 @@ describe("build writes the telemetry policy of the box profile", () => {
           return [];
         },
       };
-      const { manager, root, box } = await strandsProject({ backends: { CDK: backend } });
+      const { manager, root, box } = await otelOffProject({ backends: { CDK: backend } });
       box.answer = showsTelemetry({ logs: REGIONLESS_LOGS });
       await writeFile(
         path(root, "agentcore/aws-targets.json"),
@@ -983,6 +1004,81 @@ describe("build writes the telemetry policy of the box profile", () => {
         expect.stringContaining("get ap-south-1."),
       ]);
     });
+  });
+});
+
+describe("build with OTEL on, as create writes a box runtime", () => {
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
+  const X_RAY = {
+    Sid: "BoxTelemetryToXRay",
+    Effect: "Allow",
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+    Resource: "*",
+  };
+  const DEFAULT_TRACES = {
+    kind: "cloudwatch_traces",
+    region: "${{ inputs.aws.region }}",
+    include: ["deny", "permit", "trace"],
+    secret: { ref: "aws://" },
+  };
+  const PACK = "app/agent_python_strands/.box-dist/resources/packs/agentcore/pack.toml";
+
+  test("starts the agent under opentelemetry-instrument, sets up its ADOT SDK, and sends its spans to X-Ray with the grant", async () => {
+    const { manager, root } = await strandsProject();
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].instrumentation).toBeUndefined();
+
+    const { warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect((profile.agent as { command: string[] }).command.slice(0, 3)).toEqual([
+      "${{ inputs.python.path }}",
+      "${{ inputs.code.dir }}/bin/opentelemetry-instrument",
+      "${{ inputs.python.path }}",
+    ]);
+    expect((profile.telemetry as Record<string, unknown>).agentcore_traces).toEqual(DEFAULT_TRACES);
+    const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
+    expect(pack.agent.env).toMatchObject({
+      OTEL_PYTHON_DISTRO: "aws_distro",
+      OTEL_TRACES_EXPORTER: "otlp",
+      OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
+    });
+    expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toEqual([X_RAY]);
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].additionalPolicies).toEqual([
+      "../../agentcore/box-telemetry-policy-agent_python_strands.json",
+    ]);
+    expect(warnings.filter((warning) => warning.includes("opentelemetry-instrument"))).toEqual([]);
+  });
+
+  test.each([
+    ["enableOtel is false", (root: string) => setOtel(root, false)],
+    ["the envVars set DISABLE_ADOT_OBSERVABILITY to true", (root: string) => optOut(root)],
+  ])("adds nothing for OTEL when %s", async (_label, turnOff) => {
+    const { manager, root } = await strandsProject();
+    await turnOff(root);
+
+    await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(JSON.stringify(profile.agent)).not.toContain("opentelemetry-instrument");
+    expect(profile.telemetry).not.toHaveProperty("agentcore_traces");
+    const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
+    expect(Object.keys(pack.agent.env)).toEqual(["MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID"]);
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+  });
+
+  test("changes nothing on a second build", async () => {
+    const { manager, root, counter } = await strandsProject();
+    await build(manager, root);
+    const policy = await text(root, TELEMETRY_POLICY);
+    const staged = await text(root, RUNTIME_PROFILE);
+    counter.specWrites = 0;
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toEqual(["synthesizing CloudFormation templates"]);
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, TELEMETRY_POLICY)).toBe(policy);
+    expect(await text(root, RUNTIME_PROFILE)).toBe(staged);
   });
 });
 

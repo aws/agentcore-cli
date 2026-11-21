@@ -112,7 +112,12 @@ describe("the box on PATH", () => {
       const spec = { name: "demo", memories: [] } as unknown as ProjectSpec;
       const pack = join(root, AGENTCORE_PACK_PATH);
       await mkdir(dirname(pack), { recursive: true });
-      await writeFile(pack, renderAgentCorePack(spec, [gateway]));
+      await writeFile(
+        pack,
+        renderAgentCorePack(spec, { name: "agent", instrumentation: { enableOtel: false } }, [
+          gateway,
+        ]),
+      );
       const local =
         'packs = ["@box/base", "@box/agentcore"]\n\n[profile]\nname = "demo"\n\n' +
         '[agent]\ncommand = ["/bin/sh"]\n';
