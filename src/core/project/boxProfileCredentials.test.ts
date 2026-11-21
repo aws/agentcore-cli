@@ -7,10 +7,11 @@ import {
 import type { BoxEnvRoute } from "./boxProfileEgress";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
-import type { ProjectSpec } from "../../projectSchemas/project";
+import { ProjectSpecSchema, type ProjectSpec } from "../../projectSchemas/project";
 
-function spec(credentials: ProjectSpec["credentials"] = []): ProjectSpec {
-  return { credentials } as unknown as ProjectSpec;
+/** A project spec with `credentials`, as the schema parses it. */
+function spec(credentials: readonly object[] = []): ProjectSpec {
+  return ProjectSpecSchema.parse({ name: "example", version: 2, credentials });
 }
 
 const route = (name: string, variable: string): BoxEnvRoute => ({ route: name, variable });
@@ -157,8 +158,14 @@ describe("planBoxProfileCredentials", () => {
 
   test("stores nothing for an API key credential that keeps its key in Secrets Manager", () => {
     const s = spec([
-      { ...API_KEY, secretRef: "arn:aws:secretsmanager:us-west-2:111122223333:secret:gh" },
-    ] as unknown as ProjectSpec["credentials"]);
+      {
+        ...API_KEY,
+        secretRef: {
+          secretId: "arn:aws:secretsmanager:us-west-2:111122223333:secret:gh",
+          jsonKey: "token",
+        },
+      },
+    ]);
 
     expect(planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "ghp_x" }))).toEqual({
       messages: [],
@@ -209,76 +216,87 @@ describe("planBoxProfileCredentials", () => {
     ]);
   });
 
-  test("reports, but does not add, a name that is not a valid credential name", () => {
-    const plan = planBoxProfileCredentials(
-      spec(),
-      [route("bad name!", "SOME_KEY")],
-      shell({ SOME_KEY: "k" }),
-    );
-
-    expect(plan.added).toEqual([]);
-    expect(plan.warnings).toEqual([
-      "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
-    ]);
-  });
-
-  test("reports, but does not add, a name that ends in a credential field suffix", () => {
-    const plan = planBoxProfileCredentials(
-      spec(),
-      [route("github_client_id", "GITHUB_ID")],
-      shell({ GITHUB_ID: "k" }),
-    );
-
-    expect(plan.added).toEqual([]);
-    expect(plan.warnings).toHaveLength(1);
-    expect(plan.warnings[0]).toContain("ends in '_CLIENT_ID'");
-  });
-
-  test("reports, but does not add, a name that derives an existing credential's variable", () => {
-    const s = spec([{ authorizerType: "ApiKeyCredentialProvider", name: "git-hub" }]);
-
-    const plan = planBoxProfileCredentials(
-      s,
-      [route("git_hub", "GITHUB_TOKEN")],
-      shell({ GITHUB_TOKEN: "k" }),
-    );
-
-    expect(plan.added).toEqual([]);
-    expect(plan.entries).toEqual([]);
-    expect(plan.warnings).toEqual([
-      "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
+  test.each<{
+    label: string;
+    credentials: object[];
+    routes: BoxEnvRoute[];
+    added: string[];
+    warning: string;
+  }>([
+    {
+      label: "a name that is not a valid credential name",
+      credentials: [],
+      routes: [route("bad name!", "SOME_KEY")],
+      added: [],
+      warning:
+        "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
+    },
+    {
+      label: "a name that ends in a credential field suffix",
+      credentials: [],
+      routes: [route("github_client_id", "GITHUB_ID")],
+      added: [],
+      warning:
+        "skipping box egress 'github_client_id' (env://GITHUB_ID): 'github_client_id' ends in " +
+        "'_CLIENT_ID', the suffix of a credential field, so its variable " +
+        `${credentialEnvVarName("github_client_id")} would read as a field of another credential`,
+    },
+    {
+      label: "a name that derives an existing credential's variable",
+      credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "git-hub" }],
+      routes: [route("git_hub", "GITHUB_TOKEN")],
+      added: [],
+      warning:
+        "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
         "same variable, AGENTCORE_CREDENTIAL_GIT_HUB, as credential 'git-hub'",
-    ]);
-  });
-
-  test("reports two routes in one profile that derive the same variable, and adds the first", () => {
+    },
+    {
+      label: "the second of two routes in one profile that derive the same variable",
+      credentials: [],
+      routes: [route("git-hub", "GITHUB_TOKEN"), route("git_hub", "GITHUB_TOKEN")],
+      added: ["git-hub"],
+      warning:
+        "skipping box egress 'git_hub' (env://GITHUB_TOKEN): credential 'git_hub' would derive the " +
+        "same variable, AGENTCORE_CREDENTIAL_GIT_HUB, as credential 'git-hub'",
+    },
+    {
+      label: "a route named for an OAuth credential",
+      credentials: [
+        {
+          authorizerType: "OAuthCredentialProvider",
+          name: "github",
+          discoveryUrl: "https://example.com/.well-known/openid-configuration",
+        },
+      ],
+      routes: [GITHUB],
+      added: [],
+      warning:
+        "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is an " +
+        "OAuthCredentialProvider credential, not an API key",
+    },
+    {
+      label: "a route named for a payment credential",
+      credentials: [
+        { authorizerType: "PaymentCredentialProvider", name: "github", provider: "StripePrivy" },
+      ],
+      routes: [GITHUB],
+      added: [],
+      warning:
+        "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
+        "PaymentCredentialProvider credential, not an API key",
+    },
+  ])("reports, but does not add, $label", ({ credentials, routes, added, warning }) => {
     const plan = planBoxProfileCredentials(
-      spec(),
-      [route("git-hub", "GITHUB_TOKEN"), route("git_hub", "GITHUB_TOKEN")],
-      shell({ GITHUB_TOKEN: "k" }),
+      spec(credentials),
+      routes,
+      shell({ SOME_KEY: "k", GITHUB_ID: "k", GITHUB_TOKEN: "k" }),
     );
 
-    expect(plan.added.map(({ name }) => name)).toEqual(["git-hub"]);
-    expect(plan.warnings[0]).toContain("as credential 'git-hub'");
-  });
-
-  test("reports, but does not use, a route named for a credential that is not an API key", () => {
-    const s = spec([
-      {
-        authorizerType: "OAuthCredentialProvider",
-        name: "github",
-        discoveryUrl: "https://example.com/.well-known/openid-configuration",
-      },
-    ] as unknown as ProjectSpec["credentials"]);
-
-    const plan = planBoxProfileCredentials(s, [GITHUB], shell({ GITHUB_TOKEN: "k" }));
-
-    expect(plan.added).toEqual([]);
-    expect(plan.entries).toEqual([]);
-    expect(plan.warnings).toEqual([
-      "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is an " +
-        "OAuthCredentialProvider credential, not an API key",
-    ]);
+    expect(plan.added.map(({ name }) => name)).toEqual(added);
+    expect(plan.entries.map(({ key }) => key)).toEqual(
+      added.map((name) => credentialEnvVarName(name)),
+    );
+    expect(plan.warnings).toEqual([warning]);
   });
 });
 
