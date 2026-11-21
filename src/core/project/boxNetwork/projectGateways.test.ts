@@ -52,10 +52,21 @@ const HOST = "demo-default-tools-abcdefghij.gateway.bedrock-agentcore.us-west-2.
 const BOX_GATEWAY_URL =
   "https://demo-default-agent-box-egress-klmnopqrst.gateway.bedrock-agentcore.us-west-2.amazonaws.com";
 
+/** A gateway named `name`, with the variable prefix and the target that build gives it. */
+const gatewayNamed = (name: string, prefix: string): BoxProjectGateway => ({
+  name,
+  target: `egress-gateway-${name}`,
+  variablePrefix: prefix,
+  auth: "iam",
+});
+
 describe("the box on PATH", () => {
-  test.skipIf(box === undefined)(
-    "resolves the server and the agent variable of a gateway from the variables the CDK library sets (skipped without a box with --format json --full on PATH)",
-    async () => {
+  // A gateway name can hold "-" and upper case, which reach an input name and a server name.
+  test
+    .skipIf(box === undefined)
+    .each([[TOOLS], [gatewayNamed("My-Tools-GW", "AGENTCORE_GATEWAY_MY_TOOLS_GW")]])(
+    "resolves the server and the agent variable of the gateway %o from the variables the CDK library sets (skipped without a box with --format json --full on PATH)",
+    async (gateway) => {
       const root = await mkdtemp(join(tmpdir(), "box-project-gateway-"));
       directories.push(root);
       const resources = join(root, "resources");
@@ -63,7 +74,7 @@ describe("the box on PATH", () => {
       const spec = { name: "demo", memories: [] } as unknown as ProjectSpec;
       const pack = join(root, AGENTCORE_PACK_PATH);
       await mkdir(dirname(pack), { recursive: true });
-      await writeFile(pack, renderAgentCorePack(spec, [TOOLS]));
+      await writeFile(pack, renderAgentCorePack(spec, [gateway]));
       const local =
         'packs = ["@box/base", "@box/agentcore"]\n\n[profile]\nname = "demo"\n\n' +
         '[agent]\ncommand = ["/bin/sh"]\n';
@@ -74,7 +85,7 @@ describe("the box on PATH", () => {
         region: "us-west-2",
         gateway: { name: "agent-box-egress", targets: [] },
         hosts: [],
-        projectGateways: [TOOLS],
+        projectGateways: [gateway],
         telemetry: [],
         places: profileKeyPlaces(local, ".box/profile.toml"),
       });
@@ -96,8 +107,8 @@ describe("the box on PATH", () => {
             BOX_RESOURCES: resources,
             AWS_REGION: "us-west-2",
             AGENTCORE_GATEWAY_BOX_URL: BOX_GATEWAY_URL,
-            AGENTCORE_GATEWAY_TOOLS_URL: `https://${HOST}/mcp`,
-            AGENTCORE_GATEWAY_TOOLS_HOST: HOST,
+            [`${gateway.variablePrefix}_URL`]: `https://${HOST}/mcp`,
+            [`${gateway.variablePrefix}_HOST`]: HOST,
           },
         },
       );
@@ -109,11 +120,13 @@ describe("the box on PATH", () => {
         };
         policy: string;
       };
-      expect(shown.box_toml.mcp.tools!.destinations).toEqual([HOST]);
-      expect(shown.box_toml.mcp.tools!.backends.map(({ url }) => url)).toEqual([
-        `${BOX_GATEWAY_URL}/egress-gateway-tools`,
+      const server = shown.box_toml.mcp[gateway.name]!;
+      expect(server.destinations).toEqual([HOST]);
+      expect(server.backends.map(({ url }) => url)).toEqual([
+        `${BOX_GATEWAY_URL}/${gateway.target}`,
       ]);
-      expect(shown.box_toml.agent.env.AGENTCORE_GATEWAY_TOOLS_URL).toBe(`https://${HOST}/mcp`);
+      expect(shown.box_toml.agent.env[`${gateway.variablePrefix}_URL`]).toBe(`https://${HOST}/mcp`);
+      expect(shown.policy).toContain(`context.input.server == "${gateway.name}"`);
       expect(shown.policy).toContain(
         `permit (principal, action == Box::Action::"net:connect", resource) when { (context.input.host == "${HOST}" && context.input.port == 443) };`,
       );
