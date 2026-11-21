@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { getBoxGatewayAgentCoreTargetSpec } from "../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
-import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
   boxNetworkEdits,
@@ -273,7 +272,7 @@ describe("credentialsWriter", () => {
 });
 
 describe("defaultTargetsWriter", () => {
-  test("adds the model and Memory targets and writes the role policies, as addBoxGatewayTargets does", () => {
+  test("adds the model target and writes its role policy, and none for the default Memory, as addBoxGatewayTargets does", () => {
     const project = spec();
     project.memories.push({
       name: "agentMemory",
@@ -283,33 +282,12 @@ describe("defaultTargetsWriter", () => {
 
     const edits = run([defaultTargetsWriter], [network()], project);
 
-    expect(targetNames(edits.spec)).toEqual(["mine", "bedrock", "agentcore"]);
-    expect(edits.files.map(({ path }) => path)).toEqual([
-      BOX_BEDROCK_POLICY_FILE,
-      BOX_MEMORY_POLICY_FILE,
-    ]);
-  });
-
-  test("writes the Memory policy for the region of the agentcore target it writes", () => {
-    const project = spec();
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
-
-    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
-
-    const agentcore = edits.spec.agentCoreGateways[0]!.targets.find(
-      ({ name }) => name === "agentcore",
-    );
-    expect(agentcore?.outboundAuth?.region).toBe("eu-central-1");
-    const memory = edits.files.find(({ path }) => path === BOX_MEMORY_POLICY_FILE);
-    expect(JSON.parse((memory as { text: string }).text).Statement).toEqual([
-      expect.objectContaining({
-        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
-        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
-      }),
+    // The agent's Memory calls go to Memory directly, so they take no target and no gateway policy.
+    // The writer removes the Memory policy file that an earlier build wrote.
+    expect(targetNames(edits.spec)).toEqual(["mine", "bedrock"]);
+    expect(edits.files).toEqual([
+      expect.objectContaining({ path: BOX_BEDROCK_POLICY_FILE }),
+      { path: "agentcore/box-memory-policy.json", remove: true },
     ]);
   });
 
@@ -329,40 +307,24 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
-  test("writes the model and Memory targets for the region of the build", () => {
-    const project = spec();
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
-
-    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
+  test("writes the model target for the region of the build", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
 
     const regions = edits.spec.agentCoreGateways[0]!.targets.map(
       ({ name, outboundAuth }) => `${name}:${outboundAuth?.region}`,
     );
-    expect(regions).toEqual(["mine:undefined", "bedrock:eu-central-1", "agentcore:eu-central-1"]);
+    expect(regions).toEqual(["mine:undefined", "bedrock:eu-central-1"]);
   });
 
   test("adds no default target for an endpoint a target serves already", () => {
     const project = spec([
-      { ...getBoxGatewayAgentCoreTargetSpec(), name: "mem" },
       passthrough("egress-models", "https://bedrock-runtime.us-west-2.amazonaws.com"),
     ]);
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
 
     const edits = run([defaultTargetsWriter], [network()], project);
 
-    expect(targetNames(edits.spec)).toEqual(["mem", "egress-models"]);
-    expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([
-      BOX_BEDROCK_POLICY_FILE,
-      BOX_MEMORY_POLICY_FILE,
-    ]);
+    expect(targetNames(edits.spec)).toEqual(["egress-models"]);
+    expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_BEDROCK_POLICY_FILE]);
   });
 });
 

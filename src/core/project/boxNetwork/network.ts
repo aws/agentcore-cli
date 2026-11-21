@@ -4,14 +4,11 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import {
-  boxGatewayAgentCoreHost,
-  boxGatewayBedrockHost,
-} from "../../../handlers/project/shortcuts";
+import { boxGatewayBedrockHost } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
+import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
@@ -108,7 +105,7 @@ export interface BoxNetwork {
   readonly runtime: string;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
-  /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
+  /** The region build builds for: of the Box gateway and its `bedrock` target. */
   readonly region: string;
   /**
    * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the
@@ -154,8 +151,8 @@ export interface BoxNetworkProject {
   /** The region build builds for. */
   readonly region: string;
   /**
-   * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
-   * runtime's model and Memory calls (`addBoxGatewayTargets`).
+   * The gateway's targets, with the `bedrock` target that build adds for the runtime's model calls
+   * (`addBoxGatewayTargets`).
    */
   readonly targets: readonly AgentCoreGatewayTarget[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant, except build's own. */
@@ -611,9 +608,8 @@ function sourceLabel(source: EntrySource): string {
 /**
  * A warning for each target of the network's Box gateway in `spec`, as build writes it, that the
  * gateway signs with its own role for an endpoint that no policy of that role allows. The Bedrock
- * policy file that build writes allows the Bedrock runtime host of the build region, and the Memory
- * policy file the Memory host of that region; a gateway that imports its role is the user's to
- * grant.
+ * policy file that build writes allows the Bedrock runtime host of the build region; a gateway that
+ * imports its role is the user's to grant.
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
@@ -621,18 +617,15 @@ export function boxGatewayIamWarnings(
 ): string[] {
   const gateway = boxGatewayOf(spec, network.runtime);
   if (!gateway || gateway.executionRoleArn) return [];
-  // Build writes these two files, so each one counts when it is listed, not by its actions.
+  // Build writes this file, so it counts when it is listed, not by its actions.
   const listed = gateway.additionalPolicies ?? [];
-  const memoryListed = listed.includes(BOX_MEMORY_POLICY_FILE);
   const bedrockListed = listed.includes(BOX_BEDROCK_POLICY_FILE);
   const granted = network.grantedActions;
   const grantsService = (service: string) =>
     granted.some((action) => action === "*" || action.toLowerCase().startsWith(`${service}:`));
   /** Whether the role has a permission for `service`, whatever its endpoint. */
   const holds = (service: string) =>
-    (service === "bedrock" && bedrockListed) ||
-    (service === "bedrock-agentcore" && memoryListed) ||
-    grantsService(service);
+    (service === "bedrock" && bedrockListed) || grantsService(service);
   const grants = (action: string) => granted.some((pattern) => actionMatches(pattern, action));
   const allows = (api: AwsEndpointApi, host: string): boolean => {
     switch (api) {
@@ -644,10 +637,7 @@ export function boxGatewayIamWarnings(
       case "bedrock-control":
         return granted.some(grantsBedrockControlPlane);
       case "bedrock-agentcore":
-        return (
-          (memoryListed && host === boxGatewayAgentCoreHost(network.region)) ||
-          grantsService("bedrock-agentcore")
-        );
+        return grantsService("bedrock-agentcore");
       case "lambda-url":
         return grants("lambda:InvokeFunctionUrl");
     }

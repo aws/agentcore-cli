@@ -66,7 +66,7 @@ export interface RuntimeProfileContext {
   readonly runtime: ProjectRuntime;
   /** The local profile's path from the project root: `.box/<runtime>/local/profile.toml`. */
   readonly profileFile: string;
-  /** The region build builds for: of the Box gateway and its `bedrock` and `agentcore` targets. */
+  /** The region build builds for: of the Box gateway, its `bedrock` target, and the Memory route. */
   readonly region: string;
   /** The runtime's Box gateway: its name, and its targets with the ones build adds. */
   readonly gateway: { readonly name: string; readonly targets: readonly AgentCoreGatewayTarget[] };
@@ -98,6 +98,10 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
   /** A CloudWatch telemetry target that box refuses when a run starts. */
   "RUNTIME_TELEMETRY_REFUSED",
+  /** A route of the user under the name of a route that only the Runtime profile has. */
+  "RUNTIME_ROUTE_NAME_TAKEN",
+  /** A route that would send the agent's Memory calls through the Box gateway, not directly. */
+  "RUNTIME_MEMORY_THROUGH_GATEWAY",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 

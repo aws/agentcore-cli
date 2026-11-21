@@ -22,9 +22,8 @@ import {
 import {
   addBoxGatewayTargets,
   BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
   boxBedrockPolicy,
-  boxMemoryPolicy,
+  LEGACY_BOX_MEMORY_POLICY_FILE,
 } from "./boxMemory";
 import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
 import type { BoxEnvRoute } from "./boxProfileEgress";
@@ -284,15 +283,16 @@ function undeclaredKey(
 }
 
 /**
- * The `bedrock` and `agentcore` targets that each box runtime's model and Memory calls take, and
- * the Bedrock and Memory policies of the gateways' role, as `addBoxGatewayTargets` adds them.
+ * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
+ * gateways' role, as `addBoxGatewayTargets` adds them. It removes the Memory policy file that an
+ * earlier build wrote, as `addBoxGatewayTargets` removes its listing.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
   writes: () => [
     { kind: "defaultTargets" },
     { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
-    { kind: "file", path: BOX_MEMORY_POLICY_FILE },
+    { kind: "file", path: LEGACY_BOX_MEMORY_POLICY_FILE },
   ],
   edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
@@ -304,13 +304,11 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
           path: BOX_BEDROCK_POLICY_FILE,
           policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
         },
-        {
-          path: BOX_MEMORY_POLICY_FILE,
-          policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),
-        },
-      ].flatMap(({ path, policy }) =>
-        policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
-      ),
+      ]
+        .flatMap(({ path, policy }): BoxNetworkFile[] =>
+          policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
+        )
+        .concat({ path: LEGACY_BOX_MEMORY_POLICY_FILE, remove: true }),
     };
   },
 };

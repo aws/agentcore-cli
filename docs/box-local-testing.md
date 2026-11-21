@@ -47,9 +47,9 @@ to it.
   the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
   to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
   agent with it. See [Install box](#install-box).
-- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
-  Memory targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's
-  region.
+- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock target and
+  the Runtime profile's direct Memory route for `AWS_REGION` (else your AWS profile's region), and
+  deploy for its target's region.
 - `bun` for the CLI, `npm` for the generated CDK app.
 
 ## Install box

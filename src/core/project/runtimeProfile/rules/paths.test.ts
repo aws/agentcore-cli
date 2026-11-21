@@ -25,7 +25,7 @@ const PROFILE = ".box/agent/local/profile.toml";
  */
 const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
   runtimeProfileContext({
-    spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
+    spec: { name: "demo", runtimes: [runtime], memories: [] } as unknown as ProjectSpec,
     runtime,
     profileFile: PROFILE,
     region: "us-west-2",

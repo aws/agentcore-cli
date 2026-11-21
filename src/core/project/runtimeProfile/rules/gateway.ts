@@ -3,7 +3,8 @@
  * Box gateway. Each passthrough target of that gateway, as build writes the gateway, gets one
  * route: the box sends the calls to the target's host to `${{ inputs.gateway.url }}/<target>`, and
  * signs them for the gateway in the Runtime's own region, `${{ inputs.aws.region }}`, with a bare
- * `aws://`, the execution role. The gateway then calls the host with the target's own auth.
+ * `aws://`, the execution role. The gateway then calls the host with the target's own auth. The
+ * agent's Memory calls are the one exception: the additions rule sends them to Memory directly.
  *
  * | Local profile | Runtime profile |
  * | --- | --- |

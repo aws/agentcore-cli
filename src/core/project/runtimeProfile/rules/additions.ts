@@ -15,10 +15,14 @@
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
+ * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: box signs the Memory calls with a bare `aws://` and sends them to Memory directly, not through the Box gateway |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
 import { posix } from "node:path";
+import { agentCoreDataPlaneHost } from "../../../../handlers/project/shortcuts";
+import { hasDefaultMemory } from "../../boxMemory";
+import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
@@ -39,8 +43,16 @@ import {
   type RuleResult,
   type RuntimePaths,
   type RuntimeProfileContext,
+  type RuntimeProfileProblem,
   type TomlTable,
 } from "../types";
+
+/**
+ * The `[egress]` route of the agent's Memory calls. Box signs them with the execution role and
+ * sends them to AgentCore Memory directly. The Box gateway would sign them with its own role, and
+ * Memory could then not hold each call to the session of the runtime by its context keys.
+ */
+export const MEMORY_ROUTE = "agentcore";
 
 /** The variables of the region of the agent, which get the region of the Runtime. */
 const REGION_ENV_NAMES: ReadonlySet<string> = new Set(["AWS_REGION", "AWS_DEFAULT_REGION"]);
@@ -55,8 +67,8 @@ const LOCAL_DEV = "LOCAL_DEV";
 const CLOUDWATCH_KINDS: ReadonlySet<unknown> = new Set(["cloudwatch_logs", "cloudwatch_traces"]);
 
 /**
- * Stand-in AWS keys for boto3 in the box on AgentCore Runtime. They authenticate nothing: each AWS
- * route goes to the Box gateway, and box signs each call for it with the execution role.
+ * Stand-in AWS keys for boto3 in the box on AgentCore Runtime. They authenticate nothing: box signs
+ * each AWS call with the execution role, for the Box gateway or, on the Memory route, for Memory.
  */
 const RUNTIME_AWS_STAND_INS: Readonly<Record<string, string>> = {
   AWS_ACCESS_KEY_ID: "box-stand-in",
@@ -147,8 +159,9 @@ export function runtimeProfileHeader(
     `Runs the agent of the AgentCore project '${context.spec.name}' in a box.`,
     `Derived by agentcore build and deploy from ${context.profileFile}, for AgentCore Runtime. ${packs}`,
     `${Object.keys(RUNTIME_AWS_STAND_INS).join(" and ")} are stand-ins so boto3 in the box can ` +
-      "build its requests. They authenticate nothing: every AWS route goes to the Box gateway, " +
-      "and box signs each request for it with the execution role.",
+      "build its requests. They authenticate nothing: box signs each request with the execution " +
+      "role. Every AWS route goes to the Box gateway, except " +
+      `[egress.${MEMORY_ROUTE}], which goes to AgentCore Memory directly.`,
     ...Object.entries(tableOf(profile.telemetry))
       .filter(([, target]) => sameValue(target, DEFAULT_TELEMETRY_TARGET))
       .map(
@@ -211,7 +224,85 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     else result.tool = tool;
   }
   result.telemetry = runtimeTelemetry(result.telemetry, context, warnings);
-  return { table: result, problems: [], warnings };
+  const problems: RuntimeProfileProblem[] = [];
+  const egress = runtimeEgress(result.egress, result.mcp, context, problems);
+  if (egress !== undefined) result.egress = egress;
+  return { table: result, problems, warnings };
+}
+
+/**
+ * `[egress]` with the {@link MEMORY_ROUTE} route when the runtime has its default Memory: one
+ * destination, the AgentCore host of the build region, signed with a bare `aws://`, the execution
+ * role, and no backend. A direct route or HTTP MCP server of the profile, one with no backend, that
+ * already has that host keeps it, so the box has one route to the host. One that sends the host's
+ * calls through the Box gateway is a problem: the gateway would sign the Memory calls with its own
+ * role. A route of the user named {@link MEMORY_ROUTE} for another host is a problem too.
+ */
+function runtimeEgress(
+  egress: unknown,
+  mcp: unknown,
+  context: RuntimeProfileContext,
+  problems: RuntimeProfileProblem[],
+): unknown {
+  if (!hasDefaultMemory(context.spec, context.runtime)) return egress;
+  // box refuses `[egress]` that is not a table before build gets the profile.
+  if (egress !== undefined && !isTable(egress)) return egress;
+  const host = agentCoreDataPlaneHost(context.region);
+  const routes = [
+    ...Object.entries(egress ?? {}).map(([name, entry]) => ({ key: ["egress", name], entry })),
+    ...Object.entries(tableOf(mcp)).map(([name, entry]) => ({ key: ["mcp", name], entry })),
+  ].filter(({ entry }) => isTable(entry) && hasDestination(entry.destinations, host));
+  const throughGateway = routes.filter(({ entry }) => (entry as TomlTable).backends !== undefined);
+  for (const { key } of throughGateway) {
+    problems.push({
+      code: "RUNTIME_MEMORY_THROUGH_GATEWAY",
+      key,
+      place: context.placeOf(key),
+      reason:
+        `[${key.join(".")}] sends the calls to ${host} through the Box gateway on AgentCore ` +
+        "Runtime, and the gateway would sign the agent's Memory calls with its own role. Then " +
+        "Memory cannot hold each call to the session of the runtime. Remove that entry: build " +
+        "sends the Memory calls to Memory directly, signed with the execution role.",
+    });
+  }
+  if (routes.length > 0) return egress;
+  if (egress !== undefined && Object.hasOwn(egress, MEMORY_ROUTE)) {
+    const key = ["egress", MEMORY_ROUTE];
+    // The gateway rule names a route for a target that no entry of the profile names after it.
+    const target = context.gateway.targets.some(({ name }) => name === MEMORY_ROUTE);
+    problems.push({
+      code: "RUNTIME_ROUTE_NAME_TAKEN",
+      key,
+      place: target ? "agentcore/agentcore.json" : context.placeOf(key),
+      reason:
+        `[egress.${MEMORY_ROUTE}] is the name of the route that the agent's Memory calls take ` +
+        `on AgentCore Runtime, to ${host}. ` +
+        (target
+          ? `Rename the '${MEMORY_ROUTE}' target of gateway '${context.gateway.name}'.`
+          : "Rename that entry."),
+    });
+    return egress;
+  }
+  return {
+    ...egress,
+    [MEMORY_ROUTE]: { destinations: [host], secret: { ref: RUNTIME_AWS_SIGNER } },
+  };
+}
+
+/**
+ * Whether `destinations` has one that box matches to `host` on port 443: the host itself, in any
+ * case, with or without `:443`, or a `*.` wildcard of its parent domains.
+ */
+function hasDestination(destinations: unknown, host: string): boolean {
+  if (!Array.isArray(destinations)) return false;
+  return destinations.some((text) => {
+    const destination = typeof text === "string" ? parseDestination(text) : undefined;
+    if (destination === undefined || destination.port !== 443) return false;
+    const name = destination.host.toLowerCase();
+    return destination.wildcard
+      ? name.startsWith("*.") && host.endsWith(name.slice(1))
+      : name === host;
+  });
 }
 
 /** The user's packs in their order, then each Runtime pack that they do not import. */

@@ -1,18 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { InputValidationError } from "../../errors/errors";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockTargetSpec,
-} from "../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockTargetSpec } from "../../handlers/project/shortcuts";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import {
   addBoxBedrockTarget,
   addBoxGatewayTargets,
-  addBoxMemoryTarget,
   BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
   boxBedrockPolicy,
-  boxMemoryPolicy,
+  LEGACY_BOX_MEMORY_POLICY_FILE,
+  removeLegacyMemoryAccess,
 } from "./boxMemory";
 
 function spec(options: { entrypoint?: string; memories?: string[] } = {}): ProjectSpec {
@@ -44,132 +39,6 @@ const gateway = (project: ProjectSpec) =>
   project.agentCoreGateways.find(({ name }) => name === GATEWAY)!;
 
 const targets = (project: ProjectSpec) => gateway(project).targets.map(({ name }) => name);
-
-describe("addBoxMemoryTarget", () => {
-  test("adds the agentcore target to the runtime's Box gateway for its default Memory", () => {
-    const project = spec();
-
-    expect(addBoxMemoryTarget(project)).toEqual([
-      `adding target 'agentcore' to gateway '${GATEWAY}' in agentcore.json, for the boxed agent's Memory calls`,
-      `adding 'agentcore/box-memory-policy.json' to gateway '${GATEWAY}' additionalPolicies in agentcore.json, so its role can call Memory`,
-    ]);
-    expect(gateway(project).additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
-    expect(gateway(project).targets).toEqual([getBoxGatewayAgentCoreTargetSpec()]);
-  });
-
-  test("changes nothing when the target is already there", () => {
-    const project = spec();
-    addBoxMemoryTarget(project);
-
-    expect(addBoxMemoryTarget(project)).toEqual([]);
-    expect(targets(project)).toEqual(["agentcore"]);
-  });
-
-  test("changes nothing for another Memory, or for a runtime that does not run in a box", () => {
-    const otherMemory = spec({ memories: ["ordersMemory"] });
-    const unboxed = spec({ entrypoint: "main.py" });
-
-    expect(addBoxMemoryTarget(otherMemory)).toEqual([]);
-    expect(addBoxMemoryTarget(unboxed)).toEqual([]);
-    expect(targets(otherMemory)).toEqual([]);
-    expect(targets(unboxed)).toEqual([]);
-  });
-
-  test("changes nothing in a project that is not a Box project", () => {
-    const { projectType: _omitted, ...rest } = spec();
-    const project = { ...rest, agentCoreGateways: [] } as ProjectSpec;
-
-    expect(addBoxMemoryTarget(project)).toEqual([]);
-    expect(project.agentCoreGateways).toEqual([]);
-    expect(project.projectType).toBeUndefined();
-  });
-
-  test("adds no agentcore target where another target serves its endpoint", () => {
-    const project = spec();
-    gateway(project).targets = [{ ...getBoxGatewayAgentCoreTargetSpec(), name: "mem" }];
-
-    addBoxMemoryTarget(project);
-
-    expect(targets(project)).toEqual(["mem"]);
-    expect(gateway(project).additionalPolicies).toEqual([BOX_MEMORY_POLICY_FILE]);
-  });
-
-  test("refuses the target name on a gateway that is not a Box gateway", () => {
-    const project = spec();
-    project.agentCoreGateways.push({
-      name: "tools",
-      authorizerType: "AWS_IAM",
-      targets: [getBoxGatewayAgentCoreTargetSpec()],
-    } as ProjectSpec["agentCoreGateways"][number]);
-
-    expect(() => addBoxMemoryTarget(project)).toThrow(InputValidationError);
-  });
-
-  test("lists the policy file on a gateway that already has the target", () => {
-    const project = spec();
-    gateway(project).targets.push(getBoxGatewayAgentCoreTargetSpec());
-
-    expect(addBoxMemoryTarget(project)).toEqual([
-      `adding 'agentcore/box-memory-policy.json' to gateway '${GATEWAY}' additionalPolicies in agentcore.json, so its role can call Memory`,
-    ]);
-    expect(targets(project)).toEqual(["agentcore"]);
-  });
-
-  test("leaves the policies of a gateway that imports its role", () => {
-    const project = spec();
-    gateway(project).executionRoleArn = "arn:aws:iam::123456789012:role/mine";
-
-    addBoxMemoryTarget(project);
-
-    expect(gateway(project).additionalPolicies).toBeUndefined();
-  });
-});
-
-describe("boxMemoryPolicy", () => {
-  type Policy = {
-    Statement: Array<{ Action: string[]; Resource: string[]; Condition: unknown }>;
-  };
-  const SAME_ACCOUNT = { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } };
-
-  test("allows the Memory data plane on the default Memory in any target, in the gateway role's account", () => {
-    const policy = boxMemoryPolicy(spec(), "us-west-2") as Policy;
-
-    expect(policy.Statement[0]!.Resource).toEqual([
-      "arn:aws:bedrock-agentcore:us-west-2:*:memory/demo_*agentMemory-*",
-    ]);
-    expect(policy.Statement[0]!.Condition).toEqual(SAME_ACCOUNT);
-    expect(policy.Statement[0]!.Action).toContain("bedrock-agentcore:ListEvents");
-    expect(policy.Statement[0]!.Action).toContain("bedrock-agentcore:CreateEvent");
-  });
-
-  test("names the region it is given, and no other", () => {
-    const policy = boxMemoryPolicy(spec(), "eu-central-1") as Policy;
-
-    expect(policy.Statement).toEqual([
-      expect.objectContaining({
-        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
-        Condition: SAME_ACCOUNT,
-      }),
-    ]);
-  });
-
-  test("names the partition of the region it is given", () => {
-    const resources = (region: string) =>
-      (boxMemoryPolicy(spec(), region) as Policy).Statement[0]!.Resource;
-
-    expect(resources("cn-north-1")).toEqual([
-      "arn:aws-cn:bedrock-agentcore:cn-north-1:*:memory/demo_*agentMemory-*",
-    ]);
-    expect(resources("us-gov-west-1")).toEqual([
-      "arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:*:memory/demo_*agentMemory-*",
-    ]);
-  });
-
-  test("is undefined when no boxed runtime has its default Memory", () => {
-    expect(boxMemoryPolicy(spec({ memories: ["ordersMemory"] }), "us-west-2")).toBeUndefined();
-    expect(boxMemoryPolicy(spec({ entrypoint: "main.py" }), "us-west-2")).toBeUndefined();
-  });
-});
 
 describe("addBoxBedrockTarget", () => {
   test("adds the bedrock target and its policy for a boxed agent that calls Bedrock", () => {
@@ -269,30 +138,113 @@ describe("boxBedrockPolicy", () => {
 });
 
 describe("addBoxGatewayTargets", () => {
-  test("adds the bedrock and agentcore targets a boxed agent's calls take, in the region given", () => {
+  test("adds the bedrock target a boxed agent's model calls take, in the region given", () => {
     const project = spec();
 
     addBoxGatewayTargets(project, "eu-central-1");
 
-    expect(gateway(project).targets).toEqual([
-      getBoxGatewayBedrockTargetSpec("eu-central-1"),
-      getBoxGatewayAgentCoreTargetSpec("eu-central-1"),
-    ]);
+    expect(gateway(project).targets).toEqual([getBoxGatewayBedrockTargetSpec("eu-central-1")]);
+  });
+
+  test("adds no target and no policy for the default Memory: its calls go to Memory directly", () => {
+    const project = spec();
+    project.runtimes[0]!.modelProvider = "OpenAI";
+
+    expect(addBoxGatewayTargets(project)).toEqual([]);
+    expect(targets(project)).toEqual([]);
+    expect(gateway(project).additionalPolicies).toBeUndefined();
   });
 
   test("moves a target it wrote for another region, and keeps one the user changed", () => {
     const project = spec();
     addBoxGatewayTargets(project, "us-west-2");
-    const memory = gateway(project).targets[1]!;
-    gateway(project).targets[1] = {
-      ...memory,
-      outboundAuth: { ...memory.outboundAuth!, region: "eu-west-1" },
-    };
 
     expect(addBoxGatewayTargets(project, "us-east-1")).toEqual([
       `updating target 'bedrock' of gateway '${GATEWAY}' in agentcore.json from us-west-2 to us-east-1`,
     ]);
-    expect(gateway(project).targets[0]).toEqual(getBoxGatewayBedrockTargetSpec("us-east-1"));
-    expect(gateway(project).targets[1]!.outboundAuth?.region).toBe("eu-west-1");
+    expect(gateway(project).targets).toEqual([getBoxGatewayBedrockTargetSpec("us-east-1")]);
+
+    const bedrock = gateway(project).targets[0]!;
+    // The user signs for another service, so the target is no longer the one build wrote.
+    gateway(project).targets[0] = {
+      ...bedrock,
+      outboundAuth: { ...bedrock.outboundAuth!, service: "bedrock-runtime" },
+    };
+    expect(addBoxGatewayTargets(project, "eu-west-1")).toEqual([]);
+    expect(gateway(project).targets[0]!.outboundAuth?.region).toBe("us-east-1");
+  });
+});
+
+describe("removeLegacyMemoryAccess", () => {
+  /** The `agentcore` target, in `region`, as a build before Memory went direct wrote it. */
+  const legacy = (region: string, dnsSuffix = "amazonaws.com") => ({
+    name: "agentcore",
+    targetType: "passthrough" as const,
+    passthrough: {
+      endpoint: `https://bedrock-agentcore.${region}.${dnsSuffix}`,
+      protocolType: "CUSTOM" as const,
+    },
+    outboundAuth: {
+      type: "GATEWAY_IAM_ROLE" as const,
+      service: "bedrock-agentcore",
+      region,
+    },
+  });
+
+  test("removes the agentcore target of an earlier build, in any region, and the policy listing", () => {
+    for (const [region, suffix] of [
+      ["us-west-2", "amazonaws.com"],
+      ["eu-central-1", "amazonaws.com"],
+      ["cn-north-1", "amazonaws.com.cn"],
+    ] as const) {
+      const project = spec();
+      gateway(project).targets = [getBoxGatewayBedrockTargetSpec(), legacy(region, suffix)];
+      gateway(project).additionalPolicies = [
+        BOX_BEDROCK_POLICY_FILE,
+        LEGACY_BOX_MEMORY_POLICY_FILE,
+      ];
+
+      expect(removeLegacyMemoryAccess(project)).toEqual([
+        `removing target 'agentcore' from gateway '${GATEWAY}' in agentcore.json: the boxed agent's Memory calls go to Memory directly`,
+        `removing '${LEGACY_BOX_MEMORY_POLICY_FILE}' from gateway '${GATEWAY}' additionalPolicies in agentcore.json: its role no longer calls Memory`,
+      ]);
+      expect(targets(project)).toEqual(["bedrock"]);
+      expect(gateway(project).additionalPolicies).toEqual([BOX_BEDROCK_POLICY_FILE]);
+    }
+  });
+
+  test("drops additionalPolicies when the Memory file was its only entry", () => {
+    const project = spec();
+    gateway(project).additionalPolicies = [LEGACY_BOX_MEMORY_POLICY_FILE];
+
+    removeLegacyMemoryAccess(project);
+
+    expect(gateway(project).additionalPolicies).toBeUndefined();
+  });
+
+  test("keeps an agentcore target that the user changed, and one on a gateway that is not a Box gateway", () => {
+    const project = spec();
+    const changed = { ...legacy("us-west-2"), description: "mine" } as never;
+    gateway(project).targets = [changed];
+    const tools = {
+      name: "tools",
+      authorizerType: "AWS_IAM",
+      targets: [legacy("us-west-2")],
+    } as ProjectSpec["agentCoreGateways"][number];
+    project.agentCoreGateways.push(tools);
+
+    expect(removeLegacyMemoryAccess(project)).toEqual([]);
+    expect(gateway(project).targets).toEqual([changed]);
+    expect(tools.targets).toHaveLength(1);
+  });
+
+  test("runs first in addBoxGatewayTargets", () => {
+    const project = spec();
+    gateway(project).targets = [legacy("us-west-2")];
+
+    expect(addBoxGatewayTargets(project, "us-west-2")[0]).toStartWith(
+      "removing target 'agentcore'",
+    );
+    expect(targets(project)).toEqual(["bedrock"]);
   });
 });

@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
-  getBoxGatewayAgentCoreTargetSpec,
   getBoxGatewayBedrockTargetSpec,
+  agentCoreDataPlaneHost,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
@@ -87,12 +87,12 @@ test("default memory names fit the service limit for long runtime names", () => 
   expect(memory.name).toHaveLength(48);
 });
 
-describe("Box gateway targets", () => {
+describe("the Box gateway target and the Memory host", () => {
   test("take the DNS suffix of the partition of the region", () => {
-    const endpoints = (region: string) =>
-      [getBoxGatewayBedrockTargetSpec(region), getBoxGatewayAgentCoreTargetSpec(region)].map(
-        ({ passthrough }) => passthrough?.endpoint,
-      );
+    const endpoints = (region: string) => [
+      getBoxGatewayBedrockTargetSpec(region).passthrough?.endpoint,
+      `https://${agentCoreDataPlaneHost(region)}`,
+    ];
 
     expect(endpoints("cn-north-1")).toEqual([
       "https://bedrock-runtime.cn-north-1.amazonaws.com.cn",

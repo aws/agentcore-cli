@@ -1642,8 +1642,8 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
-   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
-   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
+   * The region `agentcore build` writes the Box gateway's `bedrock` target and the AgentCore Runtime
+   * profile for, as the first deploy picks the default target's: AWS_REGION,
    * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
    * DEFAULT_REGION. Deploy uses its target's region instead.
    */
