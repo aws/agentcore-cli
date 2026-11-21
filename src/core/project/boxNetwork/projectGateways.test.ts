@@ -9,7 +9,11 @@ import { apply } from "../runtimeProfile/rules/gateway";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import type { TomlTable } from "../runtimeProfile/types";
 import { AGENTCORE_PACK_PATH, renderAgentCorePack } from "../templates/boxProfile";
-import { projectGatewayTargetFor, type BoxProjectGateway } from "./projectGateways";
+import {
+  projectGatewaysOf,
+  projectGatewayTargetFor,
+  type BoxProjectGateway,
+} from "./projectGateways";
 
 const TOOLS: BoxProjectGateway = {
   name: "tools",
@@ -32,6 +36,39 @@ describe("projectGatewayTargetFor", () => {
     expect(projectGatewayTargetFor({ ...TOOLS, auth: "none" }, "us-west-2").outboundAuth).toBe(
       undefined,
     );
+  });
+});
+
+describe("the target name of each gateway", () => {
+  const targetsOf = (...names: string[]) =>
+    projectGatewaysOf(
+      {
+        agentCoreGateways: names.map((name) => ({ name, authorizerType: "AWS_IAM", targets: [] })),
+      } as unknown as ProjectSpec,
+      { name: "agent" },
+    ).gateways.map(({ target }) => target);
+
+  test("is egress-gateway-<name> when the name fits as it is", () => {
+    expect(targetsOf("tools", "My-Tools-GW")).toEqual([
+      "egress-gateway-tools",
+      "egress-gateway-My-Tools-GW",
+    ]);
+  });
+
+  test.each([
+    ["a--b", "a-b"],
+    ["x".repeat(95) + "1", "x".repeat(95) + "2"],
+  ])("is not the same for %s and %s", (first, second) => {
+    const targets = targetsOf(first, second);
+    expect(new Set(targets).size).toBe(2);
+    for (const target of targets) {
+      expect(target.length).toBeLessThanOrEqual(100);
+      expect(target).toMatch(/^egress-gateway-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/);
+    }
+  });
+
+  test("is the same on each build", () => {
+    expect(targetsOf("a--b")).toEqual(targetsOf("a--b"));
   });
 });
 

@@ -4,10 +4,11 @@
  * AgentCore Runtime, the boxed agent gets the same variable, and box sends each call to the
  * gateway's host to a Box gateway target that names that gateway (`passthrough.gateway`).
  */
+import { createHash } from "node:crypto";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { gatewayDiscoveryPrefix, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { targetNameFor } from "./egress";
+import { BOX_EGRESS_TARGET_PREFIX, targetNameFor } from "./egress";
 
 /** A gateway of the project that a boxed runtime calls through its Box gateway. */
 export interface BoxProjectGateway {
@@ -23,6 +24,26 @@ export interface BoxProjectGateway {
 
 /** The start of the name of each Box gateway target that calls a gateway of the project. */
 const PROJECT_GATEWAY_TARGET_PREFIX = "gateway-";
+
+/** The longest name of a gateway target, as AgentCore takes it. */
+const MAX_TARGET_NAME = 100;
+
+/**
+ * The Box gateway target name for the gateway `name`: `egress-gateway-<name>` when that name keeps
+ * `name` whole. When {@link targetNameFor} changes it, as for `a--b` or a name that is too long,
+ * the name ends in 8 hex digits of the SHA-256 of `name`, so two gateways never share a target.
+ */
+function projectGatewayTargetName(name: string): string {
+  const plain = `${BOX_EGRESS_TARGET_PREFIX}${PROJECT_GATEWAY_TARGET_PREFIX}${name}`;
+  if (targetNameFor(`${PROJECT_GATEWAY_TARGET_PREFIX}${name}`) === plain) return plain;
+  const suffix = createHash("sha256").update(name).digest("hex").slice(0, 8);
+  const room = MAX_TARGET_NAME - BOX_EGRESS_TARGET_PREFIX.length - suffix.length - 1;
+  const kept = targetNameFor(`${PROJECT_GATEWAY_TARGET_PREFIX}${name}`)!
+    .slice(BOX_EGRESS_TARGET_PREFIX.length)
+    .slice(0, room)
+    .replace(/-+$/, "");
+  return `${BOX_EGRESS_TARGET_PREFIX}${kept}-${suffix}`;
+}
 
 /**
  * The gateways of `spec` that `runtime` calls through its Box gateway: each gateway without
@@ -50,7 +71,7 @@ export function projectGatewaysOf(
     }
     gateways.push({
       name: gateway.name,
-      target: targetNameFor(`${PROJECT_GATEWAY_TARGET_PREFIX}${gateway.name}`)!,
+      target: projectGatewayTargetName(gateway.name),
       variablePrefix: gatewayDiscoveryPrefix(gateway),
       auth: gateway.authorizerType === "AWS_IAM" ? "iam" : "none",
     });
