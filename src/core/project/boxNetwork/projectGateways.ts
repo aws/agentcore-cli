@@ -50,8 +50,9 @@ function projectGatewayTargetName(name: string): string {
  * The gateways of `spec` that `runtime` calls through its Box gateway: each gateway without
  * `boundRuntime`, as the CDK library binds it to a runtime without a box. A `PRIVATE_VPC` runtime
  * gets none, and no `CUSTOM_JWT` gateway, because the Box gateway cannot get its token;
- * `add gateway` gives {@link customJwtGatewayNotice} for it once. With `targets` false, because the @aws/agentcore-cdk of the project refuses
- * `passthrough.gateway`, the runtime gets none, and one warning names them.
+ * `add gateway` or `add runtime` gives {@link customJwtGatewayNotice} for it once. When `check`
+ * does not accept `passthrough.gateway`, the runtime gets none, and one warning names them and says
+ * why.
  */
 export function projectGatewaysOf(
   spec: ProjectSpec,
@@ -125,7 +126,7 @@ function uncheckedBecause(check: Extract<PassthroughGatewayCheck, { accepts: fal
   }
 }
 
-/** What `add gateway` tells the user once about a `CUSTOM_JWT` gateway in a Box project. */
+/** What `add gateway` or `add runtime` tells the user once about a `CUSTOM_JWT` gateway in a Box project. */
 export function customJwtGatewayNotice(gatewayName: string): string {
   return (
     `the gateway '${gatewayName}' takes CUSTOM_JWT tokens, and a Box gateway signs only with its ` +
