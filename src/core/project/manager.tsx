@@ -132,7 +132,10 @@ import {
 import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
-import { cdkAcceptsPassthroughGateway } from "./backends/cdk/compatibility";
+import {
+  cdkAcceptsPassthroughGateway,
+  type PassthroughGatewayCheck,
+} from "./backends/cdk/compatibility";
 import { customJwtGatewayNotice } from "./boxNetwork/projectGateways";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import { pinnedVersion } from "./backends/cdk/dependencies";
@@ -457,7 +460,7 @@ type ProjectManagerConfig = {
    * Whether the @aws/agentcore-cdk of the CDK app in a folder accepts a passthrough target with
    * `gateway`; build writes such a target only then. `cdkAcceptsPassthroughGateway` by default.
    */
-  cdkAcceptsPassthroughGateway?: (cdkDirectory: string) => Promise<boolean>;
+  cdkAcceptsPassthroughGateway?: (cdkDirectory: string) => Promise<PassthroughGatewayCheck>;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -482,7 +485,9 @@ export class FsProjectManager implements ProjectManager {
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly boxProfileResolver: BoxProfileResolver;
-  private readonly cdkAcceptsPassthroughGateway: (cdkDirectory: string) => Promise<boolean>;
+  private readonly cdkAcceptsPassthroughGateway: (
+    cdkDirectory: string,
+  ) => Promise<PassthroughGatewayCheck>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -1749,16 +1754,16 @@ export class FsProjectManager implements ProjectManager {
     // Only a box runtime and a gateway without boundRuntime need the check of the CDK app.
     const unbound = project.spec.agentCoreGateways.some(({ boundRuntime }) => !boundRuntime);
     const boxed = project.spec.runtimes.some((runtime) => runtimeRunsInBox(project.spec, runtime));
-    const projectGatewayTargets =
-      unbound &&
-      boxed &&
-      (await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk")));
+    const projectGatewayCheck =
+      unbound && boxed
+        ? await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk"))
+        : undefined;
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
       this.boxProfileResolver,
       region,
-      projectGatewayTargets,
+      projectGatewayCheck,
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));

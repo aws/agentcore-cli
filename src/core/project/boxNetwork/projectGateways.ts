@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { gatewayDiscoveryPrefix, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { BOX_EGRESS_TARGET_PREFIX, targetNameFor } from "./egress";
 
 /** A gateway of the project that a boxed runtime calls through its Box gateway. */
@@ -55,7 +56,7 @@ function projectGatewayTargetName(name: string): string {
 export function projectGatewaysOf(
   spec: ProjectSpec,
   runtime: Pick<ProjectRuntime, "name" | "containment">,
-  targets = true,
+  check: PassthroughGatewayCheck = { accepts: true },
 ): { gateways: BoxProjectGateway[]; warnings: string[] } {
   const gateways: BoxProjectGateway[] = [];
   const warnings: string[] = [];
@@ -70,15 +71,13 @@ export function projectGatewaysOf(
       auth: gateway.authorizerType === "AWS_IAM" ? "iam" : "none",
     });
   }
-  if (!targets && gateways.length > 0) {
+  if (!check.accepts && gateways.length > 0) {
     const names = gateways.map(({ name }) => `'${name}'`);
     const list =
       names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
     warnings.push(
       `The gateways ${list} of this project get no route for a boxed agent on AgentCore ` +
-        "Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
-        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
-        "version that accepts it, then build again.",
+        `Runtime, because ${uncheckedBecause(check)}`,
     );
     return { gateways: [], warnings };
   }
@@ -101,6 +100,29 @@ export function projectGatewayTargetFor(
       outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
     }),
   };
+}
+
+/** Why build writes no gateway target, from the check of the CDK library, and how to fix it. */
+function uncheckedBecause(check: Extract<PassthroughGatewayCheck, { accepts: false }>): string {
+  const library = "the @aws/agentcore-cdk in agentcore/cdk";
+  switch (check.reason) {
+    case "refuses":
+      return (
+        `${library} does not accept passthrough.gateway. Update @aws/agentcore-cdk in ` +
+        "agentcore/cdk/package.json to a version that accepts it, then build again."
+      );
+    case "not-installed":
+      return (
+        "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, " +
+        "then build again."
+      );
+    case "no-node":
+      return `build cannot run node to check ${library}. Put node on PATH, then build again.`;
+    case "timed-out":
+      return `the check of ${library} took more than 60 seconds. Build again.`;
+    case "failed":
+      return `the check of ${library} failed: ${check.detail ?? "no error message"}. Build again.`;
+  }
 }
 
 /** What `add gateway` tells the user once about a `CUSTOM_JWT` gateway in a Box project. */
