@@ -1,3 +1,4 @@
+import { partition } from "@aws-sdk/util-endpoints";
 import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -40,7 +41,7 @@ export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
 /** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
 export function boxGatewayBedrockHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-runtime.${region}.amazonaws.com`;
+  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
 }
 
 /** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
@@ -63,7 +64,7 @@ export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
 
 /** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
 export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-agentcore.${region}.amazonaws.com`;
+  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
 }
 
 /**

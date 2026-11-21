@@ -1164,5 +1164,29 @@ describe("warnings", () => {
         forService("egress-agentcore-control", "bedrock-agentcore"),
       ]);
     });
+
+    test("the Bedrock and Memory files grant the amazonaws.com.cn hosts of a build for China", () => {
+      const china = (name: string, host: string, service: string) =>
+        passthrough(name, `https://${host}`, {
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "cn-north-1" },
+        });
+      const r = model(
+        "",
+        {},
+        {
+          targets: [
+            china("egress-models", "bedrock-runtime.cn-north-1.amazonaws.com.cn", "bedrock"),
+            china(
+              "egress-memory",
+              "bedrock-agentcore.cn-north-1.amazonaws.com.cn",
+              "bedrock-agentcore",
+            ),
+          ],
+        },
+      );
+      r.spec.agentCoreGateways[0]!.additionalPolicies = [BEDROCK_FILE, MEMORY_FILE];
+
+      expect(boxGatewayIamWarnings(r.spec, { ...r.network, region: "cn-north-1" })).toEqual([]);
+    });
   });
 });
