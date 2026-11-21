@@ -574,6 +574,32 @@ describe("gateway targets in a Box project", () => {
     ]);
   });
 
+  test("remove runtime drops its Box gateway from the record, so add runtime again writes an empty entry", async () => {
+    const manager = subject();
+    let project = await createdProject(manager, ["agent", "search"]);
+    await writeFile(
+      recordOf(project),
+      '{\n  "agent-box-egress": ["egress-a"],\n  "search-box-egress": ["egress-old"]\n}\n',
+    );
+
+    project = (await manager.removeResource(project, { resourceType: "runtime", name: "search" }))
+      .project;
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-a"],
+    });
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-a"],
+      "search-box-egress": [],
+    });
+  });
+
   test("add runtime refuses a start.py of the user's own, and changes nothing", async () => {
     const manager = subject();
     const project = await createdProject(manager);
@@ -921,7 +947,9 @@ describe("gateway targets in a Box project", () => {
   test("remove all, then add runtime, adds a box runtime, as the project is still a Box project", async () => {
     const manager = subject();
     let project = await createdProject(manager);
+    await writeFile(recordOf(project), '{\n  "agent-box-egress": ["egress-old"]\n}\n');
     project = (await manager.removeAllResources(project)).project;
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({});
 
     await drain(
       manager.addResource(project, {
@@ -935,6 +963,9 @@ describe("gateway targets in a Box project", () => {
       ["agent", { version: BOX_RELEASE.version }],
     ]);
     expect(spec.agentCoreGateways.map(({ boundRuntime }) => boundRuntime)).toEqual(["agent"]);
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": [],
+    });
   });
 });
 

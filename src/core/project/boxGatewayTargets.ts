@@ -62,3 +62,28 @@ export function addBoxGatewaysToRecord(projectRoot: string, gateways: readonly s
   writeFileSync(path, boxGatewayTargetsText(record));
   return true;
 }
+
+/**
+ * Removes the entry of each of `gateways` from the record, when the record names it. Returns
+ * whether it wrote the record; it leaves a file that is not the record to build, which refuses it.
+ */
+export function removeBoxGatewaysFromRecord(
+  projectRoot: string,
+  gateways: readonly string[],
+): boolean {
+  let record: Record<string, string[]> | undefined;
+  try {
+    record = readBoxGatewayTargets(projectRoot);
+  } catch (error) {
+    if (error instanceof ProjectStateError) return false;
+    throw error;
+  }
+  const named = gateways.filter(
+    (gateway) => record !== undefined && Object.hasOwn(record, gateway),
+  );
+  if (record === undefined || named.length === 0) return false;
+  for (const gateway of named) delete record[gateway];
+  const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
+  writeFileSync(path, boxGatewayTargetsText(record));
+  return true;
+}

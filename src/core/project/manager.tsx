@@ -58,7 +58,11 @@ import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
-import { addBoxGatewaysToRecord, BOX_GATEWAY_TARGETS_FILE } from "./boxGatewayTargets";
+import {
+  addBoxGatewaysToRecord,
+  BOX_GATEWAY_TARGETS_FILE,
+  removeBoxGatewaysFromRecord,
+} from "./boxGatewayTargets";
 import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
@@ -1299,6 +1303,11 @@ export class FsProjectManager implements ProjectManager {
     }
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    // A Box gateway that goes takes its entry in the record of build's targets with it.
+    removeBoxGatewaysFromRecord(
+      project.rootPath,
+      removedGateways.map(({ name }) => name),
+    );
     // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
     // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
     if (input.resourceType === "runtime") {
@@ -1355,6 +1364,10 @@ export class FsProjectManager implements ProjectManager {
     };
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    removeBoxGatewaysFromRecord(
+      project.rootPath,
+      existingProjectSpec.agentCoreGateways.map(({ name }) => name),
+    );
 
     return {
       project: { ...project, spec: newProjectSpec },
