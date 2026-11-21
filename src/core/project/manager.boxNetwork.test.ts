@@ -166,7 +166,8 @@ async function strandsProject(
       ...options.env,
     },
     boxProfileResolver: box,
-    cdkAcceptsPassthroughGateway: async () => options.acceptsPassthroughGateway ?? false,
+    cdkAcceptsPassthroughGateway: async () =>
+      options.acceptsPassthroughGateway ? { accepts: true } : { accepts: false, reason: "refuses" },
     ...(options.backends && { backends: options.backends }),
   });
   const { value: created, warnings: createWarnings } = await drain(

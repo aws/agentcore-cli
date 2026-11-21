@@ -31,6 +31,7 @@ import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
 import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
+import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
 import {
@@ -167,10 +168,11 @@ export interface BoxNetworkProject {
   /** The IAM actions that the gateway's `additionalPolicies` files grant, except build's own. */
   readonly grantedActions: readonly string[];
   /**
-   * Whether the @aws/agentcore-cdk of the project accepts a target with `passthrough.gateway`
-   * (`cdkAcceptsPassthroughGateway`); absent means it does not, and no gateway gets a target.
+   * What the check of the @aws/agentcore-cdk of the project gives for a target with
+   * `passthrough.gateway` (`cdkAcceptsPassthroughGateway`). Absent means no check, and no gateway
+   * of the project gets a target.
    */
-  readonly projectGatewayTargets?: boolean;
+  readonly projectGatewayCheck?: PassthroughGatewayCheck;
 }
 
 /** The Box gateway of `runtime`: the gateway bound to it. */
@@ -212,7 +214,7 @@ export function buildBoxNetwork(
   const reached = projectGatewaysOf(
     project.spec,
     project.runtime,
-    project.projectGatewayTargets ?? false,
+    project.projectGatewayCheck ?? { accepts: false, reason: "refuses" },
   );
   const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);

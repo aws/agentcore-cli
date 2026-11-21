@@ -8,6 +8,7 @@ import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
+import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
@@ -49,8 +50,8 @@ interface Options {
   /** The other gateways of the project, after the Box gateway. */
   readonly gateways?: Record<string, unknown>[];
   readonly runtime?: Partial<ProjectRuntime>;
-  /** Whether the @aws/agentcore-cdk of the project accepts `passthrough.gateway`; true here. */
-  readonly projectGatewayTargets?: boolean;
+  /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
+  readonly projectGatewayCheck?: PassthroughGatewayCheck;
 }
 
 /** The local box profile of runtime `agent`. */
@@ -102,7 +103,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     region: "us-west-2",
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
-    projectGatewayTargets: options.projectGatewayTargets ?? true,
+    projectGatewayCheck: options.projectGatewayCheck ?? { accepts: true },
   });
   return {
     spec,
@@ -1226,18 +1227,46 @@ describe("the gateways of the project", () => {
     expect(network.failures).toEqual([]);
   });
 
-  test("gives the agent no gateway when the @aws/agentcore-cdk of the project refuses passthrough.gateway, and warns once", () => {
-    const { network } = model("", {}, { gateways: [TOOLS, OPEN], projectGatewayTargets: false });
+  test.each([
+    [
+      { accepts: false, reason: "refuses" },
+      "the @aws/agentcore-cdk in agentcore/cdk does not accept passthrough.gateway. Update " +
+        "@aws/agentcore-cdk in agentcore/cdk/package.json to a version that accepts it, then " +
+        "build again.",
+    ],
+    [
+      { accepts: false, reason: "not-installed" },
+      "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, " +
+        "then build again.",
+    ],
+    [
+      { accepts: false, reason: "no-node" },
+      "build cannot run node to check the @aws/agentcore-cdk in agentcore/cdk. Put node on " +
+        "PATH, then build again.",
+    ],
+    [
+      { accepts: false, reason: "timed-out" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk took more than 60 seconds. Build " +
+        "again.",
+    ],
+    [
+      { accepts: false, reason: "failed", detail: "the library is broken" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk failed: the library is broken. " +
+        "Build again.",
+    ],
+  ] as const)(
+    "gives the agent no gateway, and one warning that says why, when the check gives %o",
+    (projectGatewayCheck, why) => {
+      const { network } = model("", {}, { gateways: [TOOLS, OPEN], projectGatewayCheck });
 
-    expect(network.projectGateways).toEqual([]);
-    expect(network.failures).toEqual([]);
-    expect(network.warnings).toEqual([
-      "The gateways 'tools' and 'open-tools' of this project get no route for a boxed agent on " +
-        "AgentCore Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
-        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
-        "version that accepts it, then build again.",
-    ]);
-  });
+      expect(network.projectGateways).toEqual([]);
+      expect(network.failures).toEqual([]);
+      expect(network.warnings).toEqual([
+        "The gateways 'tools' and 'open-tools' of this project get no route for a boxed agent " +
+          `on AgentCore Runtime, because ${why}`,
+      ]);
+    },
+  );
 
   test("gives a PRIVATE_VPC runtime no gateway, as the CDK library binds none to it", () => {
     const { network } = model(
