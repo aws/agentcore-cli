@@ -76,11 +76,11 @@ const GATEWAY_URL_PATTERN =
 
 /**
  * The host of a gateway of the project, which the CDK library sets in `<prefix>_HOST`, and that
- * gateway's URL in `<prefix>_URL`, with `/mcp` for an MCP gateway. Each input that reaches a route's
- * destinations needs a pattern.
+ * gateway's URL in `<prefix>_URL`, with `/mcp` for an MCP gateway, in the `aws` and `aws-cn`
+ * partitions. Each input that reaches a route's destinations needs a pattern.
  */
 const PROJECT_GATEWAY_HOST_PATTERN =
-  "[a-z0-9][-a-z0-9]*[.]gateway[.]bedrock-agentcore[.][a-z0-9-]+[.]amazonaws[.]com";
+  "[a-z0-9][-a-z0-9]*[.]gateway[.]bedrock-agentcore[.][a-z0-9-]+[.]amazonaws[.]com([.]cn)?";
 const PROJECT_GATEWAY_URL_PATTERN = `https://${PROJECT_GATEWAY_HOST_PATTERN}(/mcp)?`;
 
 /** As @box/bedrock bounds `bedrock.region`. */
