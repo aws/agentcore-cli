@@ -276,7 +276,7 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.added).toEqual([]);
     expect(plan.entries).toEqual([]);
     expect(plan.warnings).toEqual([
-      "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is a " +
+      "skipping box egress 'github' (env://GITHUB_TOKEN): credential 'github' is an " +
         "OAuthCredentialProvider credential, not an API key",
     ]);
   });

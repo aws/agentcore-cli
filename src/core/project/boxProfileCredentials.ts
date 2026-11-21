@@ -183,7 +183,10 @@ export function planBoxProfileCredentials(
     const existing = spec.credentials.find((credential) => credential.name === route);
     if (existing !== undefined) {
       if (existing.authorizerType !== "ApiKeyCredentialProvider") {
-        skip(`credential '${route}' is a ${existing.authorizerType} credential, not an API key`);
+        const article = /^[AEIOU]/.test(existing.authorizerType) ? "an" : "a";
+        skip(
+          `credential '${route}' is ${article} ${existing.authorizerType} credential, not an API key`,
+        );
       } else if (credentialEnvironmentVariableNames(existing).length > 0 && !seed(entry, route)) {
         warnings.push(
           `box egress '${route}' reads env://${variable}, which is not set here or in ` +
