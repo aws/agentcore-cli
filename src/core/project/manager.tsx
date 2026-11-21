@@ -54,7 +54,8 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { boxGatewayIamWarnings, reservedBoxTargetNameProblem, type BoxNetwork } from "./boxNetwork";
+import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
