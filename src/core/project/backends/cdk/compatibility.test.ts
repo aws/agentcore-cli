@@ -104,7 +104,7 @@ describe("cdkCompatibilityWarning", () => {
 });
 
 describe("cdkAcceptsPassthroughGateway", () => {
-  /** A CDK app whose @aws/agentcore-cdk exports `PassthroughConfigSchema` as `schema`, a JS text. */
+  /** A CDK app whose @aws/agentcore-cdk exports `AgentCoreGatewayTargetSchema` as `schema`, a JS text. */
   async function cdkDirectoryExporting(schema: string | undefined): Promise<string> {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-passthrough-gateway-"));
     tempDirectories.push(directory);
@@ -117,15 +117,15 @@ describe("cdkAcceptsPassthroughGateway", () => {
     );
     await writeFile(
       join(packageDirectory, "index.js"),
-      `exports.PassthroughConfigSchema = ${schema};\n`,
+      `exports.AgentCoreGatewayTargetSchema = ${schema};\n`,
     );
     return directory;
   }
-  /** As each @aws/agentcore-cdk parses a passthrough: with `gateway`, or with `endpoint` only. */
+  /** As each @aws/agentcore-cdk parses the passthrough of a target: with `gateway`, or `endpoint` only. */
   const WITH_GATEWAY =
-    "{ safeParse: (config) => ({ success: typeof config.gateway === 'string' }) }";
+    "{ safeParse: (target) => ({ success: typeof target.passthrough.gateway === 'string' }) }";
   const ENDPOINT_ONLY =
-    "{ safeParse: (config) => ({ success: typeof config.endpoint === 'string' }) }";
+    "{ safeParse: (target) => ({ success: typeof target.passthrough.endpoint === 'string' }) }";
 
   test.skipIf(!Bun.which("node"))(
     "is true when the installed library accepts passthrough.gateway",
@@ -146,7 +146,7 @@ describe("cdkAcceptsPassthroughGateway", () => {
   );
 
   test.skipIf(!Bun.which("node"))(
-    "is false when the library is not installed, or has no PassthroughConfigSchema",
+    "is false when the library is not installed, or has no AgentCoreGatewayTargetSchema",
     async () => {
       expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryExporting(undefined))).toBe(
         false,

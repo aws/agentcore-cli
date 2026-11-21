@@ -67,14 +67,21 @@ export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<str
 
 /**
  * Asks the @aws/agentcore-cdk that the CDK app in `cdkDirectory` loads whether its schema takes a
- * passthrough target with `gateway` in place of `endpoint`. Node runs the check in that folder, so
- * it loads the same library as synth. False when the library is missing or the check fails.
+ * passthrough target with `gateway` in place of `endpoint`, as build writes it. The check parses a
+ * whole target, because the library gives `gateway` a passthrough schema of its own. Node runs the
+ * check in that folder, so it loads the same library as synth. False when the library is missing
+ * or the check fails.
  */
 const PASSTHROUGH_GATEWAY_CHECK = `
 let accepts = false;
 try {
-  const { PassthroughConfigSchema } = require("@aws/agentcore-cdk");
-  accepts = PassthroughConfigSchema.safeParse({ gateway: "check", protocolType: "CUSTOM" }).success === true;
+  const { AgentCoreGatewayTargetSchema } = require("@aws/agentcore-cdk");
+  accepts = AgentCoreGatewayTargetSchema.safeParse({
+    name: "egress-gateway-check",
+    targetType: "passthrough",
+    passthrough: { gateway: "check", protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-east-1" },
+  }).success === true;
 } catch {}
 process.stdout.write(accepts ? "accepts" : "refuses");
 `;
