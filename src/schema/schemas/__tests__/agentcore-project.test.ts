@@ -408,6 +408,46 @@ describe('AgentCoreProjectSpecSchema', () => {
     }
   });
 
+  it('leaves iam undefined when absent', () => {
+    const result = AgentCoreProjectSpecSchema.safeParse(minimalProject);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.iam).toBeUndefined();
+      expect('iam' in result.data).toBe(false);
+    }
+  });
+
+  it('accepts iam.permissionsBoundary as a policy name or ARN in any partition', () => {
+    const accepted = [
+      'AgentCoreExecutionRoleBoundary',
+      'boundary+with=allowed,chars.@-_',
+      'arn:aws:iam::111122223333:policy/AgentCoreExecutionRoleBoundary',
+      'arn:aws-cn:iam::111122223333:policy/AgentCoreExecutionRoleBoundary',
+      'arn:aws-us-gov:iam::111122223333:policy/path/AgentCoreExecutionRoleBoundary',
+      'arn:aws:iam::aws:policy/PowerUserBoundary',
+    ];
+
+    for (const permissionsBoundary of accepted) {
+      const result = AgentCoreProjectSpecSchema.safeParse({ ...minimalProject, iam: { permissionsBoundary } });
+      expect(result.success, permissionsBoundary).toBe(true);
+    }
+  });
+
+  it('rejects malformed permissions boundaries and unknown iam keys', () => {
+    const rejected: unknown[] = [
+      { permissionsBoundary: '' },
+      { permissionsBoundary: 'has spaces' },
+      { permissionsBoundary: 'arn:aws:iam::111122223333:role/NotAPolicy' },
+      { permissionsBoundary: 'a'.repeat(129) },
+      { permissionsBoundary: 'Boundary', rolePath: '/custom/' },
+    ];
+
+    for (const iam of rejected) {
+      const result = AgentCoreProjectSpecSchema.safeParse({ ...minimalProject, iam });
+      expect(result.success, JSON.stringify(iam)).toBe(false);
+    }
+  });
+
   it('leaves payments undefined when absent (optional, non-breaking round-trip)', () => {
     // payments is .optional(), NOT .default([]) — parsing a project without a
     // payments key must NOT materialize `payments: []`, so re-serializing an

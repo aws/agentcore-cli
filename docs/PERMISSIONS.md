@@ -244,11 +244,47 @@ that close the escalation paths. Replace `ACCOUNT_ID` with your account number b
 Together these ensure that even though `iam:CreateRole` targets `Resource: "*"`, every created role is capped by the
 boundary, and neither the boundary nor its attachment can be tampered with.
 
-> **Note:** These deny statements require a corresponding update to the AgentCore CDK constructs. The constructs do not
-> currently attach a `permissionsBoundary` to the IAM roles they create (runtime, memory, gateway, etc.), so
-> CloudFormation will fail to create those roles when `ForceExecutionRoleBoundary` is active. Until the CDK constructs
-> are updated to accept and apply a permission boundary ARN, treat this section as a recommended future configuration.
-> You can still create the boundary policy (Step 1) and scope the user policy (Step 3) today.
+> **Required:** `ForceExecutionRoleBoundary` denies `iam:CreateRole` unless the new role carries the boundary, so you
+> must also declare the boundary in your project — otherwise `agentcore deploy` fails while CloudFormation creates the
+> agent runtime execution role. See [Step 2b](#step-2b-declare-the-boundary-in-your-project).
+
+### Step 2b: Declare the boundary so the CLI applies it
+
+A boundary is a property of the account you deploy into, so the usual place for it is your machine's global config — set
+it once and every project on that machine picks it up:
+
+```bash
+agentcore config permissionsBoundary AgentCoreExecutionRoleBoundary
+```
+
+If instead your whole team deploys into the same boundary-enforcing account and you want the constraint reviewed and
+reproducible in CI, commit it to `agentcore/agentcore.json`:
+
+```json
+{
+  "name": "MyProject",
+  "version": 1,
+  "iam": {
+    "permissionsBoundary": "AgentCoreExecutionRoleBoundary"
+  }
+}
+```
+
+Either way the CLI applies it to every IAM role the project creates — the agent runtime execution role plus memory,
+gateway, harness, payment and A/B test roles. A bare policy name is resolved against each deployment target's own
+partition and account, so a single value works across accounts and partitions. A full policy ARN
+(`arn:aws:iam::111122223333:policy/AgentCoreExecutionRoleBoundary`) is used verbatim.
+
+Sources are consulted most-specific first, so a project value overrides the machine default, and
+`AGENTCORE_PERMISSIONS_BOUNDARY` overrides both — useful in CI, or for an account whose boundary differs from the one
+committed to the project:
+
+```bash
+AGENTCORE_PERMISSIONS_BOUNDARY=arn:aws:iam::111122223333:policy/AgentCoreExecutionRoleBoundary agentcore deploy
+```
+
+Confirm it landed before deploying, with `agentcore deploy --diff` or by inspecting the synthesized template — every
+`AWS::IAM::Role` should carry a `PermissionsBoundary` property.
 
 ### Step 3: Scope the user policy to your account
 
@@ -302,6 +338,12 @@ policy.
 **KMS key creation fails during deploy.** If the project uses identity/credential features, the CLI creates a KMS key
 for the token vault. The developer policy needs `kms:CreateKey` and `kms:TagResource`. If your organization restricts
 KMS key creation, have an admin pre-create the key and configure it via the token vault settings.
+
+**Deploy fails with `not authorized to perform: iam:CreateRole ... with an explicit deny in a permissions boundary`.**
+Your account requires every new role to carry a permissions boundary. The CLI detects this specific failure and prints
+the boundary the account expects along with the command to set it, so following that hint and redeploying is usually
+enough. See [Step 2b](#step-2b-declare-the-boundary-so-the-cli-applies-it). Raw CloudFormation reports this as
+`UnauthorizedTaggingOperation` because the denied `CreateRole` call also carries tags; the boundary is the actual cause.
 
 ---
 

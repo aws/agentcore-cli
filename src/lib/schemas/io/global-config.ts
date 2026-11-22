@@ -17,6 +17,15 @@ const GlobalConfigSchemaStrict = z
     installationId: z.string().uuid().optional(),
     uvDefaultIndex: z.string().optional(),
     uvIndex: z.string().optional(),
+    /**
+     * IAM policy name or ARN attached as the permissions boundary of every role the CLI
+     * creates, for all projects on this machine. Lives here rather than only in
+     * agentcore.json because a boundary is a property of the account you deploy into, not of
+     * the project: it is set once by whoever configured the account, and committing it would
+     * break teammates deploying into an account without that policy. A project-level
+     * `iam.permissionsBoundary` overrides this.
+     */
+    permissionsBoundary: z.string().optional(),
     disableDependencyManagement: z.boolean().optional(),
     disableTransactionSearch: z.boolean().optional(),
     transactionSearchIndexPercentage: z.number().int().min(0).max(100).optional(),

@@ -138,6 +138,7 @@ export const abTestHandler: ABTestHandler = {
           projectName: projectSpec.name,
           testName: opts.name,
           gatewayArn,
+          permissionsBoundary: projectSpec.iam?.permissionsBoundary,
         });
         roleCreatedByCli = true;
       }

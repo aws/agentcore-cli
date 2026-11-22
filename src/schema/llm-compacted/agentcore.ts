@@ -12,6 +12,7 @@ interface AgentCoreProjectSpec {
   version: number; // integer @min 1
   managedBy: 'CDK'; // default 'CDK'
   tags?: Tags;
+  iam?: ProjectIamSettings;
   runtimes: AgentEnvSpec[]; // default [], unique by name
   memories: Memory[]; // default [], unique by name
   knowledgeBases: KnowledgeBase[]; // default [], unique by name
@@ -31,6 +32,11 @@ interface AgentCoreProjectSpec {
 }
 
 type Tags = Record<string, string>; // @max 50 entries; keys @min 1 @max 128; values @max 256
+interface ProjectIamSettings {
+  // IAM policy name or policy ARN attached as the permissions boundary of every role created
+  // for this project. A bare name resolves against each target's partition and account.
+  permissionsBoundary?: string;
+}
 type BuildType = 'CodeZip' | 'Container';
 type PythonRuntime = 'PYTHON_3_10' | 'PYTHON_3_11' | 'PYTHON_3_12' | 'PYTHON_3_13' | 'PYTHON_3_14';
 type NodeRuntime = 'NODE_18' | 'NODE_20' | 'NODE_22';
