@@ -762,6 +762,20 @@ describe("the gateway rule for a gateway of the project", () => {
     expect(Object.keys(result.table.mcp as TomlTable)).toEqual(["constructor"]);
   });
 
+  test("stops for an HTTP server of the local profile with the gateway's name that the policy denies", () => {
+    const text = `${PROFILE_TEXT}\n[mcp.tools]\ntype = "http"\ndestinations = ["tools.example.com"]\n`;
+    // The policy denies the server's host, so the server gets no route and no [mcp] entry.
+    const denied = host("tools.example.com", server("tools", "tools.example.com"));
+    const result = apply(parse(text) as TomlTable, {
+      ...contextOf(text, [denied]),
+      projectGateways: [TOOLS],
+    });
+
+    expect(result.problems.map(({ code, key }) => [code, key])).toEqual([
+      ["RUNTIME_GATEWAY_SERVER_NAME_TAKEN", ["mcp", "tools"]],
+    ]);
+  });
+
   test("stops for a server of the local profile with the gateway's name", () => {
     const text = `${PROFILE_TEXT}\n[mcp.tools]\ncommand = ["/usr/bin/tools"]\n`;
 

@@ -99,9 +99,12 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     }
   }
 
+  // A server of the local profile keeps its name, also one that gets no route here, because the
+  // policy names it; a gateway of the project cannot take that name.
+  const local = isTable(table.mcp) ? table.mcp : {};
   const problems: RuntimeProfileProblem[] = [];
   for (const gateway of context.projectGateways ?? []) {
-    if (Object.hasOwn(mcp, gateway.name)) {
+    if (Object.hasOwn(mcp, gateway.name) || Object.hasOwn(local, gateway.name)) {
       problems.push({
         code: "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
         key: ["mcp", gateway.name],
