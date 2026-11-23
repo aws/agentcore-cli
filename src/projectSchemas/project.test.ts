@@ -557,6 +557,27 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
   test.each(["my-prefix", "", "1BOX"])("rejects discoveryPrefix %j", (discoveryPrefix) => {
     expect(parse({ boundRuntime: "agent", discoveryPrefix }).success).toBe(false);
   });
+
+  test("rejects a bound NONE gateway in a Box project, and accepts one outside it", () => {
+    const spec = (projectType?: string) => ({
+      ...minimalProject,
+      ...(projectType && { projectType }),
+      runtimes: [runtime],
+      agentCoreGateways: [gateway({ boundRuntime: "agent", authorizerType: "NONE" })],
+    });
+    const box = ProjectSpecSchema.safeParse(spec("box"));
+    expect(box.success).toBe(false);
+    expect(box.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" has boundRuntime "agent" in a Box project and authorizerType "NONE". Anyone with its URL could call it and use its credentials. Use "AWS_IAM".',
+    );
+    expect(ProjectSpecSchema.safeParse(spec()).success).toBe(true);
+    expect(
+      ProjectSpecSchema.safeParse({
+        ...spec("box"),
+        agentCoreGateways: [gateway({ boundRuntime: "agent" })],
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("Box project gateways", () => {
