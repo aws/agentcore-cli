@@ -160,7 +160,7 @@ describe("boxNetworkEdits", () => {
       name: "reader",
       writes: () => [{ kind: "file", path: "seen.txt" }],
       edits: () => ({
-        warnings: (spec) => [`warning: ${spec.name}`],
+        warningsAfter: (spec) => [`warning: ${spec.name}`],
         filesAfter: (spec) => {
           seen.push(spec.name);
           return [{ path: "seen.txt", text: spec.name }];
@@ -321,9 +321,11 @@ describe("gatewayTargetsWriter", () => {
 });
 
 describe("the warning for a host with no gateway target", () => {
-  /** The warnings of the credentials and gateway targets writers, as build runs them. */
+  /** The warnings of the hosts, from the credentials and gateway targets writers, as build runs them. */
   const warningsOf = (networks: BoxNetwork[], context: BoxNetworkWriteContext) =>
-    boxNetworkEdits([credentialsWriter, gatewayTargetsWriter], networks, context).warnings;
+    boxNetworkEdits([credentialsWriter, gatewayTargetsWriter], networks, context).warnings.filter(
+      (warning) => warning.includes(": build gives "),
+    );
 
   const github = (envRoutes: BoxNetwork["envRoutes"]) =>
     network({

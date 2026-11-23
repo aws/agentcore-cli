@@ -1,4 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
+import {
+  getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
+} from "../handlers/project/shortcuts";
 import { boxGatewaySpec, ProjectSpecSchema, ProjectNameSchema } from "./project";
 
 const minimalProject = { name: "project", version: 2 };
@@ -553,6 +557,27 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
   test.each(["my-prefix", "", "1BOX"])("rejects discoveryPrefix %j", (discoveryPrefix) => {
     expect(parse({ boundRuntime: "agent", discoveryPrefix }).success).toBe(false);
   });
+
+  test("rejects a bound NONE gateway in a Box project, and accepts one outside it", () => {
+    const spec = (projectType?: string) => ({
+      ...minimalProject,
+      ...(projectType && { projectType }),
+      runtimes: [runtime],
+      agentCoreGateways: [gateway({ boundRuntime: "agent", authorizerType: "NONE" })],
+    });
+    const box = ProjectSpecSchema.safeParse(spec("box"));
+    expect(box.success).toBe(false);
+    expect(box.error?.issues.map(({ message }) => message)).toContain(
+      'Gateway "agent-box-egress" has boundRuntime "agent" in a Box project and authorizerType "NONE". Anyone with its URL could call it and use its credentials. Use "AWS_IAM".',
+    );
+    expect(ProjectSpecSchema.safeParse(spec()).success).toBe(true);
+    expect(
+      ProjectSpecSchema.safeParse({
+        ...spec("box"),
+        agentCoreGateways: [gateway({ boundRuntime: "agent" })],
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("Box project gateways", () => {
@@ -586,6 +611,19 @@ describe("Box project gateways", () => {
 
   test("finds the Box gateway by boundRuntime, not by name", () => {
     expect(parse(["agent"], [{ ...boxGatewaySpec("agent"), name: "renamed" }]).success).toBe(true);
+  });
+
+  test("accepts the targets build writes on a Box gateway", () => {
+    const egress = {
+      name: "egress-api-example-com",
+      targetType: "passthrough",
+      passthrough: { endpoint: "https://api.example.com", protocolType: "CUSTOM" },
+    };
+    const box = {
+      ...boxGatewaySpec("agent"),
+      targets: [getBoxGatewayBedrockTargetSpec(), getBoxGatewayAgentCoreTargetSpec(), egress],
+    };
+    expect(messages(parse(["agent"], [box]))).toEqual([]);
   });
 
   test("does not ask for Box gateways in a project without projectType", () => {

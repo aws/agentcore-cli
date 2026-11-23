@@ -27,9 +27,14 @@ import {
   boxBedrockPolicy,
   boxMemoryPolicy,
 } from "./boxMemory";
+import type { ReadEnvFileOptions } from "../../io/envFile";
 import { boxGatewayTargetsText } from "./boxGatewayTargets";
-import { planBoxProfileCredentials, type BoxKeySources } from "./boxProfileCredentials";
-import type { BoxEnvRoute } from "./boxProfileEgress";
+import {
+  boxKeyVariables,
+  planBoxProfileCredentials,
+  type BoxKeySources,
+} from "./boxProfileCredentials";
+import { hasValue, type BoxEnvRoute } from "./boxProfileEgress";
 import {
   boxTelemetryPolicy,
   boxTelemetryPolicyFile,
@@ -76,8 +81,10 @@ export interface BoxNetworkEdits {
   readonly filesAfter?: (spec: ProjectSpec) => readonly BoxNetworkFile[];
   /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
+  /** Messages about what the writer could not do, for the user to act on. */
+  readonly warnings?: readonly string[];
   /** Warnings on the copy of agentcore.json once every writer changed it. */
-  readonly warnings?: (spec: ProjectSpec) => readonly string[];
+  readonly warningsAfter?: (spec: ProjectSpec) => readonly string[];
 }
 
 /** What a writer reads besides the models: the project, and where build looks for each key. */
@@ -107,6 +114,7 @@ export interface CollectedEdits {
   readonly changedFields: readonly (keyof ProjectSpec)[];
   readonly files: readonly BoxNetworkFile[];
   readonly envLocal: readonly EnvLocalEntry[];
+  /** The step messages of the changes to agentcore.json. */
   readonly messages: readonly string[];
   readonly warnings: readonly string[];
 }
@@ -136,16 +144,17 @@ export function boxNetworkEdits(
   const messages: string[] = [];
   const files: BoxNetworkFile[] = [];
   const envLocal: EnvLocalEntry[] = [];
+  const warnings: string[] = [];
   const all = writers.map((writer) => writer.edits(networks, context));
   for (const edits of all) {
     for (const change of edits.spec ?? []) messages.push(...change(spec));
     files.push(...(edits.files ?? []));
     envLocal.push(...(edits.envLocal ?? []));
+    warnings.push(...(edits.warnings ?? []));
   }
-  const warnings: string[] = [];
   for (const edits of all) {
     files.push(...(edits.filesAfter?.(spec) ?? []));
-    warnings.push(...(edits.warnings?.(spec) ?? []));
+    warnings.push(...(edits.warningsAfter?.(spec) ?? []));
   }
   const changedFields = (Object.keys(spec) as (keyof ProjectSpec)[]).filter(
     (field) => !isDeepStrictEqual(spec[field], context.spec[field]),
@@ -199,10 +208,30 @@ export const credentialsWriter: BoxNetworkWriter = {
         },
       ],
       envLocal: plan.entries,
-      warnings: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
+      warnings: plan.warnings,
+      warningsAfter: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
     };
   },
 };
+
+/**
+ * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it: only
+ * the variables its routes use, and none that `env` sets to a value, because a value set in `env`
+ * wins. An entry that is not read is not decrypted, so it cannot stop the build. With no routes,
+ * no entry is read.
+ */
+export function boxKeyReads(
+  networks: readonly BoxNetwork[],
+  spec: ProjectSpec,
+  env: NodeJS.ProcessEnv,
+): ReadEnvFileOptions {
+  const variables = boxKeyVariables(spec.credentials, uniqueRoutes(networks));
+  return {
+    select: (name) => variables.has(name),
+    // A blank value in `env` does not win, so build reads that variable from the file instead.
+    overrides: Object.fromEntries(Object.entries(env).filter(([, value]) => hasValue(value))),
+  };
+}
 
 /**
  * Each `env://` route of the networks once, by its name and its variable: two runtimes can read

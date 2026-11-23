@@ -55,6 +55,7 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
@@ -69,6 +70,7 @@ import {
 } from "./boxGatewayTargets";
 import {
   BOX_NETWORK_WRITERS,
+  boxKeyReads,
   boxNetworkEdits,
   writeBoxNetworkFiles,
   type BoxNetworkFile,
@@ -690,6 +692,13 @@ export class FsProjectManager implements ProjectManager {
           `a gateway target with name '${input.resourceConfig.name}' already exists in gateway '${gateway.name}'`,
         );
       }
+      // Build owns some target names on the Box gateway of a boxed runtime.
+      const parent = projectSpec.agentCoreGateways.find(
+        (candidate) => candidate.name === input.gatewayName,
+      );
+      const reserved =
+        parent && reservedBoxTargetNameProblem(projectSpec, parent, input.resourceConfig.name);
+      if (reserved) throw new InputValidationError(reserved);
     } else if (input.resourceType === "policy") {
       // Policy names are account-unique on the service, so the check spans engines.
       const engine = projectSpec.policyEngines.find((candidate) =>
@@ -1750,7 +1759,7 @@ export class FsProjectManager implements ProjectManager {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
-      envLocal: networks.length > 0 ? await envLocal.read() : {},
+      envLocal: await envLocal.read(boxKeyReads(networks, project.spec, this.processEnv)),
     };
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, context);
     const messages = [...edits.messages];
@@ -1803,11 +1812,11 @@ export class FsProjectManager implements ProjectManager {
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
     const warnings = [
+      ...edits.warnings,
       ...networks.flatMap((network) => [
         ...network.warnings,
         ...boxGatewayIamWarnings(edits.spec, network),
       ]),
-      ...edits.warnings,
     ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),

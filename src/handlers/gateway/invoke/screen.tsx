@@ -20,6 +20,7 @@ import { coreOptsFromCtx } from "../../utils";
 import type { GatewayInvokeRequest, GatewayInvokeResponse } from "../types";
 import { GatewayInvokeLaunchContextKey, type GatewayInvokeLaunchContext } from "./launchContext";
 import { normalizeGatewayInvokeRequest } from "./request";
+import { gatewayAccessDeniedHint } from "./response";
 
 const theme = darkTheme;
 const ACCEPT = "application/json, text/event-stream, */*;q=0.1";
@@ -320,7 +321,13 @@ export function GatewayInvokeConsole({
       if (response.mcpSessionId) setMcpSessionId(response.mcpSessionId);
       if (response.mcpProtocolVersion) setMcpProtocolVersion(response.mcpProtocolVersion);
       updateExchange({
-        ...(success ? {} : { note: `HTTP ${response.statusCode}` }),
+        ...(success
+          ? {}
+          : {
+              note:
+                gatewayAccessDeniedHint(response.statusCode, detail.data?.authorizerType) ??
+                `HTTP ${response.statusCode}`,
+            }),
         state: success ? "complete" : "failed",
       });
     } catch (error) {
