@@ -12,6 +12,7 @@ import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testi
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import type { BoxNetwork } from "./boxNetwork";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
+import { MEMORY_POLICY_FILE, memoryHostPolicy } from "./runtimeProfile/rules/additions";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
@@ -289,8 +290,12 @@ describe("build writes the Box network of the box profile", () => {
 
     // The Runtime profile routes each target of the Box gateway, the model's included.
     const profile = await runtimeProfile(root);
-    expect(profile.policies).toEqual(["policy.dw"]);
+    // The runtime has its default Memory, so the box reaches the AgentCore host only for Memory.
+    expect(profile.policies).toEqual(["policy.dw", MEMORY_POLICY_FILE]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
+    expect(await text(root, `app/agent_python_strands/.box-dist/${MEMORY_POLICY_FILE}`)).toBe(
+      memoryHostPolicy("us-west-2"),
+    );
     const egress = profile.egress as Record<string, unknown>;
     // The route of [egress.github] keeps the name of its entry, and goes to its target.
     expect(Object.keys(egress).sort()).toEqual([
@@ -501,34 +506,28 @@ describe("build writes the Box network of the box profile", () => {
     );
   });
 
-  test("sends an entry of the profile for the Memory host directly on the Runtime, with its name, and warns", async () => {
+  test("stops for an entry of the profile to the AgentCore host, as the box reaches it only for Memory", async () => {
     const { manager, root, box } = await strandsProject();
     const host = "bedrock-agentcore.us-west-2.amazonaws.com";
     await editProfile(root, {
       tables: `\n[egress.tools]\ndestinations = ["${host}"]\nsecret.ref = "aws://default"\n`,
     });
     box.answer = shows({ tools: { destinations: [host], secret: { ref: "aws://default" } } });
-
-    const { warnings } = await build(manager, root);
-
-    // `agentcore dev` keeps the entry, for Code Interpreter or Browser. On the Runtime it goes to
-    // the host directly, signed with the execution role, so Memory can hold each call to the
-    // session; box refuses the Memory route beside it.
-    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual(["bedrock", "tools"]);
-    expect(egress.tools).toEqual({ destinations: [host], secret: { ref: "aws://" } });
-    expect(warnings).toContainEqual(
-      expect.stringContaining(`[egress.tools] goes to ${host} directly on AgentCore Runtime`),
-    );
-    // The Runtime does not use a gateway target for the host, so build writes none, and gives no
-    // warning about the gateway role's grants for one.
-    expect(await targetNames(root)).toEqual(["bedrock"]);
-    expect(warnings).not.toContainEqual(expect.stringContaining("Target 'egress-"));
-
-    // A second build changes nothing.
     const spec = await text(root, SPEC);
-    const again = await build(manager, root);
-    expect(again.steps.filter((step) => step.includes("gateway target"))).toEqual([]);
+
+    const error = await build(manager, root).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    // Code Interpreter and Browser are on that host. On the Runtime the box reaches it only at
+    // /memories, directly, and blocks every other path, so build stops and writes nothing.
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(
+      `[egress.tools] reaches ${host}. On AgentCore Runtime, a runtime with its default Memory ` +
+        `reaches that host only for Memory, at ${host}/memories, and box blocks every other path ` +
+        "of it, such as Code Interpreter and Browser.",
+    );
     expect(await text(root, SPEC)).toBe(spec);
   });
 

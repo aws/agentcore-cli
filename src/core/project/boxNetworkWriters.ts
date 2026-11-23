@@ -43,6 +43,7 @@ import {
 } from "./templates/boxProfile";
 import { isTable } from "./runtimeProfile/projectPaths";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+import { MEMORY_POLICY_FILE, memoryHostPolicy } from "./runtimeProfile/rules/additions";
 import { RUNTIME_INPUTS, type TomlTable } from "./runtimeProfile/types";
 import { ProjectStateError } from "../../errors/errors";
 
@@ -455,6 +456,9 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
           kind: "file" as const,
           path: `${dist}/${file}`,
         })),
+        ...(listsMemoryPolicy(networkOf(networks, runtime))
+          ? [{ kind: "file" as const, path: `${dist}/${MEMORY_POLICY_FILE}` }]
+          : []),
       ]),
     edits: (networks, { spec }) => ({
       files: staged.flatMap(({ runtime, dist, kind }) => {
@@ -475,10 +479,20 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
             path: `${dist}/${file}`,
             copyOf: `${boxLocalDir(runtime)}/${file}`,
           })),
+          // The box of a runtime with its default Memory reaches the AgentCore host only for Memory.
+          ...(network && listsMemoryPolicy(network)
+            ? [{ path: `${dist}/${MEMORY_POLICY_FILE}`, text: memoryHostPolicy(network.region) }]
+            : []),
         ];
       }),
     }),
   };
+}
+
+/** Whether the Runtime profile of `network` lists the policy file of the Memory host. */
+function listsMemoryPolicy(network: BoxNetwork | undefined): boolean {
+  const policies = network?.runtimeProfile?.policies;
+  return Array.isArray(policies) && policies.includes(MEMORY_POLICY_FILE);
 }
 
 /**

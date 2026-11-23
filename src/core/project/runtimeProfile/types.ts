@@ -100,6 +100,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_TELEMETRY_REFUSED",
   /** A route of the user under the name of a route that only the Runtime profile has. */
   "RUNTIME_ROUTE_NAME_TAKEN",
+  /** A route to the AgentCore host in a runtime whose box reaches that host only for Memory. */
+  "RUNTIME_AGENTCORE_HOST_ROUTED",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 

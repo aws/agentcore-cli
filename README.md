@@ -264,9 +264,12 @@ A boxed agent gets the deployed Memory IDs and the Runtime's region inside the b
 the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
 its Box gateway. Its calls to its default Memory are the exception. Box signs them with the
 execution role and sends them to Memory directly, so Memory can hold each call to the session of
-the runtime. Box signs only the `/memories` path of the AgentCore host on that route. A
-`PRIVATE_VPC` runtime reaches Memory through the AgentCore endpoint of its private VPC. A runtime
-in a VPC of your own needs a `bedrock-agentcore` VPC endpoint for these calls.
+the runtime. The box reaches the AgentCore host only at `/memories`: build adds a box policy,
+`agentcore-memory-paths.dw`, that blocks every other path of that host, such as Code Interpreter,
+Browser, identity, and API key calls. So a runtime with its default Memory cannot also route the
+AgentCore host in its box profile, and build stops when it does. A `PRIVATE_VPC` runtime reaches
+Memory through the AgentCore endpoint of its private VPC. A runtime in a VPC of your own needs a
+`bedrock-agentcore` VPC endpoint for these calls.
 
 A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
 and deploy now render profiles that those files cannot start. Create the project again, or copy
