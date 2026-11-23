@@ -280,6 +280,11 @@ describe("the pinned releases", () => {
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
     expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
+    // The e2e workflow installs the macOS build on its macOS runner, from this pin.
+    expect(BOX_RELEASE.darwin?.asset).toBe(
+      `box-v${BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
+    );
+    expect(BOX_RELEASE.darwin?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(BOX_RELEASE_PAGE).toBe(
       `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
     );

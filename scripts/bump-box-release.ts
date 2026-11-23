@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 /**
- Pins box to a published GitHub release, in src/core/project/backends/boxRelease.json. It reads
- the release's SHA256SUMS.txt, so the file changes only to a version whose archives are published.
- It imports nothing from src/.
+ Pins box to a published GitHub release, in src/core/project/backends/boxRelease.json: the Linux
+ arm64 build that ships to AgentCore Runtime, and the macOS arm64 build that the e2e workflow
+ installs on its macOS runner. It reads the release's SHA256SUMS.txt, so the file changes only to a
+ version whose archives are published. It imports nothing from src/.
 
    bun scripts/bump-box-release.ts --box <version> [--box-repo <owner/repo>]
 **/
@@ -20,6 +21,7 @@ const FILE = join(
   "boxRelease.json",
 );
 const LINUX_TARGET = "aarch64-unknown-linux-gnu";
+const DARWIN_TARGET = "aarch64-apple-darwin";
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -50,10 +52,14 @@ const pinned = await Bun.file(FILE).json();
 const repo = values["box-repo"] ?? pinned.box.repo;
 const version = values.box;
 const sums = await checksums(repo, version);
-const asset = `box-v${version}-${LINUX_TARGET}.tar.gz`;
-const linux = sums.get(asset);
-if (!linux) throw new Error(`${repo} v${version} lists no ${asset}`);
+/** The pinned archive of `target`, which the release must list. */
+function pin(target: string): { target: string; asset: string; sha256: string } {
+  const asset = `box-v${version}-${target}.tar.gz`;
+  const sha256 = sums.get(asset);
+  if (!sha256) throw new Error(`${repo} v${version} lists no ${asset}`);
+  return { target, asset, sha256 };
+}
 console.log(`box: ${pinned.box.repo} ${pinned.box.version} → ${repo} ${version}`);
-const box = { repo, version, linux: { target: LINUX_TARGET, asset, sha256: linux } };
+const box = { repo, version, linux: pin(LINUX_TARGET), darwin: pin(DARWIN_TARGET) };
 
 await Bun.write(FILE, `${JSON.stringify({ box }, null, 2)}\n`);

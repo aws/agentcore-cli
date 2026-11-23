@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { partition } from "@aws-sdk/util-endpoints";
 import {
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
   DEFAULT_EGRESS_BEDROCK_REGION,
   agentCoreDataPlaneHost,
   callsBedrockModel,
@@ -10,6 +11,7 @@ import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSche
 import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
 import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { BOX_EGRESS_TARGET_PREFIX } from "./boxNetwork/egress";
 import { runtimeRunsInBox } from "./templates/boxProfile";
 
 /**
@@ -25,8 +27,14 @@ export const BOX_BEDROCK_POLICY_FILE = "agentcore/box-bedrock-policy.json";
  */
 export const LEGACY_BOX_MEMORY_POLICY_FILE = "agentcore/box-memory-policy.json";
 
+/**
+ * The name of the Runtime profile route of the agent's Memory calls, which go to Memory directly.
+ * An earlier build gave the Box gateway target of those calls the same name.
+ */
+export const BOX_MEMORY_ROUTE_NAME = "agentcore";
+
 /** The name of the Box gateway target that an earlier build wrote for the agent's Memory calls. */
-const LEGACY_MEMORY_TARGET_NAME = "agentcore";
+const LEGACY_MEMORY_TARGET_NAME = BOX_MEMORY_ROUTE_NAME;
 
 /** The `agentcore` target, in `region`, as an earlier build wrote it for the Memory calls. */
 function legacyMemoryTarget(region: string): AgentCoreGatewayTarget {
@@ -117,6 +125,44 @@ export function boxBedrockPolicy(
       },
     ],
   };
+}
+
+/**
+ * The names that build owns on a Box gateway: the `bedrock` target of the agent's model calls, and
+ * the name of the agent's Memory route. A target of that name would give the Runtime profile a
+ * route that takes the Memory route's name.
+ */
+const BOX_DEFAULT_TARGET_NAMES: readonly string[] = [
+  BOX_GATEWAY_BEDROCK_TARGET_NAME,
+  BOX_MEMORY_ROUTE_NAME,
+];
+
+/**
+ * The refusal of a user target named `name` on `gateway`, or `undefined` when build does not own
+ * the name there. On the Box gateway of a runtime that runs in a box, build writes the `bedrock`
+ * target, owns the `agentcore` name for the Memory route, and names each egress target it writes
+ * with the `egress-` prefix. A
+ * user target of such a name would take the agent's Bedrock route, the name of its direct Memory
+ * route, or the name of an egress target that build writes. Build writes none of these for another runtime.
+ */
+export function reservedBoxTargetNameProblem(
+  spec: ProjectSpec,
+  gateway: AgentCoreGateway,
+  name: string,
+): string | undefined {
+  const boxed = boxedRuntimes(spec).some((runtime) => runtime.name === gateway.boundRuntime);
+  if (!isBoundGateway(gateway) || !boxed) return undefined;
+  if (!BOX_DEFAULT_TARGET_NAMES.includes(name) && !name.startsWith(BOX_EGRESS_TARGET_PREFIX)) {
+    return undefined;
+  }
+  const reserved = [
+    ...BOX_DEFAULT_TARGET_NAMES.map((n) => `'${n}'`),
+    `'${BOX_EGRESS_TARGET_PREFIX}*'`,
+  ];
+  return (
+    `the gateway target name '${name}' is reserved on Box gateway '${gateway.name}': build owns the ` +
+    `names ${reserved.join(", ")} for the agent's model calls, Memory route, and egress targets. Choose another name.`
+  );
 }
 
 /**

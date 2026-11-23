@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
 import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
@@ -74,6 +75,77 @@ describe("project add gateway-target", () => {
     ]);
     expect(JSON.parse(asJson.stdout()).notes).toEqual([note]);
   });
+
+  /** A Box project with its Box gateway and the `tools` gateway; `boxed` gives the runtime a box. */
+  async function boxProject(boxed: boolean) {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const runtime = spec.runtimes[0];
+    const box = boxGatewaySpec(runtime.name);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: [boxed ? { ...runtime, box: { version: BOX_RELEASE.version } } : runtime],
+      agentCoreGateways: [box],
+    });
+    await addGateway();
+    return { projectRoot, box };
+  }
+
+  async function targetNames(projectRoot: string, gateway: string): Promise<string[]> {
+    return (await projectSpec(projectRoot)).agentCoreGateways
+      .find((candidate: { name: string }) => candidate.name === gateway)
+      .targets.map((target: { name: string }) => target.name);
+  }
+
+  const BUILD_OWNED_NAMES = ["bedrock", "agentcore", "egress-api-example-com"];
+
+  test.each(BUILD_OWNED_NAMES)(
+    "refuses the build-owned name %s on a Box gateway, and only there",
+    async (name) => {
+      const { projectRoot, box } = await boxProject(true);
+
+      await expectError(
+        run([
+          "add",
+          "gateway-target",
+          ...["--gateway", box.name, "--name", name, "--endpoint", ENDPOINT],
+          ...["--outbound-auth", "none"],
+        ]),
+        `the gateway target name '${name}' is reserved on Box gateway '${box.name}': build ` +
+          `owns the names 'bedrock', 'agentcore', 'egress-*' for the agent's model calls, Memory ` +
+          `route, and egress targets. Choose another name.`,
+        InputValidationError,
+      );
+      // The same name is the user's on a gateway that is not a Box gateway.
+      await run([
+        "add",
+        "gateway-target",
+        ...["--gateway", "tools", "--name", name, "--endpoint", ENDPOINT],
+        ...["--outbound-auth", "none"],
+      ]);
+
+      expect(await targetNames(projectRoot, box.name)).toEqual([]);
+      expect(await targetNames(projectRoot, "tools")).toEqual([name]);
+    },
+  );
+
+  test.each(BUILD_OWNED_NAMES)(
+    "accepts the name %s on a bound gateway whose runtime does not run in a box",
+    async (name) => {
+      // A Box project runtime with no box.version: build writes no targets on its gateway.
+      const { projectRoot, box } = await boxProject(false);
+
+      await run([
+        "add",
+        "gateway-target",
+        ...["--gateway", box.name, "--name", name, "--endpoint", ENDPOINT],
+        ...["--outbound-auth", "none"],
+      ]);
+
+      expect(await targetNames(projectRoot, box.name)).toEqual([name]);
+    },
+  );
 
   test("adds endpoint and project Runtime shortcuts", async () => {
     const projectRoot = await inProject();

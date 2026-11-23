@@ -16,7 +16,7 @@ import {
   resolveGatewayInvokeSources,
   resolveGatewayInvokeTuiBearerToken,
 } from "./request";
-import { writeGatewayInvokeResponse } from "./response";
+import { gatewayAccessDeniedHint, writeGatewayInvokeResponse } from "./response";
 import { GatewayInvokeLaunchContextKey } from "./launchContext";
 
 export const invokeGatewayFlags = [
@@ -134,6 +134,8 @@ export const createInvokeGatewayHandler = (
           beforeOutput,
         });
         if (response.statusCode < 200 || response.statusCode >= 300) {
+          const hint = gatewayAccessDeniedHint(response.statusCode, gateway.authorizerType);
+          if (hint) io.stderr.write(`${hint}\n`);
           throw new GatewayInvokeResponseError(`HTTP ${response.statusCode}`);
         }
       };

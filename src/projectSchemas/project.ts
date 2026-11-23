@@ -160,6 +160,19 @@ export const ProjectSpecSchema = z
           path: ["agentCoreGateways"],
         });
       }
+      // A Box gateway holds its runtime's outbound credentials. With NONE, anyone who has its URL
+      // can call it and use them. The L3 schema has the same check.
+      if (
+        isBoxProject(spec) &&
+        gateway.boundRuntime !== undefined &&
+        gateway.authorizerType === "NONE"
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}" in a Box project and authorizerType "NONE". Anyone with its URL could call it and use its credentials. Use "AWS_IAM".`,
+          path: ["agentCoreGateways"],
+        });
+      }
     }
     // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
     // deployed gateway, so every command stops here and prints the entry to add back.

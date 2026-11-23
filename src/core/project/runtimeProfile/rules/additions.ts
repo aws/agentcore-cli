@@ -21,7 +21,7 @@
  */
 import { posix } from "node:path";
 import { agentCoreDataPlaneHost } from "../../../../handlers/project/shortcuts";
-import { hasDefaultMemory } from "../../boxMemory";
+import { BOX_MEMORY_ROUTE_NAME, hasDefaultMemory } from "../../boxMemory";
 import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
@@ -52,7 +52,7 @@ import {
  * sends them to AgentCore Memory directly. The Box gateway would sign them with its own role, and
  * Memory could then not hold each call to the session of the runtime by its context keys.
  */
-export const MEMORY_ROUTE = "agentcore";
+export const MEMORY_ROUTE = BOX_MEMORY_ROUTE_NAME;
 
 /** The variables of the region of the agent, which get the region of the Runtime. */
 const REGION_ENV_NAMES: ReadonlySet<string> = new Set(["AWS_REGION", "AWS_DEFAULT_REGION"]);
