@@ -6,6 +6,11 @@
       "target": "aarch64-unknown-linux-gnu",
       "asset": "box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz",
       "sha256": "45740d3ea768783b9a8939111ea0a26efd2dacf27ffa86104a4634ce1c2dc583"
+    },
+    "darwin": {
+      "target": "aarch64-apple-darwin",
+      "asset": "box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz",
+      "sha256": "76a3909c5c99c435b6ead470be2f401a22c6155b5b60652263bfb1af3ef57e18"
     }
   }
 }

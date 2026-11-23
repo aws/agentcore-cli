@@ -26,8 +26,10 @@ The `box` tests cover the Strands Box templates, which run their agent in a box.
 invoke each one on AgentCore Runtime, and run `agentcore dev` with one local invoke for each. They
 are optional and need a `box` on your PATH: `create` checks for one for a CodeZip box template, and
 `build` and `deploy` run `box profile show` for every Box template, the container one too. Without
-one, they skip. `create` also installs the agent's dependencies and the CDK app's, which `dev` and
-`deploy` use, so the tests don't pass `--skip-install`.
+one, they skip. box ships only arm64 builds, so in CI only the macOS runner (Apple silicon) and the
+Linux arm64 runner (`ubuntu-24.04-arm`) have one: each installs the box that
+`src/core/project/backends/boxRelease.json` pins. `create` also installs the agent's dependencies
+and the CDK app's, which `dev` and `deploy` use, so the tests don't pass `--skip-install`.
 
 The tests that deploy also need `AGENTCORE_E2E_BOX_CDK`: the pinned `@aws/agentcore-cdk` release
 cannot deploy a Box project yet. Set it to an `@aws/agentcore-cdk` version or a `file:` tarball
@@ -37,8 +39,11 @@ that can, for example one packed from the `box-integration` branch of
 `agentcore/cdk`. Without it, as in CI, they skip.
 
 The `dev` tests also need a machine where `box run` can start its sandbox, and for the container
-template a container tool. Box listens on the protocol's fixed port (8080, 8000 or 9000), so the
-`dev` tests run one at a time and need those ports free:
+template a container tool. The container template's `dev` test skips when no `docker`, `podman`
+or `finch` runs from PATH, as on the CI macOS runner; the Linux arm64 runner runs it. A tool that
+is installed but stopped, such as Docker Desktop, still counts, so that test then fails. Box
+listens on the protocol's fixed port (8080, 8000 or 9000), so the `dev` tests run one at a time
+and need those ports free:
 
 ```sh
 AGENTCORE_E2E_BOX_CDK=file:/path/to/aws-agentcore-cdk-1.1.0.tgz bun run test:e2e -- --tagsFilter='box'
@@ -52,7 +57,8 @@ pins a shim for `PYTHON_3_14` only, so they fail on any machine.
 
 The `box-egress` test checks that box, under `agentcore dev`, lets the agent reach the host its
 profile allows (`checkip.amazonaws.com`) and blocks any other (`example.com`). It reaches public
-hosts, so the network can make it fail. It retries twice, and `--tagsFilter='box'` leaves it out:
+hosts, so the network can make it fail. It retries twice, and `--tagsFilter='box'` leaves it out.
+A full run includes it, so in CI it runs on the macOS and Linux arm64 runners:
 
 ```sh
 bun run test:e2e -- --tagsFilter='box-egress'

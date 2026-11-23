@@ -92,6 +92,7 @@ jobs:
         || matrix.name == 'Windows' &&
           format('["codebuild-agentcore-e2e-{0}-{1}","image:windows-1.0","e2e-windows"]', github.run_id, github.run_attempt)
         || matrix.name == 'macOS' && '["macos-latest"]'
+        || matrix.name == 'Linux-arm64' && '["ubuntu-24.04-arm"]'
       ) }}
     permissions:
       id-token: write
@@ -99,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Windows","macOS"]') }}
+        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Linux-arm64","Windows","macOS"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -125,6 +126,36 @@ jobs:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
+      # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
+      # the Box tests. They skip on a runner with no box on PATH.
+      - name: Install box
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        env:
+          # The build's key in boxRelease.json, which pins its archive and SHA-256.
+          BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
+        run: |
+          PIN=src/core/project/backends/boxRelease.json
+          REPO=$(jq -er .box.repo "$PIN")
+          VER=$(jq -er .box.version "$PIN")
+          ASSET=$(jq -er ".box.${BUILD}.asset" "$PIN")
+          SHA=$(jq -er ".box.${BUILD}.sha256" "$PIN")
+          WORK=$(mktemp -d)
+          curl -fsSL --retry 3 -o "${WORK}/${ASSET}" \
+            "https://github.com/${REPO}/releases/download/v${VER}/${ASSET}"
+          # Check against the pin in the repository, not a checksum file of the same release.
+          # Linux has sha256sum, and macOS may have only shasum.
+          SUM=$(command -v sha256sum || echo "shasum -a 256")
+          echo "${SHA}  ${WORK}/${ASSET}" | $SUM -c -
+          # box reads its packs from resources/ beside it, so keep the release together.
+          sudo mkdir -p /opt/box
+          sudo tar --no-same-owner -xzf "${WORK}/${ASSET}" -C /opt/box
+          sudo ln -sf /opt/box/box /usr/local/bin/box
+          box --version
+      # Ubuntu 24.04 lets AppArmor stop an unprivileged process from making a user namespace, which
+      # `box run` needs for its sandbox. The runner is a throwaway VM.
+      - name: Allow user namespaces for box
+        if: matrix.name == 'Linux-arm64'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Build CLI
         if: inputs.npmVersion == ''
         run: bun run build

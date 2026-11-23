@@ -300,7 +300,10 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     return {
       spec: [(copy) => addBoxGatewayTargets(copy, region)],
       files: [
-        { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec) },
+        {
+          path: BOX_BEDROCK_POLICY_FILE,
+          policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
+        },
         {
           path: BOX_MEMORY_POLICY_FILE,
           policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),
@@ -402,9 +405,10 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
     edits: (networks, { spec }) => ({
       files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
+        const entry = spec.runtimes.find(({ name }) => name === runtime) ?? { name: runtime };
         return [
           { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
-          { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) },
+          { path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec, entry) },
           ...(kind === "codezip"
             ? [
                 {
