@@ -192,7 +192,7 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the gateway fixture. The gateway fixture is recorded from renderRuntimeBoxProfile of
  * box-integration (f5503f02). The two template sets are recorded, with the default telemetry
  * target, from the renderer of aws/agentcore-cli#2867 (f40ebce7): box-integration (7252504c) with
- * the `@box/` pack names and no ffi shim.
+ * the `@box/` pack names.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),

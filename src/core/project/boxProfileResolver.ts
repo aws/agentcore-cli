@@ -60,21 +60,11 @@ const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;
 /** The error of a box that has no `--format` or `--full` option, as clap prints it. */
 const REFUSED_JSON = /(?:unexpected argument|Found argument) '--(?:format|full)'/;
 
-/**
- * The destinations of an open route, as a list: box 0.1.11-linux-preview.6 joins them into one
- * string with ", ", and later boxes print a list.
- */
-const OpenRouteDestinations = z
-  .union([z.string(), z.array(z.string())])
-  .transform((destinations) =>
-    typeof destinations === "string" ? destinations.split(", ") : destinations,
-  );
-
 /** The parts of the document of `box profile show --format json --full` that build reads. */
 const BoxProfileShowSchema = z.object({
   box_toml: z.record(z.string(), z.unknown()),
   policy: z.string(),
-  open_routes: z.array(z.object({ route: z.string(), destinations: OpenRouteDestinations })),
+  open_routes: z.array(z.object({ route: z.string(), destinations: z.array(z.string()) })),
   packs: z.array(z.object({ name: z.string(), version: z.string() })).default([]),
   warnings: z.array(z.string()).default([]),
 });

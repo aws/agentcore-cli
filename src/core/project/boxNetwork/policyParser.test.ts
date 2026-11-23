@@ -6,7 +6,7 @@ const HR = 'action == Box::Action::"http:request"';
 const NO_ADMIN = `@id("no_admin") forbid (principal, ${HR}, resource) when { context.input.host == "api.github.com" && context.input.path like "/admin/*" };`;
 const MORE = `@id("more_rule") forbid (principal, ${HR}, resource) when { context.input.host == "example.com" };`;
 
-/** Box's policy as box 0.1.11 prints it for two policy files and the route `github`. */
+/** Box's policy as box prints it for two policy files and the route `github`. */
 const RESOLVED = [
   "// No admin paths on GitHub.",
   NO_ADMIN,

@@ -33,7 +33,7 @@ async function temp(prefix: string): Promise<string> {
 }
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
-const VERSION = "9.9.9-linux-preview.1";
+const VERSION = BOX_RELEASE.version;
 
 /** A tarball of `files` (relative path to content), and its SHA-256. */
 async function tarball(name: string, files: Record<string, string>) {
@@ -58,13 +58,13 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "resources/config.toml": "",
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
-  const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
+  const box = await tarball(`box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
   const release: BoxRelease = {
-    repo: "owner/box-releases",
+    repo: BOX_RELEASE.repo,
     version: VERSION,
     linux: {
       target: "aarch64-unknown-linux-gnu",
-      asset: `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
+      asset: `box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
       sha256: box.sha256,
     },
   };
@@ -109,7 +109,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     expect(
       commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
     ).toEqual([
-      `https://github.com/owner/box-releases/releases/download/v${VERSION}/${release.linux.asset}`,
+      `https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/${release.linux.asset}`,
     ]);
   });
 
@@ -189,7 +189,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     );
 
     await expect(resolveBoxLinuxBuild({}, { runner, home, release })).rejects.toThrow(
-      /has no release\.json for box 9\.9\.9-linux-preview\.1, or no box packs/,
+      `has no release.json for box ${VERSION}, or no box packs`,
     );
   });
 
@@ -203,7 +203,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     const result = resolveBoxLinuxBuild({}, { runner, home, release });
 
     await expect(result).rejects.toThrow(
-      /downloaded from https:\/\/github\.com\/owner\/box-releases\/releases\/download\/v9\.9\.9-linux-preview\.1\/box-v/,
+      `downloaded from https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/box-cli-v`,
     );
     await expect(result).rejects.toThrow(/HTTP 404: Not Found/);
   });
@@ -215,7 +215,7 @@ describe("boxReleaseFor a runtime's box.version", () => {
     expect(await boxReleaseFor(BOX_RELEASE.version)).toBe(BOX_RELEASE);
   });
 
-  test.each(["0.1.11-linux-preview.6", "2.0.0"])(
+  test.each(["0.2.4", "2.0.0"])(
     "refuses %s, a box this CLI does not pin, and says to set the pinned one",
     async (version) => {
       await expect(boxReleaseFor(version)).rejects.toThrow(
