@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { initProject, TestCoreClient } from "../../../testing";
 import { toAddRuntimeInput, type RuntimeInput } from "../../../handlers/project/add/runtime";
 import {
@@ -110,6 +111,47 @@ describe("runtime templates", () => {
   ])("%s keeps enableOtel on", async (template) => {
     const { runtime } = await addTemplate("my_agent", template);
     expect(runtime.instrumentation).toBeUndefined();
+  });
+
+  // A box template is the Strands template with two files of agent-python-strands-box in place.
+  test("agent-python-strands-box-container writes the Strands files, with its own Dockerfile and .gitignore", async () => {
+    const files = async (dir: string) =>
+      Object.fromEntries(
+        await Promise.all(
+          (await readdir(dir, { recursive: true, withFileTypes: true }))
+            .filter((entry) => entry.isFile())
+            .map(async (entry) => {
+              const path = relative(dir, join(entry.parentPath, entry.name)).replaceAll("\\", "/");
+              return [path, await readFile(join(dir, path), "utf8")] as const;
+            }),
+        ),
+      );
+    const plain = await files(
+      (await addTemplate("my_agent", "agent-python-strands-container")).appDir,
+    );
+    const box = await files(
+      (await addTemplate("my_agent", "agent-python-strands-box-container")).appDir,
+    );
+
+    expect(Object.keys(box).sort()).toEqual(Object.keys(plain).sort());
+    const { Dockerfile: boxDockerfile, ".gitignore": boxGitignore, ...rest } = box;
+    const { Dockerfile: plainDockerfile, ".gitignore": plainGitignore, ...plainRest } = plain;
+    expect(rest).toEqual(plainRest);
+    expect(boxDockerfile).toContain("box run");
+    expect(plainDockerfile).not.toContain("box run");
+    expect(boxGitignore).toContain(".box-dist/");
+    expect(plainGitignore).not.toContain(".box-dist/");
+  });
+
+  test.each<[RuntimeTemplateShortcutName, string]>([
+    ["agent-python-langchain", "Traces are collected automatically"],
+    ["agent-python-langchain-box", "Traces are not collected yet"],
+  ])("%s's README says whether traces are collected", async (template, sentence) => {
+    const { appDir } = await addTemplate("my_agent", template);
+    const readme = await readFile(join(appDir, "README.md"), "utf8");
+
+    expect(readme).toContain(sentence);
+    expect(readme).not.toContain("{{");
   });
 
   test("Bedrock Managed Agents keeps infrastructure overrides and its required policy", async () => {

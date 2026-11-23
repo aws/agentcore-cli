@@ -21,6 +21,7 @@ import {
 } from "../../testing";
 import type { DeployResult, Project, ProjectEvent } from "./types";
 import { ProjectKey } from "../../router";
+import { RegionKey } from "../keys";
 import { TuiHandoffKey } from "../../tui/handoff";
 
 // The build and deploy screens run the same ProjectManager generators the
@@ -159,6 +160,26 @@ describe("project build screen", () => {
     // Enter stays in the TUI: back to the root menu.
     await r.press("return");
     await waitForText(r.lastFrame, "the platform for production AI agents");
+    r.unmount();
+  });
+
+  test("builds for the region the launch context resolved, as the command does", async () => {
+    const { backend } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const build = core.projectManager.build.bind(core.projectManager);
+    const regions: (string | undefined)[] = [];
+    core.projectManager.build = (project, options) => {
+      regions.push(options?.region);
+      return build(project, options);
+    };
+    const r = renderScreen("/agentcore/build", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "eu-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
+    expect(regions).toEqual(["eu-west-1"]);
     r.unmount();
   });
 

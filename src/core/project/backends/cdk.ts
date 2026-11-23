@@ -14,7 +14,7 @@ import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
 import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
 import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
-import { boxDownloadMessage, boxReleaseFor, resolveBoxLinuxBuild } from "./boxRelease";
+import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -25,7 +25,7 @@ import {
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../../io";
-import { withOutputEvents } from "../events";
+import { withEvents, withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
@@ -239,10 +239,10 @@ export class CdkBackend implements ProjectBackend {
 
   // Local prerequisites for synth. Checked before any AWS mutation so a missing
   // toolchain or dependencies fails without having provisioned credentials.
-  private async ensureCdkDependencies(
+  private async *ensureCdkDependencies(
     project: Project,
     boxNetworks: BuildBackendInput["boxNetworks"],
-  ): Promise<ProjectEvent[]> {
+  ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
     if (!existsSync(join(cdkDir, "node_modules"))) {
       throw new ProjectStateError(
@@ -252,23 +252,20 @@ export class CdkBackend implements ProjectBackend {
     }
     await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
     // The zip carries box and the image its box profile, so both are staged before synth packages
-    // the code. The box release downloads only when a CodeZip runtime runs in a box.
-    const events: ProjectEvent[] = [];
-    const box = async (version: string | undefined) => {
-      const release = await boxReleaseFor(version);
-      return resolveBoxLinuxBuild(this.processEnv, {
-        runner: this.runner,
-        release,
-        onDownload: (download) =>
-          events.push({
-            type: "step",
-            message: boxDownloadMessage(download, "AgentCore Runtime"),
-          }),
-      });
-    };
-    await stageBoxCodeZip(project, boxNetworks, box);
-    await stageBoxContainers(project, boxNetworks, boxReleaseFor);
-    return events;
+    // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
+    // goes out when the download starts, not once staging ends.
+    yield* withEvents(async (emit) => {
+      // Every box runtime ships the pinned box: build set each box.version to it.
+      const box = () =>
+        resolveBoxLinuxBuild(this.processEnv, {
+          runner: this.runner,
+          release: BOX_RELEASE,
+          onDownload: (download) =>
+            emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
+        });
+      await stageBoxCodeZip(project, boxNetworks, box);
+      await stageBoxContainers(project, boxNetworks);
+    });
   }
 
   private async *synthesize(
@@ -276,7 +273,7 @@ export class CdkBackend implements ProjectBackend {
     explainUndeployedCredentials: boolean,
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    yield* await this.ensureCdkDependencies(project, boxNetworks);
+    yield* this.ensureCdkDependencies(project, boxNetworks);
 
     for (const message of boxOtelWarnings(project.spec, boxNetworks)) {
       yield { type: "warning", message };
@@ -334,7 +331,7 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    yield* await this.ensureCdkDependencies(project, input.boxNetworks);
+    yield* this.ensureCdkDependencies(project, input.boxNetworks);
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
