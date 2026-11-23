@@ -12,7 +12,6 @@ import { createSilentLogger, matchGolden, TestIdentityClient } from "../../testi
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import type { BoxNetwork } from "./boxNetwork";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
-import { MEMORY_POLICY_FILE, memoryHostPolicy } from "./runtimeProfile/rules/additions";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
@@ -293,12 +292,8 @@ describe("build writes the Box network of the box profile", () => {
 
     // The Runtime profile routes each target of the Box gateway, the model's included.
     const profile = await runtimeProfile(root);
-    // The runtime has its default Memory, so the box reaches the AgentCore host only for Memory.
-    expect(profile.policies).toEqual(["policy.dw", MEMORY_POLICY_FILE]);
+    expect(profile.policies).toEqual(["policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
-    expect(await text(root, `app/agent_python_strands/.box-dist/${MEMORY_POLICY_FILE}`)).toBe(
-      memoryHostPolicy("us-west-2"),
-    );
     const egress = profile.egress as Record<string, unknown>;
     // The route of [egress.github] keeps the name of its entry, and goes to its target.
     expect(Object.keys(egress).sort()).toEqual([
@@ -311,7 +306,7 @@ describe("build writes the Box network of the box profile", () => {
     expect(egress["egress-httpbin-org"]).toEqual(gatewayRoute("egress-httpbin-org", "httpbin.org"));
     // The Memory route has no backend: box signs it with the execution role, for Memory itself.
     expect(egress.agentcore).toEqual({
-      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com/memories"],
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
       secret: { ref: "aws://" },
     });
     expect(egress.bedrock).toEqual(
@@ -509,28 +504,31 @@ describe("build writes the Box network of the box profile", () => {
     );
   });
 
-  test("stops for an entry of the profile to the AgentCore host, as the box reaches it only for Memory", async () => {
+  test("sends an entry of the profile for the AgentCore host directly on the Runtime, with its name", async () => {
     const { manager, root, box } = await strandsProject();
     const host = "bedrock-agentcore.us-west-2.amazonaws.com";
     await editProfile(root, {
       tables: `\n[egress.tools]\ndestinations = ["${host}"]\nsecret.ref = "aws://default"\n`,
     });
     box.answer = shows({ tools: { destinations: [host], secret: { ref: "aws://default" } } });
+
+    const { warnings } = await build(manager, root);
+
+    // Code Interpreter, Browser, and Memory share that host, and box routes a connection by host
+    // alone. So on the Runtime the entry goes to the host directly, signed with the execution
+    // role, and it carries the Memory calls too.
+    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
+    expect(Object.keys(egress)).toEqual(["bedrock", "tools"]);
+    expect(egress.tools).toEqual({ destinations: [host], secret: { ref: "aws://" } });
+    // The Runtime does not use a gateway target for the host, so build writes none, and gives no
+    // warning about the gateway role's grants for one.
+    expect(await targetNames(root)).toEqual(["bedrock"]);
+    expect(warnings).not.toContainEqual(expect.stringContaining("Target 'egress-"));
+
+    // A second build changes nothing.
     const spec = await text(root, SPEC);
-
-    const error = await build(manager, root).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
-
-    // Code Interpreter and Browser are on that host. On the Runtime the box reaches it only at
-    // /memories, directly, and blocks every other path, so build stops and writes nothing.
-    expect(error).toBeInstanceOf(InputValidationError);
-    expect((error as Error).message).toContain(
-      `[egress.tools] reaches ${host}. On AgentCore Runtime, a runtime with its default Memory ` +
-        `reaches that host only for Memory, at ${host}/memories, and box blocks every other path ` +
-        "of it, such as Code Interpreter and Browser.",
-    );
+    const again = await build(manager, root);
+    expect(again.steps.filter((step) => step.includes("gateway target"))).toEqual([]);
     expect(await text(root, SPEC)).toBe(spec);
   });
 
@@ -1084,7 +1082,7 @@ describe("build writes the Bedrock target and the Memory route for the region it
     );
     // The Memory route goes to the Memory host of that region, with no backend.
     expect(egress.agentcore as unknown).toEqual({
-      destinations: ["bedrock-agentcore.eu-central-1.amazonaws.com/memories"],
+      destinations: ["bedrock-agentcore.eu-central-1.amazonaws.com"],
       secret: { ref: "aws://" },
     });
   });
@@ -1259,7 +1257,7 @@ describe("deploy writes the Box network before the backend deploys", () => {
     const authOf = async (target: string) =>
       (await boxGateway(root)).targets.find(({ name }) => name === target)?.outboundAuth;
     const routeFor = (region: string) => ({
-      destinations: [`bedrock-agentcore.${region}.amazonaws.com/memories`],
+      destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
       secret: { ref: "aws://" },
     });
     const bedrockFor = (region: string) => [

@@ -499,7 +499,7 @@ const withDirectMemory = (egress: unknown) => {
   const result = withEntryKeys(egress);
   if (Object.hasOwn(result, "agentcore")) {
     result.agentcore = {
-      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com/memories"],
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
       secret: { ref: "aws://" },
     };
   }

@@ -18,16 +18,13 @@ import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
 import type { TomlTable } from "../types";
 import { defaultMemoryName } from "../../../../projectSchemas/memory";
-import { parsePolicy } from "../../boxNetwork/dogwood";
 import {
   agentStartsUnderOtel,
   apply,
   DEFAULT_TELEMETRY_TARGET,
   DEFAULT_TRACES_TARGET,
   defaultTracesTelemetry,
-  MEMORY_POLICY_FILE,
   MEMORY_ROUTE,
-  memoryHostPolicy,
   runtimeProfileHeader,
 } from "./additions";
 
@@ -38,13 +35,12 @@ const BUILD_REGION = "us-west-2";
 
 /**
  * The Runtime form of `recorded`, a profile the old renderer wrote for a runtime with its default
- * Memory: the Memory route goes to Memory directly, under the same name, in the same place, and the
- * policy file that keeps the box to `/memories` on the AgentCore host comes last in `policies`.
+ * Memory: the Memory route goes to the AgentCore host directly, under the same name, in the same
+ * place.
  */
 function withDirectMemory(recorded: TomlTable): TomlTable {
   const result = structuredClone(recorded);
   if (isTableValue(result.egress)) result.egress[MEMORY_ROUTE] = DIRECT_MEMORY_ROUTE;
-  result.policies = [...((recorded.policies as string[] | undefined) ?? []), MEMORY_POLICY_FILE];
   return result;
 }
 
@@ -53,7 +49,7 @@ const isTableValue = (value: unknown): value is TomlTable =>
 
 /** The route of the agent's Memory calls: to Memory directly, signed with the execution role. */
 const DIRECT_MEMORY_ROUTE = {
-  destinations: [`bedrock-agentcore.${BUILD_REGION}.amazonaws.com/memories`],
+  destinations: [`bedrock-agentcore.${BUILD_REGION}.amazonaws.com`],
   secret: { ref: "aws://" },
 };
 
@@ -995,67 +991,6 @@ describe("the additions rule", () => {
     });
   });
 
-  describe("the Memory host policy", () => {
-    const HOST = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
-
-    test("parses, and names its two rules", () => {
-      const parsed = parsePolicy(memoryHostPolicy(BUILD_REGION));
-
-      expect(parsed.errors).toEqual([]);
-      expect(parsed.statements.map(({ id, effect }) => [id, effect])).toEqual([
-        ["agentcore_host_memory_only", "forbid"],
-        ["agentcore_host_no_dot_segments", "forbid"],
-      ]);
-    });
-
-    test("names the AgentCore host of the region, and in its partition", () => {
-      expect(memoryHostPolicy(BUILD_REGION)).toContain(`context.input.host == "${HOST}"`);
-      expect(memoryHostPolicy("cn-north-1")).toContain(
-        'context.input.host == "bedrock-agentcore.cn-north-1.amazonaws.com.cn"',
-      );
-    });
-
-    test("allows /memories and the paths under it, and blocks each other path and each dot segment", () => {
-      const patterns = parsePolicy(memoryHostPolicy(BUILD_REGION)).statements.flatMap(({ text }) =>
-        [...text.matchAll(/like "([^"]+)"/g)].map(([, p]) => p!),
-      );
-      const like = (pattern: string, path: string) =>
-        new RegExp(
-          `^${pattern
-            .split("*")
-            .map((part) => part.replace(/[.?+^$|()[\]{}\\]/g, "\\$&"))
-            .join(".*")}$`,
-        ).test(path);
-      const blocked = (path: string) =>
-        !(path === "/memories" || like("/memories/*", path)) ||
-        patterns.slice(1).some((pattern) => like(pattern, path));
-
-      for (const path of [
-        "/memories",
-        "/memories/mem-abc1234567/events",
-        "/memories/mem-abc1234567/actor/user%2F1%3Aa/sessions/s-1",
-        "/memories/mem-abc1234567/retrieve",
-      ]) {
-        expect([path, blocked(path)]).toEqual([path, false]);
-      }
-      for (const path of [
-        "/code-interpreters/aws.codeinterpreter.v1/tools/invoke",
-        "/browsers/aws.browser.v1/sessions/start",
-        "/identities/api-key",
-        "/memoriesX",
-        "/memories/../identities/api-key",
-        "/memories/x/./y",
-        "/memories/x/..",
-        "/memories/%2e%2e/identities",
-        "/memories/%2E%2E/identities",
-        "/memories/..%5cidentities",
-        "/memories/%252e%252e/identities",
-      ]) {
-        expect([path, blocked(path)]).toEqual([path, true]);
-      }
-    });
-  });
-
   describe("the Memory route", () => {
     const MEMORY = defaultMemoryName("agent");
 
@@ -1068,11 +1003,8 @@ describe("the additions rule", () => {
       expect(problems).toEqual([]);
       const route = (table.egress as TomlTable)[MEMORY_ROUTE];
       expect(route).toEqual(DIRECT_MEMORY_ROUTE);
-      // No backend: the Box gateway would sign the calls with its own role. The /memories path
-      // limits what box signs: a call to another API of the host, such as an API key call, goes
-      // unsigned, and AgentCore refuses it.
+      // No backend: the Box gateway would sign the calls with its own role.
       expect(route).not.toHaveProperty("backends");
-      expect((route as { destinations: string[] }).destinations[0]).toEndWith("/memories");
     });
 
     test("keeps each route of the profile, and adds the Memory route after them", () => {
@@ -1095,73 +1027,28 @@ describe("the additions rule", () => {
       expect(other.table.egress).not.toHaveProperty(MEMORY_ROUTE);
     });
 
-    test("lists the policy file that keeps the box to /memories on the AgentCore host last in policies", () => {
-      const context = contextOf(CODEZIP, { memories: [MEMORY] });
-
-      expect(apply({}, context).table.policies).toEqual([MEMORY_POLICY_FILE]);
-      expect(apply({ policies: ["policy.dw"] }, context).table.policies).toEqual([
-        "policy.dw",
-        MEMORY_POLICY_FILE,
-      ]);
-      expect(apply({ policies: ["policy.dw"] }, contextOf(CODEZIP)).table.policies).toEqual([
-        "policy.dw",
-      ]);
-    });
-
-    test("stops build for a route or HTTP MCP server of the profile to the AgentCore host, through the gateway or not", () => {
+    test("sends a route or HTTP MCP server of the profile to the AgentCore host directly, with its name, and adds no second route", () => {
       const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
       const backends = [{ url: "${{ inputs.gateway.url }}/egress-tools" }];
       const local = {
-        egress: {
-          tools: { destinations: [host], backends },
-          direct: { destinations: [host], secret: { ref: "aws://" } },
-        },
+        egress: { tools: { destinations: [host], backends, when: "true" } },
         mcp: { recall: { type: "http", destinations: [host], backends } },
       };
 
-      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
-
-      expect(problems.map(({ code, key }) => [code, key])).toEqual([
-        ["RUNTIME_AGENTCORE_HOST_ROUTED", ["egress", "tools"]],
-        ["RUNTIME_AGENTCORE_HOST_ROUTED", ["egress", "direct"]],
-        ["RUNTIME_AGENTCORE_HOST_ROUTED", ["mcp", "recall"]],
-      ]);
-      expect(problems[0]!.reason).toBe(
-        `[egress.tools] reaches ${host}. On AgentCore Runtime, a runtime with its default Memory ` +
-          `reaches that host only for Memory, at ${host}/memories, and box blocks every other ` +
-          "path of it, such as Code Interpreter and Browser. Remove [egress.tools], or remove the " +
-          "default Memory of runtime 'agent' from agentcore.json.",
-      );
-    });
-
-    test("names the entry and the permit of the local profile that name the AgentCore host", () => {
-      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
-      const context = {
-        ...contextOf(CODEZIP, { memories: [MEMORY] }),
-        hosts: [
-          {
-            host,
-            authority: host,
-            target: "egress-bedrock-agentcore",
-            sources: [
-              { kind: "entry", egressEntry: "tools", destinations: [host] },
-              { kind: "rule", ruleId: "ci_calls" },
-            ],
-          },
-        ],
-      } as unknown as Parameters<typeof apply>[1];
-      // The gateway rule names the route of a permit-only host after its target.
-      const local = {
-        egress: {
-          "egress-bedrock-agentcore": { destinations: [host], backends: [{ url: "x" }] },
-        },
-      };
-
-      const labels = apply(local, context).problems.map(
-        ({ reason }) => reason.split(" reaches")[0],
+      const { table, problems, warnings } = apply(
+        local,
+        contextOf(CODEZIP, { memories: [MEMORY] }),
       );
 
-      expect(labels).toEqual(["[egress.tools]", 'The permit "ci_calls"']);
+      // Box chooses where a connection goes from its host alone, so every call to the AgentCore
+      // host goes there directly. Box refuses two signed routes for one host.
+      expect([problems, warnings]).toEqual([[], []]);
+      expect(table.egress).toEqual({
+        tools: { destinations: [host], when: "true", secret: { ref: "aws://" } },
+      });
+      expect(table.mcp).toEqual({
+        recall: { type: "http", destinations: [host], secret: { ref: "aws://" } },
+      });
     });
 
     test("counts a route to the AgentCore host with :443, in another case, or as a wildcard", () => {
@@ -1173,9 +1060,9 @@ describe("the additions rule", () => {
       ]) {
         const local = { egress: { tools: { destinations: [destination] } } };
 
-        expect([destination, apply(local, context).problems.map(({ code }) => code)]).toEqual([
+        expect([destination, apply(local, context).table.egress]).toEqual([
           destination,
-          ["RUNTIME_AGENTCORE_HOST_ROUTED"],
+          { tools: { destinations: [destination], secret: { ref: "aws://" } } },
         ]);
       }
       // Another port, or a wildcard of another domain, is not the AgentCore host.
@@ -1186,19 +1073,9 @@ describe("the additions rule", () => {
           },
         },
       };
-      const { table, problems } = apply(other, context);
-      expect(problems).toEqual([]);
-      expect(Object.keys(table.egress as TomlTable)).toEqual(["tools", MEMORY_ROUTE]);
-    });
-
-    test("stops build for a policy file of the user under the name of the Memory policy file", () => {
-      const { problems } = apply(
-        { policies: [`rules/${MEMORY_POLICY_FILE}`] },
-        contextOf(CODEZIP, { memories: [MEMORY] }),
-      );
-
-      expect(problems.map(({ code, key }) => [code, key])).toEqual([
-        ["RUNTIME_ROUTE_NAME_TAKEN", ["policies"]],
+      expect(Object.keys(apply(other, context).table.egress as TomlTable)).toEqual([
+        "tools",
+        MEMORY_ROUTE,
       ]);
     });
 
@@ -1489,8 +1366,9 @@ describe("the additions rule", () => {
     const context = contextOf(CODEZIP, { memories: [defaultMemoryName("agent")] });
     const withMemory = runtimeProfileHeader(context, apply(createdProfile(CODEZIP), context).table);
     expect(withMemory[2]).toEndWith(
-      `except [egress.${MEMORY_ROUTE}], which goes to AgentCore Memory directly. ` +
-        `${MEMORY_POLICY_FILE} keeps the box to /memories on the AgentCore host.`,
+      `except each route to bedrock-agentcore.${BUILD_REGION}.amazonaws.com, such as ` +
+        `[egress.${MEMORY_ROUTE}]: box sends the calls to that host directly, so Memory can hold ` +
+        "each call to the session of the runtime.",
     );
     const text = serializeRuntimeProfile(
       apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table,
