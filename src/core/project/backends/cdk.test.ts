@@ -531,6 +531,29 @@ describe("CdkBackend.deploy", () => {
     expect(subject.templateLoads()).toBe(0);
   });
 
+  // An old @aws/agentcore-cdk drops platformVersion without an error, so deploy checks the
+  // synthesized template before it runs anything.
+  test("refuses a runtime whose platformVersion the synthesized stack does not set, before deploying", async () => {
+    const input = await project();
+    input.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "CodeZip",
+        codeLocation: "app/agent",
+        entrypoint: "start.py",
+        runtimeVersion: "PYTHON_3_14",
+        platformVersion: "V2",
+      }),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      "Could not find runtime 'agent' in the synthesized stack",
+    );
+    expect(subject.runs).toEqual([]);
+  });
+
   test("skips Transaction Search when the config disables it", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
