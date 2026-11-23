@@ -97,20 +97,20 @@ describe("runtime templates", () => {
     expect(await Bun.file(join(appDir, ".dockerignore")).exists()).toBe(isContainer);
   });
 
-  // The agent in a box does not run under opentelemetry-instrument, CodeZip or container, so a box
-  // template turns OTEL off; any other template keeps it on.
-  test.each<[RuntimeTemplateShortcutName, boolean]>([
-    ["agent-python-strands-box", false],
-    ["agent-python-strands-box-container", false],
-    ["agent-python-minimal-box", false],
-    ["agent-python-langchain-box", false],
-    ["a2a-python-strands-box", false],
-    ["agui-python-strands-box", false],
-    ["mcp-python-fastmcp-box", false],
-    ["agent-python-strands", true],
-  ])("%s writes enableOtel %p", async (template, enableOtel) => {
+  // Build starts the agent in a box under opentelemetry-instrument, so a box template keeps OTEL on
+  // as every other template does, and writes no instrumentation.
+  test.each<RuntimeTemplateShortcutName>([
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+    "a2a-python-strands-box",
+    "agui-python-strands-box",
+    "mcp-python-fastmcp-box",
+    "agent-python-strands",
+  ])("%s keeps enableOtel on", async (template) => {
     const { runtime } = await addTemplate("my_agent", template);
-    expect(runtime.instrumentation?.enableOtel ?? true).toBe(enableOtel);
+    expect(runtime.instrumentation).toBeUndefined();
   });
 
   // A box template is the Strands template with two files of agent-python-strands-box in place.

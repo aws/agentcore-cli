@@ -214,7 +214,8 @@ is needed to download it. Use that release's build for your machine for `agentco
 profile checks of `build`: an older box cannot read the profiles that this CLI writes.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
-Runtime, with its repository, version and SHA-256. `bun scripts/bump-box-release.ts --box <version>`
+Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
+workflow installs on its macOS runner. `bun scripts/bump-box-release.ts --box <version>`
 (with `--box-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
 
 How each command uses it:

@@ -242,6 +242,12 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role.
+  - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
+    the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
+    Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`
+    pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES` that the Runtime
+    sets. When your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
+    `OTEL_EXPORTER_OTLP_*` variable, because box sets each one.
 
   **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
   `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
@@ -250,9 +256,18 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   Runtime does not set it, box does not start. The Runtime makes that log group, so its retention
   applies, and it stays after you remove the runtime. CloudWatch Logs charges for the records it
   gets. To send none, set `DISABLE_ADOT_OBSERVABILITY` to `"true"` in the `envVars` of the runtime
-  in `agentcore.json`. To send them to another log group, add a `cloudwatch_logs` target to the
-  local profile. `agentcore create` and `agentcore add runtime` give this notice for each box
-  runtime.
+  in `agentcore.json`. Then the Runtime profile also gets no default X-Ray target. The agent does
+  not start with `opentelemetry-instrument`, and the `@box/agentcore` pack gives it no ADOT
+  variable. To send the records to another log group, add a `cloudwatch_logs` target to the local
+  profile. `agentcore create` and `agentcore add runtime` give this notice for each box runtime.
+
+  **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the Runtime
+  profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its own deny,
+  permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the execution role
+  `xray:PutSpans` and `xray:PutTraceSegments` in `agentcore/box-telemetry-policy-<runtime>.json`. To
+  send the spans to a different target, add a `cloudwatch_traces` target to the local profile. To
+  send no spans, set `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel`
+  is on and the agent does not start with `opentelemetry-instrument`, build gives a warning.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a
   required grant or a command path in the project outside the code folder, in the venv, or in a home
@@ -284,9 +299,8 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 ## 6. Test locally with `agentcore dev`
 
 `agentcore dev` runs the agent in a box on your machine, so you can try the project before you
-deploy. It deploys nothing. The agent signs its Bedrock calls with your `[default]` AWS profile
-(`secret.ref = "aws://default"` in `.box/agent/local/profile.toml`), and Memory is off
-(`LOCAL_DEV=1`).
+deploy. It deploys nothing. The agent signs its Bedrock calls with the AWS default credential chain
+(`secret.ref = "aws://"` in `.box/agent/local/profile.toml`), and Memory is off (`LOCAL_DEV=1`).
 
 Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must have
 `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a runtime
@@ -465,6 +479,11 @@ to the Runtime profile. If the profile has a target with the name `agentcore`, t
 `[telemetry.agentcore_default]`. When the run starts, box fills the region of the target from
 `AWS_REGION`, and its log group and stream from `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. The target sends
 the deny, permit, and trace records, and box signs it with the execution role.
+
+With `instrumentation.enableOtel` on, box also sends the spans of the agent and its own spans to
+X-Ray, through the target `[telemetry.agentcore_traces]`. Build gives the execution role the X-Ray
+grant for it. "The default X-Ray target" in step 4 gives the rules. CloudWatch Transaction Search
+keeps the spans in the log group `aws/spans`.
 
 The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the runtime
 can write to the log group of the Runtime, thus build adds no grant for it. A runtime that names an

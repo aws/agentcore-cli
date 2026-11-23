@@ -1,3 +1,4 @@
+import { partition } from "@aws-sdk/util-endpoints";
 import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -38,6 +39,11 @@ export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 /** The name of the Box gateway's Bedrock model target, which build and deploy add. */
 export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
+/** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
+export function boxGatewayBedrockHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
+  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
+}
+
 /** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
 export function getBoxGatewayBedrockTargetSpec(
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
@@ -45,10 +51,7 @@ export function getBoxGatewayBedrockTargetSpec(
   return {
     name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
     targetType: "passthrough",
-    passthrough: {
-      endpoint: `https://bedrock-runtime.${region}.amazonaws.com`,
-      protocolType: "CUSTOM",
-    },
+    passthrough: { endpoint: `https://${boxGatewayBedrockHost(region)}`, protocolType: "CUSTOM" },
     outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
   };
 }
@@ -61,7 +64,7 @@ export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
 
 /** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
 export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-agentcore.${region}.amazonaws.com`;
+  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
 }
 
 /**

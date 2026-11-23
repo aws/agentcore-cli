@@ -80,7 +80,7 @@ describe("renderBoxProfile", () => {
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
       tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
-      egress: { bedrock: { secret: { ref: "aws://default" } } },
+      egress: { bedrock: { secret: { ref: "aws://" } } },
     });
   });
 
@@ -127,7 +127,7 @@ describe("renderBoxProfile", () => {
       expect(packs).toEqual(["@box/base", "@box/bedrock"]);
       expect(agent.command).toEqual(UVICORN);
       expect(agent.filesystem).toEqual(VENV_GRANTS);
-      expect(egress.bedrock).toEqual({ secret: { ref: "aws://default" } });
+      expect(egress.bedrock).toEqual({ secret: { ref: "aws://" } });
     },
   );
 
@@ -231,7 +231,7 @@ describe("renderBoxProfile", () => {
   test("routes a LiteLLM agent on a bedrock/ model through Bedrock", () => {
     const { packs, egress } = profile("agent-python-strands-box", { modelProvider: "LiteLLM" });
     expect(packs).toEqual(["@box/base", "@box/bedrock"]);
-    expect(egress).toEqual({ bedrock: { secret: { ref: "aws://default" } } });
+    expect(egress).toEqual({ bedrock: { secret: { ref: "aws://" } } });
   });
 
   test.each([
@@ -408,9 +408,13 @@ describe("startsInBoxOnCodeZip", () => {
 });
 
 describe("renderAgentCorePack", () => {
-  function pack(memories: { name: string }[]) {
+  /** The pack of a runtime with OTEL off unless `otel`. */
+  function pack(memories: { name: string }[], otel = false) {
     return parse(
-      renderAgentCorePack({ name: "V3Demo", memories } as unknown as ProjectSpec),
+      renderAgentCorePack({ name: "V3Demo", memories } as unknown as ProjectSpec, {
+        name: "agent",
+        ...(!otel && { instrumentation: { enableOtel: false } }),
+      }),
     ) as Record<string, any>;
   }
 
@@ -481,8 +485,60 @@ describe("renderAgentCorePack", () => {
     });
   });
 
-  test("has no agent.env when the project has no memory", () => {
+  test("has no agent.env when the project has no memory and OTEL is off", () => {
     expect(pack([]).agent).toBeUndefined();
+    expect(pack([]).inputs.runtime).not.toHaveProperty("resource_attributes");
+  });
+
+  test("with OTEL on, sets up the agent's ADOT SDK and sets no OTEL_EXPORTER_OTLP_ variable, which box owns", () => {
+    const { env } = pack([{ name: "agentMemory" }], true).agent;
+
+    expect(env).toEqual({
+      MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
+      OTEL_PYTHON_DISTRO: "aws_distro",
+      OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
+      AGENT_OBSERVABILITY_ENABLED: "true",
+      OTEL_TRACES_EXPORTER: "otlp",
+      OTEL_LOGS_EXPORTER: "otlp",
+      OTEL_METRICS_EXPORTER: "none",
+      OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+      OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
+    });
+    expect(Object.keys(env).filter((name) => name.startsWith("OTEL_EXPORTER_OTLP_"))).toEqual([]);
+  });
+
+  test("with OTEL on, reads the Runtime's OTEL_RESOURCE_ATTRIBUTES, with the runtime's name when the Runtime sets none", () => {
+    expect(pack([], true).inputs.runtime.resource_attributes).toEqual({
+      description: "The OpenTelemetry resource attributes of the runtime.",
+      from: "env:OTEL_RESOURCE_ATTRIBUTES",
+      default: "service.name=agent",
+    });
+  });
+
+  test("gives the agent no ADOT variable and declares no resource attributes input when the envVars set DISABLE_ADOT_OBSERVABILITY to true", () => {
+    const spec = { name: "V3Demo" } as unknown as ProjectSpec;
+    const optedOut = renderAgentCorePack(spec, {
+      name: "agent",
+      envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+    });
+
+    expect(optedOut).toBe(
+      renderAgentCorePack(spec, { name: "agent", instrumentation: { enableOtel: false } }),
+    );
+  });
+
+  test("turns OTEL on when the runtime has no instrumentation, as create writes it", () => {
+    const text = renderAgentCorePack({ name: "V3Demo" } as unknown as ProjectSpec, {
+      name: "agent",
+    });
+
+    expect(text).toBe(
+      renderAgentCorePack({ name: "V3Demo" } as unknown as ProjectSpec, {
+        name: "agent",
+        instrumentation: { enableOtel: true },
+      }),
+    );
+    expect(text).toContain('OTEL_PYTHON_DISTRO = "aws_distro"');
   });
 });
 

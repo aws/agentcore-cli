@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   EMPTY_TEMPLATE_NAME,
   formatTemplateParameterHelp,
+  getBoxGatewayAgentCoreTargetSpec,
+  getBoxGatewayBedrockTargetSpec,
   getDefaultMemorySpec,
   PROJECT_TEMPLATE_NAMES,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
@@ -83,4 +85,26 @@ test("default memory names fit the service limit for long runtime names", () => 
 
   expect(memory.name).toBe(`${"a".repeat(42)}Memory`);
   expect(memory.name).toHaveLength(48);
+});
+
+describe("Box gateway targets", () => {
+  test("take the DNS suffix of the partition of the region", () => {
+    const endpoints = (region: string) =>
+      [getBoxGatewayBedrockTargetSpec(region), getBoxGatewayAgentCoreTargetSpec(region)].map(
+        ({ passthrough }) => passthrough?.endpoint,
+      );
+
+    expect(endpoints("cn-north-1")).toEqual([
+      "https://bedrock-runtime.cn-north-1.amazonaws.com.cn",
+      "https://bedrock-agentcore.cn-north-1.amazonaws.com.cn",
+    ]);
+    expect(endpoints("us-gov-west-1")).toEqual([
+      "https://bedrock-runtime.us-gov-west-1.amazonaws.com",
+      "https://bedrock-agentcore.us-gov-west-1.amazonaws.com",
+    ]);
+    expect(endpoints("us-west-2")).toEqual([
+      "https://bedrock-runtime.us-west-2.amazonaws.com",
+      "https://bedrock-agentcore.us-west-2.amazonaws.com",
+    ]);
+  });
 });

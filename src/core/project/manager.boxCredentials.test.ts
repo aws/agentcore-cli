@@ -105,10 +105,19 @@ describe("FsProjectManager.build: box env:// credentials", () => {
       ...((before.credentials as unknown[] | undefined) ?? []),
       { authorizerType: "ApiKeyCredentialProvider", name: "github" },
     ]);
-    // Only `credentials` and the Box gateway change: every other field keeps its value and place.
+    // Only `credentials`, the Box gateway, and the X-Ray grant of the runtime's default traces
+    // target change: every other field keeps its value and place.
     const others = (spec: Record<string, unknown>) =>
-      Object.entries(spec).filter(([key]) => !["credentials", "agentCoreGateways"].includes(key));
+      Object.entries({
+        ...spec,
+        runtimes: (spec.runtimes as Record<string, unknown>[]).map(
+          ({ additionalPolicies: _grant, ...runtime }) => runtime,
+        ),
+      }).filter(([key]) => !["credentials", "agentCoreGateways"].includes(key));
     expect(others(after)).toEqual(others(before));
+    expect((after.runtimes as Record<string, unknown>[])[0]?.additionalPolicies).toEqual([
+      `../../agentcore/box-telemetry-policy-${AGENT_PYTHON.runtimeName}.json`,
+    ]);
     const stored = await new EnvLocalFile(created.rootPath).read();
     expect(stored[RESERVED]).toBe("ghp_shell");
     expect(messages).toContain(`writing ${RESERVED} to ${ENV_LOCAL_RELATIVE_PATH}`);

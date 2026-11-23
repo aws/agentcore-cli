@@ -12,7 +12,8 @@ import type {
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
-import { runtimeRunsInBox } from "../templates/boxProfile";
+import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
+import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
 import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
@@ -160,18 +161,28 @@ export type CdkBackendConfig = {
 };
 
 /**
- * A warning for each runtime of `spec` that runs its agent in a box with OTEL on: the agent in the
- * box does not run under opentelemetry-instrument, CodeZip or container, so it sends no traces.
+ * A warning for each runtime of `spec` that runs its agent in a box with OTEL on, and whose
+ * AgentCore Runtime profile in `boxNetworks` does not start the agent under opentelemetry-instrument:
+ * build starts only a command of the venv's Python under it, and the agent then sends no traces.
  */
-export function boxOtelWarnings(spec: Project["spec"]): string[] {
+export function boxOtelWarnings(
+  spec: Project["spec"],
+  boxNetworks: BuildBackendInput["boxNetworks"],
+): string[] {
   return spec.runtimes
-    .filter(
-      (runtime) => runtimeRunsInBox(spec, runtime) && (runtime.instrumentation?.enableOtel ?? true),
-    )
+    .filter((runtime) => runtimeRunsInBox(spec, runtime) && otelOn(runtime))
+    .filter((runtime) => {
+      const profile = boxNetworks.find(
+        (network) => network.runtime === runtime.name,
+      )?.runtimeProfile;
+      return profile !== undefined && !agentStartsUnderOtel(profile);
+    })
     .map(
       (runtime) =>
-        `Runtime '${runtime.name}' runs its agent in a box, where the agent does not run under ` +
-        "opentelemetry-instrument, so it sends no traces. Set instrumentation.enableOtel to false.",
+        `Runtime '${runtime.name}' runs its agent in a box, and [agent] command in ` +
+        `${boxLocalProfileFile(runtime.name)} does not run the venv's Python, so on AgentCore ` +
+        "Runtime the agent does not start under opentelemetry-instrument and sends no traces. Run " +
+        "the agent with the venv's Python, or set instrumentation.enableOtel to false.",
     );
 }
 
@@ -264,7 +275,9 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, void> {
     yield* this.ensureCdkDependencies(project, boxNetworks);
 
-    for (const message of boxOtelWarnings(project.spec)) yield { type: "warning", message };
+    for (const message of boxOtelWarnings(project.spec, boxNetworks)) {
+      yield { type: "warning", message };
+    }
 
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {

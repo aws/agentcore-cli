@@ -218,6 +218,12 @@ export function programOf(table: Readonly<TomlTable>): string | undefined {
   return Array.isArray(command) && typeof command[0] === "string" ? command[0] : undefined;
 }
 
+/** Whether `value` is the venv's Python as the local profile names it: `<venv>/bin/python[3[.N]]`. */
+export function isVenvPython(value: string, paths: RuntimePaths): boolean {
+  const normal = value.replace(/\$\{\{\s*workspace\s*\}\}/g, () => WORKSPACE);
+  return new RegExp(`^${literal(paths.localVenv)}/bin/python(?:3(?:\\.\\d+)?)?$`).test(normal);
+}
+
 /** Whether `program`, as a CodeZip Runtime profile names it, is on the Runtime. */
 export function isRuntimeProgram(program: string, paths: RuntimePaths): boolean {
   return program === paths.runtimePython || program.startsWith(`${paths.runtimeCode}/`);
