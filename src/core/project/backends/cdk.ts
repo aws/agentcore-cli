@@ -25,7 +25,7 @@ import {
   type ProcessRunner,
   type ReadWriteJson,
 } from "../../../io";
-import { withOutputEvents } from "../events";
+import { withEvents, withOutputEvents } from "../events";
 import type { Logger } from "../../../logging";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type {
@@ -254,7 +254,7 @@ export class CdkBackend implements ProjectBackend {
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
     // goes out when the download starts, not once staging ends.
-    yield* eventsWhile(async (emit) => {
+    yield* withEvents(async (emit) => {
       // Every box runtime ships the pinned box: build set each box.version to it.
       const box = () =>
         resolveBoxLinuxBuild(this.processEnv, {
@@ -264,7 +264,7 @@ export class CdkBackend implements ProjectBackend {
             emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
         });
       await stageBoxCodeZip(project, boxNetworks, box);
-      await stageBoxContainers(project, boxNetworks, BOX_RELEASE);
+      await stageBoxContainers(project, boxNetworks);
     });
   }
 
@@ -816,38 +816,4 @@ export class CdkBackend implements ProjectBackend {
   private assemblyDirectory(project: Project): string {
     return join(this.cdkDirectory(project), "cdk.out");
   }
-}
-
-/**
- * Runs `work`, yielding each event it emits as soon as it emits it, then ends when `work` does.
- * An error of `work` is thrown after the events it emitted first.
- */
-export async function* eventsWhile(
-  work: (emit: (event: ProjectEvent) => void) => Promise<void>,
-): AsyncGenerator<ProjectEvent, void> {
-  const queue: ProjectEvent[] = [];
-  let wake: (() => void) | undefined;
-  let done = false;
-  const notify = () => {
-    wake?.();
-    wake = undefined;
-  };
-  const running = work((event) => {
-    queue.push(event);
-    notify();
-  });
-  const finish = () => {
-    done = true;
-    notify();
-  };
-  running.then(finish, finish);
-  for (;;) {
-    while (queue.length > 0) yield queue.shift()!;
-    if (done) break;
-    await new Promise<void>((resolve) => {
-      wake = resolve;
-      if (queue.length > 0 || done) notify();
-    });
-  }
-  await running;
 }

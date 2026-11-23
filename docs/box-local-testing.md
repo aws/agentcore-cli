@@ -334,7 +334,8 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print the pinned version. Dev and build read the profile with
+- `box --version` should print the pinned version. The CLI does not check it, and an older box can
+  refuse the profiles that the CLI writes. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
   `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. An older box release cannot do all of these.

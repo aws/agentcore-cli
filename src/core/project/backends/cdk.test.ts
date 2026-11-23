@@ -10,7 +10,7 @@ import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
-import { boxOtelWarnings, CdkBackend, eventsWhile } from "./cdk";
+import { boxOtelWarnings, CdkBackend } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisionInput,
@@ -1873,40 +1873,5 @@ describe("CdkBackend.resolveProjectResources", () => {
         children?.map((child) => child.name),
       ]),
     ).toEqual([["gateway", "gw", ["owned", "second"]]]);
-  });
-});
-
-describe("eventsWhile", () => {
-  test("yields an event as soon as the work emits it, before the work ends", async () => {
-    let finish!: () => void;
-    const events = eventsWhile(async (emit) => {
-      emit({ type: "step", message: "downloading box" });
-      await new Promise<void>((resolve) => (finish = resolve));
-    });
-
-    // The work is still waiting, so the first event arrives without it.
-    expect(await events.next()).toEqual({
-      done: false,
-      value: { type: "step", message: "downloading box" },
-    });
-    finish();
-    expect(await events.next()).toEqual({ done: true, value: undefined });
-  });
-
-  test("throws the work's error after the events it emitted first", async () => {
-    const seen: ProjectEvent[] = [];
-    const failure = new Error("download failed");
-
-    const run = async () => {
-      for await (const event of eventsWhile(async (emit) => {
-        emit({ type: "step", message: "downloading box" });
-        throw failure;
-      })) {
-        seen.push(event);
-      }
-    };
-
-    await expect(run()).rejects.toBe(failure);
-    expect(seen).toEqual([{ type: "step", message: "downloading box" }]);
   });
 });

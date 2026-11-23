@@ -524,13 +524,14 @@ describe.skipIf(!BOX_DEPLOYS)(
     const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
     if (!runtime) throw new Error("BOX_TEMPLATES has no agent-python-minimal-box case");
 
+    // The public hosts can fail a call, so only the invoke retries: a retry of the whole test would
+    // deploy and remove the stack again.
     test(
       "allows the profile's host through the Box gateway and blocks any other",
       {
-        retry: 2,
         timeout:
           TIMEOUT_MS.PROJECT_CREATE +
-          TIMEOUT_MS.PROJECT_INVOKE +
+          3 * TIMEOUT_MS.PROJECT_INVOKE +
           2 * TIMEOUT_MS.PROJECT_DEPLOY +
           TIMEOUT_MS.PROJECT_REMOVE,
       },
@@ -545,25 +546,31 @@ describe.skipIf(!BOX_DEPLOYS)(
           );
           expect(deployment.message).toContain("deployed project");
 
-          const response = parseResult(
-            RuntimeInvokeResponseSchema,
-            await cli.run(
-              [
-                "invoke",
-                "--runtime",
-                CREATED_RUNTIME_NAME,
-                "--session-id",
-                getSessionId(`${runtime.name}-egress`),
-                "--payload",
-                JSON.stringify(runtime.payload),
-                "--json",
-              ],
-              projectDir,
-            ),
+          await retry(
+            async () => {
+              const response = parseResult(
+                RuntimeInvokeResponseSchema,
+                await cli.run(
+                  [
+                    "invoke",
+                    "--runtime",
+                    CREATED_RUNTIME_NAME,
+                    "--session-id",
+                    getSessionId(`${runtime.name}-egress`),
+                    "--payload",
+                    JSON.stringify(runtime.payload),
+                    "--json",
+                  ],
+                  projectDir,
+                ),
+              );
+              expect(response.statusCode).toBeGreaterThanOrEqual(200);
+              expect(response.statusCode).toBeLessThan(300);
+              assertEgressReply(response.body);
+            },
+            3 * TIMEOUT_MS.PROJECT_INVOKE,
+            15 * 1000,
           );
-          expect(response.statusCode).toBeGreaterThanOrEqual(200);
-          expect(response.statusCode).toBeLessThan(300);
-          assertEgressReply(response.body);
           scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.

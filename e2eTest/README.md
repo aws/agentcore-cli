@@ -57,8 +57,9 @@ The `box-egress` tests check that box lets the agent reach the host its profile 
 (`checkip.amazonaws.com`) and blocks any other (`example.com`): one under `agentcore dev`, and one
 on AgentCore Runtime, where the allowed host's calls go through the runtime's Box gateway. The
 second deploys, so it also needs `AGENTCORE_E2E_BOX_CDK`. They reach public hosts, so the network
-can make them fail. They retry twice, and `--tagsFilter='box'` leaves them out. A full run includes
-them, so in CI they run on the macOS and Linux arm64 runners:
+can make them fail: the dev test retries twice, and the deployed one retries only its invoke.
+`--tagsFilter='box'` leaves them out. A full run includes them, but in CI only the dev test runs, on
+the macOS and Linux arm64 runners, as CI does not set `AGENTCORE_E2E_BOX_CDK`:
 
 ```sh
 bun run test:e2e -- --tagsFilter='box-egress'

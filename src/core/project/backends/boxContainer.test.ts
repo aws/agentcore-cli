@@ -65,7 +65,7 @@ describe("stageBoxContainers", () => {
     const demo = await project(BOX_DOCKERFILE);
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
 
-    expect(await stageBoxContainers(demo, [model([])], BOX_RELEASE)).toEqual(["agent"]);
+    expect(await stageBoxContainers(demo, [model([])])).toEqual(["agent"]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     // The Runtime profile is the one build derived from the local profile.
@@ -99,7 +99,7 @@ describe("stageBoxContainers", () => {
     await writeFile(join(dist, "box"), "old");
     await writeFile(join(dist, "stale.dw"), "old");
 
-    await stageBoxContainers(demo, [model([])], BOX_RELEASE);
+    await stageBoxContainers(demo, [model([])]);
 
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
@@ -108,13 +108,13 @@ describe("stageBoxContainers", () => {
     const demo = await project(BOX_DOCKERFILE);
     delete demo.spec.runtimes[0]!.box;
 
-    expect(await stageBoxContainers(demo, [model([])], BOX_RELEASE)).toEqual([]);
+    expect(await stageBoxContainers(demo, [model([])])).toEqual([]);
   });
 
   test("stages nothing for a runtime with no box.version", async () => {
     const demo = await project("FROM scratch\n");
 
-    expect(await stageBoxContainers(demo, [model([])], BOX_RELEASE)).toEqual([]);
+    expect(await stageBoxContainers(demo, [model([])])).toEqual([]);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 
@@ -123,7 +123,7 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
-    await stageBoxContainers(demo, [model(["policy.dw"])], BOX_RELEASE);
+    await stageBoxContainers(demo, [model(["policy.dw"])]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED, "resources"].sort());
@@ -135,7 +135,7 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
-    await expect(stageBoxContainers(demo, [model(["policy.dw"])], BOX_RELEASE)).rejects.toThrow(
+    await expect(stageBoxContainers(demo, [model(["policy.dw"])])).rejects.toThrow(
       "does not copy .box-dist/ whole into the image",
     );
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
