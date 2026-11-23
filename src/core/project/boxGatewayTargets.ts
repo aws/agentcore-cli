@@ -94,6 +94,25 @@ export function removeBoxGatewaysFromRecord(
 }
 
 /**
+ * Writes `text` as the record, which build computes from the gateway targets it writes. Returns the
+ * function that puts the old text back, or removes the file, when the text changed.
+ */
+export function replaceRecord(
+  projectRoot: string,
+  text: string,
+  files: RecordFiles = FS_RECORD_FILES,
+): RestoreRecord | undefined {
+  const path = join(projectRoot, ...BOX_GATEWAY_TARGETS_FILE.split("/"));
+  const before = existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  if (before === text) return undefined;
+  files.write(path, text);
+  return () => {
+    if (before === undefined) files.remove(path);
+    else files.write(path, before);
+  };
+}
+
+/**
  * Writes the record that `change` makes of the record, or of no record; `undefined` from `change`
  * writes nothing. Returns the function that puts the old text back, or removes the file.
  */

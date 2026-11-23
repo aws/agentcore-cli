@@ -63,10 +63,16 @@ import {
   BOX_GATEWAY_TARGETS_FILE,
   FS_RECORD_FILES,
   removeBoxGatewaysFromRecord,
+  replaceRecord,
   type RecordFiles,
   type RestoreRecord,
 } from "./boxGatewayTargets";
-import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
+import {
+  BOX_NETWORK_WRITERS,
+  boxNetworkEdits,
+  writeBoxNetworkFiles,
+  type BoxNetworkFile,
+} from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
@@ -1748,6 +1754,22 @@ export class FsProjectManager implements ProjectManager {
     };
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, context);
     const messages = [...edits.messages];
+    for (const file of edits.files) {
+      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
+      if ("remove" in file) {
+        if (exists) messages.push(`removing ${file.path}`);
+      } else if (!exists) {
+        messages.push(`writing ${file.path}`);
+      }
+    }
+    // The record of the targets build owns changes with the gateway targets: it is written first,
+    // and goes back when agentcore.json cannot take the targets.
+    const record = edits.files.find(
+      (file): file is Extract<BoxNetworkFile, { text: string }> =>
+        file.path === BOX_GATEWAY_TARGETS_FILE && "text" in file,
+    );
+    const files = edits.files.filter((file) => file !== record);
+    const restoreRecord = record && replaceRecord(project.rootPath, record.text, this.recordFiles);
     let result = project;
     if (edits.specChanged) {
       // Only the fields a writer changed are set, so every other field keeps its value and place.
@@ -1763,21 +1785,18 @@ export class FsProjectManager implements ProjectManager {
       ]);
       const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
-      if (!parsed.success) {
-        throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+      try {
+        if (!parsed.success) {
+          throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+        }
+        await this.json.write(specPath, updated);
+      } catch (err) {
+        this.restoreRecord(restoreRecord);
+        throw err;
       }
-      await this.json.write(specPath, updated);
       result = { ...project, spec: parsed.data };
     }
-    for (const file of edits.files) {
-      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
-      if ("remove" in file) {
-        if (exists) messages.push(`removing ${file.path}`);
-      } else if (!exists) {
-        messages.push(`writing ${file.path}`);
-      }
-    }
-    writeBoxNetworkFiles(project.rootPath, edits.files);
+    writeBoxNetworkFiles(project.rootPath, files);
     if (edits.envLocal.length > 0) {
       // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
       const { written } = await envLocal.upsert([...edits.envLocal]);

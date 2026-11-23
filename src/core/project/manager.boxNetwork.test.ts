@@ -13,6 +13,7 @@ import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
+import { FS_RECORD_FILES, type RecordFiles } from "./boxGatewayTargets";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 
@@ -130,15 +131,26 @@ async function drain<T>(generator: AsyncGenerator<{ type: string; message?: stri
 /** A JSON reader and writer that counts its writes of agentcore.json. */
 function countingJson() {
   const real = new FsReadWriteJson({ logger: createSilentLogger() });
-  const counter = { specWrites: 0 };
+  /** `refuseSpec` and `refuseRecord` make the next writes of agentcore.json or the record fail. */
+  const counter = { specWrites: 0, refuseSpec: false, refuseRecord: false };
   const json: ReadWriteJson = {
     read: (path, schema) => real.read(path, schema),
     write: (path, data) => {
-      if (path.endsWith("agentcore.json")) counter.specWrites++;
+      if (path.endsWith("agentcore.json")) {
+        if (counter.refuseSpec) throw new Error(`the test refuses the write of ${path}`);
+        counter.specWrites++;
+      }
       return real.write(path, data);
     },
   };
-  return { json, counter };
+  const recordFiles: RecordFiles = {
+    write: (path, text) => {
+      if (counter.refuseRecord) throw new Error(`the test refuses the write of ${path}`);
+      FS_RECORD_FILES.write(path, text);
+    },
+    remove: (path) => FS_RECORD_FILES.remove(path),
+  };
+  return { json, counter, recordFiles };
 }
 
 /** A new Strands project, with the Box gateway entry and the box profile `create` writes. */
@@ -147,7 +159,7 @@ async function strandsProject(
 ) {
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
-  const { json, counter } = countingJson();
+  const { json, counter, recordFiles } = countingJson();
   const box = new RegionalBoxProfileResolver(shows());
   const manager = new FsProjectManager({
     logger: createSilentLogger(),
@@ -156,6 +168,7 @@ async function strandsProject(
     runner: async () => {},
     checkTool: async () => {},
     json,
+    recordFiles,
     processEnv: {
       HOME: await boxHome(),
       AWS_REGION: "us-west-2",
@@ -456,6 +469,36 @@ describe("build writes the Box network of the box profile", () => {
     );
     await build(manager, root);
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore", "egress-mine"]);
+  });
+
+  test("keeps agentcore.json as it was when build cannot write the record of its targets", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseRecord = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the write of");
+
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("puts the record of its targets back when build cannot write agentcore.json", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseSpec = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the write of");
+
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
   });
 
   test("changes nothing on a second build", async () => {
