@@ -266,8 +266,8 @@ its Box gateway. With its default Memory, its calls to the AgentCore host
 role and sends them to that host directly, so Memory can hold each call to the session of the
 runtime. Box routes a connection by its host alone, and Code Interpreter, Browser, and the other
 AgentCore APIs share that host, so their calls go there directly too. A `PRIVATE_VPC` runtime
-reaches Memory through the AgentCore endpoint of its private VPC, whose policy allows only Memory
-calls. A runtime in a VPC of your own needs a `bedrock-agentcore` VPC endpoint.
+reaches that host through the AgentCore endpoint of its private VPC, which only the runtime's role
+may call through. A runtime in a VPC of your own needs a `bedrock-agentcore` VPC endpoint.
 
 A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
 and deploy now render profiles that those files cannot start. Create the project again, or copy

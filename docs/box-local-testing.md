@@ -43,8 +43,9 @@ as a GitHub pre-release with the release's file names (the `aarch64-apple-darwin
   [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
   as its `box-integration` branch does. The Box gateway that `create` writes has
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
-  For a `PRIVATE_VPC` runtime with Memory, the L3 checkout also needs the `fix/secure-vpc-memory-endpoint`
-  change, which gives the private VPC its AgentCore endpoint. Without it, the box cannot reach Memory.
+  A boxed runtime with Memory also needs the `fix/secure-vpc-memory-endpoint` change of the L3: it gives the
+  runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
+  the box cannot reach Memory.
 - `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. Use that release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
