@@ -1568,36 +1568,6 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toEqual([]);
     });
 
-    test.each([
-      ["no platformVersion", undefined, "has no platformVersion"],
-      ["V1", "V1", 'has "platformVersion": "V1"'],
-    ])(
-      "deploy of a Box project whose runtime has %s fails before anything is written",
-      async (_name, platformVersion, detail) => {
-        await inTempDirectory();
-        const { subject, project, deployCalls } = await projectWithTarget(
-          "us-west-2",
-          undefined,
-          AGENT_PYTHON_STRANDS_BOX,
-        );
-        await editSpec(project, (spec) => {
-          if (platformVersion === undefined) delete spec.runtimes[0]!.platformVersion;
-          else spec.runtimes[0]!.platformVersion = platformVersion;
-        });
-        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
-        const before = await readFile(specPath, "utf8");
-
-        const { error } = await deployOutcome(subject, project);
-        expect(error).toBeInstanceOf(ProjectStateError);
-        expect(String(error)).toContain(
-          `runtime "agent_python_strands_box" ${detail} in agentcore.json, but every runtime of a ` +
-            'Box project runs on AgentCore Runtime V2. Set "platformVersion": "V2"',
-        );
-        expect(await readFile(specPath, "utf8")).toBe(before);
-        expect(deployCalls).toEqual([]);
-      },
-    );
-
     test("deploy of a project that is not a Box project needs no platformVersion", async () => {
       await inTempDirectory();
       const { subject, project, deployCalls } = await projectWithTarget("us-west-2");
@@ -2195,31 +2165,24 @@ describe("FsProjectManager.build", () => {
   });
 
   // An existing Box project has no platformVersion, the common case; a V1 one is a hand edit.
+  // The project schema holds the rule, so every command stops when it reads agentcore.json, before
+  // build, deploy, or any other step writes a file.
   test.each([
     ["no platformVersion", undefined, "has no platformVersion"],
     ['"platformVersion": "V1"', "V1", 'has "platformVersion": "V1"'],
-  ])(
-    "refuses a Box runtime with %s, before anything is written",
-    async (_label, platformVersion, actual) => {
-      const directory = await inTempDirectory();
-      const { manager: subject, commands } = manager(await boxHome());
-      const project = await scaffolded(subject, directory);
-      const specPath = join(project.rootPath, "agentcore", "agentcore.json");
-      const spec = JSON.parse(await readFile(specPath, "utf8"));
-      spec.runtimes[0].platformVersion = platformVersion;
-      await writeFile(specPath, JSON.stringify(spec, null, 2));
-      const before = await readFile(specPath, "utf8");
-      const edited = (await subject.resolve({ filePath: project.rootPath }))!;
-      commands.length = 0;
+  ])("a Box runtime with %s stops the project from loading", async (_label, version, actual) => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = manager(await boxHome());
+    const project = await scaffolded(subject, directory);
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8"));
+    spec.runtimes[0].platformVersion = version;
+    await writeFile(specPath, JSON.stringify(spec, null, 2));
 
-      await expect(drain(subject.build(edited))).rejects.toThrow(
-        `${actual} in agentcore.json, but every runtime of a Box project runs on ` +
-          "AgentCore Runtime V2.",
-      );
-      expect(await readFile(specPath, "utf8")).toBe(before);
-      expect(commands).toEqual([]);
-    },
-  );
+    await expect(subject.resolve({ filePath: project.rootPath })).rejects.toThrow(
+      `${actual}, but every runtime of a Box project runs on AgentCore Runtime V2.`,
+    );
+  });
 
   test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();

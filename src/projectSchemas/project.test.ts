@@ -421,7 +421,7 @@ describe("containment", () => {
     fields: Record<string, unknown> = {},
   ) => ({
     ...box,
-    runtimes,
+    runtimes: runtimes.map((entry) => ({ platformVersion: "V2", ...entry })),
     agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name)),
     ...fields,
   });
@@ -562,7 +562,7 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
     const spec = (projectType?: string) => ({
       ...minimalProject,
       ...(projectType && { projectType }),
-      runtimes: [runtime],
+      runtimes: [{ ...runtime, platformVersion: "V2" }],
       agentCoreGateways: [gateway({ boundRuntime: "agent", authorizerType: "NONE" })],
     });
     const box = ProjectSpecSchema.safeParse(spec("box"));
@@ -580,8 +580,53 @@ describe("gateway boundRuntime and discoveryPrefix", () => {
   });
 });
 
+describe("Box project runtimes on AgentCore Runtime V2", () => {
+  const boxSpec = (platformVersion?: string, projectType = "box") => ({
+    ...minimalProject,
+    ...(projectType && { projectType }),
+    runtimes: [{ ...runtime, ...(platformVersion && { platformVersion }) }],
+    agentCoreGateways: [boxGatewaySpec("agent")],
+  });
+  const messages = (spec: unknown) => {
+    const result = ProjectSpecSchema.safeParse(spec);
+    return result.success ? [] : result.error.issues.map(({ message }) => message);
+  };
+
+  test("accepts a Box runtime on V2", () => {
+    expect(messages(boxSpec("V2"))).toEqual([]);
+  });
+
+  test.each([
+    [undefined, "has no platformVersion"],
+    ["V1", 'has "platformVersion": "V1"'],
+  ])("refuses a Box runtime with platformVersion %p, and says what to set", (version, actual) => {
+    expect(messages(boxSpec(version))).toContain(
+      `Runtime "agent" ${actual}, but every runtime of a Box project runs on AgentCore Runtime ` +
+        'V2. Set "platformVersion": "V2" on the runtime in agentcore.json.',
+    );
+  });
+
+  test("reports a missing platformVersion with the project's other problems at once", () => {
+    const spec = { ...boxSpec(undefined), agentCoreGateways: [] };
+
+    expect(messages(spec)).toEqual([
+      expect.stringContaining('Runtime "agent" has no platformVersion'),
+      expect.stringContaining('Runtime "agent" has no Box gateway'),
+    ]);
+  });
+
+  test.each([[undefined], ["V1"]])("takes platformVersion %p outside a Box project", (version) => {
+    expect(messages(boxSpec(version, ""))).toEqual([]);
+  });
+});
+
 describe("Box project gateways", () => {
-  const runtimeNamed = (name: string) => ({ ...runtime, name, codeLocation: `./${name}` });
+  const runtimeNamed = (name: string) => ({
+    ...runtime,
+    name,
+    codeLocation: `./${name}`,
+    platformVersion: "V2",
+  });
   const parse = (runtimes: string[], gateways: unknown[]) =>
     ProjectSpecSchema.safeParse({
       ...minimalProject,

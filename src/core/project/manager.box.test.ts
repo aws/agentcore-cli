@@ -89,6 +89,7 @@ async function createdProject(
     runtimeVersion: "PYTHON_3_14",
     protocol: "HTTP",
     box: { version: BOX_RELEASE.version },
+    platformVersion: "V2" as const,
   }));
   for (const name of runtimes)
     await mkdir(join(created.rootPath, "app", name), { recursive: true });

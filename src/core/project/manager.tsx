@@ -81,7 +81,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { assertBoxRuntimesOnRuntimeV2, validateBoxRuntimes } from "./boxValidation";
+import { validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -1645,8 +1645,6 @@ export class FsProjectManager implements ProjectManager {
     // Half-written project files from an interrupted `agentcore migrate` must not
     // be synced or synthesized; build has no target, so only that state stops it.
     await assertNoPendingMigration(project.rootPath);
-    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
-    assertBoxRuntimesOnRuntimeV2(project.spec);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
     // Every runtime of a Box project runs in a box, so stop before anything is written.
@@ -1846,9 +1844,6 @@ export class FsProjectManager implements ProjectManager {
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
       );
     }
-
-    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
-    assertBoxRuntimesOnRuntimeV2(project.spec);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
