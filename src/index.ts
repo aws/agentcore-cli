@@ -16,7 +16,7 @@ import {
 import { createRootHandler } from "./handlers";
 import { FsReadWriteJson } from "./io";
 import { createFileLogger, LOG_LEVEL } from "./logging";
-import { runWithExitCode } from "./runnable";
+import { runWithExitCode, type ErrorReport } from "./runnable";
 import { DefaultGlobalConfigAccessor } from "./globalConfig";
 import { DefaultTelemetryClient, printFirstRunNotice } from "./telemetry";
 import { AgentCoreCLIError } from "./errors";
@@ -24,12 +24,14 @@ import { shouldRecordCommandFailure } from "./telemetry/commandOutcome";
 import { PACKAGE_VERSION } from "./constants";
 import { CommandRunMetricEventKey, ValueContext } from "./router";
 import { NpmCliVersionManager, printUpdateNotice } from "./cliVersionManager";
-import { CliVersionManagerKey } from "./handlers/keys";
+import { CliVersionManagerKey, ErrorReportKey } from "./handlers/keys";
 import { disableCwdExecutableSearch } from "./io/exec";
 
 disableCwdExecutableSearch();
 // Suppress only the AWS SDK's Node.js version support warning before constructing clients.
 process.env.AWS_SDK_JS_NODE_VERSION_SUPPORT_WARNING_DISABLED = "true";
+
+const errorReport: ErrorReport = { debug: false };
 
 process.exit(
   await runWithExitCode(async (argv: string[]) => {
@@ -111,7 +113,8 @@ process.exit(
 
       const context = ValueContext.EmptyContext()
         .withValue(CommandRunMetricEventKey, commandRunMetricEvent)
-        .withValue(CliVersionManagerKey, cliVersionManager);
+        .withValue(CliVersionManagerKey, cliVersionManager)
+        .withValue(ErrorReportKey, errorReport);
 
       // Handle the request
       await rootHandler.route(argv, context);
@@ -119,6 +122,7 @@ process.exit(
       const error = AgentCoreCLIError.fromError(e);
       if (shouldRecordCommandFailure(error)) {
         rootLogger.child({ error: error.json() }).error();
+        errorReport.logFile = rootLogger.currentFile();
         commandRunMetricEvent.setAttributes({
           exit_reason: "failure",
           error_name: error.name,
@@ -144,5 +148,5 @@ process.exit(
         io.stderr,
       );
     }
-  }),
+  }, errorReport),
 );

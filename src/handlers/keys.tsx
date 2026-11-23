@@ -1,6 +1,7 @@
 import z from "zod";
 import type { AwsCredentialProvider } from "../core/types";
 import type { CliVersionManager } from "../cliVersionManager";
+import type { ErrorReport } from "../runnable";
 import { contextKey, globalFlag } from "../router";
 
 // These keys are group-level flags declared on the root router. Because a
@@ -19,6 +20,8 @@ export const RegionKey = globalFlag("region", "AWS region", z.string().optional(
 export const RegionExplicitKey = contextKey<boolean>("region.explicit");
 
 export const DebugKey = globalFlag("debug", "debug logging", z.boolean().default(false));
+
+export const ErrorReportKey = contextKey<ErrorReport>("error.report");
 
 export const JsonKey = globalFlag("json", "JSON output", z.boolean().default(false));
 

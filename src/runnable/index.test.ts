@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
+import { ResourceNotFoundException } from "@aws-sdk/client-bedrock-agentcore-control";
 import { CommanderError } from "commander";
 import { fileURLToPath } from "node:url";
 import { waitFor } from "../testing/timing";
@@ -7,6 +8,7 @@ import {
   AgentCoreCLIError,
   ExitCode,
   InputValidationError,
+  ResourceNotFoundError,
   SilentCLIError,
   UserCancellationError,
 } from "../errors";
@@ -226,4 +228,91 @@ test.each([
 ])("runWithExitCode maps %s", async (_name, error, expected, expectedErrors) => {
   const result = await captureErrors(() => runWithExitCode(async () => Promise.reject(error)));
   expect(result).toEqual({ code: expected, errors: expectedErrors });
+});
+
+const notFound = () =>
+  new ResourceNotFoundException({
+    message: "Harness doesnotexist0000 not found",
+    $metadata: { httpStatusCode: 404, requestId: "req-123" },
+  });
+
+test.each([
+  [
+    "service exception",
+    notFound(),
+    "  name: ResourceNotFoundException  status: 404  requestId: req-123",
+  ],
+  [
+    "service exception wrapped by a CLI error",
+    new ResourceNotFoundError("harness not found", { cause: notFound() }),
+    "  name: ResourceNotFoundException  status: 404  requestId: req-123",
+  ],
+  [
+    "service exception without a request ID",
+    new ResourceNotFoundException({ message: "gone", $metadata: { httpStatusCode: 404 } }),
+    "  name: ResourceNotFoundException  status: 404",
+  ],
+  [
+    "SDK error with only retry metadata",
+    Object.assign(new Error("socket hang up"), {
+      name: "TimeoutError",
+      $metadata: { attempts: 3 },
+    }),
+    "  name: TimeoutError",
+  ],
+  ["CLI error", new InputValidationError("bad request"), "  name: InputValidationError"],
+  ["plain Error", new TypeError("fetch failed"), "  name: TypeError"],
+  ["non-Error value", "kaboom", "  name: AgentCoreCLIError"],
+])("--debug adds error details for a %s", async (_name, error, summary) => {
+  const report = { debug: true, logFile: "/home/me/.agentcore/logs/output-2026-11-23.log" };
+
+  const result = await captureErrors(() =>
+    runWithExitCode(async () => Promise.reject(error), report),
+  );
+
+  expect(result.errors).toHaveLength(2);
+  expect(result.errors[1]).toBe(`${summary}\n  details: ${report.logFile}`);
+});
+
+test("--debug omits the details line when nothing was logged", async () => {
+  const result = await captureErrors(() =>
+    runWithExitCode(async () => Promise.reject(notFound()), { debug: true }),
+  );
+
+  expect(result.errors).toEqual([
+    "Error: Harness doesnotexist0000 not found",
+    "  name: ResourceNotFoundException  status: 404  requestId: req-123",
+  ]);
+});
+
+test("--debug stops at a cause cycle", async () => {
+  const error = new Error("loop");
+  error.cause = new Error("back", { cause: error });
+
+  const result = await captureErrors(() =>
+    runWithExitCode(async () => Promise.reject(error), { debug: true }),
+  );
+
+  expect(result.errors).toEqual(["Error: loop", "  name: Error"]);
+});
+
+test.each([
+  ["without --debug", { debug: false, logFile: "/tmp/output.log" }],
+  ["without a report", undefined],
+])("prints only the message %s", async (_name, report) => {
+  const result = await captureErrors(() =>
+    runWithExitCode(async () => Promise.reject(notFound()), report),
+  );
+
+  expect(result.errors).toEqual(["Error: Harness doesnotexist0000 not found"]);
+});
+
+test("--debug keeps silent errors silent", async () => {
+  const result = await captureErrors(() =>
+    runWithExitCode(async () => Promise.reject(new SilentCLIError("shown already")), {
+      debug: true,
+    }),
+  );
+
+  expect(result.errors).toEqual([]);
 });
