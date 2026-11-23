@@ -316,6 +316,44 @@ describe("gateway invoke", () => {
     expect(output.stderr()).toHaveLength(0);
   });
 
+  test("explains an HTTP 403 from an AWS_IAM Gateway", async () => {
+    const core = configuredCore({ authorizerType: "AWS_IAM" });
+    core.gateway.setInvokeResponse({
+      statusCode: 403,
+      contentType: "application/json",
+      requestId: "request-403",
+      body: body(Buffer.from('{"message":"AccessDeniedException"}')),
+    });
+    const output = captureIO();
+
+    const code = await runWithExitCode(async () =>
+      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--payload", "{}"]),
+    );
+
+    expect(code).toBe(ExitCode.FAILURE);
+    expect(output.stderr().toString()).toContain(
+      "If this is a Box Gateway (bound to one runtime in a Box project), its resource policy " +
+        "lets only that runtime's execution role invoke it.",
+    );
+  });
+
+  test("adds no access hint to an HTTP 403 from a Gateway without AWS_IAM", async () => {
+    const core = configuredCore();
+    core.gateway.setInvokeResponse({
+      statusCode: 403,
+      contentType: "application/json",
+      requestId: "request-403",
+      body: body(Buffer.from('{"message":"Forbidden"}')),
+    });
+    const output = captureIO();
+
+    await runWithExitCode(async () =>
+      runCommand(core, output.io, ["gateway", "invoke", "--id", GATEWAY_ID, "--payload", "{}"]),
+    );
+
+    expect(output.stderr().toString()).not.toContain("Box Gateway");
+  });
+
   test("streams a non-2xx body before returning a failure exit code", async () => {
     const core = configuredCore();
     core.gateway.setInvokeResponse({
