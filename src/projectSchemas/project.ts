@@ -41,6 +41,22 @@ export const isBoxProject = (spec: { projectType?: string }) => spec.projectType
  * target whose name has it, and no other.
  */
 export const BOX_EGRESS_TARGET_PREFIX = "egress-";
+/**
+ * Whether build writes and removes `target` of `gateway`: a target whose name starts with
+ * {@link BOX_EGRESS_TARGET_PREFIX}, on the Box gateway of a runtime (a gateway with
+ * `boundRuntime`), in a project with `"projectType": "box"`.
+ */
+export function isBuildOwnedTarget(
+  spec: { projectType?: string },
+  gateway: { boundRuntime?: string },
+  target: { name: string },
+): boolean {
+  return (
+    isBoxProject(spec) &&
+    gateway.boundRuntime !== undefined &&
+    target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)
+  );
+}
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /**
@@ -187,18 +203,12 @@ export const ProjectSpecSchema = z
       }
     }
     // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
-    // a runtime belongs to that runtime, so no target of another gateway calls it. On the Box
-    // gateway of a runtime of a Box project, build writes and removes each target whose name starts
-    // with BOX_EGRESS_TARGET_PREFIX, so such a target that names no such gateway is not refused
-    // here: the next build removes it.
-    const buildOwns = (gateway: { boundRuntime?: string }, target: { name: string }) =>
-      isBoxProject(spec) &&
-      isBoundGateway(gateway) &&
-      target.name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+    // a runtime belongs to that runtime, so no target of another gateway calls it. A target that
+    // build owns and that names no such gateway is not refused here: the next build removes it.
     for (const gateway of spec.agentCoreGateways) {
       for (const target of gateway.targets) {
         const reached = target.passthrough?.gateway;
-        if (reached === undefined || buildOwns(gateway, target)) continue;
+        if (reached === undefined || isBuildOwnedTarget(spec, gateway, target)) continue;
         const named = spec.agentCoreGateways.find((other) => other.name === reached);
         const problem =
           named === undefined

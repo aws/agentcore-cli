@@ -916,6 +916,34 @@ describe("build routes the other gateways of the project for the boxed agent", (
     },
   );
 
+  test("remove gateway keeps an egress- target that the user wrote on an ordinary gateway", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.push({
+      name: "front",
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      targets: [
+        {
+          name: "egress-mine",
+          targetType: "passthrough",
+          passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+        },
+      ],
+    });
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const before = await text(root, SPEC);
+    const project = (await manager.resolve({ filePath: root })) as Project;
+
+    // The target is the user's, so remove keeps it, and the schema refuses it with its name.
+    await expect(
+      manager.removeResource(project, { resourceType: "gateway", name: "tools" }),
+    ).rejects.toThrow('Target "egress-mine" of gateway "front" names the gateway "tools"');
+    expect(await text(root, SPEC)).toBe(before);
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);

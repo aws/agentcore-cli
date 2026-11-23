@@ -55,7 +55,7 @@ import {
   harnessApiKeyCredentialName,
   validateHarnessTemplateSource,
 } from "./templates/harness";
-import { boxGatewayIamWarnings, isManagedTarget, type BoxNetwork } from "./boxNetwork";
+import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { resolveRegion } from "../region";
@@ -100,6 +100,7 @@ import {
   boxGatewaySpec,
   isBoundGateway,
   isBoxProject,
+  isBuildOwnedTarget,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
@@ -1346,7 +1347,10 @@ export class FsProjectManager implements ProjectManager {
               ...gateway,
               targets: gateway.targets.filter(
                 (target) =>
-                  !(isManagedTarget(target) && target.passthrough?.gateway === input.name),
+                  !(
+                    isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
+                    target.passthrough?.gateway === input.name
+                  ),
               ),
             })),
         };
