@@ -35,9 +35,14 @@ agentcore deploy
 agentcore invoke --runtime {{name}} --payload '{"prompt":"Hello!"}'
 ```
 
+{{#if box}}
+Traces are not collected yet: the agent runs in a box, which `opentelemetry-instrument` does not
+reach, so `agentcore create` sets `instrumentation.enableOtel` to `false` for this runtime.
+{{else}}
 Traces are collected automatically: AgentCore Runtime starts the agent under
 `opentelemetry-instrument`, which picks up `opentelemetry-instrumentation-langchain`
 from the dependencies.
+{{/if}}
 
 ## Extending
 

@@ -140,6 +140,11 @@ jobs:
           VER=$(jq -er ".box.${BUILD}.version // .box.version" "$PIN")
           ASSET=$(jq -er ".box.${BUILD}.asset" "$PIN")
           SHA=$(jq -er ".box.${BUILD}.sha256" "$PIN")
+          # macOS's sha256sum passes a malformed checksum line, so check the hash's shape first.
+          if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "the pinned .box.${BUILD}.sha256 in $PIN is not a SHA-256: '$SHA'" >&2
+            exit 1
+          fi
           WORK=$(mktemp -d)
           curl -fsSL --retry 3 -o "${WORK}/${ASSET}" \
             "https://github.com/${REPO}/releases/download/v${VER}/${ASSET}"

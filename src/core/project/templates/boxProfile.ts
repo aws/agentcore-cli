@@ -1,8 +1,5 @@
 import { join, posix } from "node:path";
-import {
-  DEFAULT_EGRESS_BEDROCK_REGION,
-  callsBedrockModel,
-} from "../../../handlers/project/shortcuts";
+import { callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { memoryEnvVarName } from "../../../projectSchemas/memory";
@@ -456,16 +453,16 @@ function runtimeCodeZipRunner(protocol: Protocol, appDir: string, workloadPort: 
 /**
  * The box profile that `agentcore dev` runs for the scaffolded agent, or `undefined` when the
  * template has none. It holds no host path: box fills `${{ workspace }}` (the folder `box run`
- * starts in) and `${{ home }}` at run time. On a Mac, box starts in the project root and names no
- * interpreter, only the folder of every uv-managed Python, so it is the same with and without
- * `--skip-install`. The agent calls Bedrock in `region`, the one create resolved. The container
- * template's runs in its dev image, in /app. Build and deploy derive the AgentCore Runtime profile
- * from it (runtimeProfile/derive.ts).
+ * starts in) and `${{ home }}` at run time. For a CodeZip agent, box starts in the runtime's
+ * folder, `app/<runtime>`, and the profile names no interpreter, only the folder of every
+ * uv-managed Python, so it is the same with and without `--skip-install`. The agent calls Bedrock
+ * in `region`, the one create resolved. The container template's runs in its dev image, in /app.
+ * Build and deploy derive the AgentCore Runtime profile from it (runtimeProfile/derive.ts).
  */
 export function renderBoxProfile(
   projectName: string,
   runtime: ScaffoldRuntimeInput,
-  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+  region: string,
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 

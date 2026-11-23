@@ -281,7 +281,7 @@ describe(
           TIMEOUT_MS.PROJECT_REMOVE,
       },
       async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime);
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
         let scenarioCompleted = false;
         try {
           if (!runtime.skipDev) {
@@ -368,7 +368,7 @@ describe.skipIf(!BOX_DEPLOYS)(
           TIMEOUT_MS.PROJECT_REMOVE,
       },
       async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime);
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
         let scenarioCompleted = false;
         try {
           const deployment = parseResult(
@@ -435,7 +435,7 @@ describe.skipIf(!BOX_ON_PATH)(
       "$name",
       { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
       async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime);
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: false });
         const { devOutput } = await invokeLocally(
           cli,
           runtime,
@@ -499,14 +499,8 @@ describe.skipIf(!BOX_ON_PATH)(
       },
       async () => {
         const template = runtime;
-        const projectDir = await createTemplateProject(cli, template);
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
-        const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
-        const host = new URL(EGRESS_ALLOWED_URL).host;
-        await writeFile(
-          profile,
-          `${await readFile(profile, "utf8")}\n[egress.checkip]\ndestinations = ["${host}"]\n`,
-        );
+        const projectDir = await createTemplateProject(cli, template, { deploys: false });
+        await useEgressAgent(projectDir);
 
         const { response } = await invokeLocally(
           cli,
@@ -514,13 +508,102 @@ describe.skipIf(!BOX_ON_PATH)(
           projectDir,
           BOX_DEV_PORTS[template.protocol],
         );
-        const reply = EgressReplySchema.parse(JSON.parse(response.body));
-        expect(reply.allowed).toEqual({ status: 200 });
-        expect(reply.blocked.error).toMatch(/403/);
+        assertEgressReply(response.body);
       },
     );
   },
 );
+
+// The same egress check on AgentCore Runtime, where box sends the allowed host's calls through the
+// runtime's Box gateway. It deploys, so it needs the AGENTCORE_E2E_BOX_CDK opt-in as well.
+describe.skipIf(!BOX_DEPLOYS)(
+  "egress on AgentCore Runtime for a Strands Box template",
+  { tags: [TAGS.BOX_EGRESS] },
+  () => {
+    const cli = new CliRunner();
+    const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+    if (!runtime) throw new Error("BOX_TEMPLATES has no agent-python-minimal-box case");
+
+    // The public hosts can fail a call, so only the invoke retries: a retry of the whole test would
+    // deploy and remove the stack again.
+    test(
+      "allows the profile's host through the Box gateway and blocks any other",
+      {
+        timeout:
+          TIMEOUT_MS.PROJECT_CREATE +
+          3 * TIMEOUT_MS.PROJECT_INVOKE +
+          2 * TIMEOUT_MS.PROJECT_DEPLOY +
+          TIMEOUT_MS.PROJECT_REMOVE,
+      },
+      async () => {
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        await useEgressAgent(projectDir);
+        let scenarioCompleted = false;
+        try {
+          const deployment = parseResult(
+            DeployResponseSchema,
+            await cli.run(["deploy", "--yes", "--json"], projectDir),
+          );
+          expect(deployment.message).toContain("deployed project");
+
+          await retry(
+            async () => {
+              const response = parseResult(
+                RuntimeInvokeResponseSchema,
+                await cli.run(
+                  [
+                    "invoke",
+                    "--runtime",
+                    CREATED_RUNTIME_NAME,
+                    "--session-id",
+                    getSessionId(`${runtime.name}-egress`),
+                    "--payload",
+                    JSON.stringify(runtime.payload),
+                    "--json",
+                  ],
+                  projectDir,
+                ),
+              );
+              expect(response.statusCode).toBeGreaterThanOrEqual(200);
+              expect(response.statusCode).toBeLessThan(300);
+              assertEgressReply(response.body);
+            },
+            3 * TIMEOUT_MS.PROJECT_INVOKE,
+            15 * 1000,
+          );
+          scenarioCompleted = true;
+        } finally {
+          // Tear the stack down even when a step above failed.
+          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
+          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
+          // A cleanup error must not replace the scenario's primary diagnostic.
+          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
+        }
+      },
+    );
+  },
+);
+
+/**
+ * Gives the project in `projectDir` the egress agent, and allows its one host, with no credential,
+ * in the runtime's local box profile, which build derives the AgentCore Runtime profile from.
+ */
+async function useEgressAgent(projectDir: string): Promise<void> {
+  await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
+  const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
+  const host = new URL(EGRESS_ALLOWED_URL).host;
+  await writeFile(
+    profile,
+    `${await readFile(profile, "utf8")}\n[egress.checkip]\ndestinations = ["${host}"]\n`,
+  );
+}
+
+/** Checks the egress agent's reply: the allowed host answers, and box refuses the other one. */
+function assertEgressReply(body: string): void {
+  const reply = EgressReplySchema.parse(JSON.parse(body));
+  expect(reply.allowed).toEqual({ status: 200 });
+  expect(reply.blocked.error).toMatch(/403/);
+}
 
 /**
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent,
@@ -568,10 +651,15 @@ async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void
   expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);
 }
 
-/** Given a template test case, creates a project scaffolded from it and returns its path. */
+/**
+ * Given a template test case, creates a project scaffolded from it and returns its path. A Box
+ * project that `deploys` gets the AGENTCORE_E2E_BOX_CDK build; one that only runs `agentcore dev`
+ * has no use for it.
+ */
 async function createTemplateProject(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
+  { deploys }: { deploys: boolean },
 ): Promise<string> {
   const parent = await mkdtemp(join(tmpdir(), "agentcore-e2e-"));
   // A per-template suffix keeps concurrent projects (and their stacks) apart;
@@ -592,7 +680,7 @@ async function createTemplateProject(
     for (const entry of spec.runtimes) entry.runtimeVersion = runtime.runtimeVersion;
     await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
   }
-  if (runtime.box && BOX_CDK) {
+  if (deploys && runtime.box && BOX_CDK) {
     // The pinned @aws/agentcore-cdk cannot deploy a Box project yet; use the opted-in build.
     const installed = await runCommand(
       "npm",

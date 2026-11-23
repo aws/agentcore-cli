@@ -208,11 +208,11 @@ to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import th
 `agentcore export harness` refuses a Box project. Each box runtime needs its
 `"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
 box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
-each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub release `v0.3.0` of
-[strands-agents/box](https://github.com/strands-agents/box/releases). No token or account is
-needed to download it. On macOS, use the build of `v0.3.0-preview.1`: the macOS build of `v0.3.0` has a broken code
-signature. When the release has no build for your machine, use the build of `v0.3.0-preview.1` or a
-later release that has one, for `agentcore dev` and the profile checks of `build`.
+each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
+release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
+or account is needed to download it. Use that release's build for your machine for `agentcore dev`
+and the profile checks of `build`: an older box cannot read the profiles that this CLI writes. On
+macOS, use the build of `v0.3.0-preview.1` instead: the macOS build of `v0.3.0` does not run.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
@@ -236,8 +236,8 @@ How each command uses it:
   with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes. It must be the pinned version, whose checksums `boxRelease.json`
-keeps; build, deploy and container `dev` stop on any other version and say to set the pinned one.
+which `agentcore create` writes. Every box runtime runs the pinned version, whose checksums
+`boxRelease.json` keeps: build and deploy set `box.version` to it, and say so when it named another.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

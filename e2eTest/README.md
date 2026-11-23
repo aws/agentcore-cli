@@ -35,8 +35,8 @@ The tests that deploy also need `AGENTCORE_E2E_BOX_CDK`: the pinned `@aws/agentc
 cannot deploy a Box project yet. Set it to an `@aws/agentcore-cdk` version or a `file:` tarball
 that can, for example one packed from the `box-integration` branch of
 [agentcore-l3-cdk-constructs](https://github.com/aws/agentcore-l3-cdk-constructs) with
-`npm run build && npm pack --ignore-scripts`. The tests install it in each Box project's
-`agentcore/cdk`. Without it, as in CI, they skip.
+`npm run build && npm pack --ignore-scripts`. The tests install it in the `agentcore/cdk` of each
+Box project that deploys. Without it, as in CI, they skip.
 
 The `dev` tests also need a machine where `box run` can start its sandbox, and for the container
 template a container tool. The container template's `dev` test skips when no `docker`, `podman`
@@ -53,10 +53,13 @@ That runs each Box template on its default Python. The CodeZip box template on P
 (`py_strands_box_3_10` to `py_strands_box_3_13`) is in the runtime templates describe, so it runs
 with `--tagsFilter='runtime'` or a full run, given `box` and the same opt-in.
 
-The `box-egress` test checks that box, under `agentcore dev`, lets the agent reach the host its
-profile allows (`checkip.amazonaws.com`) and blocks any other (`example.com`). It reaches public
-hosts, so the network can make it fail. It retries twice, and `--tagsFilter='box'` leaves it out.
-A full run includes it, so in CI it runs on the macOS and Linux arm64 runners:
+The `box-egress` tests check that box lets the agent reach the host its profile allows
+(`checkip.amazonaws.com`) and blocks any other (`example.com`): one under `agentcore dev`, and one
+on AgentCore Runtime, where the allowed host's calls go through the runtime's Box gateway. The
+second deploys, so it also needs `AGENTCORE_E2E_BOX_CDK`. They reach public hosts, so the network
+can make them fail: the dev test retries twice, and the deployed one retries only its invoke.
+`--tagsFilter='box'` leaves them out. A full run includes them, but in CI only the dev test runs, on
+the macOS and Linux arm64 runners, as CI does not set `AGENTCORE_E2E_BOX_CDK`:
 
 ```sh
 bun run test:e2e -- --tagsFilter='box-egress'

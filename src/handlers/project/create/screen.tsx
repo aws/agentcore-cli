@@ -56,7 +56,11 @@ import {
 } from "../../../components/wizard";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { TuiExitMessageKey } from "../../../tui/exitMessage";
-import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import {
+  boxRegionWarning,
+  stripCreateRegionUnavailableDefaults,
+  validateCreateRegionSupport,
+} from "./region";
 
 const theme = darkTheme;
 
@@ -254,6 +258,8 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         validateCreateRegionSupport(input, resolvedRegion);
         const stripped = stripCreateRegionUnavailableDefaults(input, resolvedRegion);
         if (stripped !== undefined) yield { type: "step" as const, message: stripped };
+        const boxWarning = boxRegionWarning(input, resolvedRegion);
+        if (boxWarning !== undefined) yield { type: "warning" as const, message: boxWarning };
         return yield* core.projectManager.create({ ...input, region: resolvedRegion });
       }}
       runningLabel={`creating ${values.name}…`}

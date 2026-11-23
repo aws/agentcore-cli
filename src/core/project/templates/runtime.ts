@@ -257,7 +257,11 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) =>
-          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
+          templateRenderer.render(raw, {
+            name: toPythonPackageName(input.name),
+            // The README says whether traces are collected, which they are not in a box.
+            box: input.scaffoldRuntimeInput.boxTemplate === true,
+          }),
       },
     );
     return {
@@ -284,26 +288,33 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       entrypoint: "main",
     };
     const isContainer = input.scaffoldRuntimeInput.build === "Container";
+    const options = {
+      rootDirName: input.name,
+      transformContent: (raw: string) => templateRenderer.render(raw, context),
+      filter: (name: string) => {
+        // The memory module is always included: main.py imports it
+        // unconditionally and it degrades to no memory when its env var is
+        // absent (the China scaffold omits the memory resource).
+        if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+        return true;
+      },
+    };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
-      {
-        // The box templates have their own folder: its Dockerfile runs the agent with `box run`.
-        assetDir: input.scaffoldRuntimeInput.boxTemplate
-          ? "templates/agent-python-strands-box"
-          : "templates/agent-python-strands",
-      },
-      {
-        rootDirName: input.name,
-        transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name) => {
-          // The memory module is always included: main.py imports it
-          // unconditionally and it degrades to no memory when its env var is
-          // absent (the China scaffold omits the memory resource).
-          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
-          return true;
-        },
-      },
+      { assetDir: "templates/agent-python-strands" },
+      options,
     );
+    if (input.scaffoldRuntimeInput.boxTemplate) {
+      // A box template is the Strands template with the files of agent-python-strands-box in
+      // place of its own: a Dockerfile that runs the agent with `box run`, and a .gitignore that
+      // keeps the staged box out of git.
+      const box = await FsTreeNode.fromAssetSource(
+        { assetSource },
+        { assetDir: "templates/agent-python-strands-box" },
+        options,
+      );
+      tree.replaceChildren(box.children);
+    }
     return {
       tree,
       spec: mergeSpecEntries([

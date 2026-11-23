@@ -101,10 +101,7 @@ const INSTALL =
   `Install box ${BOX_RELEASE.version} (https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
   "On macOS, use box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
   "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS build " +
-  "of 0.3.0 does not run. " +
-  "When that release has no build for your machine, use box 0.3.0-preview.1 " +
-  "(https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1) or a later " +
-  "release that has one.";
+  "of 0.3.0 does not run.";
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
@@ -311,7 +308,7 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
-  test("says to install the pinned box when a box older than the minimum refuses an @box/ pack", async () => {
+  test("says to install the pinned box when an older box refuses an @box/ pack", async () => {
     // An older box wraps its error, here inside the pack name's line.
     const error = await failure(
       refusal([
@@ -325,8 +322,7 @@ describe("BoxCliProfileResolver", () => {
       "Box refused the profile .box/profile.toml:\n" +
         '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
         "              not a pack name\n" +
-        "This box is older than 0.3.0-preview.1, the first public box that names its packs " +
-        `@box/<name>. ${INSTALL}`,
+        `This box is older than the pinned box, which names its packs @box/<name>. ${INSTALL}`,
     );
   });
 

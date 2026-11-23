@@ -626,32 +626,25 @@ describe("FsProjectManager.create", () => {
     expect(skipInstall.checkedTools).toEqual(["git"]);
   });
 
-  test("with --skip-install, makes an empty .venv only for a CodeZip box agent", async () => {
+  // box drops the profile's optional .venv deny_write while the folder is missing, and then refuses
+  // the profile, as the venv's Python would be under the project's write grant. A container's image
+  // builds its own venv, and an agent outside a box has no profile.
+  test.each([
+    ["a CodeZip box agent", AGENT_PYTHON_STRANDS_BOX, true],
+    ["a container box agent", AGENT_PYTHON_STRANDS_BOX_CONTAINER, false],
+    ["an agent outside a box", AGENT_PYTHON, false],
+  ] as const)("makes an empty .venv for %s: %p", async (_, runtime, made) => {
     const directory = await inTempDirectory();
-    const venv = (name: string, runtime: { runtimeName: string }) =>
-      join(directory, name, "app", runtime.runtimeName, ".venv");
 
-    // box drops the profile's optional .venv deny_write while the folder is missing, and then
-    // refuses the profile, as the venv's Python would be under the project's write grant.
     await runCreate(manager().manager, {
-      name: "codezip",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
+      name: "demo",
+      scaffoldRuntimeInput: runtime,
       skipInstall: true,
     });
-    expect(readdirSync(venv("codezip", AGENT_PYTHON_STRANDS_BOX))).toEqual([]);
 
-    // A container's image builds its own venv, and an agent outside a box has no profile.
-    for (const [name, runtime] of [
-      ["container", AGENT_PYTHON_STRANDS_BOX_CONTAINER],
-      ["plain", AGENT_PYTHON],
-    ] as const) {
-      await runCreate(manager().manager, {
-        name,
-        scaffoldRuntimeInput: runtime,
-        skipInstall: true,
-      });
-      expect(existsSync(venv(name, runtime))).toBe(false);
-    }
+    const venv = join(directory, "demo", "app", runtime.runtimeName, ".venv");
+    expect(existsSync(venv)).toBe(made);
+    if (made) expect(readdirSync(venv)).toEqual([]);
   });
 
   test("fails before writing files when box is not on PATH, with the install hint", async () => {
@@ -1565,6 +1558,130 @@ describe("FsProjectManager.addResource", () => {
       expect(String(error)).toContain("Cannot deploy to China region cn-north-1");
       expect(String(error)).toContain("'agent_python_minimal'");
       expect(deployCalls).toEqual([]);
+    });
+
+    describe("Box projects in a region without Runtime V2", () => {
+      // partition.test.ts covers which regions have no Runtime V2; one is enough here.
+      test.each(["us-west-1"])(
+        "deploy of a Box project to %s fails before anything is written",
+        async (region) => {
+          await inTempDirectory();
+          const { subject, project, deployCalls } = await projectWithTarget(
+            region,
+            undefined,
+            AGENT_PYTHON_STRANDS_BOX,
+          );
+          const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+          const before = await readFile(specPath, "utf8");
+
+          const { error } = await deployOutcome(subject, project);
+          expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+          expect(String(error)).toContain(
+            `Cannot deploy Box project 'example' to target 'primary' in ${region}: Box runs on ` +
+              `AgentCore Runtime V2, which is not available in ${region}. Change the region of ` +
+              "target 'primary' in agentcore/aws-targets.json, or deploy with --target to a target " +
+              "in another region, then retry.",
+          );
+          expect(await readFile(specPath, "utf8")).toBe(before);
+          expect(deployCalls).toEqual([]);
+        },
+      );
+
+      // Deploying a project with no runtime is how the CLI removes its stack, so a Box project that was
+      // deployed to such a region with an earlier build can still be torn down.
+      test("deploy of a Box project with no runtime to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        await writeFile(
+          specPath,
+          JSON.stringify({ ...spec, runtimes: [], agentCoreGateways: [], memories: [] }, null, 2),
+        );
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      });
+
+      test("deploy of a Box project with no target to us-west-1 fails before STS or aws-targets.json", async () => {
+        await inTempDirectory();
+        const { project } = await projectWithTarget(
+          "us-east-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+        await rm(targetsPath);
+        const accounts: string[] = [];
+        const subject = new FsProjectManager({
+          logger: createSilentLogger(),
+          identity: new TestIdentityClient(),
+          enableTransactionSearch: async () => {},
+          boxProfileResolver: new FakeBoxProfileResolver(),
+          runner: async () => {},
+          checkTool: async () => {},
+          resolveAccount: async (region) => {
+            accounts.push(region);
+            return "111122223333";
+          },
+        });
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          new RegionUnsupportedFeatureError(
+            "Cannot deploy Box project 'example' to target 'default' in us-west-1: Box runs on " +
+              "AgentCore Runtime V2, which is not available in us-west-1. Deploy with --region set " +
+              "to a region that has it, or add a target in another region to " +
+              "agentcore/aws-targets.json, then retry.",
+          ),
+        );
+        expect(accounts).toEqual([]);
+        expect(existsSync(targetsPath)).toBe(false);
+      });
+
+      test("deploy of a project that is not a Box project to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeUndefined();
+        expect(deployCalls).toHaveLength(1);
+      });
+
+      test("names --target, not a new target, when aws-targets.json has targets", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-2",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          "Deploy with --region set to a region that has it, or with --target set to a target in " +
+            "another region, then retry.",
+        );
+      });
     });
 
     test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
