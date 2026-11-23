@@ -291,12 +291,17 @@ describe("the pinned releases", () => {
     );
   });
 
-  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.3.0-preview.1 is the first public release that reads the profiles the CLI writes.
+  test("the install hint names the box-cli archive of the pinned release, the macOS release, and the first release for a machine it has no build for", () => {
+    // 0.3.0-preview.1 is the first public release that reads the profiles the CLI writes, and the
+    // macOS build of 0.3.0 does not run.
     expect(BOX_INSTALL_HINT).toBe(
-      "Install box: download the build for your machine from " +
-        `https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
-        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
+      "Install box: download box-cli-v0.3.0-<target>.tar.gz for your machine from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0 (not a box-v0.3.0-* archive, " +
+        "which has no packs), unpack it into a folder (tar -xzf <archive> -C <folder>), and add " +
+        "that folder to your PATH. On macOS, use " +
+        "box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS " +
+        "build of 0.3.0 does not run. When that " +
         "release has no build for your machine, use box 0.3.0-preview.1 " +
         "(https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1) or a " +
         "later release that has one.",

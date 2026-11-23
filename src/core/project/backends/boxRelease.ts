@@ -64,6 +64,18 @@ export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases
  */
 export const BOX_MINIMUM_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_MINIMUM_VERSION}`;
 
+/**
+ * Where macOS gets box when the darwin pin names its own release, because the pinned release's
+ * macOS build does not run; empty otherwise.
+ */
+const DARWIN_VERSION = BOX_RELEASE.darwin?.version;
+export const BOX_MACOS_HINT =
+  DARWIN_VERSION !== undefined && DARWIN_VERSION !== BOX_RELEASE.version
+    ? `On macOS, use ${BOX_RELEASE.darwin?.asset} from ` +
+      `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${DARWIN_VERSION} instead: the ` +
+      `macOS build of ${BOX_RELEASE.version} does not run. `
+    : "";
+
 /** What to install when the pinned release has no build for the machine. */
 export const BOX_OTHER_MACHINE_HINT =
   `When that release has no build for your machine, use box ${BOX_MINIMUM_VERSION} ` +
@@ -89,8 +101,10 @@ export const BOX_BINARIES = [
  * dev ask for when it is not on PATH.
  */
 export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. " +
+  `Install box: download box-cli-v${BOX_RELEASE.version}-<target>.tar.gz for your machine from ` +
+  `${BOX_RELEASE_PAGE} (not a box-v${BOX_RELEASE.version}-* archive, which has no packs), unpack ` +
+  "it into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. " +
+  BOX_MACOS_HINT +
   BOX_OTHER_MACHINE_HINT;
 
 /** A Linux arm64 box for AgentCore Runtime. */
