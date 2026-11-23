@@ -6,7 +6,7 @@ import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
 import { isFile } from "../runtimeBuild";
 import { runtimeRunsInBox } from "../templates/boxProfile";
-import type { BoxRelease } from "./boxRelease";
+import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles, stagedRuntimeProfiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
@@ -87,14 +87,13 @@ export async function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[],
-  release: BoxRelease,
   folder: string = BOX_IMAGE_DIST,
 ): Promise<void> {
   const dist = join(context, folder);
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist, { recursive: true });
   await writeFile(join(dist, "profile.toml"), profileText);
-  await writeFile(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
+  await writeFile(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
     await mkdir(dirname(to), { recursive: true });
@@ -104,8 +103,8 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime that runs in a box
- * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the box release its
- * `box.version` names, and what the runtime profile writer writes from the runtime's Box network
+ * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the pinned box, and
+ * what the runtime profile writer writes from the runtime's Box network
  * model (the Runtime profile and a byte copy of each policy file it names). `.box/<name>/aws/`
  * gets only what the writer writes, for people to read. Returns the names of the runtimes it
  * staged.
@@ -113,7 +112,6 @@ export async function stageBoxImage(
 export async function stageBoxContainers(
   project: Project,
   networks: readonly BoxNetwork[],
-  releaseFor: (version: string | undefined) => Promise<BoxRelease>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "Container" && runtimeRunsInBox(project.spec, runtime),
@@ -133,13 +131,11 @@ export async function stageBoxContainers(
       policyFiles,
     );
   }
-  for (const [index, stage] of staged.entries()) {
-    const runtime = runtimes[index]!;
+  for (const stage of staged) {
     const folder = join(project.rootPath, ...stage.dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
-    const release = await releaseFor(runtime.box?.version);
-    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
+    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
     writeProfile(stage);
   }
   return runtimes.map((runtime) => runtime.name);

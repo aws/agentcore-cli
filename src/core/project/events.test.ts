@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectEvent } from "../../handlers/project/types";
-import { withOutputEvents } from "./events";
+import { withEvents, withOutputEvents } from "./events";
 
 async function collect<T>(
   generator: AsyncGenerator<ProjectEvent, T>,
@@ -64,5 +64,40 @@ describe("withOutputEvents", () => {
       })(),
     ).rejects.toBe(failure);
     expect(events).toEqual([{ type: "output", line: "last words" }]);
+  });
+});
+
+describe("withEvents", () => {
+  test("yields an event as soon as the work emits it, before the work ends", async () => {
+    let finish!: () => void;
+    const events = withEvents(async (emit) => {
+      emit({ type: "step", message: "downloading box" });
+      await new Promise<void>((resolve) => (finish = resolve));
+    });
+
+    // The work is still waiting, so the first event arrives without it.
+    expect(await events.next()).toEqual({
+      done: false,
+      value: { type: "step", message: "downloading box" },
+    });
+    finish();
+    expect(await events.next()).toEqual({ done: true, value: undefined });
+  });
+
+  test("throws the work's error after the events it emitted first", async () => {
+    const seen: ProjectEvent[] = [];
+    const failure = new Error("download failed");
+
+    const run = async () => {
+      for await (const event of withEvents(async (emit) => {
+        emit({ type: "step", message: "downloading box" });
+        throw failure;
+      })) {
+        seen.push(event);
+      }
+    };
+
+    await expect(run()).rejects.toBe(failure);
+    expect(seen).toEqual([{ type: "step", message: "downloading box" }]);
   });
 });

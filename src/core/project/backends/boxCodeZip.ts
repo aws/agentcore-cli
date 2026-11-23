@@ -22,7 +22,7 @@ export const BOX_DIST_GITIGNORE =
 export async function stageBoxCodeZip(
   project: Project,
   networks: readonly BoxNetwork[],
-  box: (version: string | undefined) => Promise<BoxLinuxBuild>,
+  box: () => Promise<BoxLinuxBuild>,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "CodeZip" && runtimeRunsInBox(project.spec, runtime),
@@ -36,17 +36,11 @@ export async function stageBoxCodeZip(
     kind: "codezip" as const,
   }));
   const writeProfile = stagedRuntimeProfiles(project, networks, staged);
-  // One build for each box version the runtimes name, so each downloads once.
-  const builds = new Map<string | undefined, BoxLinuxBuild>();
-  for (const runtime of runtimes) {
-    const version = runtime.box?.version;
-    if (!builds.has(version)) builds.set(version, await box(version));
-  }
+  // Every runtime ships the pinned box, which downloads once.
+  const build = await box();
 
   for (const stage of staged) {
-    const { runtime, dist } = stage;
-    const entry = runtimes.find(({ name }) => name === runtime)!;
-    const build = builds.get(entry.box?.version)!;
+    const { dist } = stage;
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });

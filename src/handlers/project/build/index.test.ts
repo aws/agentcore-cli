@@ -43,6 +43,7 @@ function testBuildCommand(options: TestBuildOptions = {}) {
 
   return {
     io,
+    core,
     run: (args: string[] = []) => root.route(["node", "agentcore", "build", ...args]),
   };
 }
@@ -73,6 +74,21 @@ describe("project build handler", () => {
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("synth chatter");
     expect(subject.io.stdout()).toBe("");
+  });
+
+  test("builds for the region --region names", async () => {
+    const subject = testBuildCommand();
+    const build = subject.core.projectManager.build.bind(subject.core.projectManager);
+    const regions: (string | undefined)[] = [];
+    subject.core.projectManager.build = (project, options) => {
+      regions.push(options?.region);
+      return build(project, options);
+    };
+    await inProject();
+
+    await subject.run(["--region", "eu-west-1"]);
+
+    expect(regions).toEqual(["eu-west-1"]);
   });
 
   test("renders the success message as JSON with --json", async () => {

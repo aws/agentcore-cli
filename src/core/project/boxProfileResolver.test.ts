@@ -97,11 +97,7 @@ const SHOWN_POLICY =
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
 /** The last sentence of each error that says to install another box: the pinned release. */
-const INSTALL =
-  `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
-  "When that release has no build for your machine, use box 0.1.11-linux-preview.7 " +
-  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a later " +
-  "release that has one.";
+const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry.`;
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
@@ -319,7 +315,7 @@ describe("BoxCliProfileResolver", () => {
     );
   });
 
-  test("says to install the pinned box when a box older than preview.7 refuses an @box/ pack", async () => {
+  test("says to install the pinned box when an older box refuses an @box/ pack", async () => {
     // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
     const error = await failure(
       refusal([
@@ -333,8 +329,7 @@ describe("BoxCliProfileResolver", () => {
       "Box refused the profile .box/profile.toml:\n" +
         '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
         "              not a pack name\n" +
-        "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
-        `@box/<name>. ${INSTALL}`,
+        `This box is older than the pinned box, which names its packs @box/<name>. ${INSTALL}`,
     );
   });
 

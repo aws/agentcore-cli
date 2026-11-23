@@ -9,11 +9,9 @@ import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
 import {
   BOX_INSTALL_HINT,
-  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
   type BoxRelease,
-  boxReleaseFor,
   publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
@@ -209,26 +207,6 @@ describe("resolveBoxLinuxBuild from the box release", () => {
   });
 });
 
-describe("boxReleaseFor a runtime's box.version", () => {
-  test("is the pinned release for no version or the pinned one", async () => {
-    expect(await boxReleaseFor(undefined)).toBe(BOX_RELEASE);
-    expect(await boxReleaseFor(BOX_RELEASE.version)).toBe(BOX_RELEASE);
-  });
-
-  test.each(["0.1.11-linux-preview.6", "2.0.0"])(
-    "refuses %s, a box this CLI does not pin, and says to set the pinned one",
-    async (version) => {
-      await expect(boxReleaseFor(version)).rejects.toThrow(
-        new InvalidEnvironmentError(
-          `agentcore.json names box ${version} under box.version, but this CLI ships box ` +
-            `${BOX_RELEASE.version}, the one box it pins. Set box.version to ` +
-            `${BOX_RELEASE.version}, then retry.`,
-        ),
-      );
-    },
-  );
-});
-
 describe("publishInstall", () => {
   /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
   async function folders(rootText?: string) {
@@ -274,8 +252,7 @@ describe("publishInstall", () => {
 });
 
 describe("the pinned releases", () => {
-  test("pins one box, with the asset of its own version and a SHA-256", () => {
-    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
+  test("pins one box: the asset of its own version, its SHA-256, and its release page", () => {
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
@@ -290,15 +267,11 @@ describe("the pinned releases", () => {
     );
   });
 
-  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.1.11-linux-preview.7 is the first release that reads the profiles the CLI writes.
+  test("the install hint names the pinned release", () => {
     expect(BOX_INSTALL_HINT).toBe(
       "Install box: download the build for your machine from " +
         `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
-        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
-        "release has no build for your machine, use box 0.1.11-linux-preview.7 " +
-        "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a " +
-        "later release that has one.",
+        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.",
     );
   });
 });
