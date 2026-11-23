@@ -1049,6 +1049,7 @@ describe("the additions rule", () => {
         "/memories/%2e%2e/identities",
         "/memories/%2E%2E/identities",
         "/memories/..%5cidentities",
+        "/memories/%252e%252e/identities",
       ]) {
         expect([path, blocked(path)]).toEqual([path, true]);
       }

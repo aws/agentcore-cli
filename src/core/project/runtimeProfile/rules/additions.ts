@@ -72,9 +72,11 @@ export const MEMORY_POLICY_FILE = "agentcore-memory-paths.dw";
  * The box policy of {@link MEMORY_POLICY_FILE}, for the AgentCore host of `region`. On AgentCore
  * Runtime the box reaches that host only for Memory: the first rule blocks each request to it
  * whose path is not `/memories` or under it, such as a Code Interpreter, Browser, identity, or API
- * key call. The second blocks a path that could leave `/memories` once AWS normalizes it: a `..`
- * or `.` segment, an encoded dot, or an encoded backslash. No Memory, actor, session, or record ID
- * holds a dot or a backslash, so no Memory call has one. The path holds no query string.
+ * key call. Box resolves `.` and `..` segments and decodes `%2e` before a rule sees the path, so
+ * the first rule judges the path that box sends. The second blocks what that leaves and AWS could
+ * still read as another path: a `..` or `.` segment, an encoded dot or backslash, and an encoded
+ * `%`, as in a double-encoded `%252e`. No Memory, actor, session, or record ID holds a dot, a
+ * backslash, or a `%`, so no Memory call has one. The path holds no query string.
  */
 export function memoryHostPolicy(region: string): string {
   const host = JSON.stringify(agentCoreDataPlaneHost(region));
@@ -91,7 +93,7 @@ export function memoryHostPolicy(region: string): string {
     "",
     '@id("agentcore_host_no_dot_segments")',
     'forbid (principal, action == Box::Action::"http:request", resource)',
-    `when { context.input.host == ${host} && (\n    ${anyOf(["*..*", "*/./*", "*/.", "*%2e*", "*%2E*", "*%5c*", "*%5C*"])}) };`,
+    `when { context.input.host == ${host} && (\n    ${anyOf(["*..*", "*/./*", "*/.", "*%2e*", "*%2E*", "*%5c*", "*%5C*", "*%25*"])}) };`,
     "",
   ].join("\n");
 }
