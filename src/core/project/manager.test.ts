@@ -2224,7 +2224,7 @@ describe("FsProjectManager.build", () => {
     // Build writes both for the region it builds for, which the environment of the test sets.
     const region = box.targets[0].outboundAuth.region as string;
     expect(profile.egress.agentcore).toEqual({
-      destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
+      destinations: [`bedrock-agentcore.${region}.amazonaws.com/memories`],
       secret: { ref: "aws://" },
     });
 

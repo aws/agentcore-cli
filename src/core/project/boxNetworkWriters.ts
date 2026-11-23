@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import type { ProjectSpec } from "../../projectSchemas/project";
+import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
 import {
   boxGatewayOf,
   gatewayTargetFor,
@@ -317,7 +317,8 @@ function undeclaredKey(
 /**
  * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
  * gateways' role, as `addBoxGatewayTargets` adds them. It removes the Memory policy file that an
- * earlier build wrote, as `addBoxGatewayTargets` removes its listing.
+ * earlier build wrote, as `addBoxGatewayTargets` removes its listing, unless a gateway that is not
+ * a Box gateway still lists it.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
@@ -340,7 +341,17 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
         .flatMap(({ path, policy }): BoxNetworkFile[] =>
           policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
         )
-        .concat({ path: LEGACY_BOX_MEMORY_POLICY_FILE, remove: true }),
+        .concat(
+          // removeLegacyMemoryAccess drops the listing only from the Box gateways. A gateway that
+          // is not a Box gateway lists the file only when the user listed it there.
+          spec.agentCoreGateways.some(
+            (gateway) =>
+              !isBoundGateway(gateway) &&
+              gateway.additionalPolicies?.includes(LEGACY_BOX_MEMORY_POLICY_FILE),
+          )
+            ? []
+            : [{ path: LEGACY_BOX_MEMORY_POLICY_FILE, remove: true }],
+        ),
     };
   },
 };

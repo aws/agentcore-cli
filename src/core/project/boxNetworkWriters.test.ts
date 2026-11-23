@@ -307,6 +307,23 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
+  test("keeps the Memory policy file of an earlier build while a gateway that is not a Box gateway lists it", () => {
+    const project = spec();
+    project.agentCoreGateways.push({
+      name: "tools",
+      authorizerType: "AWS_IAM",
+      targets: [],
+      additionalPolicies: ["agentcore/box-memory-policy.json"],
+    } as never);
+
+    const edits = run([defaultTargetsWriter], [network()], project);
+
+    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
+    expect(
+      edits.spec.agentCoreGateways.find(({ name }) => name === "tools")?.additionalPolicies,
+    ).toEqual(["agentcore/box-memory-policy.json"]);
+  });
+
   test("writes the model target for the region of the build", () => {
     const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
 
