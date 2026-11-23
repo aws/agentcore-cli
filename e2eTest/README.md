@@ -36,7 +36,10 @@ cannot deploy a Box project yet. Set it to an `@aws/agentcore-cdk` version or a 
 that can, for example one packed from the `box-integration` branch of
 [agentcore-l3-cdk-constructs](https://github.com/aws/agentcore-l3-cdk-constructs) with
 `npm run build && npm pack --ignore-scripts`. The tests install it in the `agentcore/cdk` of each
-Box project that deploys. Without it, as in CI, they skip.
+Box project that deploys. Without it, they skip. In CI, the macOS and Linux arm64 runners set it to
+a tarball they build from agentcore-l3-cdk-constructs at the workflow's `l3Ref` input (default
+`box-integration`), checked out with a read-only token from the repository's GitHub App. Remove
+those steps once a released `@aws/agentcore-cdk` deploys Box projects and the pin is bumped.
 
 The `dev` tests also need a machine where `box run` can start its sandbox, and for the container
 template a container tool. The container template's `dev` test skips when no `docker`, `podman`
