@@ -11,7 +11,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { InvalidEnvironmentError } from "../../../errors/errors";
+import { InvalidEnvironmentError, ProjectStateError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
 import { isFile } from "../runtimeBuild";
 import pinned from "./boxRelease.json";
@@ -38,12 +38,54 @@ const BoxReleaseSchema = z.object({
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
 
 /**
- * The release this CLI pins, from boxRelease.json. The checksums are pinned there, not read
- * from a release's SHA256SUMS.txt, so a changed asset fails instead of shipping.
- * `scripts/bump-box-release.ts` rewrites the file.
+ * The box releases this CLI supports, from boxRelease.json: `box`, the default, which `agentcore
+ * create` writes, and `supported`, the other releases a runtime's `box.version` can name. The
+ * checksums are pinned there, not read from a release's SHA256SUMS.txt, which anyone who can edit
+ * the release could replace with its archive, so a changed asset fails instead of shipping. Only a
+ * release listed here ships: the profiles this CLI writes and the box that reads them change
+ * together. `scripts/bump-box-release.ts` rewrites the file.
  */
-const PINNED = z.object({ box: BoxReleaseSchema }).parse(pinned);
+const PINNED = z
+  .object({ box: BoxReleaseSchema, supported: z.array(BoxReleaseSchema).default([]) })
+  .parse(pinned);
 export const BOX_RELEASE: BoxRelease = PINNED.box;
+
+/** Every release a runtime can run: the default first, then the other supported ones. */
+export const BOX_RELEASES: readonly BoxRelease[] = [
+  BOX_RELEASE,
+  ...PINNED.supported.filter(({ version }) => version !== BOX_RELEASE.version),
+];
+
+/**
+ * The supported release that `version`, a runtime's `box.version`, names: the default when it
+ * names none. Undefined for a version this CLI does not support.
+ */
+export function boxReleaseFor(
+  version: string | undefined,
+  releases: readonly BoxRelease[] = BOX_RELEASES,
+): BoxRelease | undefined {
+  if (version === undefined) return releases[0];
+  return releases.find((release) => release.version === version);
+}
+
+/**
+ * The release that runtime `name` runs, from its `box.version`. Throws, naming the supported
+ * versions, for a version this CLI does not support.
+ */
+export function boxReleaseOfRuntime(
+  name: string,
+  version: string | undefined,
+  releases: readonly BoxRelease[] = BOX_RELEASES,
+): BoxRelease {
+  const release = boxReleaseFor(version, releases);
+  if (release) return release;
+  const versions = releases.map((supported) => supported.version);
+  throw new ProjectStateError(
+    `runtime "${name}" names box ${version} under box.version in agentcore.json, but this CLI ` +
+      `supports box ${versions.join(", ")}. Set box.version to one of them, or remove it to run ` +
+      `${releases[0]!.version}, then retry.`,
+  );
+}
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;

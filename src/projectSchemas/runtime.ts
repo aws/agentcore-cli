@@ -371,13 +371,14 @@ export const ProjectRuntimeSchema = z
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
     /**
-     * The box release a runtime that runs its agent in a box uses on AgentCore Runtime: build and
-     * deploy ship its Linux build in a CodeZip runtime's zip, and a container image downloads it
-     * (under `agentcore dev` too). `agentcore dev` runs a CodeZip agent with the `box` on your PATH
-     * instead. Every runtime of a Box project needs it, and only a runtime with it runs in a box;
-     * `agentcore create` writes the box release this CLI pins.
+     * Runs the runtime's agent in a box. Every runtime of a Box project needs it, and only a runtime
+     * with it runs in a box. `version` is the box release it uses on AgentCore Runtime, one this CLI
+     * supports (`boxRelease.json`): build and deploy ship its Linux build in a CodeZip runtime's
+     * zip, and a container image downloads it (under `agentcore dev` too). Without a version, the
+     * runtime uses the default release. `agentcore create` writes the default. `agentcore dev` runs a
+     * CodeZip agent with the `box` on your PATH instead.
      */
-    box: z.object({ version: BoxVersionSchema }).optional(),
+    box: z.object({ version: BoxVersionSchema.optional() }).optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
     networkConfig: NetworkConfigSchema.optional(),

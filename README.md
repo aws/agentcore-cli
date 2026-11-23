@@ -213,10 +213,13 @@ each runtime from its local profile. box comes from the public GitHub release `v
 is needed to download it. Use that release's build for your machine for `agentcore dev` and the
 profile checks of `build`: an older box cannot read the profiles that this CLI writes.
 
-`src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
-Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
-workflow installs on its macOS runner. `bun scripts/bump-box-release.ts --box <version>`
-(with `--box-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
+`src/core/project/backends/boxRelease.json` pins the box releases this CLI supports: `box`, the
+default, and `supported`, the others. For each it pins the Linux build that ships to AgentCore
+Runtime and the macOS arm64 build that the e2e workflow installs, with their repository, version and
+SHA-256. `bun scripts/bump-box-release.ts --box <version>` makes a release the default (add
+`--keep-previous` to keep the old one supported), `--add <version>` and `--remove <version>` change
+the other supported releases, and `--box-repo` moves repository. The script reads each release's
+`SHA256SUMS.txt`, and the checksums reach the CLI only through a reviewed change of the file.
 
 How each command uses it:
 
@@ -224,7 +227,7 @@ How each command uses it:
   `~/.agentcore/box/`, check it against its pinned SHA-256, and stage box and its packs into the
   runtime's `.box-dist/`.
 - A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
-  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
+  release that `box.version` names, with its pinned checksum, as `box-release.env` beside the Dockerfile
   (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
   checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
   the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
@@ -235,8 +238,10 @@ How each command uses it:
   with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes. Every box runtime runs the pinned version, whose checksums
-`boxRelease.json` keeps: build and deploy set `box.version` to it, and say so when it named another.
+which `agentcore create` writes with the default. To move a runtime to another supported release,
+change its `box.version`; with no version, it runs the default. Build, deploy and container `dev`
+stop on a version that `boxRelease.json` does not list, and name the supported ones, before they
+write anything. Build never rewrites `box.version`.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes

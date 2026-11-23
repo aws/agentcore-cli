@@ -12,7 +12,7 @@ import {
 } from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
 import { runtimeRunsInBox } from "../templates/boxProfile";
-import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
+import { BOX_RELEASES, boxReleaseOfRuntime, type BoxRelease } from "./boxRelease";
 import { assertImageCopiesPolicyFiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
@@ -93,13 +93,14 @@ export async function stageBoxImage(
   context: string,
   profileText: string,
   policies: readonly PolicyFileCopy[],
+  release: BoxRelease,
   folder: string = BOX_IMAGE_DIST,
 ): Promise<void> {
   const dist = join(context, folder);
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist, { recursive: true });
   await writeFile(join(dist, "profile.toml"), profileText);
-  await writeFile(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
+  await writeFile(join(dist, BOX_RELEASE_ENV), boxReleaseEnv(release));
   for (const { from, relative } of policies) {
     const to = join(dist, ...relative.split("/"));
     await mkdir(dirname(to), { recursive: true });
@@ -118,6 +119,7 @@ export async function stageBoxImage(
 export async function stageBoxContainers(
   project: Project,
   networks: readonly BoxNetwork[],
+  releases: readonly BoxRelease[] = BOX_RELEASES,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "Container" && runtimeRunsInBox(project.spec, runtime),
@@ -148,7 +150,8 @@ export async function stageBoxContainers(
     const folder = join(project.rootPath, ...dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
+    const release = boxReleaseOfRuntime(runtime.name, runtime.box?.version, releases);
+    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(release));
     writeBoxNetworkFiles(project.rootPath, filesOf(dist));
     writeRenderedBoxFiles(project.rootPath, runtime.name, dist, filesOf(dist));
   }

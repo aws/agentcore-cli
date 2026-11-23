@@ -6,7 +6,7 @@
 import { ProjectStateError } from "../../errors/errors";
 import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { BOX_RELEASE } from "./backends/boxRelease";
+import { BOX_RELEASE, boxReleaseOfRuntime } from "./backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, runsInBox } from "./templates/boxProfile";
 
 /** The box template whose image starts box itself, for a runtime that needs a container build. */
@@ -93,10 +93,22 @@ export function assertBoxCodeZipRuntimesStartBox(spec: ProjectSpec): void {
 
 /**
  * The checks build and deploy run on the synced `spec`, before they read the box profiles or
- * write anything: every runtime of a Box project has `box.version`, and each CodeZip one starts
- * box.
+ * write anything: every runtime of a Box project has `box`, names a box release this CLI supports,
+ * and, for CodeZip, starts box.
  */
 export function validateBoxRuntimes(spec: ProjectSpec): void {
   assertBoxRuntimesHaveBoxVersion(spec);
+  assertBoxVersionsSupported(spec);
   assertBoxCodeZipRuntimesStartBox(spec);
+}
+
+/**
+ * Throws, naming the supported versions, for a box runtime whose `box.version` names a release this
+ * CLI does not support: only a release whose checksums the CLI pins can ship.
+ */
+export function assertBoxVersionsSupported(spec: ProjectSpec): void {
+  for (const runtime of spec.runtimes) {
+    if (!runsInBox(isBoxProject(spec), runtime)) continue;
+    boxReleaseOfRuntime(runtime.name, runtime.box?.version);
+  }
 }

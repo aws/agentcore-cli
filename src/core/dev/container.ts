@@ -26,6 +26,7 @@ import {
   imageTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
+import { BOX_RELEASES, boxReleaseOfRuntime, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import {
   boxLocalProfileFile,
@@ -118,6 +119,8 @@ type ContainerDevRunnerConfig = {
   resolveAwsCredentials?: ResolveAwsCredentials;
   /** The platform, whose rules for variable names apply to `processEnv`; tests inject one. */
   platform?: NodeJS.Platform;
+  /** The box releases a runtime's box.version can name; boxRelease.json's by default. */
+  releases?: readonly BoxRelease[];
 };
 
 export class ContainerDevRunner implements DevRunner {
@@ -127,6 +130,7 @@ export class ContainerDevRunner implements DevRunner {
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly resolveAwsCredentials: ResolveAwsCredentials;
   private readonly platform: NodeJS.Platform;
+  private readonly releases: readonly BoxRelease[];
 
   constructor(config: ContainerDevRunnerConfig = {}) {
     this.streamProcess = config.streamProcess ?? streamProcess;
@@ -135,6 +139,7 @@ export class ContainerDevRunner implements DevRunner {
     this.processEnv = config.processEnv ?? process.env;
     this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
     this.platform = config.platform ?? process.platform;
+    this.releases = config.releases ?? BOX_RELEASES;
   }
 
   public async *run(input: DevServerInput): AsyncGenerator<DevEvent, void> {
@@ -390,6 +395,7 @@ export class ContainerDevRunner implements DevRunner {
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot, input.runtime.name),
+      boxReleaseOfRuntime(input.runtime.name, input.runtime.box?.version, this.releases),
       folder,
     );
     return { folder, profileText };

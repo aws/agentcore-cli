@@ -12,5 +12,6 @@
       "asset": "box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz",
       "sha256": "76a3909c5c99c435b6ead470be2f401a22c6155b5b60652263bfb1af3ef57e18"
     }
-  }
+  },
+  "supported": []
 }

@@ -10,6 +10,7 @@ import { renderAgentCorePack } from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import { stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE } from "./boxRelease";
+import { OTHER_BOX_RELEASE, TEST_BOX_RELEASES } from "./box-release-test-support";
 
 /** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
@@ -46,7 +47,7 @@ async function project(dockerfile: string): Promise<Project> {
           dockerfile: "Dockerfile",
           modelProvider: "Bedrock",
           // create writes box.version only for the box container template, whose image copies box.
-          ...(dockerfile.includes(".box-dist") && { box: { version: "1.0.0" } }),
+          ...(dockerfile.includes(".box-dist") && { box: { version: BOX_RELEASE.version } }),
         },
       ],
       memories: [],
@@ -61,9 +62,8 @@ const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
 const STAGED = ["box-release.env", "profile.toml"];
 
 describe("stageBoxContainers", () => {
-  test("stages the pinned box release, whatever box.version names, and the Runtime profile, into the build context", async () => {
+  test("stages the box release that box.version names, and the Runtime profile, into the build context", async () => {
     const demo = await project(BOX_DOCKERFILE);
-    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
 
     expect(await stageBoxContainers(demo, [model([])])).toEqual(["agent"]);
 
@@ -90,6 +90,19 @@ describe("stageBoxContainers", () => {
         await readFile(join(dist, file), "utf8"),
       );
     }
+  });
+
+  test("stages a supported release other than the default, which box.version names", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    demo.spec.runtimes[0]!.box = { version: OTHER_BOX_RELEASE.version };
+
+    await stageBoxContainers(demo, [model([])], TEST_BOX_RELEASES);
+
+    const dist = join(demo.rootPath, "app", "agent", ".box-dist");
+    expect(await readFile(join(dist, "box-release.env"), "utf8")).toContain(
+      `BOX_VERSION=${OTHER_BOX_RELEASE.version}\nBOX_ASSET=${OTHER_BOX_RELEASE.linux.asset}\n` +
+        `BOX_SHA256=${OTHER_BOX_RELEASE.linux.sha256}`,
+    );
   });
 
   test("replaces what an earlier build staged", async () => {

@@ -14,8 +14,8 @@ gateway, bound to it by `boundRuntime` and named after it: the runtime `agent` g
 
 A Box project ships box inside its deploy artifact, so the agent runs in a box on AgentCore Runtime.
 Each box runtime names its box release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes and build keeps at the pinned release. `agentcore build` and
-`agentcore deploy` download the pinned release's Linux build from
+which `agentcore create` writes with the default release. `agentcore build` and `agentcore deploy`
+download the Linux build of the release it names from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
 `~/.agentcore/box/`, check its SHA-256s, and stage it into the zip, for a CodeZip runtime. For a
 container they write the release and its checksum into `.box-dist/box-release.env` instead. A
@@ -29,13 +29,15 @@ only for the box templates. The runtime's entry point and Dockerfile never decid
 `start.py` runs the usual way. A runtime with `box.version` in a project without
 `"projectType": "box"` stops dev with `agentcore.json has no "projectType": "box"`.
 
-Every box runtime runs the box version the CLI pins in `src/core/project/backends/boxRelease.json`.
-Build and deploy set each runtime's `box.version` to it, and say so when it named another; container
-`dev` stages the pinned box whatever `box.version` says. To try an unreleased box build, publish it
-as a GitHub pre-release with the release's file names (the `aarch64-apple-darwin` and
+A runtime's `box.version` must be one of the releases that
+`src/core/project/backends/boxRelease.json` supports: `box`, the default, or one of `supported`.
+With no version, the runtime runs the default. Build, deploy and container `dev` stop on any other
+version and name the supported ones; build never rewrites the field. To try an unreleased box build,
+publish it as a GitHub pre-release with the release's file names (the `aarch64-apple-darwin` and
 `aarch64-unknown-linux-gnu` archives and `SHA256SUMS.txt`), for example in a fork of
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases), then run
-`bun scripts/bump-box-release.ts --box <version> --box-repo <owner/repo>` in your CLI checkout.
+`bun scripts/bump-box-release.ts --add <version> --box-repo <owner/repo>` in your CLI checkout and
+set the runtime's `box.version` to it, or `--box <version>` to make it the default.
 
 ## Prerequisites
 

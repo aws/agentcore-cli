@@ -9,7 +9,13 @@ import {
   writeRenderedBoxFiles,
 } from "../boxNetworkWriters";
 import { BOX_CODEZIP_DIST, runtimeRunsInBox } from "../templates/boxProfile";
-import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
+import {
+  BOX_BINARIES,
+  BOX_RELEASES,
+  boxReleaseOfRuntime,
+  type BoxLinuxBuild,
+  type BoxRelease,
+} from "./boxRelease";
 
 /** The `.gitignore` staged into `.box-dist/`: build and deploy rewrite the folder every time. */
 export const BOX_DIST_GITIGNORE =
@@ -27,7 +33,8 @@ export const BOX_DIST_GITIGNORE =
 export async function stageBoxCodeZip(
   project: Project,
   networks: readonly BoxNetwork[],
-  box: () => Promise<BoxLinuxBuild>,
+  box: (release: BoxRelease) => Promise<BoxLinuxBuild>,
+  releases: readonly BoxRelease[] = BOX_RELEASES,
 ): Promise<string[]> {
   const runtimes = project.spec.runtimes.filter(
     (runtime) => runtime.build === "CodeZip" && runtimeRunsInBox(project.spec, runtime),
@@ -47,10 +54,18 @@ export async function stageBoxCodeZip(
     envLocal: {},
   });
   const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
-  // Every runtime ships the pinned box, which downloads once.
-  const build = await box();
+  // One build for each box release the runtimes name, so each downloads once.
+  const builds = new Map<string, BoxLinuxBuild>();
+  for (const runtime of runtimes) {
+    const release = boxReleaseOfRuntime(runtime.name, runtime.box?.version, releases);
+    if (!builds.has(release.version)) builds.set(release.version, await box(release));
+  }
 
   for (const { runtime, dist } of staged) {
+    const entry = runtimes.find(({ name }) => name === runtime)!;
+    const build = builds.get(
+      boxReleaseOfRuntime(entry.name, entry.box?.version, releases).version,
+    )!;
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });

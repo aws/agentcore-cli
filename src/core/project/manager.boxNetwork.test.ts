@@ -643,35 +643,38 @@ describe("build writes the Box network of the box profile", () => {
   });
 });
 
-describe("build sets box.version to the pinned box", () => {
-  // The box features and the profiles that the CLI writes change together, so a project created
-  // by an earlier CLI builds with the box this one ships, and agentcore.json says so.
-  test("updates a runtime's older box.version, and says so", async () => {
-    const { manager, root } = await strandsProject();
+describe("build ships the box release that box.version names", () => {
+  test("refuses a box.version this CLI does not support, before anything is written", async () => {
+    const { manager, root, counter } = await strandsProject();
     const spec = JSON.parse(await text(root, SPEC));
     spec.runtimes[0].box = { version: "0.1.11-linux-preview.6" };
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const before = await text(root, SPEC);
+    counter.specWrites = 0;
+
+    await expect(build(manager, root)).rejects.toThrow(
+      'runtime "agent_python_strands" names box 0.1.11-linux-preview.6 under box.version in ' +
+        `agentcore.json, but this CLI supports box ${BOX_RELEASE.version}. Set box.version to one ` +
+        `of them, or remove it to run ${BOX_RELEASE.version}, then retry.`,
+    );
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, SPEC)).toBe(before);
+  });
+
+  // The user's choice stays: build does not rewrite box.version, and no version runs the default.
+  test.each([
+    ["the default release", { version: BOX_RELEASE.version }],
+    ["no version", {}],
+  ])("keeps a box.version of %s as written", async (_label, box) => {
+    const { manager, root } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.runtimes[0].box = box;
     await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
 
     const { steps } = await build(manager, root);
 
-    expect(steps).toContain(
-      "updating box.version of runtime 'agent_python_strands' from 0.1.11-linux-preview.6 to " +
-        `${BOX_RELEASE.version}, the box this CLI ships`,
-    );
-    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual({
-      version: BOX_RELEASE.version,
-    });
-  });
-
-  test("leaves the pinned box.version as it is, with no message", async () => {
-    const { manager, root } = await strandsProject();
-    const before = JSON.parse(await text(root, SPEC)).runtimes[0].box;
-
-    const { steps } = await build(manager, root);
-
-    expect(before).toEqual({ version: BOX_RELEASE.version });
-    expect(steps.some((step) => step.startsWith("updating box.version"))).toBe(false);
-    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual(before);
+    expect(steps.some((step) => step.includes("box.version"))).toBe(false);
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual(box);
   });
 });
 

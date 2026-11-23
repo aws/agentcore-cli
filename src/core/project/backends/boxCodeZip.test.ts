@@ -16,7 +16,8 @@ import {
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import type { TomlTable } from "../runtimeProfile/types";
 import { BOX_DIST_GITIGNORE, stageBoxCodeZip } from "./boxCodeZip";
-import type { BoxLinuxBuild } from "./boxRelease";
+import { BOX_RELEASE, type BoxLinuxBuild, type BoxRelease } from "./boxRelease";
+import { OTHER_BOX_RELEASE, TEST_BOX_RELEASES } from "./box-release-test-support";
 
 const directories: string[] = [];
 
@@ -66,7 +67,7 @@ async function project(
         runtimeVersion,
         modelProvider: "Bedrock",
         // create writes box.version only for a box template, whose entry point is start.py.
-        ...(entrypoint === "start.py" && { box: { version: "1.0.0" } }),
+        ...(entrypoint === "start.py" && { box: { version: BOX_RELEASE.version } }),
       })),
       memories: [],
       projectType: "box",
@@ -120,18 +121,36 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, ".gitignore"), "utf8")).toBe(BOX_DIST_GITIGNORE);
   });
 
-  test("asks for the pinned box once, for every runtime", async () => {
+  test("asks once for each supported release the runtimes name, the default for no version", async () => {
     const build = await linuxBuild();
-    const demo = await project("start.py", "PYTHON_3_14", ["agent", "second"]);
-    demo.spec.runtimes[1]!.box = { version: "2.0.0" };
-    let asked = 0;
+    const demo = await project("start.py", "PYTHON_3_14", ["agent", "second", "third"]);
+    demo.spec.runtimes[1]!.box = { version: OTHER_BOX_RELEASE.version };
+    demo.spec.runtimes[2]!.box = {};
+    const asked: string[] = [];
 
-    await stageBoxCodeZip(demo, [model([]), model([], "second")], async () => {
-      asked++;
-      return build;
-    });
+    await stageBoxCodeZip(
+      demo,
+      [model([]), model([], "second"), model([], "third")],
+      async (release: BoxRelease) => {
+        asked.push(release.version);
+        return build;
+      },
+      TEST_BOX_RELEASES,
+    );
 
-    expect(asked).toBe(1);
+    expect(asked).toEqual([BOX_RELEASE.version, OTHER_BOX_RELEASE.version]);
+  });
+
+  test("refuses a box.version this CLI does not support, and names the supported ones", async () => {
+    const demo = await project("start.py");
+    demo.spec.runtimes[0]!.box = { version: "0.0.1" };
+
+    await expect(
+      stageBoxCodeZip(demo, [model([])], async () => linuxBuild(), TEST_BOX_RELEASES),
+    ).rejects.toThrow(
+      'runtime "agent" names box 0.0.1 under box.version in agentcore.json, but this CLI ' +
+        `supports box ${BOX_RELEASE.version}, ${OTHER_BOX_RELEASE.version}.`,
+    );
   });
 
   test.each([

@@ -10,6 +10,9 @@ import { type ProcessRunner, runProcess } from "../../../io/exec";
 import {
   BOX_INSTALL_HINT,
   BOX_RELEASE,
+  BOX_RELEASES,
+  boxReleaseFor,
+  boxReleaseOfRuntime,
   BOX_RELEASE_PAGE,
   type BoxRelease,
   publishInstall,
@@ -272,6 +275,29 @@ describe("the pinned releases", () => {
       "Install box: download the build for your machine from " +
         `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
         "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.",
+    );
+  });
+});
+
+describe("the supported box releases", () => {
+  const other = { ...BOX_RELEASE, version: "9.9.9-test.1" };
+  const releases = [BOX_RELEASE, other];
+
+  test("start with the default, which create writes", () => {
+    expect(BOX_RELEASES[0]).toBe(BOX_RELEASE);
+  });
+
+  test("give the release a box.version names, and the default for none", () => {
+    expect(boxReleaseFor(undefined, releases)).toBe(BOX_RELEASE);
+    expect(boxReleaseFor(other.version, releases)).toBe(other);
+    expect(boxReleaseFor("0.0.1", releases)).toBeUndefined();
+  });
+
+  test("refuse, by runtime, a version this CLI does not support, and name the supported ones", () => {
+    expect(() => boxReleaseOfRuntime("agent", "0.0.1", releases)).toThrow(
+      'runtime "agent" names box 0.0.1 under box.version in agentcore.json, but this CLI ' +
+        `supports box ${BOX_RELEASE.version}, 9.9.9-test.1. Set box.version to one of them, or ` +
+        `remove it to run ${BOX_RELEASE.version}, then retry.`,
     );
   });
 });

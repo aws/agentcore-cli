@@ -14,7 +14,7 @@ import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
 import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
 import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
-import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
+import { boxDownloadMessage, resolveBoxLinuxBuild, type BoxRelease } from "./boxRelease";
 import { cdkCompatibilityWarning } from "./cdk/compatibility";
 import {
   createLineSplitter,
@@ -255,11 +255,11 @@ export class CdkBackend implements ProjectBackend {
     // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
     // goes out when the download starts, not once staging ends.
     yield* withEvents(async (emit) => {
-      // Every box runtime ships the pinned box: build set each box.version to it.
-      const box = () =>
+      // Each box runtime ships the supported release its box.version names.
+      const box = (release: BoxRelease) =>
         resolveBoxLinuxBuild(this.processEnv, {
           runner: this.runner,
-          release: BOX_RELEASE,
+          release,
           onDownload: (download) =>
             emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
         });

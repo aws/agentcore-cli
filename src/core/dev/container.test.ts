@@ -19,7 +19,8 @@ import {
   type StreamProcessOptions,
 } from "../../io";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
-import { BOX_RELEASE } from "../project/backends/boxRelease";
+import { BOX_RELEASE, type BoxRelease } from "../project/backends/boxRelease";
+import { OTHER_BOX_RELEASE, TEST_BOX_RELEASES } from "../project/backends/box-release-test-support";
 import type { ResolveAwsCredentials } from "./boxAwsCredentials";
 import { ContainerDevRunner } from "./container";
 
@@ -76,6 +77,7 @@ function harness(
     processEnv?: NodeJS.ProcessEnv;
     resolveAwsCredentials?: ResolveAwsCredentials;
     platform?: NodeJS.Platform;
+    releases?: readonly BoxRelease[];
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -125,6 +127,7 @@ function harness(
       // Never the real chain in a test: none unless the test gives some.
       resolveAwsCredentials: config.resolveAwsCredentials ?? (async () => undefined),
       ...(config.platform && { platform: config.platform }),
+      ...(config.releases && { releases: config.releases }),
     }),
   };
 }
@@ -812,7 +815,9 @@ describe("ContainerDevRunner", () => {
         box?: boolean;
       } = {},
     ) {
-      const projectRuntime = runtime(options.box === false ? {} : { box: { version: "1.0.0" } });
+      const projectRuntime = runtime(
+        options.box === false ? {} : { box: { version: BOX_RELEASE.version } },
+      );
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
@@ -1074,15 +1079,16 @@ describe("ContainerDevRunner", () => {
       expect(JSON.stringify(events)).not.toContain("reads GITHUB_TOKEN for [egress.github]");
     });
 
-    test("stages the pinned box, whatever box.version the runtime names", async () => {
+    test("stages the box release that the runtime's box.version names", async () => {
       const { projectRuntime, root, context } = await boxedScene();
-      const { runner } = harness({ processEnv: credentials });
+      const { runner } = harness({ processEnv: credentials, releases: TEST_BOX_RELEASES });
 
-      await collect(runner.run(input(root, { ...projectRuntime, box: { version: "2.0.0" } })));
+      await collect(
+        runner.run(input(root, { ...projectRuntime, box: { version: OTHER_BOX_RELEASE.version } })),
+      );
 
       const env = await readFile(join(context, ".box-dist", "box-release.env"), "utf8");
-      expect(env).toContain(BOX_RELEASE.version);
-      expect(env).not.toContain("2.0.0");
+      expect(env).toContain(`BOX_VERSION=${OTHER_BOX_RELEASE.version}`);
     });
 
     test("runs a runtime with no box.version without box's flags, even with a box profile", async () => {
