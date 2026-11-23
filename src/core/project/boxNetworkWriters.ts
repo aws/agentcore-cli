@@ -271,7 +271,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     }
     const called = reached.find((candidate) => candidate.target === target.name);
     if (called) {
-      const written = projectGatewayTargetFor(called, network.region);
+      const written = projectGatewayTargetFor(called);
       if (!isDeepStrictEqual(written, target)) {
         messages.push(
           `updating gateway target '${target.name}' of ${gatewayName} for the gateway ` +
@@ -310,7 +310,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   }
   for (const called of reached) {
     if (existing.some(({ name }) => name === called.target)) continue;
-    targets.push(projectGatewayTargetFor(called, network.region));
+    targets.push(projectGatewayTargetFor(called));
     messages.push(
       `adding gateway target '${called.target}' to ${gatewayName}, for the boxed agent's calls ` +
         `to the gateway '${called.name}'`,

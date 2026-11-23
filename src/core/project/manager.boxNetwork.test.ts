@@ -706,7 +706,7 @@ describe("build routes the other gateways of the project for the boxed agent", (
       name: "egress-gateway-tools",
       targetType: "passthrough",
       passthrough: { gateway: "tools", protocolType: "CUSTOM" },
-      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
     });
     expect((await runtimeProfile(root)).mcp).toHaveProperty("tools");
     expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([]);

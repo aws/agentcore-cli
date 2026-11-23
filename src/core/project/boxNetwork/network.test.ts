@@ -1315,7 +1315,7 @@ describe("the gateways of the project", () => {
       name: "egress-gateway-tools",
       targetType: "passthrough",
       passthrough: { gateway: "tools", protocolType: "CUSTOM" },
-      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
     } as AgentCoreGatewayTarget;
 
     expect(model("", {}, { gateways: [TOOLS], targets: [written] }).failures()).toEqual([]);

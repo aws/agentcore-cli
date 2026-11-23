@@ -86,19 +86,17 @@ export function projectGatewaysOf(
 }
 
 /**
- * The Box gateway target that calls `gateway`, signed for AgentCore in `region` for an `AWS_IAM`
- * gateway. The CDK library sets its endpoint and grants the Box gateway's role `InvokeGateway`.
+ * The Box gateway target that calls `gateway`, signed for AgentCore for an `AWS_IAM` gateway. The
+ * CDK library sets its endpoint, signs in the region of the stack, where the gateway is, and grants
+ * the Box gateway's role `InvokeGateway`. Thus the target has no region.
  */
-export function projectGatewayTargetFor(
-  gateway: BoxProjectGateway,
-  region: string,
-): AgentCoreGatewayTarget {
+export function projectGatewayTargetFor(gateway: BoxProjectGateway): AgentCoreGatewayTarget {
   return {
     name: gateway.target,
     targetType: "passthrough",
     passthrough: { gateway: gateway.name, protocolType: "CUSTOM" },
     ...(gateway.auth === "iam" && {
-      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
     }),
   };
 }

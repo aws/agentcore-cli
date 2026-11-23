@@ -255,7 +255,7 @@ describe("gatewayTargetsWriter for the gateways of the project", () => {
     name: "egress-gateway-tools",
     targetType: "passthrough",
     passthrough: { gateway: "tools", protocolType: "CUSTOM" },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
   };
 
   test("adds a target that names each gateway, signed with the role only for an AWS_IAM gateway", () => {
@@ -276,7 +276,7 @@ describe("gatewayTargetsWriter for the gateways of the project", () => {
     ]);
   });
 
-  test("rewrites the target for the build region in place, and changes nothing the next time", () => {
+  test("removes a region that an earlier build wrote, as the L3 signs in the region of the stack, and changes nothing the next time", () => {
     const stale = {
       ...toolsTarget,
       outboundAuth: { ...toolsTarget.outboundAuth!, region: "us-east-1" },

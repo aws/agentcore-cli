@@ -87,7 +87,7 @@ const accepts =
     name: "egress-gateway-check",
     targetType: "passthrough",
     passthrough: { gateway: "check", protocolType: "CUSTOM" },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-east-1" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
   }).success === true;
 process.stdout.write(accepts ? "accepts" : "refuses");
 `;

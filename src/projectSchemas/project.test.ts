@@ -625,7 +625,7 @@ describe("a passthrough target that names a gateway", () => {
     name,
     targetType: "passthrough",
     passthrough: { protocolType: "CUSTOM", ...passthrough },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
   });
   const messages = (gateways: unknown[]) => {
     const result = ProjectSpecSchema.safeParse({

@@ -567,7 +567,10 @@ function unmanagedShape(target: AgentCoreGatewayTarget): string | undefined {
   const fields = auth ? Object.keys(auth).sort().join(",") : "";
   const shapes: Record<string, string[]> = {
     NONE: ["type"],
-    GATEWAY_IAM_ROLE: ["region,service,type"],
+    // A target to a gateway of the project signs in the region of the stack, so it has no region.
+    GATEWAY_IAM_ROLE: [
+      target.passthrough.gateway === undefined ? "region,service,type" : "service,type",
+    ],
     API_KEY: [
       "credentialName,location,parameterName,type",
       "credentialName,location,parameterName,prefix,type",

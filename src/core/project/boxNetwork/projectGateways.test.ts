@@ -23,19 +23,17 @@ const TOOLS: BoxProjectGateway = {
 };
 
 describe("projectGatewayTargetFor", () => {
-  test("names the gateway and signs for AgentCore in the build region, for an AWS_IAM gateway", () => {
-    expect(projectGatewayTargetFor(TOOLS, "us-west-2")).toEqual({
+  test("names the gateway and signs for AgentCore with no region, which the L3 takes from the stack, for an AWS_IAM gateway", () => {
+    expect(projectGatewayTargetFor(TOOLS)).toEqual({
       name: "egress-gateway-tools",
       targetType: "passthrough",
       passthrough: { gateway: "tools", protocolType: "CUSTOM" },
-      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
     });
   });
 
   test("sends no credential to a gateway that takes none", () => {
-    expect(projectGatewayTargetFor({ ...TOOLS, auth: "none" }, "us-west-2").outboundAuth).toBe(
-      undefined,
-    );
+    expect(projectGatewayTargetFor({ ...TOOLS, auth: "none" }).outboundAuth).toBe(undefined);
   });
 });
 
