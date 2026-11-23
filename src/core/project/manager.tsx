@@ -136,7 +136,12 @@ import {
   cdkAcceptsPassthroughGateway,
   type PassthroughGatewayCheck,
 } from "./backends/cdk/compatibility";
-import { customJwtGatewayNotice } from "./boxNetwork/projectGateways";
+import {
+  customJwtGatewayNotice,
+  gatewayList,
+  reachedGatewayNames,
+  uncheckedBecause,
+} from "./boxNetwork/projectGateways";
 import { resolveAwsAccount } from "./backends/cdk/environment";
 import { pinnedVersion } from "./backends/cdk/dependencies";
 import type { ProjectBackend } from "./backends/types";
@@ -1770,6 +1775,24 @@ export class FsProjectManager implements ProjectManager {
       unbound && boxed
         ? await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk"))
         : undefined;
+    // Only a library that refuses passthrough.gateway is an answer; build then removes the
+    // gateway targets. For each other reason, the command stops before it writes, so a transient
+    // failure keeps the targets that a deploy needs.
+    if (
+      projectGatewayCheck &&
+      !projectGatewayCheck.accepts &&
+      projectGatewayCheck.reason !== "refuses"
+    ) {
+      const boxRuntimes = project.spec.runtimes.filter((runtime) =>
+        runtimeRunsInBox(project.spec, runtime),
+      );
+      const names = reachedGatewayNames(project.spec, boxRuntimes);
+      throw new ProjectStateError(
+        `${command === "build" ? "Build" : "Deploy"} stopped, and wrote nothing: build cannot ` +
+          `tell if it can route the gateways ${gatewayList(names)} of this project for a boxed ` +
+          `agent, because ${uncheckedBecause(projectGatewayCheck)}`,
+      );
+    }
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,

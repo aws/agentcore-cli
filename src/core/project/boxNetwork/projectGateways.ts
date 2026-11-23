@@ -73,12 +73,9 @@ export function projectGatewaysOf(
     });
   }
   if (!check.accepts && gateways.length > 0) {
-    const names = gateways.map(({ name }) => `'${name}'`);
-    const list =
-      names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
     warnings.push(
-      `The gateways ${list} of this project get no route for a boxed agent on AgentCore ` +
-        `Runtime, because ${uncheckedBecause(check)}`,
+      `The gateways ${gatewayList(gateways.map(({ name }) => name))} of this project get no ` +
+        `route for a boxed agent on AgentCore Runtime, because ${uncheckedBecause(check)}`,
     );
     return { gateways: [], warnings };
   }
@@ -102,7 +99,9 @@ export function projectGatewayTargetFor(gateway: BoxProjectGateway): AgentCoreGa
 }
 
 /** Why build writes no gateway target, from the check of the CDK library, and how to fix it. */
-function uncheckedBecause(check: Extract<PassthroughGatewayCheck, { accepts: false }>): string {
+export function uncheckedBecause(
+  check: Extract<PassthroughGatewayCheck, { accepts: false }>,
+): string {
   const library = "the @aws/agentcore-cdk in agentcore/cdk";
   switch (check.reason) {
     case "refuses":
@@ -122,6 +121,26 @@ function uncheckedBecause(check: Extract<PassthroughGatewayCheck, { accepts: fal
     case "failed":
       return `the check of ${library} failed: ${check.detail ?? "no error message"}. Build again.`;
   }
+}
+
+/**
+ * The names of the gateways of `spec` that a boxed runtime of `runtimes` calls through its Box
+ * gateway, each one time: the gateways that need the check of the CDK library.
+ */
+export function reachedGatewayNames(
+  spec: ProjectSpec,
+  runtimes: readonly Pick<ProjectRuntime, "name" | "containment">[],
+): string[] {
+  const names = runtimes.flatMap((runtime) =>
+    projectGatewaysOf(spec, runtime).gateways.map(({ name }) => name),
+  );
+  return [...new Set(names)];
+}
+
+/** The quoted names of `names`, as a list in a sentence: `'a', 'b' and 'c'`. */
+export function gatewayList(names: readonly string[]): string {
+  const quoted = names.map((name) => `'${name}'`);
+  return quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}` : quoted[0]!;
 }
 
 /** What `add gateway` or `add runtime` tells the user once about a `CUSTOM_JWT` gateway in a Box project. */

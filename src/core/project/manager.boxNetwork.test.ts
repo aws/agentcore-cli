@@ -16,6 +16,7 @@ import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { renderAwsMetadataPolicy } from "./templates/boxProfile";
+import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -149,6 +150,8 @@ async function strandsProject(
     env?: NodeJS.ProcessEnv;
     /** What the probe of agentcore/cdk answers; it refuses passthrough.gateway when absent. */
     acceptsPassthroughGateway?: boolean;
+    /** What the probe answers, in place of `acceptsPassthroughGateway`; a test can change it. */
+    check?: { current: PassthroughGatewayCheck };
   } = {},
 ) {
   const directory = await temporary("agentcore-box-network-");
@@ -169,7 +172,10 @@ async function strandsProject(
     },
     boxProfileResolver: box,
     cdkAcceptsPassthroughGateway: async () =>
-      options.acceptsPassthroughGateway ? { accepts: true } : { accepts: false, reason: "refuses" },
+      options.check?.current ??
+      (options.acceptsPassthroughGateway
+        ? { accepts: true }
+        : { accepts: false, reason: "refuses" }),
     ...(options.backends && { backends: options.backends }),
   });
   const { value: created, warnings: createWarnings } = await drain(
@@ -828,6 +834,45 @@ describe("build routes the other gateways of the project for the boxed agent", (
       }),
     );
   });
+
+  test.each([
+    [
+      { accepts: false, reason: "not-installed" },
+      "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, then build again.",
+    ],
+    [
+      { accepts: false, reason: "no-node" },
+      "build cannot run node to check the @aws/agentcore-cdk in agentcore/cdk. Put node on PATH, then build again.",
+    ],
+    [
+      { accepts: false, reason: "timed-out" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk took more than 60 seconds. Build again.",
+    ],
+    [
+      { accepts: false, reason: "failed", detail: "the library is broken" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk failed: the library is broken. Build again.",
+    ],
+  ] as const)(
+    "stops, and keeps the target and agentcore.json, when the check gives %o",
+    async (answer, why) => {
+      const check: { current: PassthroughGatewayCheck } = { current: { accepts: true } };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      await build(manager, root);
+      const before = await text(root, SPEC);
+      const profile = await text(root, RUNTIME_PROFILE);
+      check.current = answer;
+
+      await expect(build(manager, root)).rejects.toThrow(
+        "Build stopped, and wrote nothing: build cannot tell if it can route the gateways 'tools' " +
+          `of this project for a boxed agent, because ${why}`,
+      );
+
+      expect(await text(root, SPEC)).toBe(before);
+      expect(await text(root, RUNTIME_PROFILE)).toBe(profile);
+      expect(await targetNames(root)).toContain("egress-gateway-tools");
+    },
+  );
 
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
