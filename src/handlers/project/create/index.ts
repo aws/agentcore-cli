@@ -32,7 +32,11 @@ import { InputValidationError, RegionUnsupportedFeatureError } from "../../../er
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
-import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import {
+  boxRegionWarning,
+  stripCreateRegionUnavailableDefaults,
+  validateCreateRegionSupport,
+} from "./region";
 import { chinaModelProviderRestriction } from "../../../core/project/manager";
 import { isChinaRegion } from "../../../core/partition";
 import { harnessApiKeyCredentialName } from "../../../core/project/templates/harness";
@@ -178,6 +182,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
       const stripped = stripCreateRegionUnavailableDefaults(createInput, region);
       if (stripped !== undefined) config.io.stderr.write(`${stripped}\n`);
+      const boxWarning = boxRegionWarning(createInput, region);
+      if (boxWarning !== undefined) config.io.stderr.write(`Warning: ${boxWarning}\n`);
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
