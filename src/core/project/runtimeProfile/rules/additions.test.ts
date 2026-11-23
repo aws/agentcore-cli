@@ -377,20 +377,14 @@ describe("the additions rule", () => {
     expect(local).toEqual(before);
   });
 
-  test("removes the [tool.uname] table that a CodeZip template writes, and keeps each tool table of the user", () => {
+  test("writes no tool table for a CodeZip template, and keeps each tool table of the user", () => {
     const local = createdProfile(CODEZIP);
     const notes = { program: "/usr/bin/notes" };
-    const changed = { filesystem: { deny_write: ["${{ workspace }}/app/agent/data"] } };
 
-    expect(Object.keys(local.tool as TomlTable)).toEqual(["uname"]);
+    // The pinned box's @box/base has no tools, so the template gives none the project write grant.
+    expect(local).not.toHaveProperty("tool");
     expect(apply(local, contextOf(CODEZIP)).table).not.toHaveProperty("tool");
-    expect(
-      apply({ ...local, tool: { ...(local.tool as TomlTable), notes } }, contextOf(CODEZIP)).table
-        .tool,
-    ).toEqual({ notes });
-    expect(apply({ ...local, tool: { uname: changed } }, contextOf(CODEZIP)).table.tool).toEqual({
-      uname: changed,
-    });
+    expect(apply({ ...local, tool: { notes } }, contextOf(CODEZIP)).table.tool).toEqual({ notes });
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {

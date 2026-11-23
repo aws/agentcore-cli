@@ -54,7 +54,9 @@ const version = values.box;
 const sums = await checksums(repo, version);
 /** The pinned archive of `target`, which the release must list. */
 function pin(target: string): { target: string; asset: string; sha256: string } {
-  const asset = `box-v${version}-${target}.tar.gz`;
+  // The box CLI archive, which holds box, its helpers, its packs and release.json. A release's
+  // `box-v<version>-*` archives hold only box and its helpers, with no packs.
+  const asset = `box-cli-v${version}-${target}.tar.gz`;
   const sha256 = sums.get(asset);
   if (!sha256) throw new Error(`${repo} v${version} lists no ${asset}`);
   return { target, asset, sha256 };

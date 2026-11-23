@@ -46,10 +46,11 @@ const PINNED = z.object({ box: BoxReleaseSchema }).parse(pinned);
 export const BOX_RELEASE: BoxRelease = PINNED.box;
 
 /**
- * The first box release that reads the profiles that the CLI writes: their `@box/<name>` packs, and
- * the `key` of an input of the `@box/agentcore` pack.
+ * The first public box release that reads the profiles that the CLI writes (their `@box/<name>`
+ * packs, and the `key` of an input of the `@box/agentcore` pack), and the first in
+ * `strands-agents/box` with a `box-cli` archive.
  */
-export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
+export const BOX_MINIMUM_VERSION = "0.3.0";
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;

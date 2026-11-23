@@ -98,9 +98,9 @@ const SHOWN_POLICY =
 
 /** The last sentence of each error that says to install another box: the pinned release. */
 const INSTALL =
-  `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
-  "When that release has no build for your machine, use box 0.1.11-linux-preview.7 " +
-  "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a later " +
+  `Install box ${BOX_RELEASE.version} (https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
+  "When that release has no build for your machine, use box 0.3.0 " +
+  "(https://github.com/strands-agents/box/releases/tag/v0.3.0) or a later " +
   "release that has one.";
 
 /**
@@ -333,7 +333,7 @@ describe("BoxCliProfileResolver", () => {
       "Box refused the profile .box/profile.toml:\n" +
         '  box: error: /work/demo/.box/profile.toml: "@box/base" is\n' +
         "              not a pack name\n" +
-        "This box is older than 0.1.11-linux-preview.7, the first box that names its packs " +
+        "This box is older than 0.3.0, the first public box that names its packs " +
         `@box/<name>. ${INSTALL}`,
     );
   });

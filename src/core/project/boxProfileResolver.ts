@@ -190,8 +190,8 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
           `Box refused the profile ${profilePath}:`,
           ...lines.map((line) => `  ${line}`),
           oldBox
-            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first box that names its packs ` +
-              `@box/<name>. ${INSTALL_BOX}`
+            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first public box that names ` +
+              `its packs @box/<name>. ${INSTALL_BOX}`
             : agent === undefined
               ? "Fix what Box reports, then retry."
               : `Run 'uv sync' in ${agent}, then retry.`,

@@ -2164,7 +2164,7 @@ describe("FsProjectManager.build", () => {
 
     // The test runner downloads nothing, so build stops before synth and names the URL.
     await expect(drain(subject.build(project))).rejects.toThrow(
-      /downloaded from https:\/\/github\.com\/mquang-amazon\/box-releases\//,
+      /downloaded from https:\/\/github\.com\/strands-agents\/box\//,
     );
     expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });

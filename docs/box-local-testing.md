@@ -16,7 +16,7 @@ A Box project ships box inside its deploy artifact, so the agent runs in a box o
 Runtime. Each box runtime names its box release in `agentcore.json` with
 `"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
 `agentcore deploy` download that release's Linux build from
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
+[strands-agents/box](https://github.com/strands-agents/box/releases) once into
 `~/.agentcore/box/`, check its SHA-256s, and stage it into the zip, for a CodeZip runtime. For a
 container they write the release and its checksum into `.box-dist/box-release.env` instead.
 A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
@@ -41,10 +41,9 @@ to it.
   [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
   as its `box-integration` branch does. The Box gateway that `create` writes has
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
-- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. The oldest box that
-  works is `0.1.11-linux-preview.7`, the first release with
-  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
-  the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
+- `box` `0.3.0` on your `PATH`, the release the CLI pins and the oldest box that works: the
+  first public release whose telemetry target can read its settings from the host, which the
+  default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
   to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
   agent with it. See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and
@@ -55,9 +54,11 @@ to it.
 ## Install box
 
 box ships as a release archive per machine on
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). There are builds for
-macOS on an Apple chip (`aarch64-apple-darwin`) and Linux arm64 (`aarch64-unknown-linux-gnu`); there
-is no x86 build yet. Each archive unpacks flat: `box`, its two helpers, `release.json`, and
+[strands-agents/box](https://github.com/strands-agents/box/releases). The CLI uses the
+`box-cli-v<version>-*` archives, with builds for macOS on an Apple chip (`aarch64-apple-darwin`),
+Linux arm64 (`aarch64-unknown-linux-gnu`) and Linux x86_64 (`x86_64-unknown-linux-gnu`). The
+release's `box-v<version>-*` archives hold box without its packs; do not use them. Each `box-cli`
+archive unpacks flat: `box`, its two helpers, `release.json`, and
 `resources/` (box's packs, which it finds beside itself).
 
 Download the archive for your machine, check it, and unpack it into a versioned folder.
@@ -65,21 +66,21 @@ Download the archive for your machine, check it, and unpack it into a versioned 
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-preview.10 && cd ~/.local/share/box/0.1.11-preview.10
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/SHA256SUMS.txt
-grep aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-v0.1.11-preview.10-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
+grep box-cli-v0.3.0-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.1.11-preview.10 && cd ~/.local/share/box/0.1.11-preview.10
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/mquang-amazon/box-releases/releases/download/v0.1.11-preview.10/SHA256SUMS.txt
-grep aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-v0.1.11-preview.10-aarch64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
+grep box-cli-v0.3.0-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
@@ -87,8 +88,8 @@ The check must print `OK`.
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
 
 ```
-export PATH="$HOME/.local/share/box/0.1.11-preview.10:$PATH"
-grep -q 'share/box/0.1.11-preview.10' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.1.11-preview.10:$PATH"' >> ~/.zshrc
+export PATH="$HOME/.local/share/box/0.3.0:$PATH"
+grep -q 'share/box/0.3.0' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.3.0:$PATH"' >> ~/.zshrc
 ```
 
 The `grep -q ... ||` adds the line only once, so running it again does not repeat it. When you move
@@ -103,11 +104,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.1.11-preview.10` (from
+- `box --version` should print the pinned `box 0.3.0` (from
   `src/core/project/backends/boxRelease.json`). Build, deploy and dev accept
-  `0.1.11-linux-preview.7` or later.
+  `0.3.0` or later.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-preview.10"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
 to that folder.
@@ -149,12 +150,15 @@ bun install
 
 ## 1. Get AWS credentials
 
-Deploy creates real resources, so it needs write access. This example uses `ada` with an
-Isengard dev account; use whatever grants credentials for your dev account.
+Deploy creates real resources, so it needs write access to a development AWS account. Sign in
+with IAM Identity Center, or configure access keys, in the profile you deploy with:
 
 ```
-ada credentials update --account <your-dev-account> --provider isengard --role Admin
+aws configure sso --profile <your-dev-profile>
+export AWS_PROFILE=<your-dev-profile>
 ```
+
+`aws configure` works too, for access keys.
 
 ## 2. Build and pack the local L3 constructs
 
@@ -203,7 +207,7 @@ Runtime profile, its policy files, and box in the `.box-dist/` folder of the cod
 build context, and write a copy of the profile, the generated packs, and the policy files into
 `.box/<runtime>/aws/` for you to read.
 
-Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
+Box `0.3.0` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
 A profile that names a pack `box/<name>` fails: box refuses it and names the `@box/<name>` pack.
 
 - **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
@@ -313,11 +317,12 @@ runtime the usual way, and stops on one that has `box.version` with
 
 The box release has these builds:
 
-| Machine             | Build                                      | CodeZip dev | Container dev |
-| ------------------- | ------------------------------------------ | ----------- | ------------- |
-| macOS, Apple chip   | `box-v<version>-aarch64-apple-darwin`      | yes         | yes           |
-| Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes         | yes           |
-| Linux or macOS, x86 | none                                       | no          | no            |
+| Machine           | Build                                          | CodeZip dev | Container dev |
+| ----------------- | ---------------------------------------------- | ----------- | ------------- |
+| macOS, Apple chip | `box-cli-v<version>-aarch64-apple-darwin`      | yes         | yes           |
+| Linux, arm64      | `box-cli-v<version>-aarch64-unknown-linux-gnu` | yes         | yes           |
+| Linux, x86_64     | `box-cli-v<version>-x86_64-unknown-linux-gnu`  | untested    | no            |
+| macOS, Intel      | none                                           | no          | no            |
 
 - The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64.
   It runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host
@@ -336,7 +341,7 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.1.11-linux-preview.7` or later. Dev and build read the profile with
+- `box --version` must print `0.3.0` or later. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
   `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box release before it cannot do all of these.
@@ -614,7 +619,7 @@ These outlive the stack. Delete them too:
 - **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
   box release, unpack it into a folder, add that folder to your `PATH`, then retry.
 - **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
-  older than `0.1.11-linux-preview.7`. Install that release or later.
+  older than `0.3.0`. Install that release or later.
 - **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
   set. Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
@@ -632,7 +637,7 @@ These outlive the stack. Delete them too:
   checkout often has no agent venv yet, and box then names `.venv/bin/python` under a write
   grant. The error then says to run `uv sync` in the agent's folder (`app/<agent>`).
 - **Build cannot download box.** The error names the release URL. Check your network; a 404
-  means the pinned version is not published in `mquang-amazon/box-releases`.
+  means the pinned version is not published in `strands-agents/box`.
 - **`create` fails with `ENOENT while resolving package '@opentelemetry/core'`.** The CLI's
   dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
   the CLI checkout (see "Install the CLI's dependencies").
