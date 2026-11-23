@@ -58,7 +58,12 @@ import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { DEFAULT_REGION, regionFromConfigFile } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
-import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
+import {
+  BOX_NETWORK_WRITERS,
+  boxKeyReads,
+  boxNetworkEdits,
+  writeBoxNetworkFiles,
+} from "./boxNetworkWriters";
 import { createProjectTree } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
@@ -1684,7 +1689,7 @@ export class FsProjectManager implements ProjectManager {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
-      envLocal: networks.length > 0 ? await envLocal.read() : {},
+      envLocal: await envLocal.read(boxKeyReads(networks, project.spec, this.processEnv)),
     });
     const messages = [...edits.messages];
     let result = project;
@@ -1722,10 +1727,13 @@ export class FsProjectManager implements ProjectManager {
       const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    const warnings = networks.flatMap((network) => [
-      ...network.warnings,
-      ...boxGatewayIamWarnings(edits.spec, network),
-    ]);
+    const warnings = [
+      ...edits.warnings,
+      ...networks.flatMap((network) => [
+        ...network.warnings,
+        ...boxGatewayIamWarnings(edits.spec, network),
+      ]),
+    ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),
       ...warnings.map((message) => ({ type: "warning" as const, message })),
