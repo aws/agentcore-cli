@@ -1,10 +1,11 @@
-import { isChinaRegion } from "../../../core/partition";
+import { isChinaRegion, supportsRuntimeV2 } from "../../../core/partition";
 import {
   BMA_CN_MESSAGE,
   HARNESS_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   chinaModelProviderRestriction,
 } from "../../../core/project/manager";
+import { hasBoxProfile } from "../../../core/project/templates/boxProfile";
 import { RegionUnsupportedFeatureError } from "../../../errors";
 import type { CreateProjectInput } from "../types";
 
@@ -41,4 +42,21 @@ export function stripCreateRegionUnavailableDefaults(
   if (!isChinaRegion(region) || input.scaffoldRuntimeInput?.memory === undefined) return undefined;
   input.scaffoldRuntimeInput.memory = undefined;
   return MEMORY_STRIPPED_CN_MESSAGE;
+}
+
+/**
+ * The warning create gives for a box template in a region where AgentCore Runtime has no V2, which
+ * Box needs. Create still makes the project: the region here is often only the one the CLI
+ * resolved, and the project can deploy to a target in another region. Deploy refuses the region.
+ * Shared by the CLI and the interactive wizard. Undefined when there is nothing to warn about.
+ */
+export function boxRegionWarning(input: CreateProjectInput, region: string): string | undefined {
+  const runtime = input.scaffoldRuntimeInput;
+  if (runtime === undefined || !hasBoxProfile(runtime) || supportsRuntimeV2(region))
+    return undefined;
+  return (
+    `Box runs on AgentCore Runtime V2, which is not available in ${region}, so this project ` +
+    "cannot be deployed there. Deploy it with --region set to a region that has V2, or to a " +
+    "target in another region."
+  );
 }

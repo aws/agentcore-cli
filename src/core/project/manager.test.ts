@@ -1567,6 +1567,130 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toEqual([]);
     });
 
+    describe("Box projects in a region without Runtime V2", () => {
+      // partition.test.ts covers which regions have no Runtime V2; one is enough here.
+      test.each(["us-west-1"])(
+        "deploy of a Box project to %s fails before anything is written",
+        async (region) => {
+          await inTempDirectory();
+          const { subject, project, deployCalls } = await projectWithTarget(
+            region,
+            undefined,
+            AGENT_PYTHON_STRANDS_BOX,
+          );
+          const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+          const before = await readFile(specPath, "utf8");
+
+          const { error } = await deployOutcome(subject, project);
+          expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+          expect(String(error)).toContain(
+            `Cannot deploy Box project 'example' to target 'primary' in ${region}: Box runs on ` +
+              `AgentCore Runtime V2, which is not available in ${region}. Change the region of ` +
+              "target 'primary' in agentcore/aws-targets.json, or deploy with --target to a target " +
+              "in another region, then retry.",
+          );
+          expect(await readFile(specPath, "utf8")).toBe(before);
+          expect(deployCalls).toEqual([]);
+        },
+      );
+
+      // Deploying a project with no runtime is how the CLI removes its stack, so a Box project that was
+      // deployed to such a region with an earlier build can still be torn down.
+      test("deploy of a Box project with no runtime to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        await writeFile(
+          specPath,
+          JSON.stringify({ ...spec, runtimes: [], agentCoreGateways: [], memories: [] }, null, 2),
+        );
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      });
+
+      test("deploy of a Box project with no target to us-west-1 fails before STS or aws-targets.json", async () => {
+        await inTempDirectory();
+        const { project } = await projectWithTarget(
+          "us-east-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+        await rm(targetsPath);
+        const accounts: string[] = [];
+        const subject = new FsProjectManager({
+          logger: createSilentLogger(),
+          identity: new TestIdentityClient(),
+          enableTransactionSearch: async () => {},
+          boxProfileResolver: new FakeBoxProfileResolver(),
+          runner: async () => {},
+          checkTool: async () => {},
+          resolveAccount: async (region) => {
+            accounts.push(region);
+            return "111122223333";
+          },
+        });
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          new RegionUnsupportedFeatureError(
+            "Cannot deploy Box project 'example' to target 'default' in us-west-1: Box runs on " +
+              "AgentCore Runtime V2, which is not available in us-west-1. Deploy with --region set " +
+              "to a region that has it, or add a target in another region to " +
+              "agentcore/aws-targets.json, then retry.",
+          ),
+        );
+        expect(accounts).toEqual([]);
+        expect(existsSync(targetsPath)).toBe(false);
+      });
+
+      test("deploy of a project that is not a Box project to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeUndefined();
+        expect(deployCalls).toHaveLength(1);
+      });
+
+      test("names --target, not a new target, when aws-targets.json has targets", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-2",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          "Deploy with --region set to a region that has it, or with --target set to a target in " +
+            "another region, then retry.",
+        );
+      });
+    });
+
     test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
       await inTempDirectory();
       const { subject, project, deployCalls } = await projectWithTarget(

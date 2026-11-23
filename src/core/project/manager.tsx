@@ -81,7 +81,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { validateBoxRuntimes } from "./boxValidation";
+import { assertBoxRegionSupported, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -1817,6 +1817,12 @@ export class FsProjectManager implements ProjectManager {
     // `default` gets this treatment: inventing a *named* target would turn a
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
+      // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
+      assertBoxRegionSupported(
+        project.spec,
+        { name: DEFAULT_TARGET_NAME, region: input.region },
+        { provisioning: true, otherTargets: targets.length > 0 },
+      );
       target = await this.provisionDefaultTarget(project, targetsPath, input.region);
       yield {
         type: "step",
@@ -1844,6 +1850,9 @@ export class FsProjectManager implements ProjectManager {
           `${targetsPath} defines: ${targets.map(({ name }) => name).join(", ")}.`,
       );
     }
+
+    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
+    assertBoxRegionSupported(project.spec, target);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
