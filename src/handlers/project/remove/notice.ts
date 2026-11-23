@@ -8,38 +8,40 @@ export function shouldShowAppCodeNotice(resourceType: ProjectMutationResourceTyp
   return resourceType === "runtime" || resourceType === "harness" || resourceType === "evaluator";
 }
 
-/** One line for each gateway removed with runtime `runtimeName`, with its target count. */
-export function removedGatewayLines(runtimeName: string, gateways: RemovedGateway[]): string[] {
-  return gateways.map(({ name, targetCount }) => {
-    const targets =
-      targetCount === 0
-        ? ""
-        : ` and its ${targetCount === 1 ? "1 target" : `${targetCount} targets`}`;
-    return `removed gateway '${name}'${targets}: it is bound to runtime '${runtimeName}'`;
+/** A gateway of the project, as `remove runtime` reads it before the removal. */
+type ProjectGateway = {
+  name: string;
+  boundRuntime?: string;
+  targets: readonly { name: string }[];
+};
+
+/**
+ * One line for each gateway that `remove runtime` removes with runtime `runtimeName`. Give the
+ * project's gateways before the removal: the lines name each gateway bound to the runtime and the
+ * names of its targets, because a Box gateway can hold targets the user added, such as MCP
+ * servers, and the TUI shows them before they go. Give the removed gateways after the removal:
+ * the lines name each gateway and its target count.
+ */
+export function boundGatewayLines(
+  runtimeName: string,
+  gateways: readonly (ProjectGateway | RemovedGateway)[],
+): string[] {
+  return gateways.flatMap((gateway) => {
+    if ("targetCount" in gateway) {
+      const targets = targetsPhrase(gateway.targetCount);
+      return [
+        `removed gateway '${gateway.name}'${targets}: it is bound to runtime '${runtimeName}'`,
+      ];
+    }
+    if (gateway.boundRuntime !== runtimeName) return [];
+    const names = gateway.targets.map((target) => `'${target.name}'`);
+    return [`gateway '${gateway.name}'${targetsPhrase(names.length, names)}`];
   });
 }
 
-/**
- * One line for each gateway that `remove runtime` would remove with runtime `runtimeName`, with
- * the names of its targets. The TUI shows it before the removal: a Box gateway can hold targets
- * the user added, such as MCP servers, and they go with the runtime.
- */
-export function boundGatewayWarningLines(
-  runtimeName: string,
-  gateways: readonly {
-    name: string;
-    boundRuntime?: string;
-    targets: readonly { name: string }[];
-  }[],
-): string[] {
-  return gateways
-    .filter((gateway) => gateway.boundRuntime === runtimeName)
-    .map(({ name, targets }) => {
-      const names = targets.map((target) => `'${target.name}'`).join(", ");
-      const what =
-        targets.length === 0
-          ? ""
-          : ` and its ${targets.length === 1 ? "target" : "targets"} ${names}`;
-      return `gateway '${name}'${what}`;
-    });
+/** " and its 2 targets", or with `names` " and its targets 'a', 'b'"; empty for no target. */
+function targetsPhrase(count: number, names?: readonly string[]): string {
+  if (count === 0) return "";
+  const noun = count === 1 ? "target" : "targets";
+  return names ? ` and its ${noun} ${names.join(", ")}` : ` and its ${count} ${noun}`;
 }
