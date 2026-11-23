@@ -1821,7 +1821,7 @@ export class FsProjectManager implements ProjectManager {
       assertBoxRegionSupported(
         project.spec,
         { name: DEFAULT_TARGET_NAME, region: input.region },
-        { provisioning: true },
+        { provisioning: true, otherTargets: targets.length > 0 },
       );
       target = await this.provisionDefaultTarget(project, targetsPath, input.region);
       yield {

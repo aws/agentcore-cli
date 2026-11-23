@@ -103,19 +103,28 @@ export function validateBoxRuntimes(spec: ProjectSpec): void {
 }
 
 /**
- * Throws for a Box project deployed to a region where AgentCore Runtime has no platformVersion V2.
- * Box runs only on V2, so the runtimes could not be created there. `target` is a configured target,
- * or, with `provisioning`, the default target deploy is about to create in that region.
+ * Throws for a Box project deployed to a region where AgentCore Runtime has no platformVersion V2,
+ * when one of its runtimes runs in a box: Box runs only on V2, so that runtime could not be created
+ * there. A Box project with no runtime is let through, as deploying it is how its stack is removed.
+ * `target` is a configured target, or, with `provisioning`, the default target deploy is about to
+ * create in that region; `otherTargets` says whether aws-targets.json has targets to deploy to.
  */
 export function assertBoxRegionSupported(
   spec: ProjectSpec,
   target: { name: string; region: string },
-  { provisioning = false }: { provisioning?: boolean } = {},
+  {
+    provisioning = false,
+    otherTargets = false,
+  }: { provisioning?: boolean; otherTargets?: boolean } = {},
 ): void {
-  if (!isBoxProject(spec) || supportsRuntimeV2(target.region)) return;
+  if (supportsRuntimeV2(target.region)) return;
+  if (!spec.runtimes.some((runtime) => runsInBox(isBoxProject(spec), runtime))) return;
   const wayOut = provisioning
-    ? "Deploy with --region set to a region that has it, or add a target in another region to " +
-      "agentcore/aws-targets.json, then retry."
+    ? otherTargets
+      ? "Deploy with --region set to a region that has it, or with --target set to a target in " +
+        "another region, then retry."
+      : "Deploy with --region set to a region that has it, or add a target in another region to " +
+        "agentcore/aws-targets.json, then retry."
     : `Change the region of target '${target.name}' in agentcore/aws-targets.json, or deploy ` +
       "with --target to a target in another region, then retry.";
   throw new RegionUnsupportedFeatureError(
