@@ -145,6 +145,25 @@ describe("cdkAcceptsPassthroughGateway", () => {
     });
   });
 
+  withNode("loads only dist/schema of the library, and not the constructs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-cdk-passthrough-gateway-"));
+    tempDirectories.push(directory);
+    const packageDirectory = join(directory, "node_modules", "@aws", "agentcore-cdk");
+    await mkdir(join(packageDirectory, "dist", "schema"), { recursive: true });
+    await writeFile(
+      join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@aws/agentcore-cdk", version: "1.1.0", main: "./dist/index.js" }),
+    );
+    // The entry of the package loads the constructs, which a check does not need.
+    await writeFile(
+      join(packageDirectory, "dist", "index.js"),
+      'throw new Error("the check loaded the constructs");\n',
+    );
+    await writeFile(join(packageDirectory, "dist", "schema", "index.js"), WITH_GATEWAY);
+
+    expect(await cdkAcceptsPassthroughGateway(directory)).toEqual({ accepts: true });
+  });
+
   withNode("says that the library is not installed", async () => {
     expect(await cdkAcceptsPassthroughGateway(await cdkDirectoryWithIndex(undefined))).toEqual({
       accepts: false,

@@ -874,6 +874,48 @@ describe("build routes the other gateways of the project for the boxed agent", (
     },
   );
 
+  test.each([
+    [
+      "only a CUSTOM_JWT gateway",
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["agentcore"],
+          },
+        },
+      },
+      {},
+    ],
+    ["a PRIVATE_VPC runtime", {}, { containment: "PRIVATE_VPC" }],
+  ])(
+    "does not check the CDK library when no gateway gets a target: %s",
+    async (_, gatewayFields, runtimeFields) => {
+      let checks = 0;
+      const check = {
+        get current(): PassthroughGatewayCheck {
+          checks++;
+          return { accepts: true };
+        },
+      };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      const spec = JSON.parse(await text(root, SPEC));
+      Object.assign(
+        spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools"),
+        gatewayFields,
+      );
+      Object.assign(spec.runtimes[0], runtimeFields);
+      await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+      await build(manager, root);
+
+      expect(checks).toBe(0);
+      expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    },
+  );
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);

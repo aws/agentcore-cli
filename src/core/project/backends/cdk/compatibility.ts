@@ -68,13 +68,22 @@ export async function cdkCompatibilityWarning(cdkDirectory: string): Promise<str
 /**
  * The script that asks the @aws/agentcore-cdk that the CDK app loads whether its schema takes a
  * passthrough target with `gateway` in place of `endpoint`, as build writes it. It parses a whole
- * target, because the library gives `gateway` a passthrough schema of its own. It prints
- * `accepts`, `refuses`, `not-installed`, or `failed` and the error.
+ * target, because the library gives `gateway` a passthrough schema of its own. It loads
+ * `dist/schema` of the package by path, and not its constructs, which are slow to load; a package
+ * with no `dist/schema` is loaded whole. It prints `accepts`, `refuses`, `not-installed`, or
+ * `failed` and the error.
  */
 const PASSTHROUGH_GATEWAY_CHECK = `
+const path = require("node:path");
 let library;
 try {
-  library = require("@aws/agentcore-cdk");
+  const entry = require.resolve("@aws/agentcore-cdk");
+  try {
+    library = require(path.join(path.dirname(entry), "schema"));
+  } catch (error) {
+    if (!error || error.code !== "MODULE_NOT_FOUND") throw error;
+    library = require(entry);
+  }
 } catch (error) {
   const missing = error && error.code === "MODULE_NOT_FOUND" && /@aws\\/agentcore-cdk/.test(String(error.message));
   process.stdout.write(missing ? "not-installed" : "failed " + (error && error.message));

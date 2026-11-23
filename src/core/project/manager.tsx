@@ -1768,11 +1768,14 @@ export class FsProjectManager implements ProjectManager {
     command: "build" | "deploy",
     region: string,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
-    // Only a box runtime and a gateway without boundRuntime need the check of the CDK app.
-    const unbound = project.spec.agentCoreGateways.some(({ boundRuntime }) => !boundRuntime);
-    const boxed = project.spec.runtimes.some((runtime) => runtimeRunsInBox(project.spec, runtime));
+    // Only a gateway that a boxed runtime calls through its Box gateway needs the check of the CDK
+    // app: none for a CUSTOM_JWT gateway or a PRIVATE_VPC runtime.
+    const boxRuntimes = project.spec.runtimes.filter((runtime) =>
+      runtimeRunsInBox(project.spec, runtime),
+    );
+    const reached = reachedGatewayNames(project.spec, boxRuntimes);
     const projectGatewayCheck =
-      unbound && boxed
+      reached.length > 0
         ? await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk"))
         : undefined;
     // Only a library that refuses passthrough.gateway is an answer; build then removes the
@@ -1783,13 +1786,9 @@ export class FsProjectManager implements ProjectManager {
       !projectGatewayCheck.accepts &&
       projectGatewayCheck.reason !== "refuses"
     ) {
-      const boxRuntimes = project.spec.runtimes.filter((runtime) =>
-        runtimeRunsInBox(project.spec, runtime),
-      );
-      const names = reachedGatewayNames(project.spec, boxRuntimes);
       throw new ProjectStateError(
         `${command === "build" ? "Build" : "Deploy"} stopped, and wrote nothing: build cannot ` +
-          `tell if it can route the gateways ${gatewayList(names)} of this project for a boxed ` +
+          `tell if it can route the gateways ${gatewayList(reached)} of this project for a boxed ` +
           `agent, because ${uncheckedBecause(projectGatewayCheck)}`,
       );
     }
