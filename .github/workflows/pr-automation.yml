@@ -27,7 +27,7 @@ jobs:
       statuses: write
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-size-title.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
-      runner: codebuild
+      runner: ubuntu
     secrets: inherit
 
   security-review:
@@ -44,7 +44,7 @@ jobs:
       contents: read
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-security-review.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
-      runner: codebuild
+      runner: ubuntu
       pr_number: ${{ inputs.pr_number || format('{0}', github.event.pull_request.number) }}
       allowed_base_branches: '["v0.x","v1.x"]'
     secrets: inherit
@@ -63,7 +63,7 @@ jobs:
       contents: read
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-pr-ai-review.yml@c2106996dd94e56f6c5fad625c83573e9724fb63
     with:
-      runner: codebuild
+      runner: ubuntu
       model_id: us.anthropic.claude-opus-5
       pr_url: >-
         ${{ github.event_name == 'workflow_dispatch' &&
