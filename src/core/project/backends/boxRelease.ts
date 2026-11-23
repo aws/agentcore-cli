@@ -26,13 +26,15 @@ const TargetAssetSchema = AssetSchema.extend({ target: z.string().min(1) });
 /**
  * A box release: the Linux arm64 build that ships to AgentCore Runtime. Its archive holds box,
  * its helpers, its packs and release.json. `darwin`, the macOS arm64 build, is what the e2e
- * workflow installs on its macOS runner; the CLI does not read it.
+ * workflow installs on its macOS runner; the CLI does not read it. Its own `version`, when set,
+ * names the release it comes from instead of `version`, for a release whose macOS build is
+ * broken.
  */
 const BoxReleaseSchema = z.object({
   repo: z.string().min(1),
   version: z.string().min(1),
   linux: TargetAssetSchema,
-  darwin: TargetAssetSchema.optional(),
+  darwin: TargetAssetSchema.extend({ version: z.string().min(1).optional() }).optional(),
 });
 
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
@@ -48,9 +50,9 @@ export const BOX_RELEASE: BoxRelease = PINNED.box;
 /**
  * The first public box release that reads the profiles that the CLI writes (their `@box/<name>`
  * packs, and the `key` of an input of the `@box/agentcore` pack), and the first in
- * `strands-agents/box` with a `box-cli` archive.
+ * `strands-agents/box` with a `box-cli` archive. Its macOS build runs where 0.3.0's does not.
  */
-export const BOX_MINIMUM_VERSION = "0.3.0";
+export const BOX_MINIMUM_VERSION = "0.3.0-preview.1";
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;

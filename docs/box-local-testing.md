@@ -41,8 +41,8 @@ to it.
   [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
   as its `box-integration` branch does. The Box gateway that `create` writes has
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
-- `box` `0.3.0` on your `PATH`, the release the CLI pins and the oldest box that works: the
-  first public release whose telemetry target can read its settings from the host, which the
+- `box` `0.3.0` on your `PATH` (`0.3.0-preview.1` on macOS), the release the CLI pins.
+  `0.3.0-preview.1` is the oldest box that works: the first public release whose telemetry target can read its settings from the host, which the
   default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
   to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
   agent with it. See [Install box](#install-box).
@@ -63,14 +63,15 @@ archive unpacks flat: `box`, its two helpers, `release.json`, and
 
 Download the archive for your machine, check it, and unpack it into a versioned folder.
 
-macOS on an Apple chip:
+macOS on an Apple chip, from `v0.3.0-preview.1`: the macOS build of `v0.3.0` has a broken code
+signature, and macOS stops it at launch.
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.0-preview.1 && cd ~/.local/share/box/0.3.0-preview.1
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0-preview.1/box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0-preview.1/SHA256SUMS.txt
+grep box-cli-v0.3.0-preview.1-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
@@ -85,11 +86,13 @@ tar -xzf box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
 
 The check must print `OK`.
 
-Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash):
+Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
+`BOX_VERSION` is the folder you unpacked into: `0.3.0-preview.1` on macOS, `0.3.0` on Linux.
 
 ```
-export PATH="$HOME/.local/share/box/0.3.0:$PATH"
-grep -q 'share/box/0.3.0' ~/.zshrc || echo 'export PATH="$HOME/.local/share/box/0.3.0:$PATH"' >> ~/.zshrc
+BOX_VERSION=0.3.0-preview.1
+export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
+grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
 
 The `grep -q ... ||` adds the line only once, so running it again does not repeat it. When you move
@@ -104,11 +107,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.3.0` (from
+- `box --version` should print the pinned `box 0.3.0`, or `box 0.3.0-preview.1` on macOS (from
   `src/core/project/backends/boxRelease.json`). Build, deploy and dev accept
-  `0.3.0` or later.
+  `0.3.0-preview.1` or later.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0-preview.1"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
 to that folder.
@@ -341,7 +344,7 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.3.0` or later. Dev and build read the profile with
+- `box --version` must print `0.3.0-preview.1` or later. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
   `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box release before it cannot do all of these.
@@ -619,7 +622,7 @@ These outlive the stack. Delete them too:
 - **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
   box release, unpack it into a folder, add that folder to your `PATH`, then retry.
 - **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
-  older than `0.3.0`. Install that release or later.
+  older than `0.3.0-preview.1`. Install that release or later.
 - **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
   set. Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials

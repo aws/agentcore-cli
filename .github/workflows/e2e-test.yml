@@ -136,7 +136,8 @@ jobs:
         run: |
           PIN=src/core/project/backends/boxRelease.json
           REPO=$(jq -er .box.repo "$PIN")
-          VER=$(jq -er .box.version "$PIN")
+          # A build may name its own release, for a release whose build of this machine is broken.
+          VER=$(jq -er ".box.${BUILD}.version // .box.version" "$PIN")
           ASSET=$(jq -er ".box.${BUILD}.asset" "$PIN")
           SHA=$(jq -er ".box.${BUILD}.sha256" "$PIN")
           WORK=$(mktemp -d)

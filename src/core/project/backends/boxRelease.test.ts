@@ -275,14 +275,15 @@ describe("publishInstall", () => {
 
 describe("the pinned releases", () => {
   test("pins one box, with the asset of its own version and a SHA-256", () => {
-    expect(BOX_MINIMUM_VERSION).toBe("0.3.0");
+    expect(BOX_MINIMUM_VERSION).toBe("0.3.0-preview.1");
     expect(BOX_RELEASE.linux.asset).toBe(
       `box-cli-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
     expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
-    // The e2e workflow installs the macOS build on its macOS runner, from this pin.
+    // The e2e workflow installs the macOS build on its macOS runner, from this pin, of its own
+    // release when it names one.
     expect(BOX_RELEASE.darwin?.asset).toBe(
-      `box-cli-v${BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
+      `box-cli-v${BOX_RELEASE.darwin?.version ?? BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
     );
     expect(BOX_RELEASE.darwin?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(BOX_RELEASE_PAGE).toBe(
@@ -291,13 +292,13 @@ describe("the pinned releases", () => {
   });
 
   test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.3.0 is the first public release that reads the profiles the CLI writes.
+    // 0.3.0-preview.1 is the first public release that reads the profiles the CLI writes.
     expect(BOX_INSTALL_HINT).toBe(
       "Install box: download the build for your machine from " +
         `https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
         "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
-        "release has no build for your machine, use box 0.3.0 " +
-        "(https://github.com/strands-agents/box/releases/tag/v0.3.0) or a " +
+        "release has no build for your machine, use box 0.3.0-preview.1 " +
+        "(https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1) or a " +
         "later release that has one.",
     );
   });
