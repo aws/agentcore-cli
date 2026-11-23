@@ -253,8 +253,13 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
       ? []
       : [{ ...host, target: host.target }],
   );
-  const sent = served.filter((host) => undeclaredKey(spec, host) === undefined);
-  const unsent = served.filter((host) => undeclaredKey(spec, host) !== undefined);
+  // A host whose route the Runtime profile sends directly, not to its target, takes no target: the
+  // agent's Memory calls go to the AgentCore host directly (runtimeProfile/rules/additions.ts).
+  const routed = gatewayRoutedTargets(network.runtimeProfile);
+  const direct = served.filter((host) => routed !== undefined && !routed.has(host.target));
+  const used = served.filter((host) => !direct.includes(host));
+  const sent = used.filter((host) => undeclaredKey(spec, host) === undefined);
+  const unsent = used.filter((host) => undeclaredKey(spec, host) !== undefined);
   const existing = gateway.targets;
   const messages: string[] = [];
   const targets: AgentCoreGatewayTarget[] = [];
@@ -267,6 +272,14 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     const host = sent.find((candidate) => candidate.target === target.name);
     if (!host) {
       if (unsent.some((candidate) => candidate.target === target.name)) continue;
+      const directHost = direct.find((candidate) => candidate.target === target.name);
+      if (directHost) {
+        messages.push(
+          `removing gateway target '${target.name}' from ${gatewayName}: on AgentCore Runtime the ` +
+            `box sends the calls to ${directHost.authority} directly, not through the gateway`,
+        );
+        continue;
+      }
       const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
       messages.push(
         `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
@@ -299,6 +312,29 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   if (isDeepStrictEqual(targets, existing)) return messages;
   gateway.targets = targets;
   return messages;
+}
+
+/**
+ * The names of the gateway targets that a route or MCP server of `profile` sends calls to, through
+ * a backend at `${{ inputs.gateway.url }}/<target>`; `undefined` when build has no Runtime profile
+ * for the network.
+ */
+function gatewayRoutedTargets(profile: Readonly<TomlTable> | undefined): Set<string> | undefined {
+  if (profile === undefined) return undefined;
+  const prefix = `${RUNTIME_INPUTS.gatewayUrl}/`;
+  const names = new Set<string>();
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    for (const entry of Object.values(table)) {
+      if (!isTable(entry) || !Array.isArray(entry.backends)) continue;
+      for (const backend of entry.backends) {
+        const url = isTable(backend) ? backend.url : undefined;
+        if (typeof url === "string" && url.startsWith(prefix)) names.add(url.slice(prefix.length));
+      }
+    }
+  }
+  return names;
 }
 
 /** The API key that a host's target sends, when agentcore.json declares no credential for it. */

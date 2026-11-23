@@ -17,7 +17,24 @@ import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/bo
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
+/**
+ * A network of the runtime `agent`. Its Runtime profile routes each host with a target through the
+ * gateway, as the gateway rule writes it, unless `overrides` gives another profile.
+ */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
+  const routes = (overrides.hosts ?? []).flatMap((each) =>
+    each.target === undefined
+      ? []
+      : [
+          [
+            each.target,
+            {
+              destinations: [each.authority],
+              backends: [{ url: `\${{ inputs.gateway.url }}/${each.target}` }],
+            },
+          ],
+        ],
+  );
   return {
     runtime: "agent",
     gateway: "agent-box-egress",
@@ -25,7 +42,11 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
     hosts: [],
     envRoutes: [],
     policyFiles: [],
-    runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
+    runtimeProfile: {
+      packs: ["@box/base", "@box/agentcore"],
+      profile: { name: "demo" },
+      ...(routes.length > 0 && { egress: Object.fromEntries(routes) }),
+    },
     runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
@@ -142,6 +163,44 @@ describe("boxNetworkEdits", () => {
 });
 
 describe("gatewayTargetsWriter", () => {
+  test("writes no target for a host that the Runtime profile sends directly, and removes the one an earlier build wrote", () => {
+    const MEMORY_HOST = "bedrock-agentcore.us-west-2.amazonaws.com";
+    // The additions rule sends a route to the AgentCore host directly when the runtime has its
+    // default Memory, so the route has no backend to the host's target.
+    const direct = (targets: AgentCoreGatewayTarget[]) =>
+      run(
+        [gatewayTargetsWriter],
+        [
+          network({
+            hosts: [host(MEMORY_HOST, "egress-tools"), host("httpbin.org", "egress-httpbin-org")],
+            runtimeProfile: {
+              egress: {
+                tools: { destinations: [MEMORY_HOST], secret: { ref: "aws://" } },
+                "egress-httpbin-org": {
+                  destinations: ["httpbin.org"],
+                  backends: [{ url: "${{ inputs.gateway.url }}/egress-httpbin-org" }],
+                },
+              },
+            },
+          }),
+        ],
+        spec(targets),
+      );
+
+    const first = direct([MINE]);
+    expect(targetNames(first.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(first.messages).toEqual([
+      "adding gateway target 'egress-httpbin-org' to 'agent-box-egress' for httpbin.org",
+    ]);
+
+    const earlier = direct([MINE, passthrough("egress-tools", `https://${MEMORY_HOST}`)]);
+    expect(targetNames(earlier.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(earlier.messages).toContain(
+      "removing gateway target 'egress-tools' from 'agent-box-egress': on AgentCore Runtime the " +
+        `box sends the calls to ${MEMORY_HOST} directly, not through the gateway`,
+    );
+  });
+
   test("adds a host's target, rewrites a managed one, removes a stale one, and keeps the user's", () => {
     const project = spec([
       passthrough("ours", "https://ours.example.com"),

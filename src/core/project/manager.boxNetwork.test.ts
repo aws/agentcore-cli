@@ -520,6 +520,16 @@ describe("build writes the Box network of the box profile", () => {
     expect(warnings).toContainEqual(
       expect.stringContaining(`[egress.tools] goes to ${host} directly on AgentCore Runtime`),
     );
+    // The Runtime does not use a gateway target for the host, so build writes none, and gives no
+    // warning about the gateway role's grants for one.
+    expect(await targetNames(root)).toEqual(["bedrock"]);
+    expect(warnings).not.toContainEqual(expect.stringContaining("Target 'egress-"));
+
+    // A second build changes nothing.
+    const spec = await text(root, SPEC);
+    const again = await build(manager, root);
+    expect(again.steps.filter((step) => step.includes("gateway target"))).toEqual([]);
+    expect(await text(root, SPEC)).toBe(spec);
   });
 
   test("removes the Memory target, policy listing, and policy file of an earlier build, and sends Memory directly", async () => {
