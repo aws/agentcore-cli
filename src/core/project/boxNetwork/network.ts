@@ -491,7 +491,21 @@ function hostTargets(
   }
   const describeHost = (host: MappedHost) =>
     host.entry ? `${entryLabel(host.entry)} for ${host.authority}` : `the host ${host.authority}`;
-  for (const index of reused) owners.set(hosts[index]!.target!, describeHost(mapped[index]!));
+  for (const index of reused) {
+    const name = hosts[index]!.target!;
+    const gateway = gatewayOf.get(name);
+    if (gateway !== undefined) {
+      // The host keeps its target, so the gateway cannot have that name.
+      failAt(
+        mapped[index]!,
+        "TARGET_NAME_COLLISION",
+        `takes the gateway target '${name}' for ${hosts[index]!.authority}, and the target that ` +
+          `build adds for the gateway '${gateway}' has that name. Rename the entry or the gateway.`,
+      );
+      continue;
+    }
+    owners.set(name, describeHost(mapped[index]!));
+  }
   mapped.forEach((host, index) => {
     const name = hosts[index]!.target;
     if (name === undefined || reused.has(index)) return;

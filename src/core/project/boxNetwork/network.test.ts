@@ -1285,6 +1285,23 @@ describe("the gateways of the project", () => {
     expect(network.warnings).toEqual([]);
   });
 
+  test("fails a gateway whose target has the name of the target that a host takes again", () => {
+    // An earlier build wrote egress-gateway-tools for [egress.gateway-tools]; then the gateway
+    // tools came, and build gives it that name too.
+    const held = passthrough("egress-gateway-tools", "https://api.github.com");
+    const r = model(
+      "",
+      { "gateway-tools": { destinations: ["api.github.com"] } },
+      { gateways: [TOOLS], targets: [held] },
+    );
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "gateway-tools"]]);
+    expect(r.reasons()[0]).toContain(
+      "takes the gateway target 'egress-gateway-tools' for api.github.com, and the target that " +
+        "build adds for the gateway 'tools' has that name.",
+    );
+  });
+
   test("fails two gateways whose targets still have one name, as for two hosts", () => {
     // The target of "a--b" ends in the hash of its name, which a second gateway can have as a name.
     const hash = createHash("sha256").update("a--b").digest("hex").slice(0, 8);

@@ -800,6 +800,35 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(built.warnings.filter((warning) => warning.includes("CUSTOM_JWT"))).toEqual([]);
   });
 
+  test("stops, and keeps the route of a host, when a new gateway takes the name of its target", async () => {
+    const { manager, root, box } = await strandsProject({
+      acceptsPassthroughGateway: true,
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, {
+      tables:
+        '\n[egress.gateway-tools]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+    });
+    box.answer = shows({ "gateway-tools": GITHUB });
+    await build(manager, root);
+    const before = await text(root, SPEC);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    await addToolsGateway(root);
+    const added = await text(root, SPEC);
+
+    await expect(build(manager, root)).rejects.toThrow(
+      "takes the gateway target 'egress-gateway-tools' for api.github.com",
+    );
+
+    expect(await text(root, SPEC)).toBe(added);
+    expect(JSON.parse(before).agentCoreGateways[0].targets).toContainEqual(
+      expect.objectContaining({
+        name: "egress-gateway-tools",
+        passthrough: { endpoint: "https://api.github.com", protocolType: "CUSTOM" },
+      }),
+    );
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);
