@@ -81,7 +81,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { assertBoxRegionSupported, validateBoxRuntimes } from "./boxValidation";
+import { assertRuntimeV2RegionSupported, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -1818,7 +1818,7 @@ export class FsProjectManager implements ProjectManager {
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
       // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
-      assertBoxRegionSupported(
+      assertRuntimeV2RegionSupported(
         project.spec,
         { name: DEFAULT_TARGET_NAME, region: input.region },
         { provisioning: true, otherTargets: targets.length > 0 },
@@ -1852,7 +1852,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
-    assertBoxRegionSupported(project.spec, target);
+    assertRuntimeV2RegionSupported(project.spec, target);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.

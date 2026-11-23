@@ -1577,7 +1577,7 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toHaveLength(1);
     });
 
-    describe("Box projects in a region without Runtime V2", () => {
+    describe("runtimes on Runtime V2 in a region without it", () => {
       // partition.test.ts covers which regions have no Runtime V2; one is enough here.
       test.each(["us-west-1"])(
         "deploy of a Box project to %s fails before anything is written",
@@ -1594,8 +1594,9 @@ describe("FsProjectManager.addResource", () => {
           const { error } = await deployOutcome(subject, project);
           expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
           expect(String(error)).toContain(
-            `Cannot deploy Box project 'example' to target 'primary' in ${region}: Box runs on ` +
-              `AgentCore Runtime V2, which is not available in ${region}. Change the region of ` +
+            `Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target ` +
+              `'primary' in ${region}: Box runs on AgentCore Runtime V2 ("platformVersion": "V2"), ` +
+              `which is not available in ${region}. Change the region of ` +
               "target 'primary' in agentcore/aws-targets.json, or deploy with --target to a target " +
               "in another region, then retry.",
           );
@@ -1658,8 +1659,9 @@ describe("FsProjectManager.addResource", () => {
 
         await expect(deploying).rejects.toThrow(
           new RegionUnsupportedFeatureError(
-            "Cannot deploy Box project 'example' to target 'default' in us-west-1: Box runs on " +
-              "AgentCore Runtime V2, which is not available in us-west-1. Deploy with --region set " +
+            "Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target " +
+              "'default' in us-west-1: Box runs on AgentCore Runtime V2 (\"platformVersion\": " +
+              '"V2"), which is not available in us-west-1. Deploy with --region set ' +
               "to a region that has it, or add a target in another region to " +
               "agentcore/aws-targets.json, then retry.",
           ),
@@ -1675,6 +1677,24 @@ describe("FsProjectManager.addResource", () => {
         const { error } = await deployOutcome(subject, project);
         expect(error).toBeUndefined();
         expect(deployCalls).toHaveLength(1);
+      });
+
+      // Outside a Box project too: CloudFormation could not create a V2 runtime there either.
+      test("refuses a runtime that asks for V2 in a project that is not a Box project, by name", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        spec.runtimes[0].platformVersion = "V2";
+        await writeFile(specPath, JSON.stringify(spec, null, 2));
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+        expect(String(error)).toContain(
+          `Cannot deploy runtime '${spec.runtimes[0].name}' of project 'example' to target ` +
+            "'primary' in us-west-1: it asks for AgentCore Runtime V2",
+        );
+        expect(deployCalls).toEqual([]);
       });
 
       test("names --target, not a new target, when aws-targets.json has targets", async () => {
