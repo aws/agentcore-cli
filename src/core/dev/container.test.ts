@@ -108,10 +108,8 @@ function harness(
 
     if (config.stream) yield* config.stream(command, options);
   };
-  const boxVersions: (string | undefined)[] = [];
   return {
     calls,
-    boxVersions,
     runner: new ContainerDevRunner({
       streamProcess: fakeStreamProcess,
       toolAvailable:
@@ -120,10 +118,6 @@ function harness(
           return tool === "docker";
         }),
       awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
-      releaseFor: async (version) => {
-        boxVersions.push(version);
-        return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
-      },
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
@@ -1080,13 +1074,15 @@ describe("ContainerDevRunner", () => {
       expect(JSON.stringify(events)).not.toContain("reads GITHUB_TOKEN for [egress.github]");
     });
 
-    test("stages box of the runtime's box.version", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      const { boxVersions, runner } = harness({ processEnv: credentials });
+    test("stages the pinned box, whatever box.version the runtime names", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, { ...projectRuntime, box: { version: "2.0.0" } })));
 
-      expect(boxVersions).toEqual(["2.0.0"]);
+      const env = await readFile(join(context, ".box-dist", "box-release.env"), "utf8");
+      expect(env).toContain(BOX_RELEASE.version);
+      expect(env).not.toContain("2.0.0");
     });
 
     test("runs a runtime with no box.version without box's flags, even with a box profile", async () => {

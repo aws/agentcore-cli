@@ -194,7 +194,7 @@ describe("BoxDevRunner", () => {
     const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
       runtimeName: "agent",
     });
-    const noComments = renderBoxProfile("Demo", runtime)!
+    const noComments = renderBoxProfile("Demo", runtime, "us-west-2")!
       .split("\n")
       .filter((line) => !line.startsWith("#"))
       .join("\n");

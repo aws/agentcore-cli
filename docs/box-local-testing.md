@@ -1,27 +1,27 @@
 # Local testing: a Box project with a workspace CLI and L3 constructs
 
 This guide creates, builds, and deploys a Box project with the AgentCore CLI and the
-`@aws/agentcore-cdk` L3 constructs taken from your local workspace, not the published
-packages. Use it to test the Box gateway, its egress targets, and API key credentials
-end to end before you publish.
+`@aws/agentcore-cdk` L3 constructs taken from your local workspace, not the published packages. Use
+it to test the Box gateway, its egress targets, and API key credentials end to end before you
+publish.
 
-A "Box project" (`"projectType": "box"` in `agentcore.json`) runs its agent in a _box_:
-a sandbox that controls the agent's network egress and filesystem access. Each runtime
-gets its own Box gateway, bound to it by `boundRuntime` and named after it: the runtime `agent`
-gets `agent-box-egress`.
+A "Box project" (`"projectType": "box"` in `agentcore.json`) runs its agent in a _box_: a sandbox
+that controls the agent's network egress and filesystem access. Each runtime gets its own Box
+gateway, bound to it by `boundRuntime` and named after it: the runtime `agent` gets
+`agent-box-egress`.
 
 ## Where box comes from
 
-A Box project ships box inside its deploy artifact, so the agent runs in a box on AgentCore
-Runtime. Each box runtime names its box release in `agentcore.json` with
-`"box": { "version": "<version>" }`, which `agentcore create` writes. `agentcore build` and
-`agentcore deploy` download that release's Linux build from
+A Box project ships box inside its deploy artifact, so the agent runs in a box on AgentCore Runtime.
+Each box runtime names its box release in `agentcore.json` with `"box": { "version": "<version>" }`,
+which `agentcore create` writes and build keeps at the pinned release. `agentcore build` and
+`agentcore deploy` download the pinned release's Linux build from
 [mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases) once into
 `~/.agentcore/box/`, check its SHA-256s, and stage it into the zip, for a CodeZip runtime. For a
-container they write the release and its checksum into `.box-dist/box-release.env` instead.
-A container image downloads the Linux build while it builds, under `agentcore dev` too. For a
-CodeZip agent, `agentcore dev` runs the `box` on your PATH: install it as in
-[Install box](#install-box). No local box checkout is needed.
+container they write the release and its checksum into `.box-dist/box-release.env` instead. A
+container image downloads the Linux build while it builds, under `agentcore dev` too. For a CodeZip
+agent, `agentcore dev` runs the `box` on your PATH: install it as in [Install box](#install-box). No
+local box checkout is needed.
 
 Dev, build and deploy run a runtime's agent in a box only when `agentcore.json` has
 `"projectType": "box"` and the runtime has `"box": { "version": ... }`. `create` writes both, and
@@ -29,11 +29,13 @@ only for the box templates. The runtime's entry point and Dockerfile never decid
 `start.py` runs the usual way. A runtime with `box.version` in a project without
 `"projectType": "box"` stops dev with `agentcore.json has no "projectType": "box"`.
 
-`box.version` must be the box version the CLI pins in
-`src/core/project/backends/boxRelease.json`; build, deploy and container `dev` stop on any other
-version. To try an unreleased box build, publish it as a pre-release with the same file names and
-run `bun scripts/bump-box-release.ts --box <version>` in your CLI checkout, then set `box.version`
-to it.
+Every box runtime runs the box version the CLI pins in `src/core/project/backends/boxRelease.json`.
+Build and deploy set each runtime's `box.version` to it, and say so when it named another; container
+`dev` stages the pinned box whatever `box.version` says. To try an unreleased box build, publish it
+as a GitHub pre-release with the release's file names (the `aarch64-apple-darwin` and
+`aarch64-unknown-linux-gnu` archives and `SHA256SUMS.txt`), for example in a fork of
+[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases), then run
+`bun scripts/bump-box-release.ts --box <version> --box-repo <owner/repo>` in your CLI checkout.
 
 ## Prerequisites
 
@@ -43,14 +45,13 @@ to it.
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
   For a `PRIVATE_VPC` runtime with Memory, the L3 checkout also needs the `fix/secure-vpc-memory-endpoint`
   change, which gives the private VPC its AgentCore endpoint. Without it, the box cannot reach Memory.
-- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. The oldest box that
-  works is `0.1.11-linux-preview.7`, the first release with
-  [strands-agents/staging-boxy#625](https://github.com/strands-agents/staging-boxy/pull/625), which
-  the default telemetry target of the AgentCore Runtime profile needs. Build, deploy and dev run it
-  to read the box profile with `box profile show --format json --full`, and CodeZip dev runs the
-  agent with it. See [Install box](#install-box).
+- `box` `0.1.11-preview.10` on your `PATH`, the release the CLI pins. Use that release: the box
+  features and the profiles that the CLI writes change together, so an older box can refuse the
+  profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
+  run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
+  the agent with it. See [Install box](#install-box).
 - AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock target and
-  the Runtime profile's direct Memory route for `AWS_REGION` (else your AWS profile's region), and
+  the Runtime profile's direct AgentCore route for `AWS_REGION` (else your AWS profile's region), and
   deploy for its target's region.
 - `bun` for the CLI, `npm` for the generated CDK app.
 
@@ -106,21 +107,22 @@ box --version
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
 - `box --version` should print the pinned `box 0.1.11-preview.10` (from
-  `src/core/project/backends/boxRelease.json`). Build, deploy and dev accept
-  `0.1.11-linux-preview.7` or later.
+  `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
+  writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
   `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.1.11-preview.10"`.
 
-To move to a newer release, unpack it into its own folder the same way and change the `PATH` line
-to that folder.
+To move to a newer release, unpack it into its own folder the same way and change the `PATH` line to
+that folder.
 
 ## Settings
 
 Set these once per shell. Change the values for your machine: `CLI` is the CLI run from source in
 your workspace checkout, `L3` is the local L3 constructs checkout, and `DEMO` and `PROJECT` say
 where the demo project goes. Use absolute paths: the steps below `cd` into other folders, where a
-relative path no longer resolves (`bun` then says `Module not found "./agentcore-cli/src/index.ts"`).
-Replace `/path/to/workspace` with the folder that holds both checkouts:
+relative path no longer resolves (`bun` then says
+`Module not found "./agentcore-cli/src/index.ts"`). Replace `/path/to/workspace` with the folder
+that holds both checkouts:
 
 ```
 CLI=/path/to/workspace/agentcore-cli/src/index.ts
@@ -140,9 +142,9 @@ makes bun look for a folder named `~`.
 
 ## Install the CLI's dependencies
 
-The CLI runs from source, so it needs its own `node_modules`. Install them once in the
-CLI checkout before the first `bun run "$CLI"`. Without this, `bun` falls back to its global
-cache and `create` fails with `ENOENT while resolving package '@opentelemetry/core'`.
+The CLI runs from source, so it needs its own `node_modules`. Install them once in the CLI checkout
+before the first `bun run "$CLI"`. Without this, `bun` falls back to its global cache and `create`
+fails with `ENOENT while resolving package '@opentelemetry/core'`.
 
 ```
 cd "$(dirname "$CLI")/.."
@@ -151,8 +153,8 @@ bun install
 
 ## 1. Get AWS credentials
 
-Deploy creates real resources, so it needs write access. This example uses `ada` with an
-Isengard dev account; use whatever grants credentials for your dev account.
+Deploy creates real resources, so it needs write access. This example uses `ada` with an Isengard
+dev account; use whatever grants credentials for your dev account.
 
 ```
 ada credentials update --account <your-dev-account> --provider isengard --role Admin
@@ -187,9 +189,9 @@ This adds an `[egress]` entry for `api.github.com` with a `github` API key crede
 needs `destinations`. Build declares the credential from the `env://` secret, adds the
 `egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
-The `destinations` key lists the hosts the credential may reach. The box blocks the
-credential's egress to any host not in the list. Each entry is a `<host>` or
-`<host>:<port>` string. The default port is 443. A port must be 1 to 65535.
+The `destinations` key lists the hosts the credential may reach. The box blocks the credential's
+egress to any host not in the list. Each entry is a `<host>` or `<host>:<port>` string. The default
+port is 443. A port must be 1 to 65535.
 
 ```
 printf '\n[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n' >> "$DEMO/$PROJECT/.box/agent/local/profile.toml"
@@ -205,33 +207,32 @@ Runtime profile, its policy files, and box in the `.box-dist/` folder of the cod
 build context, and write a copy of the profile, the generated packs, and the policy files into
 `.box/<runtime>/aws/` for you to read.
 
-Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`.
-A profile that names a pack `box/<name>` fails: box refuses it and names the `@box/<name>` pack.
+Box `0.1.11-linux-preview.7` names its packs `@box/base`, `@box/bedrock`, and `@box/agentcore`. A
+profile that names a pack `box/<name>` fails: box refuses it and names the `@box/<name>` pack.
 
-- **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server
-  with `type = "http"`, or a policy permit names, and that the policy allows at least one
-  request to, gets one passthrough target on `<runtime>-box-egress`. The target of an MCP server is
+- **Gateway targets.** Each host or `host:port` that an `[egress]` entry, an `[mcp]` server with
+  `type = "http"`, or a policy permit names, and that the policy allows at least one request to,
+  gets one passthrough target on `<runtime>-box-egress`. The target of an MCP server is
   `egress-<server>`. Its `protocolType` is `CUSTOM`, thus only Box makes the decision on each
-  `mcp:call`. A host the gateway already has a target for keeps that target. Build owns
-  only the targets whose name starts with `egress-`: it adds them, changes them, and removes
-  one when no host needs it. It never changes another target.
-- **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
-  sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
-- **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
-  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
-  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
-  number of problems, then gives one line for each problem: its `file:line:column` in your
-  profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
-  by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as
-  `[egress.github]`. Nothing is written.
-- **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
-  method, or forbid), when an entry's host gets no target, and when a target is signed for an
-  AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
-  the gateway's `additionalPolicies` that does not exist, cannot be read, or is not a JSON
-  object, as it counts none of its actions.
-- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
-  profile. Each key of the local profile stays, and build changes only what must differ on
-  AgentCore Runtime:
+  `mcp:call`. A host the gateway already has a target for keeps that target. Build owns only the
+  targets whose name starts with `egress-`: it adds them, changes them, and removes one when no host
+  needs it. It never changes another target.
+- **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret sends an
+  API key from AgentCore Identity, and an entry with no secret sends no credential.
+- **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard host,
+  a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one host, a
+  path, or a port other than 443, and similar cases stop them too. The error starts with
+  `Build stopped:` or `Deploy stopped:` and the number of problems, then gives one line for each
+  problem: its `file:line:column` in your profile or policy file, what is wrong, and how to fix it.
+  A rule of your policy file is found by its `@id`. For a rule that Box adds, the line names the
+  entry that makes Box add it, such as `[egress.github]`. Nothing is written.
+- **Warnings.** Build warns when Box enforces rules that the gateway does not (a path, method, or
+  forbid), when an entry's host gets no target, and when a target is signed for an AWS service that
+  no policy of the gateway's role grants. It also warns for a `.json` file in the gateway's
+  `additionalPolicies` that does not exist, cannot be read, or is not a JSON object, as it counts
+  none of its actions.
+- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local profile.
+  Each key of the local profile stays, and build changes only what must differ on AgentCore Runtime:
   - each `[egress]` host with a gateway target becomes one route to `<runtime>-box-egress`: the
     first host of an entry keeps the name of the entry, so a pack's own entry of that name merges
     with it, and each other host gets `[egress.<target>]`; an HTTP `[mcp.<name>]` server gets the
@@ -244,12 +245,12 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role.
-  - with `instrumentation.enableOtel` on, which is the default for a box template too, a command
-    of the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the
-    Python of the Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The
-    `@box/agentcore` pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES`
-    that the Runtime sets. When your `[agent.env]` sets one of these variables, box uses your value.
-    The pack sets no `OTEL_EXPORTER_OTLP_*` variable, because box sets each one.
+  - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
+    the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
+    Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`
+    pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES` that the Runtime
+    sets. When your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
+    `OTEL_EXPORTER_OTLP_*` variable, because box sets each one.
 
   **The default log target.** With no `cloudwatch_logs` target, the Runtime profile gets
   `[telemetry.agentcore]`: box sends its deny, permit, and trace records to the log group of the
@@ -263,18 +264,17 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   variable. To send the records to another log group, add a `cloudwatch_logs` target to the local
   profile. `agentcore create` and `agentcore add runtime` give this notice for each box runtime.
 
-  **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the
-  Runtime profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its
-  own deny, permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the
-  execution role `xray:PutSpans` and `xray:PutTraceSegments` in
-  `agentcore/box-telemetry-policy-<runtime>.json`. To send the spans to a different target, add a
-  `cloudwatch_traces` target to the local profile. To send no spans, set
-  `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel` is on and the
-  agent does not start with `opentelemetry-instrument`, build gives a warning.
+  **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the Runtime
+  profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its own deny,
+  permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the execution role
+  `xray:PutSpans` and `xray:PutTraceSegments` in `agentcore/box-telemetry-policy-<runtime>.json`. To
+  send the spans to a different target, add a `cloudwatch_traces` target to the local profile. To
+  send no spans, set `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel`
+  is on and the agent does not start with `opentelemetry-instrument`, build gives a warning.
 
   Build stops, and names the key and its line, for a value that cannot work on the Runtime: a
-  required grant or a command path in the project outside the code folder, in the venv, or in a
-  home folder (`${{ home }}`, `~`, `/Users`, `/home`); a CodeZip program that `PATH` finds, such as
+  required grant or a command path in the project outside the code folder, in the venv, or in a home
+  folder (`${{ home }}`, `~`, `/Users`, `/home`); a CodeZip program that `PATH` finds, such as
   `npx`; a CodeZip write grant in the code folder; `network.contain_egress = false`; a CloudWatch
   target that box refuses; or a telemetry target that is not CloudWatch or `file`. Build warns, and
   goes on, for what the Runtime does without: a `deny` entry or an optional grant with no place
@@ -286,9 +286,9 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   then refuses a stdio server or a tool whose program is the venv's Python ("a link out of a folder
   the box can write"). To run one, set `access = "read"` in `[project]` of the local profile.
 
-- **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes
-  only with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a
-  local L3 build, as in step 5.
+- **No-auth targets need a newer L3.** A passthrough target with no outbound auth synthesizes only
+  with an `@aws/agentcore-cdk` that accepts it. Until that release is pinned, use a local L3 build,
+  as in step 5.
 
 ## 5. Point the generated CDK app at the local L3 tarball
 
@@ -302,13 +302,12 @@ npm install "$L3"/aws-agentcore-cdk-*.tgz
 ## 6. Test locally with `agentcore dev`
 
 `agentcore dev` runs the agent in a box on your machine, so you can try the project before you
-deploy. It deploys nothing. The agent signs its Bedrock calls with the AWS default credential
-chain (`secret.ref = "aws://"` in `.box/agent/local/profile.toml`), and Memory is off
-(`LOCAL_DEV=1`).
+deploy. It deploys nothing. The agent signs its Bedrock calls with the AWS default credential chain
+(`secret.ref = "aws://"` in `.box/agent/local/profile.toml`), and Memory is off (`LOCAL_DEV=1`).
 
-Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must
-have `"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a
-runtime the usual way, and stops on one that has `box.version` with
+Dev runs an agent in a box only in a Box project, as build and deploy do: `agentcore.json` must have
+`"projectType": "box"`, which `create` writes for the box templates. Without it, dev runs a runtime
+the usual way, and stops on one that has `box.version` with
 `agentcore.json has no "projectType": "box"`.
 
 ### Which box builds exist
@@ -321,11 +320,11 @@ The box release has these builds:
 | Linux, arm64        | `box-v<version>-aarch64-unknown-linux-gnu` | yes         | yes           |
 | Linux or macOS, x86 | none                                       | no          | no            |
 
-- The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64.
-  It runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host
-  would need to emulate arm64.
-- **CodeZip** dev runs the `box` on your `PATH` natively, so it needs the build for your machine.
-  On an arm64 Linux host it uses the same Linux build as the Runtime.
+- The **container** image always uses the Linux arm64 build, because AgentCore Runtime is arm64. It
+  runs on an Apple chip Mac through Finch or Docker, and on an arm64 Linux host. An x86 host would
+  need to emulate arm64.
+- **CodeZip** dev runs the `box` on your `PATH` natively, so it needs the build for your machine. On
+  an arm64 Linux host it uses the same Linux build as the Runtime.
 - Build and deploy need a `box` on your `PATH` on every machine, to read the profile. So for now
   build and deploy work only on an Apple chip Mac or an arm64 Linux host.
 
@@ -338,12 +337,13 @@ box --version
 aws sts get-caller-identity
 ```
 
-- `box --version` must print `0.1.11-linux-preview.7` or later. Dev and build read the profile with
+- `box --version` should print the pinned version. The CLI does not check it, and an older box can
+  refuse the profiles that the CLI writes. Dev and build read the profile with
   `box profile show --format json --full`. The AgentCore Runtime profile signs each Box gateway
   backend for `${{ inputs.aws.region }}`, and its default telemetry target reads one key of
-  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. A box release before it cannot do all of these.
-- The `[default]` profile must hold fresh credentials, because box reads them when dev starts.
-  After you refresh them, restart dev.
+  `OTEL_EXPORTER_OTLP_LOGS_HEADERS`. An older box release cannot do all of these.
+- The `[default]` profile must hold fresh credentials, because box reads them when dev starts. After
+  you refresh them, restart dev.
 
 ### Run dev
 
@@ -359,8 +359,8 @@ bun run "$CLI" dev
 
 Dev hands each `env://` key of the box profile (an `[egress]` route's or an `[mcp]` server's) to
 `box run` from your shell, and writes it nowhere. A value you put in `agentcore/.env.local` is used
-when the shell has none. If neither has it, dev warns, naming the variable and how to set it, and box
-then refuses to start (`credential variable GITHUB_TOKEN is not set`). A variable set without
+when the shell has none. If neither has it, dev warns, naming the variable and how to set it, and
+box then refuses to start (`credential variable GITHUB_TOKEN is not set`). A variable set without
 `export` stays in the shell and does not reach dev: export it, or set it on the same line
 (`GITHUB_TOKEN=... bun run "$CLI" dev`).
 
@@ -400,8 +400,8 @@ bun run "$CLI" invoke --local --runtime agent --payload '{"prompt":"What is 17 t
 ### What to check
 
 - The answer comes back from `invoke --local`.
-- The dev output shows box starting the agent: `box: running profile cliDemo` (your `$PROJECT`) and the
-  `[agent]` filesystem summary, with `deny_write  .../.venv  (read-only)` for CodeZip.
+- The dev output shows box starting the agent: `box: running profile cliDemo` (your `$PROJECT`) and
+  the `[agent]` filesystem summary, with `deny_write  .../.venv  (read-only)` for CodeZip.
 - With the step 4 `[egress]` entry, calls to its host go out, and calls to other hosts are blocked
   (`ProxyConnectionError ... 127.0.0.1:<port>` in the agent's log means box blocked the host).
 
@@ -409,13 +409,13 @@ Stop dev with Ctrl+C before you build.
 
 ## 7. Build
 
-Export `GITHUB_TOKEN` before build. Build reads it and writes its value into
-`agentcore/.env.local` under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`.
-On a later build it replaces that value when `GITHUB_TOKEN` holds a different key, as after a
-rotation, so deploy provisions the key `agentcore dev` uses. Build reads `GITHUB_TOKEN` as dev
-does: from your shell, or from `agentcore/.env.local` when the shell has none. So a
-`GITHUB_TOKEN` line in `agentcore/.env.local` replaces the stored key too, even with an older
-key; keep the key in one place. With `GITHUB_TOKEN` in neither, build keeps the stored key.
+Export `GITHUB_TOKEN` before build. Build reads it and writes its value into `agentcore/.env.local`
+under the credential's reserved name `AGENTCORE_CREDENTIAL_GITHUB`. On a later build it replaces
+that value when `GITHUB_TOKEN` holds a different key, as after a rotation, so deploy provisions the
+key `agentcore dev` uses. Build reads `GITHUB_TOKEN` as dev does: from your shell, or from
+`agentcore/.env.local` when the shell has none. So a `GITHUB_TOKEN` line in `agentcore/.env.local`
+replaces the stored key too, even with an older key; keep the key in one place. With `GITHUB_TOKEN`
+in neither, build keeps the stored key.
 
 ```
 cd "$DEMO/$PROJECT"
@@ -424,8 +424,8 @@ bun run "$CLI" build
 grep AGENTCORE_CREDENTIAL_GITHUB agentcore/.env.local
 ```
 
-If you added the `github` egress credential in step 4, this first standalone `build` stops
-after writing the targets, policies, and `.env.local`, with:
+If you added the `github` egress credential in step 4, this first standalone `build` stops after
+writing the targets, policies, and `.env.local`, with:
 
 ```
 Project build cannot resolve credential "github" before its first deployment.
@@ -433,8 +433,8 @@ Run 'agentcore deploy' to provision the credential and build the project.
 ```
 
 This is expected. An `env://` credential must exist in AgentCore Identity before synthesis can
-resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential,
-skip straight to step 8: `deploy` provisions the credential and then builds in one step (keep
+resolve it, and only `deploy` provisions it. So on the **first** run with an egress credential, skip
+straight to step 8: `deploy` provisions the credential and then builds in one step (keep
 `GITHUB_TOKEN` exported). After that first deploy, `build` runs standalone as above.
 
 ## 8. Deploy
@@ -443,8 +443,8 @@ skip straight to step 8: `deploy` provisions the credential and then builds in o
 bun run "$CLI" deploy
 ```
 
-Deploy synthesizes the CDK app you linked in step 5, so the stack uses your local L3 constructs.
-The first deploy makes the `default` target from your account and region.
+Deploy synthesizes the CDK app you linked in step 5, so the stack uses your local L3 constructs. The
+first deploy makes the `default` target from your account and region.
 
 ## 9. Verify the gateway, its targets, and the credential
 
@@ -459,10 +459,10 @@ Live checks, after deploy. Deploy names each AWS resource after the project and 
 (`default`), so the names differ from those in `agentcore.json`:
 
 - The Box gateway `agent-box-egress` deploys as `<project>-default-agent-box-egress`, for example
-  `cliDemo-default-agent-box-egress`. Its ID is that name in lowercase with a suffix, and is a
-  stack output.
-- The credential `github` deploys as the API key credential provider `<project>_default_github`,
-  for example `cliDemo_default_github`.
+  `cliDemo-default-agent-box-egress`. Its ID is that name in lowercase with a suffix, and is a stack
+  output.
+- The credential `github` deploys as the API key credential provider `<project>_default_github`, for
+  example `cliDemo_default_github`.
 
 ```
 GATEWAY_ID=$(aws cloudformation describe-stacks --stack-name "AgentCore-$PROJECT-default" --query "Stacks[0].Outputs[?starts_with(OutputKey, 'ApplicationGatewayAgentBoxEgressIdOutput')].OutputValue" --output text)
@@ -471,8 +471,8 @@ bun run "$CLI" gateway get --id "$GATEWAY_ID"
 bun run "$CLI" identity api-key-credential-provider get --name "${PROJECT}_default_github"
 ```
 
-`gateway list` shows every gateway in the account and region, not only this project's, so look
-the Box gateway up by its ID as above.
+`gateway list` shows every gateway in the account and region, not only this project's, so look the
+Box gateway up by its ID as above.
 
 ## 10. Read box telemetry and gateway logs in CloudWatch
 
@@ -489,9 +489,9 @@ X-Ray, through the target `[telemetry.agentcore_traces]`. Build gives the execut
 grant for it. "The default X-Ray target" in step 4 gives the rules. CloudWatch Transaction Search
 keeps the spans in the log group `aws/spans`.
 
-The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the
-runtime can write to the log group of the Runtime, thus build adds no grant for it. A runtime that
-names an `executionRoleArn` must have `logs:CreateLogStream` and `logs:PutLogEvents` on
+The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the runtime
+can write to the log group of the Runtime, thus build adds no grant for it. A runtime that names an
+`executionRoleArn` must have `logs:CreateLogStream` and `logs:PutLogEvents` on
 `/aws/bedrock-agentcore/runtimes/*`.
 
 The `logs runtime` command finds that log group from the runtime name:
@@ -613,12 +613,12 @@ These outlive the stack. Delete them too:
 
 ## Troubleshooting
 
-- **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the
-  box release, unpack it into a folder, add that folder to your `PATH`, then retry.
+- **Dev says `'box' was not found on your PATH`.** Download the build for your machine from the box
+  release, unpack it into a folder, add that folder to your `PATH`, then retry.
 - **Dev or build says Box `cannot print the profile ... as JSON`.** The `box` on your `PATH` is
-  older than `0.1.11-linux-preview.7`. Install that release or later.
-- **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is
-  set. Run `unset BOX_RESOURCES`, or open a new terminal.
+  older than the pinned release. Install the pinned release.
+- **Box says `box's own packs were not found; set BOX_RESOURCES`.** A stale `BOX_RESOURCES` is set.
+  Run `unset BOX_RESOURCES`, or open a new terminal.
 - **Dev starts but model calls fail with `ExpiredTokenException`.** Your `[default]` credentials
   expired. Refresh them and restart dev.
 - **Dev warns that the box profile `reads GITHUB_TOKEN for [egress.github], but it is not set`, and
@@ -628,19 +628,19 @@ These outlive the stack. Delete them too:
   `agentcore/.env.local`, then restart dev. A variable set without `export` does not reach dev.
 - **Dev on macOS fails with `sandbox initialization failed: Operation not permitted`.** Dev is
   running inside another sandbox. Run it from a normal terminal.
-- **Build says Box is not installed or not on PATH.** Install `box` and put it on your `PATH`,
-  then build again.
-- **Build says Box refused the profile.** The lines under it are box's own error. A fresh
-  checkout often has no agent venv yet, and box then names `.venv/bin/python` under a write
-  grant. The error then says to run `uv sync` in the agent's folder (`app/<agent>`).
-- **Build cannot download box.** The error names the release URL. Check your network; a 404
-  means the pinned version is not published in `mquang-amazon/box-releases`.
+- **Build says Box is not installed or not on PATH.** Install `box` and put it on your `PATH`, then
+  build again.
+- **Build says Box refused the profile.** The lines under it are box's own error. A fresh checkout
+  often has no agent venv yet, and box then names `.venv/bin/python` under a write grant. The error
+  then says to run `uv sync` in the agent's folder (`app/<agent>`).
+- **Build cannot download box.** The error names the release URL. Check your network; a 404 means
+  the pinned version is not published in `mquang-amazon/box-releases`.
 - **`create` fails with `ENOENT while resolving package '@opentelemetry/core'`.** The CLI's
-  dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in
-  the CLI checkout (see "Install the CLI's dependencies").
-- **Build says it cannot resolve credential "github" before its first deployment.** Expected
-  when step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it
-  provisions the credential and builds. Standalone `build` works after that. See step 7.
+  dependencies are not installed, so `bun` fell back to its global cache. Run `bun install` in the
+  CLI checkout (see "Install the CLI's dependencies").
+- **Build says it cannot resolve credential "github" before its first deployment.** Expected when
+  step 4's egress credential has never been deployed. Run `agentcore deploy` instead; it provisions
+  the credential and builds. Standalone `build` works after that. See step 7.
 - **Deploy says a credential has no secret.** The credential's value did not reach
   `agentcore/.env.local`. Export `GITHUB_TOKEN` and run build again, or set
   `AGENTCORE_CREDENTIAL_GITHUB` in the deploy environment.

@@ -87,16 +87,14 @@ describe("planBoxProfileCredentials", () => {
     expect(plan.entries[0]?.value).toBe("ghp_shell");
   });
 
-  test("adds the credential with no entry when its reserved variable is already set", () => {
-    for (const sources of [
-      { env: { [RESERVED]: "k" }, envLocal: {} },
-      { env: {}, envLocal: { [RESERVED]: "k" } },
-    ]) {
-      const plan = planBoxProfileCredentials(spec(), [GITHUB], sources);
+  test.each([
+    ["the shell", { env: { [RESERVED]: "k" }, envLocal: {} }],
+    [".env.local", { env: {}, envLocal: { [RESERVED]: "k" } }],
+  ])("adds the credential with no entry when %s sets its reserved variable", (_where, sources) => {
+    const plan = planBoxProfileCredentials(spec(), [GITHUB], sources);
 
-      expect(plan.added).toEqual([API_KEY]);
-      expect(plan.entries).toEqual([]);
-    }
+    expect(plan.added).toEqual([API_KEY]);
+    expect(plan.entries).toEqual([]);
   });
 
   test("is idempotent: a later build adds nothing, but still stores a key it can find", () => {
@@ -137,16 +135,17 @@ describe("planBoxProfileCredentials", () => {
     ]);
   });
 
-  test("leaves a stored key alone when the variable holds it, or when nothing sets the variable", () => {
-    for (const env of [{ GITHUB_TOKEN: "ghp_same" }, {}]) {
-      const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
-        env,
-        envLocal: { [RESERVED]: "ghp_same" },
-      });
+  test.each([
+    ["the variable holds it", { GITHUB_TOKEN: "ghp_same" }],
+    ["nothing sets the variable", {}],
+  ])("leaves a stored key alone when %s", (_when, env) => {
+    const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], {
+      env,
+      envLocal: { [RESERVED]: "ghp_same" },
+    });
 
-      expect(plan.entries).toEqual([]);
-      expect(plan.messages).toEqual([]);
-    }
+    expect(plan.entries).toEqual([]);
+    expect(plan.messages).toEqual([]);
   });
 
   test("leaves the stored key alone when the shell sets the credential's own variable", () => {

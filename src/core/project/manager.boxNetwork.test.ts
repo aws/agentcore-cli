@@ -15,6 +15,7 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import { MEMORY_POLICY_FILE, memoryHostPolicy } from "./runtimeProfile/rules/additions";
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
+import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -171,6 +172,8 @@ async function strandsProject(
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
         runtimeName: "agent_python_strands",
       }),
+      // As the create command does: the profile calls Bedrock in the region create resolved.
+      region: "us-west-2",
       skipInstall: true,
       skipGit: true,
     }),
@@ -674,6 +677,38 @@ describe("build writes the Box network of the box profile", () => {
   });
 });
 
+describe("build sets box.version to the pinned box", () => {
+  // The box features and the profiles that the CLI writes change together, so a project created
+  // by an earlier CLI builds with the box this one ships, and agentcore.json says so.
+  test("updates a runtime's older box.version, and says so", async () => {
+    const { manager, root } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.runtimes[0].box = { version: "0.1.11-linux-preview.6" };
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toContain(
+      "updating box.version of runtime 'agent_python_strands' from 0.1.11-linux-preview.6 to " +
+        `${BOX_RELEASE.version}, the box this CLI ships`,
+    );
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual({
+      version: BOX_RELEASE.version,
+    });
+  });
+
+  test("leaves the pinned box.version as it is, with no message", async () => {
+    const { manager, root } = await strandsProject();
+    const before = JSON.parse(await text(root, SPEC)).runtimes[0].box;
+
+    const { steps } = await build(manager, root);
+
+    expect(before).toEqual({ version: BOX_RELEASE.version });
+    expect(steps.some((step) => step.startsWith("updating box.version"))).toBe(false);
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual(before);
+  });
+});
+
 describe("build writes the telemetry policy of the box profile", () => {
   const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
   const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
@@ -1052,6 +1087,17 @@ describe("build writes the Bedrock target and the Memory route for the region it
       destinations: ["bedrock-agentcore.eu-central-1.amazonaws.com/memories"],
       secret: { ref: "aws://" },
     });
+  });
+
+  test("takes the region build is given over AWS_REGION, as --region does", async () => {
+    const { manager, root } = await strandsProject({ env: { AWS_REGION: "eu-central-1" } });
+    const project = (await manager.resolve({ filePath: root })) as Project;
+
+    await drain(manager.build(project, { region: "ap-northeast-1" }));
+
+    const { targets } = await boxGateway(root);
+    expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-northeast-1"));
+    expect((await runtimeProfile(root)).options).toEqual({ bedrock: { region: "ap-northeast-1" } });
   });
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {

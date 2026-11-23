@@ -172,6 +172,53 @@ describe("project create", () => {
     expect(spec.runtimes[0].box).toEqual(box);
   });
 
+  test.each(["us-west-1", "ap-south-2", "us-gov-west-1"])(
+    "create of a box template in %s warns that it cannot deploy there, and still creates it",
+    async (region) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const { io } = await run([
+        "create",
+        "--name",
+        "BoxApp",
+        "--template",
+        "agent-python-strands-box",
+        "--region",
+        region,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      expect(io.stderr()).toContain(
+        `Warning: Box runs on AgentCore Runtime V2, which is not available in ${region}, so this ` +
+          "project cannot be deployed there.",
+      );
+      expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
+    },
+  );
+
+  test.each([
+    ["a box template in us-west-2", "agent-python-strands-box", "us-west-2"],
+    ["a template that is not a box template in us-west-1", "agent-python-strands", "us-west-1"],
+  ])("create of %s gives no Runtime V2 warning", async (_name, template, region) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--region",
+      region,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    expect(io.stderr()).not.toContain("AgentCore Runtime V2");
+    expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
+  });
+
   test.each(["agent-python-strands", "empty"])(
     "create --template %s --containment private-vpc is refused and writes nothing",
     async (template) => {

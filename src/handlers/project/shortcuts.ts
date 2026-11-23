@@ -32,7 +32,7 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
  * The Bedrock region of the box profile `agentcore create` writes when the caller passes no
  * region. Both create paths pass the region they resolved. Build and deploy write the Box
  * gateway's `bedrock` target, and the AgentCore Runtime profile, for the region they build for
- * instead (see `boxBuildRegion`).
+ * instead (`--region`, else `resolveRegion`).
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 
@@ -100,84 +100,128 @@ type RuntimeTemplateShortcut = {
   profile?: RuntimeTemplateProfile;
 };
 
+/** The templates that each have a box twin: the same template, run in Strands Box. */
+const AGENT_PYTHON_MINIMAL = {
+  runtimeName: "agent_python_minimal",
+  description: "minimal Python project, no agent framework",
+  build: "CodeZip",
+  language: "Python",
+  framework: "none",
+  modelProvider: "Bedrock",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_STRANDS = {
+  runtimeName: "agent_python_strands",
+  description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_STRANDS_CONTAINER = {
+  runtimeName: "agent_python_strands_container",
+  description:
+    "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
+  build: "Container",
+  language: "Python",
+  framework: "strands",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_LANGCHAIN = {
+  runtimeName: "agent_python_langchain",
+  description: "LangChain agent with Bedrock for inference",
+  build: "CodeZip",
+  language: "Python",
+  framework: "langchain",
+  modelProvider: "Bedrock",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const MCP_PYTHON_FASTMCP = {
+  runtimeName: "mcp_python_fastmcp",
+  description: "MCP server exposing tools with FastMCP",
+  build: "CodeZip",
+  language: "Python",
+  framework: "none",
+  protocol: "MCP",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const A2A_PYTHON_STRANDS = {
+  runtimeName: "a2a_python_strands",
+  description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  protocol: "A2A",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGUI_PYTHON_STRANDS = {
+  runtimeName: "agui_python_strands",
+  description: "Strands agent speaking AG-UI, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  protocol: "AGUI",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
 /**
  * The runtime templates. agent-python-strands offers both CodeZip and container
  * builds; Bedrock Managed Agents is a specialized container-only environment.
  * Every other template is CodeZip-only.
  */
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
-  "agent-python-minimal": {
-    runtimeName: "agent_python_minimal",
-    description: "minimal Python project, no agent framework",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    includesMemory: false,
-    box: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
-  },
+  "agent-python-minimal": AGENT_PYTHON_MINIMAL,
   "agent-python-minimal-box": {
+    ...AGENT_PYTHON_MINIMAL,
     runtimeName: "agent_python_minimal_box",
     description: "minimal Python project in Strands Box, no agent framework",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    includesMemory: false,
     box: true,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
   },
-  "agent-python-strands": {
-    runtimeName: "agent_python_strands",
-    description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    box: false,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
-  },
-  "agent-python-strands-container": {
-    runtimeName: "agent_python_strands_container",
-    description:
-      "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
-    build: "Container",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    box: false,
-    supportsModelProviderOverride: true,
-  },
+  "agent-python-strands": AGENT_PYTHON_STRANDS,
+  "agent-python-strands-container": AGENT_PYTHON_STRANDS_CONTAINER,
   "agent-python-strands-box": {
+    ...AGENT_PYTHON_STRANDS,
     runtimeName: "agent_python_strands_box",
     description:
       "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
     box: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
   },
   "agent-python-strands-box-container": {
+    ...AGENT_PYTHON_STRANDS_CONTAINER,
     runtimeName: "agent_python_strands_box_container",
     description:
       "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider, container-based deployment",
-    build: "Container",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
     box: true,
-    supportsModelProviderOverride: true,
   },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
@@ -192,29 +236,12 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: true,
     runtimeVersion: "NODE_22",
   },
-  "agent-python-langchain": {
-    runtimeName: "agent_python_langchain",
-    description: "LangChain agent with Bedrock for inference",
-    build: "CodeZip",
-    language: "Python",
-    framework: "langchain",
-    modelProvider: "Bedrock",
-    includesMemory: false,
-    box: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
-  },
+  "agent-python-langchain": AGENT_PYTHON_LANGCHAIN,
   "agent-python-langchain-box": {
+    ...AGENT_PYTHON_LANGCHAIN,
     runtimeName: "agent_python_langchain_box",
     description: "LangChain agent in Strands Box with Bedrock for inference",
-    build: "CodeZip",
-    language: "Python",
-    framework: "langchain",
-    modelProvider: "Bedrock",
-    includesMemory: false,
     box: true,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
   },
   "agent-typescript-vercel": {
     runtimeName: "agent_typescript_vercel",
@@ -240,82 +267,27 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     supportsModelProviderOverride: false,
     profile: BMA_TEMPLATE_PROFILE,
   },
-  "mcp-python-fastmcp": {
-    runtimeName: "mcp_python_fastmcp",
-    description: "MCP server exposing tools with FastMCP",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    protocol: "MCP",
-    includesMemory: false,
-    box: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
-  },
+  "mcp-python-fastmcp": MCP_PYTHON_FASTMCP,
   "mcp-python-fastmcp-box": {
+    ...MCP_PYTHON_FASTMCP,
     runtimeName: "mcp_python_fastmcp_box",
     description: "MCP server exposing tools with FastMCP, in Strands Box",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    protocol: "MCP",
-    includesMemory: false,
     box: true,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
   },
-  "a2a-python-strands": {
-    runtimeName: "a2a_python_strands",
-    description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "A2A",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    box: false,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
-  },
+  "a2a-python-strands": A2A_PYTHON_STRANDS,
   "a2a-python-strands-box": {
+    ...A2A_PYTHON_STRANDS,
     runtimeName: "a2a_python_strands_box",
     description:
       "Strands agent speaking the A2A protocol in Strands Box, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "A2A",
-    modelProvider: "Bedrock",
-    includesMemory: true,
     box: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
   },
-  "agui-python-strands": {
-    runtimeName: "agui_python_strands",
-    description: "Strands agent speaking AG-UI, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "AGUI",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    box: false,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
-  },
+  "agui-python-strands": AGUI_PYTHON_STRANDS,
   "agui-python-strands-box": {
+    ...AGUI_PYTHON_STRANDS,
     runtimeName: "agui_python_strands_box",
     description: "Strands agent speaking AG-UI in Strands Box, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "AGUI",
-    modelProvider: "Bedrock",
-    includesMemory: true,
     box: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
   },
 } as const satisfies Record<string, RuntimeTemplateShortcut>;
 
