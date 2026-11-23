@@ -1059,8 +1059,6 @@ describe("warnings", () => {
 
   describe("the grant each endpoint of a target needs", () => {
     const BEDROCK_FILE = "agentcore/box-bedrock-policy.json";
-    /** The Memory policy file that build wrote before Memory calls went to Memory directly. */
-    const MEMORY_FILE = "agentcore/box-memory-policy.json";
     const signed = (name: string, host: string, service: string) =>
       passthrough(name, `https://${host}`, {
         outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "us-west-2" },
@@ -1147,15 +1145,13 @@ describe("warnings", () => {
       expect(warningsFor(functionUrl, ["bedrock:*"])).toEqual([forService("egress-fn", "lambda")]);
     });
 
-    test("an AgentCore target needs an AgentCore grant, and a Memory file of an earlier build grants none", () => {
+    test("an AgentCore target needs an AgentCore grant", () => {
       const memory = signed(
         "agentcore",
         "bedrock-agentcore.us-west-2.amazonaws.com",
         "bedrock-agentcore",
       );
-      expect(warningsFor(memory, [], [MEMORY_FILE])).toEqual([
-        forService("agentcore", "bedrock-agentcore"),
-      ]);
+      expect(warningsFor(memory)).toEqual([forService("agentcore", "bedrock-agentcore")]);
       expect(warningsFor(memory, ["bedrock-agentcore:*"])).toEqual([]);
       expect(warningsFor(agentcoreControl, ["bedrock-agentcore:*"])).toEqual([]);
       expect(warningsFor(agentcoreControl)).toEqual([

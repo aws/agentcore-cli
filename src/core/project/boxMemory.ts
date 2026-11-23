@@ -3,7 +3,6 @@ import { partition } from "@aws-sdk/util-endpoints";
 import {
   BOX_GATEWAY_BEDROCK_TARGET_NAME,
   DEFAULT_EGRESS_BEDROCK_REGION,
-  agentCoreDataPlaneHost,
   callsBedrockModel,
   getBoxGatewayBedrockTargetSpec,
 } from "../../handlers/project/shortcuts";
@@ -22,29 +21,10 @@ import { runtimeRunsInBox } from "./templates/boxProfile";
 export const BOX_BEDROCK_POLICY_FILE = "agentcore/box-bedrock-policy.json";
 
 /**
- * The policy file, relative to the project root, that an earlier build wrote so the Box gateway's
- * role could call Memory. The agent's Memory calls now go to Memory directly, so build removes it.
- */
-export const LEGACY_BOX_MEMORY_POLICY_FILE = "agentcore/box-memory-policy.json";
-
-/**
- * The name of the Runtime profile route of the agent's Memory calls, which go to Memory directly.
- * An earlier build gave the Box gateway target of those calls the same name.
+ * The name of the Runtime profile route of the agent's Memory calls, which go to Memory directly
+ * (runtimeProfile/rules/additions.ts).
  */
 export const BOX_MEMORY_ROUTE_NAME = "agentcore";
-
-/** The name of the Box gateway target that an earlier build wrote for the agent's Memory calls. */
-const LEGACY_MEMORY_TARGET_NAME = BOX_MEMORY_ROUTE_NAME;
-
-/** The `agentcore` target, in `region`, as an earlier build wrote it for the Memory calls. */
-function legacyMemoryTarget(region: string): AgentCoreGatewayTarget {
-  return {
-    name: LEGACY_MEMORY_TARGET_NAME,
-    targetType: "passthrough",
-    passthrough: { endpoint: `https://${agentCoreDataPlaneHost(region)}`, protocolType: "CUSTOM" },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
-  };
-}
 
 /** The Bedrock actions behind Converse and ConverseStream, which the agent's model calls make. */
 const BEDROCK_INVOKE_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
@@ -206,58 +186,16 @@ export function addBoxBedrockTarget(
 }
 
 /**
- * Removes from each Box gateway what an earlier build wrote for the agent's Memory calls: the
- * `agentcore` target, when it is as that build wrote it for some region, and
- * {@link LEGACY_BOX_MEMORY_POLICY_FILE} in `additionalPolicies`. Without this, the gateway rule
- * would keep that target as the user's and route the Memory calls through the gateway role again.
- * A target of that name that the user changed stays. Changes `spec` in place, and returns the step
- * messages; none when nothing changed.
- */
-export function removeLegacyMemoryAccess(spec: ProjectSpec): string[] {
-  const messages: string[] = [];
-  for (const gateway of spec.agentCoreGateways.filter(isBoundGateway)) {
-    const legacy = gateway.targets.findIndex((target) => {
-      const region = target.outboundAuth?.region;
-      return (
-        target.name === LEGACY_MEMORY_TARGET_NAME &&
-        region !== undefined &&
-        isDeepStrictEqual(target, legacyMemoryTarget(region))
-      );
-    });
-    if (legacy !== -1) {
-      gateway.targets.splice(legacy, 1);
-      messages.push(
-        `removing target '${LEGACY_MEMORY_TARGET_NAME}' from gateway '${gateway.name}' in ` +
-          "agentcore.json: the boxed agent's Memory calls go to Memory directly",
-      );
-    }
-    if (gateway.additionalPolicies?.includes(LEGACY_BOX_MEMORY_POLICY_FILE)) {
-      const kept = gateway.additionalPolicies.filter(
-        (file) => file !== LEGACY_BOX_MEMORY_POLICY_FILE,
-      );
-      if (kept.length > 0) gateway.additionalPolicies = kept;
-      else delete gateway.additionalPolicies;
-      messages.push(
-        `removing '${LEGACY_BOX_MEMORY_POLICY_FILE}' from gateway '${gateway.name}' ` +
-          "additionalPolicies in agentcore.json: its role no longer calls Memory",
-      );
-    }
-  }
-  return messages;
-}
-
-/**
  * Adds the Box gateway targets that the boxed agents' calls need, in `region`, before build renders
  * the Runtime profiles from those targets: the Bedrock model's. The agent's Memory calls take no
  * target: box signs them with the execution role and sends them to Memory itself, so Memory can
- * hold each call to the session of the runtime (runtimeProfile/rules/additions.ts). It first
- * removes the Memory target and policy that an earlier build wrote.
+ * hold each call to the session of the runtime (runtimeProfile/rules/additions.ts).
  */
 export function addBoxGatewayTargets(
   spec: ProjectSpec,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
 ): string[] {
-  return [...removeLegacyMemoryAccess(spec), ...addBoxBedrockTarget(spec, region)];
+  return addBoxBedrockTarget(spec, region);
 }
 
 /**

@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectSpec } from "../../projectSchemas/project";
 import {
   boxGatewayOf,
   gatewayTargetFor,
@@ -19,12 +19,7 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
-import {
-  addBoxGatewayTargets,
-  BOX_BEDROCK_POLICY_FILE,
-  boxBedrockPolicy,
-  LEGACY_BOX_MEMORY_POLICY_FILE,
-} from "./boxMemory";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
 import {
   boxKeyVariables,
@@ -352,17 +347,11 @@ function undeclaredKey(
 
 /**
  * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
- * gateways' role, as `addBoxGatewayTargets` adds them. It removes the Memory policy file that an
- * earlier build wrote, as `addBoxGatewayTargets` removes its listing, unless a gateway that is not
- * a Box gateway still lists it.
+ * gateways' role, as `addBoxGatewayTargets` adds them.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
-  writes: () => [
-    { kind: "defaultTargets" },
-    { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
-    { kind: "file", path: LEGACY_BOX_MEMORY_POLICY_FILE },
-  ],
+  writes: () => [{ kind: "defaultTargets" }, { kind: "file", path: BOX_BEDROCK_POLICY_FILE }],
   edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
     const region = networks[0]?.region;
@@ -373,21 +362,9 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
           path: BOX_BEDROCK_POLICY_FILE,
           policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
         },
-      ]
-        .flatMap(({ path, policy }): BoxNetworkFile[] =>
-          policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
-        )
-        .concat(
-          // removeLegacyMemoryAccess drops the listing only from the Box gateways. A gateway that
-          // is not a Box gateway lists the file only when the user listed it there.
-          spec.agentCoreGateways.some(
-            (gateway) =>
-              !isBoundGateway(gateway) &&
-              gateway.additionalPolicies?.includes(LEGACY_BOX_MEMORY_POLICY_FILE),
-          )
-            ? []
-            : [{ path: LEGACY_BOX_MEMORY_POLICY_FILE, remove: true }],
-        ),
+      ].flatMap(({ path, policy }): BoxNetworkFile[] =>
+        policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
+      ),
     };
   },
 };

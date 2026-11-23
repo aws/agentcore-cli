@@ -532,58 +532,7 @@ describe("build writes the Box network of the box profile", () => {
     expect(await text(root, SPEC)).toBe(spec);
   });
 
-  test("removes the Memory target, policy listing, and policy file of an earlier build, and sends Memory directly", async () => {
-    const { manager, root } = await strandsProject();
-    const MEMORY_FILE = "agentcore/box-memory-policy.json";
-    // What a build before Memory went direct wrote for the agent's Memory calls.
-    await editGateway(root, (gateway) => {
-      gateway.targets.push({
-        name: "agentcore",
-        targetType: "passthrough",
-        passthrough: {
-          endpoint: "https://bedrock-agentcore.us-west-2.amazonaws.com",
-          protocolType: "CUSTOM",
-        },
-        outboundAuth: {
-          type: "GATEWAY_IAM_ROLE",
-          service: "bedrock-agentcore",
-          region: "us-west-2",
-        },
-      });
-      (gateway as { additionalPolicies?: string[] }).additionalPolicies = [MEMORY_FILE];
-    });
-    await writeFile(path(root, MEMORY_FILE), '{ "Version": "2012-10-17", "Statement": [] }\n');
-
-    const { steps } = await build(manager, root);
-
-    expect(await targetNames(root)).toEqual(["bedrock"]);
-    expect((await boxGateway(root)).additionalPolicies).toEqual([
-      "agentcore/box-bedrock-policy.json",
-    ]);
-    expect(existsSync(path(root, MEMORY_FILE))).toBe(false);
-    expect(steps).toEqual(
-      expect.arrayContaining([
-        `removing target 'agentcore' from gateway '${GATEWAY}' in agentcore.json: the boxed ` +
-          "agent's Memory calls go to Memory directly",
-        `removing '${MEMORY_FILE}' from gateway '${GATEWAY}' additionalPolicies in ` +
-          "agentcore.json: its role no longer calls Memory",
-        `removing ${MEMORY_FILE}`,
-      ]),
-    );
-    const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(egress.agentcore).toEqual({
-      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com/memories"],
-      secret: { ref: "aws://" },
-    });
-
-    // A second build finds nothing of the earlier build, and changes nothing.
-    const spec = await text(root, SPEC);
-    const again = await build(manager, root);
-    expect(again.steps.filter((step) => step.startsWith("removing"))).toEqual([]);
-    expect(await text(root, SPEC)).toBe(spec);
-  });
-
-  test("keeps an agentcore target that the user changed, and stops until the user renames it", async () => {
+  test("stops for a user target named agentcore, the name of the Memory route, and keeps it", async () => {
     const { manager, root, box } = await strandsProject();
     const mine = {
       name: "agentcore",
@@ -599,7 +548,7 @@ describe("build writes the Box network of the box profile", () => {
       (caught: unknown) => caught,
     );
 
-    // Build does not remove a target it did not write, and its route would take the Memory route's name.
+    // Build does not remove a target of the user, and its route would take the Memory route's name.
     expect(error).toBeInstanceOf(InputValidationError);
     expect((error as Error).message).toContain(
       `agentcore/agentcore.json  [egress.agentcore] is the name of the route that the agent's ` +

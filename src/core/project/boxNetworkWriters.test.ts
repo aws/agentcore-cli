@@ -163,7 +163,7 @@ describe("boxNetworkEdits", () => {
 });
 
 describe("gatewayTargetsWriter", () => {
-  test("writes no target for a host that the Runtime profile sends directly, and removes the one an earlier build wrote", () => {
+  test("writes no target for a host that the Runtime profile sends directly, and removes a managed one it holds", () => {
     const MEMORY_HOST = "bedrock-agentcore.us-west-2.amazonaws.com";
     // The additions rule sends a route to the AgentCore host directly when the runtime has its
     // default Memory, so the route has no backend to the host's target.
@@ -193,9 +193,9 @@ describe("gatewayTargetsWriter", () => {
       "adding gateway target 'egress-httpbin-org' to 'agent-box-egress' for httpbin.org",
     ]);
 
-    const earlier = direct([MINE, passthrough("egress-tools", `https://${MEMORY_HOST}`)]);
-    expect(targetNames(earlier.spec)).toEqual(["mine", "egress-httpbin-org"]);
-    expect(earlier.messages).toContain(
+    const held = direct([MINE, passthrough("egress-tools", `https://${MEMORY_HOST}`)]);
+    expect(targetNames(held.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(held.messages).toContain(
       "removing gateway target 'egress-tools' from 'agent-box-egress': on AgentCore Runtime the " +
         `box sends the calls to ${MEMORY_HOST} directly, not through the gateway`,
     );
@@ -342,12 +342,8 @@ describe("defaultTargetsWriter", () => {
     const edits = run([defaultTargetsWriter], [network()], project);
 
     // The agent's Memory calls go to Memory directly, so they take no target and no gateway policy.
-    // The writer removes the Memory policy file that an earlier build wrote.
     expect(targetNames(edits.spec)).toEqual(["mine", "bedrock"]);
-    expect(edits.files).toEqual([
-      expect.objectContaining({ path: BOX_BEDROCK_POLICY_FILE }),
-      { path: "agentcore/box-memory-policy.json", remove: true },
-    ]);
+    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
   });
 
   test("writes the Bedrock policy for the region of the bedrock target it writes", () => {
@@ -364,23 +360,6 @@ describe("defaultTargetsWriter", () => {
       ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
       ["arn:aws:bedrock:*::foundation-model/*"],
     ]);
-  });
-
-  test("keeps the Memory policy file of an earlier build while a gateway that is not a Box gateway lists it", () => {
-    const project = spec();
-    project.agentCoreGateways.push({
-      name: "tools",
-      authorizerType: "AWS_IAM",
-      targets: [],
-      additionalPolicies: ["agentcore/box-memory-policy.json"],
-    } as never);
-
-    const edits = run([defaultTargetsWriter], [network()], project);
-
-    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
-    expect(
-      edits.spec.agentCoreGateways.find(({ name }) => name === "tools")?.additionalPolicies,
-    ).toEqual(["agentcore/box-memory-policy.json"]);
   });
 
   test("writes the model target for the region of the build", () => {
