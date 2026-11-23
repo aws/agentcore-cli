@@ -213,7 +213,9 @@ A profile that names a pack `box/<name>` fails: box refuses it and names the `@b
   `mcp:call`. A host the gateway already has a target for keeps that target. Build owns only the
   targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them, changes
   them, and removes one when no host needs it. It never changes another target, also one whose name
-  starts with `egress-`. `agentcore create` and `agentcore add runtime` write an empty entry for
+  starts with `egress-`. `agentcore add gateway-target` refuses the names `bedrock`, `agentcore`,
+  and `egress-*` on a Box gateway, so such a target comes only from an edit by hand or an older CLI.
+  `agentcore create` and `agentcore add runtime` write an empty entry for
   each new Box gateway, so build owns none of its targets until it writes one. For a gateway that
   the file does not list, which an older CLI made, build takes each `egress-` target that has the
   shape it writes as its own, once, and warns for each other `egress-` target, which it keeps as
