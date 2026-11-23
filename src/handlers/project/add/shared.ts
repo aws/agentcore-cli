@@ -112,7 +112,7 @@ export function defaultGatewayChoice(
 
 /** " · bound to runtime 'x'" for a gateway bound to one runtime, for a wizard's choice text. */
 export function boundRuntimeNote(gateway: { boundRuntime?: string }): string {
-  return gateway.boundRuntime === undefined ? "" : ` · bound to runtime '${gateway.boundRuntime}'`;
+  return isBoundGateway(gateway) ? ` · bound to runtime '${gateway.boundRuntime}'` : "";
 }
 
 /**
