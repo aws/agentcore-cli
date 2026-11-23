@@ -26,7 +26,6 @@ import {
   imageTakesBoxDistArg,
   stageBoxImage,
 } from "../project/backends/boxContainer";
-import { boxReleaseFor, type BoxRelease } from "../project/backends/boxRelease";
 import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import {
   boxLocalProfileFile,
@@ -115,8 +114,6 @@ type ContainerDevRunnerConfig = {
   toolAvailable?: ToolAvailable;
   awsDirectory?: string;
   processEnv?: NodeJS.ProcessEnv;
-  /** The box release of the runtime's `box.version`, which the image downloads. Tests inject one. */
-  releaseFor?: (version: string | undefined) => Promise<BoxRelease>;
   /** Resolves the credentials a boxed container signs with; the default AWS SDK chain by default. */
   resolveAwsCredentials?: ResolveAwsCredentials;
   /** The platform, whose rules for variable names apply to `processEnv`; tests inject one. */
@@ -128,7 +125,6 @@ export class ContainerDevRunner implements DevRunner {
   private readonly toolAvailable: ToolAvailable;
   private readonly awsDirectory: string;
   private readonly processEnv: NodeJS.ProcessEnv;
-  private readonly releaseFor: (version: string | undefined) => Promise<BoxRelease>;
   private readonly resolveAwsCredentials: ResolveAwsCredentials;
   private readonly platform: NodeJS.Platform;
 
@@ -137,7 +133,6 @@ export class ContainerDevRunner implements DevRunner {
     this.toolAvailable = config.toolAvailable ?? toolAvailable;
     this.awsDirectory = config.awsDirectory ?? join(homedir(), ".aws");
     this.processEnv = config.processEnv ?? process.env;
-    this.releaseFor = config.releaseFor ?? boxReleaseFor;
     this.resolveAwsCredentials = config.resolveAwsCredentials ?? resolveDefaultAwsCredentials;
     this.platform = config.platform ?? process.platform;
   }
@@ -395,7 +390,6 @@ export class ContainerDevRunner implements DevRunner {
       context,
       profileText,
       boxPolicyFileCopies(input.projectRoot, input.runtime.name),
-      await this.releaseFor(input.runtime.box?.version),
       folder,
     );
     return { folder, profileText };

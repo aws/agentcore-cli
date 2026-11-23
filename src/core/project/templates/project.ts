@@ -98,18 +98,25 @@ export async function createProjectTree(
 }
 
 /**
- * Starts the runtime's agent in a box on a CodeZip deploy: start.py, the
- * entry point, runs `box run` with what deploy stages. Create alone writes it,
- * because only create writes the box profiles.
+ * The files a CodeZip box runtime's folder needs, which create and add runtime write:
+ * - start.py, the Runtime's entry point: it sets HOME and a writable workspace, exports the Python
+ *   and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+ * - an empty `.venv`. The box profile keeps the venv out of the write grant with an optional
+ *   deny_write, which box drops while `.venv` is missing, and box then refuses the profile, as the
+ *   venv's Python would be writable. `uv sync` fills the empty folder.
  */
-function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
-  // Python and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
-  template.tree.children.push(
+export function boxCodeZipFiles(assetSource: AssetSource): FsTreeNode[] {
+  return [
     FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
-      config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+      assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
     ),
-  );
+    FsTreeNode.createDirectory(".venv", []),
+  ];
+}
+
+/** Starts the runtime's agent in a box on a CodeZip deploy, with {@link boxCodeZipFiles}. */
+function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
+  template.tree.children.push(...boxCodeZipFiles(config.assetSource));
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     // The box release build and deploy ship; change it to move to another release. dev runs the

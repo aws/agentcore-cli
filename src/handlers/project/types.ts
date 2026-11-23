@@ -569,8 +569,12 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
-  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+  /**
+   * Compile the project's CDK app and synthesize its CloudFormation templates. `region` is the
+   * region build builds for, which the Box gateway's targets and Runtime profiles take; without
+   * it, build resolves the region as `--region` does with no flag.
+   */
+  build(project: Project, options?: { region?: string }): AsyncGenerator<ProjectEvent, void>;
 
   /**
    * Re-derives runtime build settings (build, dockerfile, runtimeVersion,

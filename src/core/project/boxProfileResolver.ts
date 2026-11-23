@@ -9,12 +9,7 @@ import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
 import { resolveExecutable } from "../../io/exec";
-import {
-  BOX_MINIMUM_VERSION,
-  BOX_OTHER_MACHINE_HINT,
-  BOX_RELEASE,
-  BOX_RELEASE_PAGE,
-} from "./backends/boxRelease";
+import { BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -51,9 +46,9 @@ export interface BoxProfileResolver {
 }
 
 /** What to install, which each error names when the `box` on PATH cannot resolve a profile. */
-const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry. ${BOX_OTHER_MACHINE_HINT}`;
+const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry.`;
 
-/** The refusal of an `@box/<name>` pack by a box older than {@link BOX_MINIMUM_VERSION}. */
+/** The refusal of an `@box/<name>` pack by a box from before those names. */
 const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;
 
 /** The error of a box that has no `--format` or `--full` option, as clap prints it. */
@@ -190,8 +185,7 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
           `Box refused the profile ${profilePath}:`,
           ...lines.map((line) => `  ${line}`),
           oldBox
-            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first box that names its packs ` +
-              `@box/<name>. ${INSTALL_BOX}`
+            ? `This box is older than the pinned box, which names its packs @box/<name>. ${INSTALL_BOX}`
             : agent === undefined
               ? "Fix what Box reports, then retry."
               : `Run 'uv sync' in ${agent}, then retry.`,
