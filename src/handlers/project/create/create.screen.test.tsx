@@ -1077,6 +1077,43 @@ describe("project create wizard", () => {
     r.unmount();
   }, 10000);
 
+  test("template flow: a box template in a region without Runtime V2 warns and still creates", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "us-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("SfoApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+    await waitForText(r.lastFrame, "how contained should the agent be?");
+    await r.press("return"); // sandboxed
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./SfoApp", 5000);
+
+    expect(flatFrame(r.lastFrame)).toContain(
+      "Box runs on AgentCore Runtime V2, which is not available in us-west-1",
+    );
+    expect(existsSync(join(directory, "SfoApp", "agentcore", "agentcore.json"))).toBe(true);
+    r.unmount();
+  }, 10000);
+
   test("template flow: the minimal template scaffolds without memory", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
