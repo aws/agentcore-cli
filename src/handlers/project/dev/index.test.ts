@@ -7,7 +7,10 @@ import {
   InternalServerException,
   type InvokeHarnessStreamOutput,
 } from "@aws-sdk/client-bedrock-agentcore";
-import type { GetHarnessResponse } from "@aws-sdk/client-bedrock-agentcore-control";
+import type {
+  GetAgentRuntimeResponse,
+  GetHarnessResponse,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   InputValidationError,
@@ -181,6 +184,7 @@ function harness(options: HarnessOptions = {}) {
   const handler = createDevProjectHandler({
     io: io.io,
     harness: harnessClient,
+    runtime: core.runtime,
     runners: { CodeZip: codeZip.runner, Container: container.runner },
     loadDevEnvironment:
       options.loadEnvironment ??
@@ -236,6 +240,7 @@ function harness(options: HarnessOptions = {}) {
     legacyDeployments,
     resolutions,
     harnessClient,
+    core,
     io,
     ui,
     watchers,
@@ -685,6 +690,79 @@ describe("project dev Inspector UI mode", () => {
       "payments",
     ]);
     expect(subject.io.stderr()).toContain("Reloaded agents from agentcore.json.");
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("reports deployment status from the default target, cached until agentcore.json changes", async () => {
+    const subject = harness({ reloadedRuntimes: [runtime("orders")] });
+    const lookups: string[] = [];
+    subject.core.projectManager.resolveProjectResources = async (_project, input) => {
+      lookups.push(input.target);
+      return {
+        resources: [
+          { resourceType: "runtime", name: "orders", deploymentState: "deployed", id: "orders-id" },
+        ],
+        target: { name: input.target, account: "111122223333", region: "eu-west-1" },
+      };
+    };
+    const { pending } = await runUi(subject);
+    const agents = async () => {
+      const response = await inspectorRequest({ subject, url: "/api/resources" });
+      return (JSON.parse(String(response.body)) as { agents: { deploymentStatus?: string }[] })
+        .agents;
+    };
+
+    expect((await agents())[0]?.deploymentStatus).toBe("deployed");
+    await agents();
+    expect(lookups).toEqual(["default"]);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+    await agents();
+    expect(lookups).toEqual(["default", "default"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("invokes the deployed Runtime in the default target with its credentials", async () => {
+    const subject = harness();
+    subject.core.runtime
+      .setGetResponse({
+        agentRuntimeArn: "arn:aws:bedrock-agentcore:eu-west-1:111122223333:runtime/orders-id",
+      } as GetAgentRuntimeResponse)
+      .setInvokeResponse({
+        kind: "stream",
+        statusCode: 200,
+        contentType: "text/event-stream",
+        body: (async function* () {
+          yield new TextEncoder().encode(`data: ${JSON.stringify({ text: "deployed" })}\n\n`);
+        })(),
+      });
+    const { pending } = await runUi(subject);
+
+    const response = await inspectorRequest({
+      subject,
+      url: "/invocations?target=deployed",
+      body: { agentName: "orders", prompt: "hi", sessionId: "session-0123456789012345678901234" },
+    });
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.body as AsyncIterable<Uint8Array>) chunks.push(chunk);
+
+    expect(Buffer.concat(chunks).toString()).toBe(`data: ${JSON.stringify("deployed")}\n\n`);
+    expect(subject.resolutions).toEqual([
+      { target: "default", resourceType: "runtime", name: "orders" },
+    ]);
+    const invoke = subject.core.runtime.calls.find((call) => call.method === "invokeRuntime")!;
+    const [request, options] = invoke.args as [
+      { runtimeSessionId?: string },
+      { region: string; credentials?: unknown },
+    ];
+    expect(request.runtimeSessionId).toBe("session-0123456789012345678901234");
+    expect(options.region).toBe("eu-west-1");
+    expect(options.credentials).toBeDefined();
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);

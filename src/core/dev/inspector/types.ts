@@ -9,7 +9,7 @@ import type {
   InvokeHarnessRequest,
   InvokeHarnessResponse,
 } from "@aws-sdk/client-bedrock-agentcore";
-import type { Project } from "../../../handlers/project/types";
+import type { DeployableResource, Project } from "../../../handlers/project/types";
 
 /** One managed agent's state, as reported by GET /api/status. */
 export interface InspectorAgentStatus {
@@ -49,6 +49,29 @@ export interface InspectorAssets {
   read(path: string): Promise<{ body: Uint8Array; contentType: string } | undefined>;
 }
 
+/** A resource's state in the dev deployment target, as the SPA badges it. */
+export type InspectorDeploymentStatus = "deployed" | "local-only";
+
+/** Looks up one declared resource's deployment status by resource type and name. */
+export type InspectorDeploymentLookup = (
+  resourceType: DeployableResource,
+  name: string,
+) => InspectorDeploymentStatus | undefined;
+
+/** A chat turn sent to a deployed Runtime: the SPA's request body, forwarded as-is. */
+export interface InspectorDeployedInvokeRequest {
+  payload: Uint8Array;
+  sessionId: string;
+  userId?: string;
+}
+
+/** A deployed Runtime's response, streamed back to the SPA like a local agent's. */
+export interface InspectorDeployedInvokeResponse {
+  statusCode: number;
+  contentType: string;
+  body: AsyncIterable<Uint8Array>;
+}
+
 /** Everything the Inspector request handler is composed from. */
 export interface InspectorDeps {
   supervisor: InspectorSupervisor;
@@ -58,6 +81,18 @@ export interface InspectorDeps {
   project?: Project;
   /** Agent name to pre-select in the UI. */
   selectedAgent?: string;
+  /**
+   * Resolves where the project's resources stand in the dev deployment target.
+   * Rejects when that cannot be determined (never deployed, no credentials),
+   * in which case resources carry no deploymentStatus.
+   */
+  deploymentStatus?: () => Promise<InspectorDeploymentLookup>;
+  /** Invokes the deployed Runtime of this name in the dev deployment target. */
+  invokeDeployedRuntime?: (
+    name: string,
+    request: InspectorDeployedInvokeRequest,
+    signal: AbortSignal,
+  ) => Promise<InspectorDeployedInvokeResponse>;
   invokeHarness?: (
     name: string,
     input: Omit<InvokeHarnessRequest, "harnessArn">,
