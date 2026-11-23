@@ -25,12 +25,14 @@ const TargetAssetSchema = AssetSchema.extend({ target: z.string().min(1) });
 
 /**
  * A box release: the Linux arm64 build that ships to AgentCore Runtime. Its archive holds box,
- * its helpers, its packs and release.json.
+ * its helpers, its packs and release.json. `darwin`, the macOS arm64 build, is what the e2e
+ * workflow installs on its macOS runner; the CLI does not read it.
  */
 const BoxReleaseSchema = z.object({
   repo: z.string().min(1),
   version: z.string().min(1),
   linux: TargetAssetSchema,
+  darwin: TargetAssetSchema.optional(),
 });
 
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
