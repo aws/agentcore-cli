@@ -2,7 +2,7 @@
  * Rule 4 of the derivation, the last: each path of the project and of the home folder, where it is
  * on AgentCore Runtime (`context.paths`). A container image keeps each path. On CodeZip, the venv's
  * Python goes to `${{ inputs.python.path }}`, the venv and the code folder go to
- * `${{ inputs.code.dir }}`, and the uv Pythons go to `${{ inputs.python.prefix }}`. The paths move
+ * `${{ inputs.code.dir }}`, and the uv Pythons go to `${{ inputs.python.stdlib }}`. The paths move
  * in each key that can hold a path (projectPaths.ts): the `[agent]` command, env, and filesystem
  * lists, and each key of each stdio `[mcp.<name>]` and `[tool.<name>]`. Then each filesystem list
  * has one grant for each path. A leaf that runs the Runtime's Python gets the `PYTHONPATH` of the

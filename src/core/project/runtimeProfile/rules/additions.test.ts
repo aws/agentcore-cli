@@ -12,7 +12,14 @@ import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from "../../boxNetwork";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderAgentCorePack, renderBoxProfile } from "../../templates/boxProfile";
+import {
+  AWS_METADATA_POLICY_FILE,
+  BOX_BEDROCK_API_KEY_ROUTE,
+  BOX_BEDROCK_PACK,
+  BOX_BEDROCK_ROUTE,
+  renderAgentCorePack,
+  renderBoxProfile,
+} from "../../templates/boxProfile";
 import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
@@ -161,6 +168,29 @@ const OTEL_START: Record<Build, string[]> = {
 };
 
 /**
+ * `profile`, a Runtime profile that the old renderer wrote, as the derivation writes it for box
+ * 0.3: with @box/bedrock, `bedrock.sign-in` is `api-key`, and the Bedrock route through the
+ * gateway is `[egress.bedrock-api-key]`, the pack's route for that sign-in. Nothing else changes.
+ */
+function withApiKeySignIn(profile: TomlTable): TomlTable {
+  const packs = profile.packs;
+  if (!Array.isArray(packs) || !packs.includes(BOX_BEDROCK_PACK)) return profile;
+  const result = structuredClone(profile);
+  const options = result.options as TomlTable;
+  options.bedrock = { ...(options.bedrock as TomlTable), "sign-in": "api-key" };
+  const egress = result.egress as TomlTable | undefined;
+  if (egress !== undefined && Object.hasOwn(egress, BOX_BEDROCK_ROUTE)) {
+    result.egress = Object.fromEntries(
+      Object.entries(egress).map(([name, route]) => [
+        name === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : name,
+        route,
+      ]),
+    );
+  }
+  return result;
+}
+
+/**
  * `profile`, a Runtime profile with OTEL off, as OTEL on gives it: the agent starts under
  * opentelemetry-instrument, and the default X-Ray target comes last when no target is
  * `cloudwatch_traces`. Nothing else changes.
@@ -193,7 +223,10 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the gateway fixture. The gateway fixture is recorded from renderRuntimeBoxProfile of
  * box-integration (f5503f02). The two template sets are recorded, with the default telemetry
  * target, from the renderer of aws/agentcore-cli#2867 (f40ebce7): box-integration (7252504c) with
- * the `@box/` pack names and no ffi shim.
+ * the `@box/` pack names. Their read and exec grants of the Runtime's Python name its standard
+ * library, `${{ inputs.python.stdlib }}`, where that renderer named its prefix,
+ * `${{ inputs.python.prefix }}`: the prefix is /usr on the Runtime, which box refuses as a system
+ * root.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
@@ -202,6 +235,16 @@ const OLD_RENDERER = JSON.parse(
   boxTemplates: Record<string, TomlTable>;
   gateway: Record<string, TomlTable>;
 };
+
+/**
+ * A profile the old renderer wrote, which named no file of create's under `policies`, with the
+ * policy file create now lists first, then the files of the recording. A case that adds a policy
+ * file of its own appends it to create's list, as a user does, and the derived profile keeps both.
+ */
+const withCreatePolicy = (old: TomlTable): TomlTable => ({
+  ...old,
+  policies: [AWS_METADATA_POLICY_FILE, ...((old.policies as string[] | undefined) ?? [])],
+});
 
 /** The tables that the additions rule owns, which the old renderer wrote. */
 const OWNED = [
@@ -248,7 +291,7 @@ describe("deriveRuntimeProfile on the created templates", () => {
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -261,9 +304,13 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded = OLD_RENDERER.templates[
-        `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
-      ] as TomlTable;
+      const recorded = withApiKeySignIn(
+        withCreatePolicy(
+          OLD_RENDERER.templates[
+            `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
+          ] as TomlTable,
+        ),
+      );
       const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
       for (const key of OWNED)
@@ -320,7 +367,7 @@ describe("deriveRuntimeProfile on each box template of create", () => {
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -334,12 +381,97 @@ describe("deriveRuntimeProfile on each box template of create", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded =
+      const recorded = withCreatePolicy(
         OLD_RENDERER.boxTemplates[
           `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
-        ]!;
+        ]!,
+      );
       expect(problems).toEqual([]);
-      expect(profile).toEqual(otel ? withOtel(recorded, input.build as Build) : recorded);
+      const signedIn = withApiKeySignIn(recorded);
+      expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
+    },
+  );
+});
+
+/**
+ * The value of each input of @box/agentcore-codezip on a CodeZip AgentCore Runtime, as start.py
+ * exports it there. Measured on a PYTHON_3_14 Runtime: its Python is /usr/bin/python3.14, with the
+ * base prefix /usr and the standard library /usr/lib/python3.14.
+ */
+const CODEZIP_RUNTIME_INPUTS: Readonly<Record<string, string>> = {
+  "${{ inputs.code.dir }}": "/var/task",
+  "${{ inputs.python.path }}": "/usr/bin/python3.14",
+  "${{ inputs.python.stdlib }}": "/usr/lib/python3.14",
+  "${{ inputs.python.prefix }}": "/usr",
+};
+
+/** The system roots that box refuses as a grant in each list (the floor of Box Core). */
+const BOX_SYSTEM_ROOTS: ReadonlySet<string> = new Set([
+  "/",
+  "/bin",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/srv",
+  "/sys",
+  "/tmp",
+  "/usr",
+  "/usr/bin",
+  "/usr/local",
+  "/usr/sbin",
+  "/usr/share",
+  "/var",
+]);
+
+/** The loader folders, which box grants only to `read`, as a whole tree. */
+const BOX_LOADER_FOLDERS: ReadonlySet<string> = new Set([
+  "/lib",
+  "/lib64",
+  "/usr/lib",
+  "/usr/lib64",
+]);
+
+describe("the Runtime profile of each CodeZip box template of create", () => {
+  const templates = BOX_TEMPLATES.filter(
+    (template) => resolveRuntimeTemplateShortcut(template).build === "CodeZip",
+  );
+
+  test.each(templates)(
+    "lets the Runtime's Python read its standard library and load its native modules, and grants no folder that box refuses on the Runtime (%s)",
+    (template) => {
+      const input = resolveRuntimeTemplateShortcut(template);
+      const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
+
+      const { profile, problems } = deriveRuntimeProfile(
+        local,
+        contextOf(createdRuntime(input, false)),
+      );
+
+      expect(problems).toEqual([]);
+      const filesystem = agentOf(profile).filesystem as Record<string, unknown[]>;
+      // A non-loader folder that box reads cannot map code, so lib-dynload needs exec too.
+      expect(filesystem.read).toContain("${{ inputs.python.stdlib }}");
+      expect(filesystem.exec).toContain("${{ inputs.python.stdlib }}");
+      for (const [list, grants] of Object.entries(filesystem)) {
+        for (const grant of grants) {
+          const path = typeof grant === "string" ? grant : (grant as { path: string }).path;
+          const onRuntime = CODEZIP_RUNTIME_INPUTS[path] ?? path;
+          const refused =
+            BOX_SYSTEM_ROOTS.has(onRuntime) ||
+            (list !== "read" && BOX_LOADER_FOLDERS.has(onRuntime));
+          expect({ list, path, onRuntime, refused }).toEqual({
+            list,
+            path,
+            onRuntime,
+            refused: false,
+          });
+        }
+      }
     },
   );
 });
@@ -378,20 +510,14 @@ describe("the additions rule", () => {
     expect(local).toEqual(before);
   });
 
-  test("removes the [tool.uname] table that a CodeZip template writes, and keeps each tool table of the user", () => {
+  test("writes no tool table for a CodeZip template, and keeps each tool table of the user", () => {
     const local = createdProfile(CODEZIP);
     const notes = { program: "/usr/bin/notes" };
-    const changed = { filesystem: { deny_write: ["${{ workspace }}/app/agent/data"] } };
 
-    expect(Object.keys(local.tool as TomlTable)).toEqual(["uname"]);
+    // The pinned box's @box/base has no tools, so the template gives none the project write grant.
+    expect(local).not.toHaveProperty("tool");
     expect(apply(local, contextOf(CODEZIP)).table).not.toHaveProperty("tool");
-    expect(
-      apply({ ...local, tool: { ...(local.tool as TomlTable), notes } }, contextOf(CODEZIP)).table
-        .tool,
-    ).toEqual({ notes });
-    expect(apply({ ...local, tool: { uname: changed } }, contextOf(CODEZIP)).table.tool).toEqual({
-      uname: changed,
-    });
+    expect(apply({ ...local, tool: { notes } }, contextOf(CODEZIP)).table.tool).toEqual({ notes });
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {
@@ -429,19 +555,26 @@ describe("the additions rule", () => {
     });
   });
 
-  test("sets bedrock.region to the build region, and keeps the other options", () => {
+  test("sets bedrock.region to the build region and bedrock.sign-in to api-key, and keeps the other options", () => {
+    // Box refuses the aws:// route of @box/bedrock beside the gateway backend, so the Runtime
+    // signs in with the pack's api-key route, whose env:// secret box replaces with a stand-in.
     const dotted = { options: { bedrock: { region: CREATE_REGION }, other: { input: "x" } } };
     const quoted = { options: { "bedrock.region": CREATE_REGION } };
+    const signedIn = { options: { bedrock: { region: CREATE_REGION, "sign-in": "aws" } } };
 
     expect(apply(dotted, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
       other: { input: "x" },
     });
     expect(apply(quoted, contextOf(CODEZIP)).table.options).toEqual({
       "bedrock.region": BUILD_REGION,
+      "bedrock.sign-in": "api-key",
+    });
+    expect(apply(signedIn, contextOf(CODEZIP)).table.options).toEqual({
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
   });
@@ -643,12 +776,12 @@ describe("the additions rule", () => {
       expect(agentOf(deriveRuntimeProfile(local, contextOf(CODEZIP)).profile).filesystem).toEqual({
         read: [
           "${{ inputs.code.dir }}",
-          "${{ inputs.python.prefix }}",
+          "${{ inputs.python.stdlib }}",
           "/usr/lib64",
           "/lib64",
           "${{ inputs.code.dir }}/data",
         ],
-        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}"],
+        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.stdlib }}"],
         deny_write: ["${{ inputs.code.dir }}/secrets"],
         write: ["/tmp/agent"],
       });

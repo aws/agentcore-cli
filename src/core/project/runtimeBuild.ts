@@ -4,6 +4,7 @@ import semver from "semver";
 import { parse as parseToml, type TomlTableWithoutBigInt } from "smol-toml";
 import { ProjectStateError } from "../../errors";
 import {
+  isContainerBuild,
   NodeRuntimeSchema,
   PythonRuntimeSchema,
   type RuntimeVersion,
@@ -55,7 +56,9 @@ export function describeChange(name: string, change: RuntimeChange): string {
   return change.field === "build" && change.to === "Container"
     ? `${line}. It now builds and deploys as a container image from that Dockerfile; to go ` +
         `back, delete the Dockerfile, then in agentcore.json set "build": "CodeZip", remove ` +
-        `"dockerfile", and add back the "runtimeVersion" removed below.`
+        `"dockerfile", and add back the "runtimeVersion" removed below. Container images are ` +
+        `built by CodeBuild; a local build (ContainerLocal) can only be chosen when adding a ` +
+        `workload, with --build-config, and a workload cannot be switched to it later.`
     : line;
 }
 
@@ -107,7 +110,7 @@ export function syncRuntimeBuild(
     next.build = "Container";
     next.dockerfile = DOCKERFILE_NAME;
     reasons.build = reasons.dockerfile = `${DOCKERFILE_NAME} in ${contextLabel}`;
-  } else if (runtime.build === "Container" && runtime.dockerfile === undefined) {
+  } else if (isContainerBuild({ build: runtime.build }) && runtime.dockerfile === undefined) {
     next.dockerfile = DOCKERFILE_NAME;
     reasons.dockerfile = "default";
   }
@@ -132,7 +135,7 @@ export function syncRuntimeBuild(
   }
 
   // runtimeVersion: CodeZip only; a Container image picks its own.
-  if (next.build === "Container") {
+  if (isContainerBuild({ build: next.build })) {
     delete next.runtimeVersion;
     reasons.runtimeVersion = "Container build";
   } else {
@@ -586,7 +589,7 @@ function runtimeProblems(
   const folder = resolve(projectRoot, runtime.codeLocation);
   const folderLabel = `${displayPath(projectRoot, folder)}/`;
   const problems: string[] = [];
-  if (runtime.build === "Container") {
+  if (isContainerBuild(runtime)) {
     const context = contextDir(runtime, projectRoot);
     const dockerfile = runtime.dockerfile ?? DOCKERFILE_NAME;
     if (!isFile(join(context, dockerfile))) {
@@ -600,7 +603,11 @@ function runtimeProblems(
           `${codeZipRevertEdits(runtime)}.`,
       );
     }
-    if (runtime.networkMode === "VPC" && !runtime.networkConfig?.vpcId) {
+    if (
+      runtime.build === "Container" &&
+      runtime.networkMode === "VPC" &&
+      !runtime.networkConfig?.vpcId
+    ) {
       problems.push(
         `${prefix} networkConfig.vpcId is required for Container builds in VPC mode ` +
           `(CodeBuild cannot infer the VPC from subnets).`,

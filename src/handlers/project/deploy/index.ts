@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
+import { declaresNothingDeployable } from "../../../core/project/spec";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
 import {
@@ -11,7 +12,6 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import { declaresNoResources } from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -25,7 +25,14 @@ import { JsonRendererKey } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
-import type { DeployResult, Project, ProjectManager, TeardownConfirmationHandler } from "../types";
+import type {
+  DeployResult,
+  Project,
+  ProjectManager,
+  TeardownConfirmationHandler,
+  WorkloadBuildMode,
+  WorkloadBuilds,
+} from "../types";
 
 export type DeployProjectHandlerConfig = {
   projectManager: ProjectManager;
@@ -130,7 +137,9 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         region: ctx.require(RegionKey),
         confirmTeardown,
         transactionSearch: globalConfig.transactionSearch,
+        disableDependencyManagement: globalConfig.disableDependencyManagement,
         skipBootstrap: flags["skip-bootstrap"],
+        onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
@@ -154,6 +163,24 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       if (!result.tornDown) config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
+
+/**
+ * Records how many runtimes and harnesses deploy with each build type. Deploy
+ * reports the effective build modes, after Dockerfile auto-detection, through
+ * DeployProjectInput.onWorkloadBuilds; pass this as that callback.
+ */
+export function recordBuildTypeCounts(ctx: Context, builds: WorkloadBuilds): void {
+  const entries = Object.entries(builds);
+  const count = (kind: "runtime" | "harness", build: WorkloadBuildMode) =>
+    entries.filter(([key, value]) => key.startsWith(`${kind}/`) && value === build).length;
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({
+    project_runtime_codezip_count: count("runtime", "CodeZip"),
+    project_runtime_container_count: count("runtime", "Container"),
+    project_runtime_container_local_count: count("runtime", "ContainerLocal"),
+    project_harness_container_count: count("harness", "Container"),
+    project_harness_container_local_count: count("harness", "ContainerLocal"),
+  });
+}
 
 export function recordProjectResourceCounts(ctx: Context, project: Project): void {
   const { spec } = project;
@@ -267,20 +294,6 @@ async function delegateV0Deploy(
   ctx.value(CommandRunMetricEventKey)?.setAttributes({ legacy_deploy_exit_code: exitCode });
   if (exitCode === 2) throw new LegacyDeployWarningExit();
   if (exitCode !== 0) throw new LegacyDeployError(exitCode);
-}
-
-/**
- * True when the spec declares none of the resources `removeAllResources`
- * clears, i.e. what an emptied project looks like. This is the up-front proxy
- * for the backend's post-synth zero-resource count; the two can disagree when a
- * declared resource synthesizes no CloudFormation resource (or a hand-edited
- * CDK app adds one), so the backend's count stays authoritative and this only
- * decides whether to ask the user before starting.
- */
-export function declaresNothingDeployable(project: Project): boolean {
-  // A Box project keeps a Box gateway for each runtime, so its agentCoreGateways are non-empty
-  // until every runtime is also removed; this check needs no Box-specific branch.
-  return declaresNoResources(project.spec);
 }
 
 /**

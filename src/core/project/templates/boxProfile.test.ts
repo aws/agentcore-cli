@@ -6,12 +6,18 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import { type ProjectSpec } from "../../../projectSchemas/project";
+import { boxReachRules } from "../boxProfileResolver-test-support";
+import { parsePolicy } from "../boxNetwork/dogwood";
+import { buildHostMap } from "../boxNetwork/hostMap";
 import {
+  AWS_METADATA_POLICY_FILE,
+  AWS_METADATA_RULE_IDS,
   boxProfileWarnings,
   boxStartFolder,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
+  renderAwsMetadataPolicy,
   renderBoxProfile,
   runtimeAgentTemplate,
   startsInBoxOnCodeZip,
@@ -70,6 +76,7 @@ describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS, REGION)!) as unknown).toEqual({
       packs: ["@box/base", "@box/bedrock"],
+      policies: ["aws-metadata-block.dw"],
       profile: { name: "V3Demo-agent" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -79,7 +86,6 @@ describe("renderBoxProfile", () => {
         filesystem: VENV_GRANTS,
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
-      tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
       egress: { bedrock: { secret: { ref: "aws://" } } },
     });
   });
@@ -102,7 +108,7 @@ describe("renderBoxProfile", () => {
   // agentcore dev starts box in app/<runtime>, so ${{ workspace }} and the project grant are that
   // folder: agentcore/.env.local, with the model's key, .git and agentcore/cdk lie outside them.
   test("grants the agent its own folder and no other folder of the project", () => {
-    const { project, agent, tool } = profile("agent-python-strands-box", {
+    const { project, agent } = profile("agent-python-strands-box", {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
@@ -111,7 +117,6 @@ describe("renderBoxProfile", () => {
       const path = typeof grant === "string" ? grant : grant.path;
       expect(path).not.toMatch(/agentcore|\.git|\.\./);
     }
-    expect(JSON.stringify(tool)).not.toMatch(/agentcore|\.git|\.\./);
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {
@@ -333,6 +338,61 @@ describe("renderBoxProfile", () => {
   });
 });
 
+describe("renderAwsMetadataPolicy", () => {
+  test.each([
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+  ] as const)("is the policy file that the %s profile names, beside it", (name) => {
+    expect(profile(name).policies).toEqual([AWS_METADATA_POLICY_FILE]);
+  });
+
+  // The host map leaves these ids out of the limits it reports, so the file holds exactly them.
+  test("holds only forbids, under the ids of AWS_METADATA_RULE_IDS", () => {
+    const { statements, errors } = parsePolicy(renderAwsMetadataPolicy());
+    expect(errors).toEqual([]);
+    expect(statements.map(({ effect, annotations }) => [effect, annotations.id])).toEqual(
+      [...AWS_METADATA_RULE_IDS].map((id) => ["forbid", id]),
+    );
+  });
+
+  // Box adds no metadata rule of its own, so the routes here get only Box's permits for them.
+  test.each([
+    ["169.254.169.254", "aws_metadata_addresses"],
+    ["instance-data", "aws_metadata_hosts"],
+    ["instance-data.ec2.internal", "aws_metadata_hosts"],
+  ])("denies %s even when a route permits it, by %s", (destination, rule) => {
+    const egress = { imds: { destinations: [destination] } };
+    const { statements } = parsePolicy(
+      renderAwsMetadataPolicy() + boxReachRules("route", "imds", [destination]),
+    );
+    const host = buildHostMap({ statements, egress, mcp: {} }).hosts.find(
+      ({ authority }) => authority === destination,
+    );
+    expect(host?.reachable).toBe(false);
+    expect(host?.forbiddenBy).toContain(rule);
+  });
+
+  // A neighbouring link-local address stays open, so a rule widened to a pattern fails here. The
+  // address rule could hold for any host before DNS resolution; build reports it for none.
+  test.each(["api.example.com", "169.254.169.253"])(
+    "leaves %s to the routes, and reports no limit on it",
+    (destination) => {
+      const egress = { other: { destinations: [destination] } };
+      const { statements } = parsePolicy(
+        renderAwsMetadataPolicy() + boxReachRules("route", "other", [destination]),
+      );
+      const host = buildHostMap({ statements, egress, mcp: {} }).hosts.find(
+        ({ authority }) => authority === destination,
+      );
+      expect(host?.reachable).toBe(true);
+      expect(host?.forbiddenBy).toEqual([]);
+      expect(host?.enforcedByBox).toEqual([]);
+    },
+  );
+});
+
 describe("runtimeAgentTemplate", () => {
   test("gives a CodeZip template's [agent] on the Runtime in the local paths, with no reload", () => {
     expect(runtimeAgentTemplate(STRANDS)).toEqual({
@@ -417,6 +477,68 @@ describe("renderAgentCorePack", () => {
       }),
     ) as Record<string, any>;
   }
+
+  describe("for a gateway of the project that the agent calls", () => {
+    const TOOLS = {
+      name: "tools",
+      target: "egress-gateway-tools",
+      variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+      auth: "iam",
+    } as const;
+    const withTools = (memories: { name: string }[] = []) =>
+      parse(
+        renderAgentCorePack(
+          { name: "V3Demo", memories } as unknown as ProjectSpec,
+          { name: "agent", instrumentation: { enableOtel: false } },
+          [TOOLS],
+        ),
+      ) as Record<string, any>;
+    const HOST =
+      "v3demo-default-tools-abcdefghij.gateway.bedrock-agentcore.us-west-2.amazonaws.com";
+
+    test("reads its host and its URL from the variables the CDK library sets for it", () => {
+      const { inputs } = withTools();
+      expect(inputs.gateways.tools.host.from).toBe("env:AGENTCORE_GATEWAY_TOOLS_HOST");
+      expect(inputs.gateways.tools.url.from).toBe("env:AGENTCORE_GATEWAY_TOOLS_URL");
+    });
+
+    test("gives the agent the URL under the name a runtime without a box reads, beside the memory IDs", () => {
+      expect(withTools([{ name: "notes" }]).agent.env).toEqual({
+        MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
+        AGENTCORE_GATEWAY_TOOLS_URL: "${{ inputs.gateways.tools.url }}",
+      });
+    });
+
+    const CHINA_HOST =
+      "v3demo-default-tools-abcdefghij.gateway.bedrock-agentcore.cn-north-1.amazonaws.com.cn";
+
+    test.each([
+      [HOST, true],
+      [CHINA_HOST, true],
+      [`${HOST}.cn.evil.example.com`, false],
+      [`https://${HOST}`, false],
+      [`${HOST}/mcp`, false],
+      ["evil.example.com", false],
+      ["x.gateway.bedrock-agentcore.us-west-2.amazonaws.com.evil.example.com", false],
+    ])("the host pattern takes %s: %p", (host, matches) => {
+      expect(new RegExp(`^${withTools().inputs.gateways.tools.host.pattern}$`).test(host)).toBe(
+        matches,
+      );
+    });
+
+    test.each([
+      [`https://${HOST}/mcp`, true],
+      [`https://${HOST}`, true],
+      [`https://${CHINA_HOST}/mcp`, true],
+      [`http://${HOST}/mcp`, false],
+      [`https://${HOST}/mcp/x`, false],
+      ["https://evil.example.com/mcp", false],
+    ])("the URL pattern takes %s: %p", (url, matches) => {
+      expect(new RegExp(`^${withTools().inputs.gateways.tools.url.pattern}$`).test(url)).toBe(
+        matches,
+      );
+    });
+  });
 
   test("names itself @box/agentcore and ships as a support pack", () => {
     const toml = pack([]);
@@ -549,18 +671,20 @@ describe("renderAgentCoreCodeZipPack", () => {
     expect(toml().pack).toEqual({ name: "@box/agentcore-codezip", version: 1, kind: "support" });
   });
 
-  test("declares the Runtime Python and code directory from the environment start.py exports", () => {
+  test("declares the Runtime Python, its standard library, and the code directory from the environment start.py exports", () => {
     const { inputs } = toml();
     expect(inputs.python.path.from).toBe("env:BOX_PYTHON");
-    expect(inputs.python.prefix.from).toBe("env:BOX_PYTHON_PREFIX");
+    expect(inputs.python.stdlib.from).toBe("env:BOX_PYTHON_STDLIB");
     expect(inputs.code.dir.from).toBe("env:BOX_CODE");
+    // The prefix of the Runtime's Python is /usr, which box refuses as a grant.
+    expect(inputs.python.prefix).toBeUndefined();
   });
 
   test("bounds the inputs that reach the agent command or a filesystem grant with a pattern", () => {
     const { inputs } = toml();
-    // The Python path (command element 0) and the code dir (--app-dir) reach `command`; the prefix
-    // reaches the read and exec grants.
-    for (const input of [inputs.python.path, inputs.code.dir, inputs.python.prefix]) {
+    // The Python path (command element 0) and the code dir (--app-dir) reach `command`; the
+    // standard library reaches the read and exec grants.
+    for (const input of [inputs.python.path, inputs.code.dir, inputs.python.stdlib]) {
       const pattern = new RegExp(`^${input.pattern}$`);
       expect(pattern.test("/var/lang")).toBe(true);
       // Neither an empty value nor / may widen a grant to the whole filesystem.

@@ -14,6 +14,7 @@ import type { ProjectSpec } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
 import type { PolicyFileCopy } from "./backends/boxContainer";
+import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
 import {
@@ -59,6 +60,8 @@ export async function readBoxNetworks(
   projectRoot: string,
   resolver: BoxProfileResolver,
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+  /** What the check of the @aws/agentcore-cdk of the project gives for `passthrough.gateway`. */
+  projectGatewayCheck?: PassthroughGatewayCheck,
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
@@ -89,6 +92,7 @@ export async function readBoxNetworks(
       region,
       targets: entry.targets,
       grantedActions: granted.actions,
+      ...(projectGatewayCheck && { projectGatewayCheck }),
       ...(record &&
         Object.hasOwn(record, entry.name) && { ownedTargets: new Set(record[entry.name]) }),
     });

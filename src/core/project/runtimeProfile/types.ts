@@ -7,6 +7,7 @@ import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetworkHost, CloudWatchTelemetry } from "../boxNetwork";
+import type { BoxProjectGateway } from "../boxNetwork/projectGateways";
 
 /** A TOML table as smol-toml parses it: a key holds a string, a number, a boolean, a list, or a table. */
 export type TomlTable = Record<string, unknown>;
@@ -27,8 +28,8 @@ export const RUNTIME_INPUTS = {
   codeDir: "${{ inputs.code.dir }}",
   /** The Python of a CodeZip Runtime (@box/agentcore-codezip). */
   pythonPath: "${{ inputs.python.path }}",
-  /** The base prefix of that Python (@box/agentcore-codezip). */
-  pythonPrefix: "${{ inputs.python.prefix }}",
+  /** The standard library of that Python, with its native modules (@box/agentcore-codezip). */
+  pythonStdlib: "${{ inputs.python.stdlib }}",
 } as const;
 
 /**
@@ -48,8 +49,11 @@ export interface RuntimePaths {
   readonly runtimeCode: string;
   /** The Python on the Runtime, for the venv's Python: `${{ inputs.python.path }}` on CodeZip. */
   readonly runtimePython: string;
-  /** The prefix of that Python, for the uv Pythons: `${{ inputs.python.prefix }}` on CodeZip. */
-  readonly runtimePythonPrefix: string;
+  /**
+   * The standard library of that Python, with its native modules, for the uv Pythons:
+   * `${{ inputs.python.stdlib }}` on CodeZip.
+   */
+  readonly runtimePythonStdlib: string;
   /**
    * The words before a command that start it under opentelemetry-instrument on the Runtime. The
    * CodeZip zip has the script with a `#!/usr/bin/env python3` line, which the box cannot run, so
@@ -77,6 +81,8 @@ export interface RuntimeProfileContext {
   };
   /** The hosts of the Box network model, each with the gateway target it gets. */
   readonly hosts: readonly BoxNetworkHost[];
+  /** The gateways of the project that the agent calls through the Box gateway; absent means none. */
+  readonly projectGateways?: readonly BoxProjectGateway[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */
   readonly telemetry: readonly CloudWatchTelemetry[];
   /**
@@ -109,6 +115,8 @@ export const RUNTIME_PROFILE_PROBLEM_CODES = [
   "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
   /** A CloudWatch telemetry target that box refuses when a run starts. */
   "RUNTIME_TELEMETRY_REFUSED",
+  /** An `[mcp]` server with the name of a gateway of the project, which build adds on the Runtime. */
+  "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
 ] as const;
 export type RuntimeProfileProblemCode = (typeof RUNTIME_PROFILE_PROBLEM_CODES)[number];
 

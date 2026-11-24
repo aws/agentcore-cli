@@ -26,13 +26,15 @@ const TargetAssetSchema = AssetSchema.extend({ target: z.string().min(1) });
 /**
  * A box release: the Linux arm64 build that ships to AgentCore Runtime. Its archive holds box,
  * its helpers, its packs and release.json. `darwin`, the macOS arm64 build, is what the e2e
- * workflow installs on its macOS runner; the CLI does not read it.
+ * workflow installs on its macOS runner; the CLI does not read it. Its own `version`, when set,
+ * names the release it comes from instead of `version`, for a release whose macOS build is
+ * broken.
  */
 const BoxReleaseSchema = z.object({
   repo: z.string().min(1),
   version: z.string().min(1),
   linux: TargetAssetSchema,
-  darwin: TargetAssetSchema.optional(),
+  darwin: TargetAssetSchema.extend({ version: z.string().min(1).optional() }).optional(),
 });
 
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
@@ -47,6 +49,18 @@ export const BOX_RELEASE: BoxRelease = PINNED.box;
 
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
+
+/**
+ * Where macOS gets box when the darwin pin names its own release, because the pinned release's
+ * macOS build does not run; empty otherwise.
+ */
+const DARWIN_VERSION = BOX_RELEASE.darwin?.version;
+export const BOX_MACOS_HINT =
+  DARWIN_VERSION !== undefined && DARWIN_VERSION !== BOX_RELEASE.version
+    ? `On macOS, use ${BOX_RELEASE.darwin?.asset} from ` +
+      `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${DARWIN_VERSION} instead: the ` +
+      `macOS build of ${BOX_RELEASE.version} does not run.`
+    : "";
 
 /** Where a release's asset downloads from: the public GitHub release, no token needed. */
 export function boxReleaseAssetUrl(
@@ -68,8 +82,10 @@ export const BOX_BINARIES = [
  * dev ask for when it is not on PATH.
  */
 export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.";
+  `Install box: download box-cli-v${BOX_RELEASE.version}-<target>.tar.gz for your machine from ` +
+  `${BOX_RELEASE_PAGE} (not a box-v${BOX_RELEASE.version}-* archive, which has no packs), unpack ` +
+  "it into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH." +
+  (BOX_MACOS_HINT === "" ? "" : ` ${BOX_MACOS_HINT}`);
 
 /** A Linux arm64 box for AgentCore Runtime. */
 export type BoxLinuxBuild = {

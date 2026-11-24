@@ -52,6 +52,7 @@ describe("gateway-connector wizard helpers", () => {
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
       agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
     });
     const screen = renderScreen("/agentcore/add/gateway-connector");

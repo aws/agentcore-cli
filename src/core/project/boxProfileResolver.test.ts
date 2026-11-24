@@ -97,25 +97,21 @@ const SHOWN_POLICY =
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
 /** The last sentence of each error that says to install another box: the pinned release. */
-const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}), then retry.`;
+const INSTALL =
+  `Install box ${BOX_RELEASE.version} (https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
+  "On macOS, use box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
+  "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS build " +
+  "of 0.3.0 does not run.";
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
  * with no secret, the route `keyed` with one, and {@link POLICY}, as box prints it, with HOME at
- * /tmp/acbox/home. Box 0.1.11-linux-preview.6 joins the destinations of an open route into one
- * string, and 0.1.11-linux-preview.7 prints the second, a list. preview.6 printed the first for the
- * same profile with its pack named box/base, the name it had before `@box/`.
+ * /tmp/acbox/home.
  */
-const OPEN_ROUTES_SHOWN = Object.entries({
-  "one string": readFileSync(
-    join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes.json"),
-    "utf8",
-  ),
-  "a list": readFileSync(
-    join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes-list.json"),
-    "utf8",
-  ),
-});
+const OPEN_ROUTES_SHOWN = readFileSync(
+  join(import.meta.dir, "__fixtures__", "box-profile-show-open-routes-list.json"),
+  "utf8",
+);
 
 describe("parseBoxProfileShow", () => {
   test("takes the box.toml as a table in the order of the file, the policy.dw, the packs, and the warnings", () => {
@@ -164,20 +160,17 @@ describe("parseBoxProfileShow", () => {
     );
   });
 
-  test.each(OPEN_ROUTES_SHOWN)(
-    "takes each open route, which box.toml leaves out, and its destinations from %s",
-    (_, shown) => {
-      const resolved = parseBoxProfileShow(shown, ".box/profile.toml");
+  test("takes each open route, which box.toml leaves out, and its destinations", () => {
+    const resolved = parseBoxProfileShow(OPEN_ROUTES_SHOWN, ".box/profile.toml");
 
-      expect(resolved.openRoutes).toEqual([
-        { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
-        { route: "github", destinations: ["api.github.com"] },
-      ]);
-      expect(resolved.boxToml.egress).toEqual({
-        keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
-      });
-    },
-  );
+    expect(resolved.openRoutes).toEqual([
+      { route: "auth", destinations: ["login.example.com", "auth.example.com:8443"] },
+      { route: "github", destinations: ["api.github.com"] },
+    ]);
+    expect(resolved.boxToml.egress).toEqual({
+      keyed: { destinations: ["k.example.com:8443"], secret: { ref: "env://KEY" } },
+    });
+  });
 
   const document = JSON.parse(SHOWN) as Record<string, unknown>;
   const { box_toml: _boxToml, ...noBoxToml } = document;
@@ -316,7 +309,7 @@ describe("BoxCliProfileResolver", () => {
   });
 
   test("says to install the pinned box when an older box refuses an @box/ pack", async () => {
-    // Box 0.1.11-linux-preview.6 wraps its error, here inside the pack name's line.
+    // An older box wraps its error, here inside the pack name's line.
     const error = await failure(
       refusal([
         'box: error: /work/demo/.box/profile.toml: "@box/base" is',

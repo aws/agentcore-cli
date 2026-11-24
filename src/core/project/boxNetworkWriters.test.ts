@@ -320,6 +320,73 @@ describe("gatewayTargetsWriter", () => {
   });
 });
 
+describe("gatewayTargetsWriter for the gateways of the project", () => {
+  const TOOLS = {
+    name: "tools",
+    target: "egress-gateway-tools",
+    variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+    auth: "iam",
+  } as const;
+  const OPEN = {
+    name: "open",
+    target: "egress-gateway-open",
+    variablePrefix: "AGENTCORE_GATEWAY_OPEN",
+    auth: "none",
+  } as const;
+  const toolsTarget: AgentCoreGatewayTarget = {
+    name: "egress-gateway-tools",
+    targetType: "passthrough",
+    passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+  };
+
+  test("adds a target that names each gateway, signed with the role only for an AWS_IAM gateway", () => {
+    const edits = run([gatewayTargetsWriter], [network({ projectGateways: [TOOLS, OPEN] })]);
+
+    expect(edits.spec.agentCoreGateways[0]!.targets).toEqual([
+      MINE,
+      toolsTarget,
+      {
+        name: "egress-gateway-open",
+        targetType: "passthrough",
+        passthrough: { gateway: "open", protocolType: "CUSTOM" },
+      },
+    ]);
+    expect(edits.messages).toEqual([
+      "adding gateway target 'egress-gateway-tools' to 'agent-box-egress', for the boxed agent's calls to the gateway 'tools'",
+      "adding gateway target 'egress-gateway-open' to 'agent-box-egress', for the boxed agent's calls to the gateway 'open'",
+    ]);
+  });
+
+  test("removes a region that an earlier build wrote, as the L3 signs in the region of the stack, and changes nothing the next time", () => {
+    const stale = {
+      ...toolsTarget,
+      outboundAuth: { ...toolsTarget.outboundAuth!, region: "us-east-1" },
+    };
+    const edits = run(
+      [gatewayTargetsWriter],
+      [network({ projectGateways: [TOOLS] })],
+      spec([stale, MINE]),
+    );
+
+    expect(edits.spec.agentCoreGateways[0]!.targets).toEqual([toolsTarget, MINE]);
+    expect(edits.messages).toEqual([
+      "updating gateway target 'egress-gateway-tools' of 'agent-box-egress' for the gateway 'tools'",
+    ]);
+    const again = run([gatewayTargetsWriter], [network({ projectGateways: [TOOLS] })], edits.spec);
+    expect(again.specChanged).toBe(false);
+  });
+
+  test("removes the target of a gateway that the agent no longer calls", () => {
+    const edits = run([gatewayTargetsWriter], [network()], spec([toolsTarget, MINE]));
+
+    expect(targetNames(edits.spec)).toEqual(["mine"]);
+    expect(edits.messages).toEqual([
+      "removing gateway target 'egress-gateway-tools' from 'agent-box-egress': the boxed agent no longer calls the gateway 'tools'",
+    ]);
+  });
+});
+
 describe("the warning for a host with no gateway target", () => {
   /** The warnings of the hosts, from the credentials and gateway targets writers, as build runs them. */
   const warningsOf = (networks: BoxNetwork[], context: BoxNetworkWriteContext) =>
@@ -681,6 +748,26 @@ describe("runtimeProfileWriter", () => {
 
     expect(() => run([writer], [])).toThrow(
       'runtime "agent" runs its agent in a box, but build has no AgentCore Runtime profile for it',
+    );
+  });
+
+  test("stages the inputs of each gateway that the agent calls in the @box/agentcore pack", () => {
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
+    ]);
+    const tools = {
+      name: "tools",
+      target: "egress-gateway-tools",
+      variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+      auth: "iam",
+    } as const;
+
+    const { files } = run([writer], [network({ projectGateways: [tools] })]);
+
+    const pack = files.find(({ path }) => path.endsWith(AGENTCORE_PACK_PATH));
+    expect(pack && "text" in pack && pack.text).toContain(
+      "[inputs.gateways.tools.host]\ndescription = \"The deployed 'tools' gateway host.\"\n" +
+        'from = "env:AGENTCORE_GATEWAY_TOOLS_HOST"\n',
     );
   });
 

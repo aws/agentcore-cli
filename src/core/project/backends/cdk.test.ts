@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
@@ -10,7 +11,7 @@ import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
-import { boxOtelWarnings, CdkBackend } from "./cdk";
+import { boxOtelWarnings, CdkBackend, type CdkBackendConfig } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisionInput,
@@ -36,6 +37,7 @@ const OLD_PAYMENT_ARN =
   "arn:aws:bedrock-agentcore:us-east-1:111122223333:" +
   `token-vault/default/paymentcredentialprovider/${OLD_PAYMENT_PROVIDER}`;
 const json = new FsReadWriteJson({ logger: createSilentLogger() });
+const VENDED_CDK_PACKAGE_JSON = join(import.meta.dir, "../../../assets/cdk/package.json");
 
 /** A template holding only what CDK adds itself, as an empty project synthesizes. */
 const METADATA_ONLY = { CDKMetadata: { Type: "AWS::CDK::Metadata" } };
@@ -115,6 +117,10 @@ async function project(withDependencies = true): Promise<Project> {
 type AssemblyOptions = {
   /** Overrides the resources every stack's template declares. */
   resources?: Record<string, unknown>;
+  /** A custom CloudFormation stack name for every stack, as a customized CDK app sets. */
+  stackName?: string;
+  /** The `agentcore:localImages` metadata every stack's template records. */
+  localImages?: Record<string, string>;
 };
 
 async function writeAssembly(
@@ -135,6 +141,9 @@ async function writeAssembly(
       writeFile(
         join(directory, stack.templateFile),
         JSON.stringify({
+          ...(options.localImages && {
+            Metadata: { "agentcore:localImages": options.localImages },
+          }),
           Resources: options.resources ?? { Runtime: { Type: "AWS::BedrockAgentCore::Runtime" } },
         }),
       ),
@@ -148,15 +157,23 @@ async function writeAssembly(
       artifacts: {
         Tree: { type: "cdk:tree" },
         ...Object.fromEntries(
-          stacks.map((stack) => [
-            stack.id,
-            {
-              type: "aws:cloudformation:stack",
-              properties: {
-                templateFile: stack.templateFile,
-                tags: { "agentcore:target-name": stack.target },
+          stacks.flatMap((stack) => [
+            [
+              stack.id,
+              {
+                type: "aws:cloudformation:stack",
+                dependencies: [`${stack.id}.assets`],
+                properties: {
+                  templateFile: stack.templateFile,
+                  tags: { "agentcore:target-name": stack.target },
+                  ...(options.stackName && { stackName: options.stackName }),
+                },
               },
-            },
+            ],
+            [
+              `${stack.id}.assets`,
+              { type: "cdk:asset-manifest", properties: { file: `${stack.id}.assets.json` } },
+            ],
           ]),
         ),
       },
@@ -164,7 +181,29 @@ async function writeAssembly(
   );
 }
 
+/** Writes a ContainerLocal image asset manifest for the runtime "agent", as the companion CDK does. */
+async function writeLocalImageManifest(p: Project): Promise<void> {
+  await writeFile(
+    join(assemblyDirectory(p), "AgentCore-example-default-0.assets.json"),
+    JSON.stringify({
+      version: "36.0.0",
+      files: {},
+      dockerImages: {
+        abc123: {
+          source: { directory: "asset.abc123", platform: "linux/arm64" },
+          destinations: {},
+        },
+      },
+    }),
+  );
+}
+
 type HarnessOptions = {
+  deployedTemplate?: object | null;
+  /** Thrown by GetTemplate instead of returning the deployed template. */
+  getTemplateError?: Error;
+  checkLocalBuilder?: CdkBackendConfig["checkLocalBuilder"];
+  resolveContainerExecutable?: CdkBackendConfig["resolveContainerExecutable"];
   account?: string;
   bootstrap?: BootstrapState;
   outputs?: CdkOutputs;
@@ -181,6 +220,10 @@ type HarnessOptions = {
   describedStack?: Stack | null;
   /** Failure thrown by the fake synth process after emitting its output. */
   synthError?: Error;
+  /** Failure a fake process throws for a given command, e.g. a local image build. */
+  commandError?: (command: string[]) => Error | undefined;
+  /** Output a fake process streams for a given command, e.g. `docker buildx inspect`. */
+  commandOutput?: (command: string[]) => string | undefined;
   /** Chunks the fake synth process streams through onOutput. */
   synthOutput?: string[];
   /** Lines the fake Toolkit reports through each operation's onOutput sink. */
@@ -189,6 +232,8 @@ type HarnessOptions = {
 
 function harness(options: HarnessOptions = {}) {
   const commands: { command: string[]; cwd: string }[] = [];
+  /** BUILDX_BUILDER each command ran with, from its env (undefined when inherited). */
+  const commandBuilders: { command: string[]; buildxBuilder: string | undefined }[] = [];
   const runs: { operation: CdkOperation; options: CdkRunOptions }[] = [];
   const credentialRegions: string[] = [];
   const accountCredentials: CdkCredentialProvider[] = [];
@@ -207,9 +252,33 @@ function harness(options: HarnessOptions = {}) {
 
   const backend = new CdkBackend({
     logger: createSilentLogger(),
+    assertLocalCdkSupport: () => {},
+    createCloudFormationClient: () =>
+      ({
+        send: async () => {
+          if (options.getTemplateError) throw options.getTemplateError;
+          return {
+            TemplateBody:
+              options.deployedTemplate === null
+                ? undefined
+                : JSON.stringify(options.deployedTemplate ?? { Resources: {} }),
+          };
+        },
+      }) as unknown as ReturnType<NonNullable<CdkBackendConfig["createCloudFormationClient"]>>,
+    checkLocalBuilder: options.checkLocalBuilder,
+    // An explicit `resolveContainerExecutable: undefined` keeps the backend's own resolver.
+    resolveContainerExecutable:
+      "resolveContainerExecutable" in options
+        ? options.resolveContainerExecutable
+        : async () => "docker",
     identity: unusedIdentity(),
-    runner: async (command, { cwd, onOutput }) => {
+    runner: async (command, { cwd, env, onOutput }) => {
       commands.push({ command, cwd });
+      commandBuilders.push({ command, buildxBuilder: env?.BUILDX_BUILDER });
+      const commandError = options.commandError?.(command);
+      if (commandError) throw commandError;
+      const commandOutput = options.commandOutput?.(command);
+      if (commandOutput !== undefined) onOutput?.(commandOutput);
       for (const chunk of options.synthOutput ?? []) onOutput?.(chunk);
       if (options.synthError) throw options.synthError;
     },
@@ -286,6 +355,7 @@ function harness(options: HarnessOptions = {}) {
     backend,
     bootstrapCredentials,
     bootstrapRegions,
+    commandBuilders,
     commands,
     credentialRegions,
     credentials,
@@ -324,6 +394,155 @@ function stepMessages(events: ProjectEvent[]): string[] {
 }
 
 describe("CdkBackend.build", () => {
+  test("builds, but does not publish, each ContainerLocal image after synthesis", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "local_agent",
+        build: "ContainerLocal",
+        codeLocation: "app/local_agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name, "preview"], {
+      localImages: { "runtime/local_agent": "abc123" },
+    });
+    const image = {
+      source: {
+        directory: "asset.abc123",
+        dockerFile: "Dockerfile",
+        dockerBuildArgs: { VERSION: "v1" },
+        platform: "linux/arm64",
+      },
+      destinations: {},
+    };
+    // The same image in two target stacks is built once.
+    for (const stack of ["AgentCore-example-default-0", "AgentCore-example-preview-1"]) {
+      await writeFile(
+        join(assemblyDirectory(p), `${stack}.assets.json`),
+        JSON.stringify({ version: "36.0.0", files: {}, dockerImages: { abc123: image } }),
+      );
+    }
+    // A manifest left by an earlier synth (here, before a target existed) is not built.
+    await writeFile(
+      join(assemblyDirectory(p), "AgentCore-example.assets.json"),
+      JSON.stringify({
+        version: "36.0.0",
+        files: {},
+        dockerImages: {
+          stale999: { ...image, source: { ...image.source, directory: "asset.stale999" } },
+        },
+      }),
+    );
+    const checked: string[] = [];
+    const h = harness({
+      resolveContainerExecutable: async () => "finch",
+      checkLocalBuilder: async (_runner, _cwd, executable) => {
+        checked.push(executable);
+        return {};
+      },
+      synthOutput: ["step 1/2\n"],
+    });
+    const events = await collect(h.backend.build(p, NO_BOX_NETWORKS));
+    expect(checked).toEqual(["finch"]);
+    expect(h.commands.map(({ command }) => command)).toEqual([
+      synthCommand(p),
+      [
+        "finch",
+        "build",
+        "--platform",
+        "linux/arm64",
+        "--tag",
+        "agentcore-local/example-runtime-local_agent:abc123",
+        "--file",
+        "Dockerfile",
+        "--build-arg",
+        "VERSION=v1",
+        ".",
+      ],
+    ]);
+    expect(h.commands[1]?.cwd).toBe(join(assemblyDirectory(p), "asset.abc123"));
+    expect(stepMessages(events)).toContain(
+      "building runtime/local_agent image agentcore-local/example-runtime-local_agent:abc123",
+    );
+    expect(events.some((event) => event.type === "output")).toBe(true);
+    expect(h.runs).toHaveLength(0);
+    expect(h.credentialRegions).toHaveLength(0);
+  });
+  test("loads Docker buildx images and warns about a non-docker driver", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name], { localImages: { "runtime/agent": "abc123" } });
+    await writeLocalImageManifest(p);
+    const h = harness({
+      resolveContainerExecutable: async () => "docker",
+      checkLocalBuilder: async () => ({
+        buildx: { name: "multiarch-builder", driver: "docker-container" },
+      }),
+    });
+    const events = await collect(h.backend.build(p, NO_BOX_NETWORKS));
+    expect(h.commands[1]?.command.slice(0, 3)).toEqual(["docker", "build", "--load"]);
+    const warnings = events.filter((event) => event.type === "warning");
+    expect(warnings.map((event) => event.message).join("\n")).toContain(
+      "build and publish with the docker-driver builder of the active Docker context",
+    );
+  });
+  test("names the build context and Dockerfile when a local image build fails", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+        dockerfile: "Dockerfile.agent",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name], { localImages: { "runtime/agent": "abc123" } });
+    await writeLocalImageManifest(p);
+    const h = harness({
+      checkLocalBuilder: async () => ({}),
+      commandError: (command) =>
+        command[1] === "build" ? new Error("COPY requirements.txt: not found") : undefined,
+    });
+    const error = await collect(h.backend.build(p, NO_BOX_NETWORKS)).catch(
+      (caught: unknown) => caught as Error,
+    );
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toContain("Building the runtime/agent image failed.");
+    expect(message).toContain("Build context: app/agent/");
+    expect(message).toContain("Dockerfile: app/agent/Dockerfile.agent");
+    expect(message).toContain("COPY requirements.txt: not found");
+  });
+  test("builds no images when no workload builds locally", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "Container",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    const h = harness({
+      resolveContainerExecutable: async () => {
+        throw new Error("must not detect a builder");
+      },
+      checkLocalBuilder: async () => {
+        throw new Error("build must not probe Docker");
+      },
+    });
+    await collect(h.backend.build(p, NO_BOX_NETWORKS));
+    expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
+  });
   test("synthesizes into the assembly directory deploy reads", async () => {
     const input = await project();
     const subject = harness();
@@ -396,7 +615,10 @@ describe("CdkBackend.build", () => {
             ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
             entrypoint: "main.py",
             codeLocation: "app/agent",
-            ...(projectType && { box: { version: BOX_RELEASE.version } }),
+            ...(projectType && {
+              box: { version: BOX_RELEASE.version },
+              platformVersion: "V2" as const,
+            }),
             ...(!otel && { instrumentation: { enableOtel: false } }),
           },
         ],
@@ -424,6 +646,7 @@ describe("CdkBackend.build", () => {
           codeLocation: "app/agent",
           envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
           box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
         },
       ],
       agentCoreGateways: [boxGatewaySpec("agent")],
@@ -444,6 +667,7 @@ describe("CdkBackend.build", () => {
           entrypoint: "main.py",
           codeLocation: "app/agent",
           box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
         },
       ],
       agentCoreGateways: [boxGatewaySpec("agent")],
@@ -465,6 +689,7 @@ describe("CdkBackend.build", () => {
           entrypoint: "main.py",
           codeLocation: "app/agent",
           box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
         },
       ],
       agentCoreGateways: [boxGatewaySpec("agent")],
@@ -518,6 +743,48 @@ describe("CdkBackend.build", () => {
       { type: "output", line: "line two" },
       { type: "output", line: "trailing partial" },
     ]);
+  });
+
+  test("syncs the project's CDK dependencies to the vended pins before synthesizing", async () => {
+    const input = await project();
+    const vended = JSON.parse(await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"));
+    const manifestPath = join(cdkDirectory(input), "package.json");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        ...vended,
+        dependencies: { ...vended.dependencies, "@aws/agentcore-cdk": "1.0.3", zod: "4.1.0" },
+      }),
+    );
+    const subject = harness();
+
+    const events = await collect(subject.backend.build(input, NO_BOX_NETWORKS));
+
+    const updated = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(updated.dependencies).toEqual({ ...vended.dependencies, zod: "4.1.0" });
+    expect(events[0]).toEqual({
+      type: "step",
+      message: `updating CDK dependencies: @aws/agentcore-cdk 1.0.3 -> ${vended.dependencies["@aws/agentcore-cdk"]}`,
+    });
+    expect(subject.commands).toEqual([
+      { command: ["npm", "install", "--no-audit", "--no-fund"], cwd: cdkDirectory(input) },
+      { command: synthCommand(input), cwd: cdkDirectory(input) },
+    ]);
+  });
+
+  test("leaves the CDK dependencies alone when dependency management is disabled", async () => {
+    const input = await project();
+    const manifest = JSON.stringify({ dependencies: { "@aws/agentcore-cdk": "1.0.3" } });
+    const manifestPath = join(cdkDirectory(input), "package.json");
+    await writeFile(manifestPath, manifest);
+    const subject = harness();
+
+    await collect(
+      subject.backend.build(input, { ...NO_BOX_NETWORKS, disableDependencyManagement: true }),
+    );
+
+    expect(await readFile(manifestPath, "utf8")).toBe(manifest);
+    expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
   });
 
   test("fails actionably when CDK dependencies are missing", async () => {
@@ -574,6 +841,572 @@ describe("CdkBackend.build", () => {
 });
 
 describe("CdkBackend.deploy", () => {
+  test.each(["build", "deploy"] as const)(
+    "%s resolves a relative CDK_DOCKER against the current directory",
+    async (operation) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name], { localImages: { "runtime/agent": "abc123" } });
+      await writeLocalImageManifest(p);
+      const checked: string[] = [];
+      const h = harness({
+        describedStack: null,
+        resolveContainerExecutable: undefined,
+        checkLocalBuilder: async (_runner, _cwd, executable) => {
+          checked.push(executable);
+          return {};
+        },
+      });
+      const expected = resolve(process.cwd(), "bin", "dw");
+      const previous = process.env.CDK_DOCKER;
+      process.env.CDK_DOCKER = "./bin/dw";
+      try {
+        if (operation === "build") await collect(h.backend.build(p, NO_BOX_NETWORKS));
+        else await collectDeploy(h.backend.deploy(p, deployInput()));
+      } finally {
+        if (previous === undefined) delete process.env.CDK_DOCKER;
+        else process.env.CDK_DOCKER = previous;
+      }
+      expect(checked).toEqual([expected]);
+      if (operation === "deploy") {
+        const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+        expect(deployRun?.options.containerExecutable).toBe(expected);
+      } else {
+        expect(h.commands[1]?.command[0]).toBe(expected);
+      }
+    },
+  );
+  test.each([
+    ["Container", "ContainerLocal"],
+    ["ContainerLocal", "Container"],
+  ])("rejects %s to %s after synthesis and before bootstrap or deploy", async (before, after) => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: after,
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      deployedTemplate: { Metadata: { "agentcore:builds": { "runtime/agent": before } } },
+      checkLocalBuilder: async () => ({}),
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "cannot be switched into or out of ContainerLocal",
+    );
+    // Besides a buildx builder query, only synth ran: nothing was built or deployed.
+    expect(
+      h.commands.map(({ command }) => command).filter((command) => command[1] !== "buildx"),
+    ).toEqual([synthCommand(p)]);
+    expect(h.runs).toHaveLength(0);
+    expect(h.bootstrapRegions).toHaveLength(0);
+    expect(h.transactionSearchRegions).toHaveLength(0);
+    expect(h.stackReads[0]?.region).toBe(TARGET.region);
+    expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-default-0");
+  });
+
+  test.each(["DELETE_COMPLETE", "ROLLBACK_COMPLETE", "REVIEW_IN_PROGRESS"] as const)(
+    "treats a %s stack as not deployed",
+    async (status) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      const h = harness({
+        describedStack: {
+          StackName: "AgentCore-example-default",
+          CreationTime: new Date(0),
+          StackStatus: status,
+        },
+        getTemplateError: new Error("GetTemplate must not be called"),
+        checkLocalBuilder: async () => ({}),
+      });
+      await collectDeploy(h.backend.deploy(p, deployInput()));
+      expect(h.runs.some((run) => run.operation.kind === "deploy")).toBe(true);
+    },
+  );
+  test("warns and continues when the template is unreadable and nothing builds locally", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "Container",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      getTemplateError: Object.assign(new Error("denied"), { name: "AccessDenied" }),
+    });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const warnings = events.filter((event) => event.type === "warning");
+    expect(warnings.map((event) => event.message).join("\n")).toContain(
+      "cloudformation:GetTemplate",
+    );
+    expect(h.runs.some((run) => run.operation.kind === "deploy")).toBe(true);
+  });
+  test("fails closed on an unreadable template when a workload builds locally", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      getTemplateError: Object.assign(new Error("denied"), {
+        name: "AccessDeniedException",
+        $metadata: { httpStatusCode: 403 },
+      }),
+      checkLocalBuilder: async () => ({}),
+    });
+    const error = await collectDeploy(h.backend.deploy(p, deployInput())).catch(
+      (caught: unknown) => caught as Error,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("cloudformation:DescribeStacks");
+    expect((error as Error).message).toContain("cloudformation:GetTemplate");
+    expect(h.runs).toHaveLength(0);
+    expect(h.bootstrapRegions).toHaveLength(0);
+  });
+  test("propagates errors other than authorization failures", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "Container",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ getTemplateError: new Error("Rate exceeded") });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "Rate exceeded",
+    );
+  });
+  test("refuses to deploy when the previous stack template cannot be inspected", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ deployedTemplate: null, checkLocalBuilder: async () => ({}) });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "template is unavailable",
+    );
+    expect(h.runs).toHaveLength(0);
+  });
+  test("checks the selected target's synthesized stack, including an unchanged local workload", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    const otherTarget = { ...TARGET, name: "preview", region: "us-west-2" };
+    await writeAssembly(p, [otherTarget.name]);
+    const h = harness({
+      deployedTemplate: {
+        Metadata: { "agentcore:builds": { "runtime/agent": "ContainerLocal" } },
+      },
+      checkLocalBuilder: async () => ({}),
+    });
+    await collectDeploy(h.backend.deploy(p, deployInput({ target: otherTarget })));
+    expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-preview-0");
+    expect(h.stackReads[0]?.region).toBe(otherTarget.region);
+    expect(h.accountRegions).toEqual([otherTarget.region]);
+  });
+  test("checks a custom-named stack with no earlier assembly or deployed state", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    // The fake synth leaves this in place, as a first synth of a customized app writes it.
+    await writeAssembly(p, [TARGET.name], { stackName: "CustomOrders" });
+    const h = harness({
+      deployedTemplate: { Metadata: { "agentcore:builds": { "runtime/agent": "Container" } } },
+      checkLocalBuilder: async () => ({}),
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "cannot be switched into or out of ContainerLocal",
+    );
+    expect(h.stackReads[0]?.stackName).toBe("CustomOrders");
+    expect(h.runs).toHaveLength(0);
+  });
+  test("inspects the live stack by name, not a recorded ARN of a deleted stack", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await updateTargetState(json, p.rootPath, TARGET.name, {
+      stackArn:
+        "arn:aws:cloudformation:us-east-1:111122223333:stack/AgentCore-example-default-0/deleted",
+    });
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      deployedTemplate: { Metadata: { "agentcore:builds": { "runtime/agent": "Container" } } },
+      checkLocalBuilder: async () => ({}),
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "cannot be switched into or out of ContainerLocal",
+    );
+    expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-default-0");
+    expect(h.runs).toHaveLength(0);
+  });
+  test("refuses an unavailable local builder before provisioning credentials or invoking Toolkit", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    let provisioned = false;
+    const h = harness({
+      checkLocalBuilder: async () => {
+        throw new Error("ARM64 builder unavailable");
+      },
+      provisionCredentials: async function* () {
+        provisioned = true;
+        yield { type: "step", message: "provisioning credentials" };
+        return {};
+      },
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "ARM64 builder unavailable",
+    );
+    expect(provisioned).toBe(false);
+    expect(h.runs).toHaveLength(0);
+    // Only the buildx builder query ran, not synth.
+    expect(h.commands.map(({ command }) => command)).toEqual([["docker", "buildx", "inspect"]]);
+  });
+
+  test("reuses the workload build modes the command resolved instead of rereading harness.yaml", async () => {
+    const p = await project();
+    p.spec.harnesses.push({ name: "helper", path: "app/helper" });
+    await mkdir(join(p.rootPath, "app", "helper"), { recursive: true });
+    // Unparseable, so any reread would fail the deploy.
+    await writeFile(join(p.rootPath, "app", "helper", "harness.yaml"), "name: [unclosed");
+    await writeAssembly(p, [TARGET.name]);
+    const reads = spyOn(fs, "readFileSync");
+    try {
+      const h = harness({ describedStack: null, checkLocalBuilder: async () => ({}) });
+      await collectDeploy(
+        h.backend.deploy(
+          p,
+          deployInput({ workloadBuilds: { "harness/helper": "ContainerLocal" } }),
+        ),
+      );
+      expect(
+        reads.mock.calls.filter(([path]) => String(path).endsWith("harness.yaml")),
+      ).toHaveLength(0);
+      // The harness from the resolved map still selects the local builder check.
+      expect(h.runs.find((run) => run.operation.kind === "deploy")?.options).toHaveProperty(
+        "containerExecutable",
+        "docker",
+      );
+    } finally {
+      reads.mockRestore();
+    }
+  });
+  test("build reads each harness.yaml once for synthesis and image builds", async () => {
+    const p = await project();
+    p.spec.harnesses.push({ name: "helper", path: "app/helper" });
+    await mkdir(join(p.rootPath, "app", "helper"), { recursive: true });
+    await writeFile(
+      join(p.rootPath, "app", "helper", "harness.yaml"),
+      "name: helper\nmodel: {bedrockModelConfig: {modelId: test-model}}\n" +
+        "dockerfile: Dockerfile\nbuild: ContainerLocal\n",
+    );
+    const reads = spyOn(fs, "readFileSync");
+    try {
+      const h = harness({ checkLocalBuilder: async () => ({}) });
+      await collect(h.backend.build(p, NO_BOX_NETWORKS));
+      expect(
+        reads.mock.calls.filter(([path]) => String(path).endsWith("harness.yaml")),
+      ).toHaveLength(1);
+    } finally {
+      reads.mockRestore();
+    }
+  });
+  test("checks and hands CDK the detected container builder for ContainerLocal", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const checked: string[] = [];
+    const h = harness({
+      describedStack: null,
+      resolveContainerExecutable: async () => "podman",
+      checkLocalBuilder: async (_runner, _cwd, executable) => {
+        checked.push(executable);
+        return {};
+      },
+    });
+    await collectDeploy(h.backend.deploy(p, deployInput()));
+    expect(checked).toEqual(["podman"]);
+    const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+    expect(deployRun?.options.containerExecutable).toBe("podman");
+  });
+  test("warns during deploy when the Docker buildx driver is not docker", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      describedStack: null,
+      checkLocalBuilder: async () => ({
+        buildx: { name: "multiarch-builder", driver: "docker-container" },
+      }),
+    });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const warnings = events.filter((event) => event.type === "warning");
+    expect(warnings.map((event) => event.message).join("\n")).toContain(
+      "'multiarch-builder' uses the docker-container driver",
+    );
+  });
+  test.each([
+    ["docker", "docker-container", "desktop-linux"],
+    ["/usr/local/bin/docker", "kubernetes", "desktop-linux"],
+    ["docker", "docker", undefined],
+    ["finch", "docker-container", undefined],
+  ] as const)(
+    "with %s and a %s buildx driver, hands CDK BUILDX_BUILDER=%s",
+    async (executable, driver, expected) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      const checks: (string | undefined)[] = [];
+      const h = harness({
+        describedStack: null,
+        resolveContainerExecutable: async () => executable,
+        commandOutput: (command) =>
+          command[1] === "buildx"
+            ? `Name: ci\nDriver: ${driver}\n`
+            : command[1] === "context"
+              ? "desktop-linux\n"
+              : undefined,
+        checkLocalBuilder: async (_runner, _cwd, _executable, options) => {
+          checks.push(options?.buildxBuilder);
+          return {};
+        },
+      });
+      await collectDeploy(h.backend.deploy(p, deployInput()));
+      const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+      expect(deployRun?.options.buildxBuilder).toBe(expected);
+      expect(checks).toEqual([expected]);
+    },
+  );
+  test.each(["default", "colima"])(
+    "probes and deploys with the same BUILDX_BUILDER for Docker context %s",
+    async (context) => {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "ContainerLocal",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      // The real check runs: an x86 daemon, so the ARM64 probe builds.
+      const h = harness({
+        describedStack: null,
+        commandOutput: (command) => {
+          if (command[1] === "info") return '{"OSType":"linux","Architecture":"x86_64"}';
+          if (command[1] === "context") return `${context}\n`;
+          if (command[1] === "buildx") {
+            // The redirected builder is the context's docker-driver builder.
+            return h.commandBuilders.at(-1)?.buildxBuilder === context
+              ? `Name: ${context}\nDriver: docker\n`
+              : "Name: ci\nDriver: docker-container\n";
+          }
+          return undefined;
+        },
+      });
+      const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+      const probe = h.commandBuilders.find(
+        ({ command }) => command[1] === "build" && command.includes("linux/arm64"),
+      );
+      const inspects = h.commandBuilders.filter(({ command }) => command[1] === "buildx");
+      const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+      expect(deployRun?.options.buildxBuilder).toBe(context);
+      expect(probe?.buildxBuilder).toBe(context);
+      // First the active builder is read, then the chosen one is inspected.
+      expect(inspects.map(({ buildxBuilder }) => buildxBuilder)).toEqual([undefined, context]);
+      const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+      expect(warnings.join("\n")).toContain(`BUILDX_BUILDER=${context}`);
+    },
+  );
+  test("falls back to the active builder with a warning when docker context show fails", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const checks: (string | undefined)[] = [];
+    const h = harness({
+      describedStack: null,
+      commandOutput: (command) =>
+        command[1] === "buildx" ? "Name: ci\nDriver: docker-container\n" : undefined,
+      commandError: (command) =>
+        command[1] === "context"
+          ? new Error("docker: 'context' is not a docker command")
+          : undefined,
+      checkLocalBuilder: async (_runner, _cwd, _executable, options) => {
+        checks.push(options?.buildxBuilder);
+        return { buildx: { name: "ci", driver: "docker-container" } };
+      },
+    });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+    expect(deployRun?.options).not.toHaveProperty("buildxBuilder");
+    expect(checks).toEqual([undefined]);
+    const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+    const warning = warnings.find((message) => message.includes("docker context"));
+    expect(warning).toContain("could not read the active Docker context");
+    expect(warning).toContain("'context' is not a docker command");
+    expect(warnings.join("\n")).not.toContain("BUILDX_BUILDER");
+  });
+  test("warns that a bring-your-own execution role needs ECR pull access", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+        executionRoleArn: "arn:aws:iam::111122223333:role/Mine",
+      }),
+      ProjectRuntimeSchema.parse({
+        name: "other",
+        build: "ContainerLocal",
+        codeLocation: "app/other",
+        entrypoint: "main.py",
+      }),
+    );
+    p.spec.harnesses.push({ name: "helper", path: "app/helper" });
+    await mkdir(join(p.rootPath, "app", "helper"), { recursive: true });
+    await writeFile(
+      join(p.rootPath, "app", "helper", "harness.yaml"),
+      "name: helper\nmodel: {bedrockModelConfig: {modelId: test-model}}\n" +
+        "dockerfile: Dockerfile\nbuild: ContainerLocal\n" +
+        "executionRoleArn: arn:aws:iam::111122223333:role/HarnessRole\n",
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ describedStack: null, checkLocalBuilder: async () => ({}) });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    const warnings = events.filter((event) => event.type === "warning").map((e) => e.message);
+    const warning = warnings.find((message) => message.includes("executionRoleArn"));
+    expect(warning).toContain("runtime/agent, harness/helper use ContainerLocal");
+    expect(warning).not.toContain("runtime/other");
+    expect(warning).toContain("ecr:GetAuthorizationToken on *");
+    expect(warning).toContain("ecr:BatchGetImage and ecr:GetDownloadUrlForLayer");
+    expect(warning).toContain("cdk-<qualifier>-container-assets-<account>-<region>");
+    expect(warning).toContain("fails at first invoke");
+    expect(warning).not.toContain("111122223333");
+  });
+  test("does not warn about execution roles the project creates", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "ContainerLocal",
+        codeLocation: "app/agent",
+        entrypoint: "main.py",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({ describedStack: null, checkLocalBuilder: async () => ({}) });
+    const { events } = await collectDeploy(h.backend.deploy(p, deployInput()));
+    expect(
+      events.some(
+        (event) => event.type === "warning" && event.message.includes("executionRoleArn"),
+      ),
+    ).toBe(false);
+  });
+  test("skips builder detection when no workload builds locally", async () => {
+    const p = await project();
+    await writeAssembly(p, [TARGET.name]);
+    const h = harness({
+      describedStack: null,
+      resolveContainerExecutable: async () => {
+        throw new Error("must not detect a builder");
+      },
+      checkLocalBuilder: async () => {
+        throw new Error("must not probe a builder");
+      },
+    });
+    await collectDeploy(h.backend.deploy(p, deployInput()));
+    const deployRun = h.runs.find((run) => run.operation.kind === "deploy");
+    expect(deployRun?.options).not.toHaveProperty("containerExecutable");
+  });
   test("preflights, synthesizes, and deploys the selected stack", async () => {
     const input = await project();
     await writeAssembly(input, [TARGET.name]);
@@ -615,6 +1448,29 @@ describe("CdkBackend.deploy", () => {
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);
+  });
+
+  // An old @aws/agentcore-cdk drops platformVersion without an error, so deploy checks the
+  // synthesized template before it runs anything.
+  test("refuses a runtime whose platformVersion the synthesized stack does not set, before deploying", async () => {
+    const input = await project();
+    input.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "CodeZip",
+        codeLocation: "app/agent",
+        entrypoint: "start.py",
+        runtimeVersion: "PYTHON_3_14",
+        platformVersion: "V2",
+      }),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      "Could not find runtime 'agent' in the synthesized stack",
+    );
+    expect(subject.runs).toEqual([]);
   });
 
   test("skips Transaction Search when the config disables it", async () => {
@@ -825,6 +1681,30 @@ describe("CdkBackend.deploy", () => {
     expect(state.targets.default?.stackArn).toBeUndefined();
   });
 
+  test("installs a missing node_modules before provisioning credentials", async () => {
+    const input = await project(false);
+    await writeFile(
+      join(cdkDirectory(input), "package.json"),
+      await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    let commandsBeforeProvisioning: string[] = [];
+    // eslint-disable-next-line require-yield -- a spy that only records when provisioning starts
+    const provisionCredentials: CredentialProvisioner = async function* () {
+      commandsBeforeProvisioning = subject.commands.map(({ command }) => command.join(" "));
+      return {};
+    };
+    const subject = harness({ provisionCredentials });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(deployed.events).toContainEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commandsBeforeProvisioning).toEqual(["npm install --no-audit --no-fund"]);
+  });
+
   test("checks local CDK prerequisites before provisioning credentials", async () => {
     const input = await project(false); // no agentcore/cdk/node_modules
     let provisioned = false;
@@ -995,6 +1875,30 @@ describe("CdkBackend.deploy", () => {
 
     // A destroy must not be blocked by (or trigger) Transaction Search setup.
     expect(subject.transactionSearchRegions).toEqual([]);
+  });
+
+  test("does not block a teardown on a CDK pin newer than this CLI", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    const vended = JSON.parse(await readFile(VENDED_CDK_PACKAGE_JSON, "utf8"));
+    await writeFile(
+      join(cdkDirectory(input), "package.json"),
+      JSON.stringify({
+        ...vended,
+        dependencies: { ...vended.dependencies, "@aws/agentcore-cdk": "999.0.0" },
+      }),
+    );
+    const subject = harness();
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(deployed.events).toContainEqual({
+      type: "warning",
+      message: expect.stringContaining("@aws/agentcore-cdk 999.0.0"),
+    });
   });
 
   test("removes the stack when the teardown is confirmed", async () => {

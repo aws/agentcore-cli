@@ -31,7 +31,7 @@ async function temp(prefix: string): Promise<string> {
 }
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
-const VERSION = "9.9.9-linux-preview.1";
+const VERSION = BOX_RELEASE.version;
 
 /** A tarball of `files` (relative path to content), and its SHA-256. */
 async function tarball(name: string, files: Record<string, string>) {
@@ -56,13 +56,13 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "resources/config.toml": "",
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
-  const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
+  const box = await tarball(`box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
   const release: BoxRelease = {
-    repo: "owner/box-releases",
+    repo: BOX_RELEASE.repo,
     version: VERSION,
     linux: {
       target: "aarch64-unknown-linux-gnu",
-      asset: `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
+      asset: `box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
       sha256: box.sha256,
     },
   };
@@ -107,7 +107,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     expect(
       commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
     ).toEqual([
-      `https://github.com/owner/box-releases/releases/download/v${VERSION}/${release.linux.asset}`,
+      `https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/${release.linux.asset}`,
     ]);
   });
 
@@ -187,7 +187,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     );
 
     await expect(resolveBoxLinuxBuild({}, { runner, home, release })).rejects.toThrow(
-      /has no release\.json for box 9\.9\.9-linux-preview\.1, or no box packs/,
+      `has no release.json for box ${VERSION}, or no box packs`,
     );
   });
 
@@ -201,7 +201,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     const result = resolveBoxLinuxBuild({}, { runner, home, release });
 
     await expect(result).rejects.toThrow(
-      /downloaded from https:\/\/github\.com\/owner\/box-releases\/releases\/download\/v9\.9\.9-linux-preview\.1\/box-v/,
+      `downloaded from https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/box-cli-v`,
     );
     await expect(result).rejects.toThrow(/HTTP 404: Not Found/);
   });
@@ -254,24 +254,30 @@ describe("publishInstall", () => {
 describe("the pinned releases", () => {
   test("pins one box: the asset of its own version, its SHA-256, and its release page", () => {
     expect(BOX_RELEASE.linux.asset).toBe(
-      `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
+      `box-cli-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
     expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
-    // The e2e workflow installs the macOS build on its macOS runner, from this pin.
+    // The e2e workflow installs the macOS build on its macOS runner, from this pin, of its own
+    // release when it names one.
     expect(BOX_RELEASE.darwin?.asset).toBe(
-      `box-v${BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
+      `box-cli-v${BOX_RELEASE.darwin?.version ?? BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
     );
     expect(BOX_RELEASE.darwin?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(BOX_RELEASE_PAGE).toBe(
-      `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+      `https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}`,
     );
   });
 
-  test("the install hint names the pinned release", () => {
+  test("the install hint names the box-cli archive of the pinned release, and the macOS release", () => {
+    // The macOS build of 0.3.0 does not run, so macOS gets the darwin pin's release.
     expect(BOX_INSTALL_HINT).toBe(
-      "Install box: download the build for your machine from " +
-        `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
-        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH.",
+      "Install box: download box-cli-v0.3.0-<target>.tar.gz for your machine from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0 (not a box-v0.3.0-* archive, " +
+        "which has no packs), unpack it into a folder (tar -xzf <archive> -C <folder>), and add " +
+        "that folder to your PATH. On macOS, use " +
+        "box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS " +
+        "build of 0.3.0 does not run.",
     );
   });
 });

@@ -25,6 +25,7 @@ import {
   type Destination,
 } from "./egress";
 import { findPath, pathTest, type PathTest } from "./pathSolver";
+import { AWS_METADATA_RULE_IDS } from "../templates/boxProfile";
 import { BOX_METADATA_RULE_IDS } from "./places";
 import {
   ROUTABLE_METHODS,
@@ -645,7 +646,10 @@ function decide(node: Node, policy: Policy): MappedHost {
     for (const c of connects) if (!open.has(c.ruleId)) enforced.set(c.ruleId, c.order);
   }
   for (const [ruleId, order] of forbiddenBy) enforced.set(ruleId, order);
-  for (const ruleId of BOX_METADATA_RULE_IDS) enforced.delete(ruleId);
+  // A metadata forbid on an address could hold for any host before DNS resolution, so it would
+  // name every host. It limits no host the agent is meant to reach, so it is no limit to report.
+  for (const ruleId of [...BOX_METADATA_RULE_IDS, ...AWS_METADATA_RULE_IDS])
+    enforced.delete(ruleId);
   const inOrder = (rules: Map<string, number>) =>
     [...rules].sort(([, a], [, b]) => a - b).map(([ruleId]) => ruleId);
   return {

@@ -6,7 +6,7 @@
 import { ProjectStateError, RegionUnsupportedFeatureError } from "../../errors/errors";
 import { isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
 import { supportsRuntimeV2 } from "../partition";
-import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, type ProjectRuntime } from "../../projectSchemas/runtime";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { BOX_CODEZIP_ENTRYPOINT, runsInBox } from "./templates/boxProfile";
 
@@ -103,13 +103,15 @@ export function validateBoxRuntimes(spec: ProjectSpec): void {
 }
 
 /**
- * Throws for a Box project deployed to a region where AgentCore Runtime has no platformVersion V2,
- * when one of its runtimes runs in a box: Box runs only on V2, so that runtime could not be created
- * there. A Box project with no runtime is let through, as deploying it is how its stack is removed.
- * `target` is a configured target, or, with `provisioning`, the default target deploy is about to
- * create in that region; `otherTargets` says whether aws-targets.json has targets to deploy to.
+ * Throws for a deploy to a region where AgentCore Runtime has no platformVersion V2 when a runtime
+ * asks for V2 (`"platformVersion": "V2"`): CloudFormation could not create it there, and would fail
+ * only partway through the deploy. Every runtime of a Box project asks for V2, as the project schema
+ * requires, so this covers Box runtimes too. A project with no such runtime is let through, an
+ * empty one included, as deploying it is how its stack is removed. `target` is a configured
+ * target, or, with `provisioning`, the default target deploy is about to create in that region;
+ * `otherTargets` says whether aws-targets.json has targets to deploy to.
  */
-export function assertBoxRegionSupported(
+export function assertRuntimeV2RegionSupported(
   spec: ProjectSpec,
   target: { name: string; region: string },
   {
@@ -118,7 +120,10 @@ export function assertBoxRegionSupported(
   }: { provisioning?: boolean; otherTargets?: boolean } = {},
 ): void {
   if (supportsRuntimeV2(target.region)) return;
-  if (!spec.runtimes.some((runtime) => runsInBox(isBoxProject(spec), runtime))) return;
+  const onV2 = spec.runtimes
+    .filter((runtime) => runtime.platformVersion === BOX_PLATFORM_VERSION)
+    .map((runtime) => `'${runtime.name}'`);
+  if (onV2.length === 0) return;
   const wayOut = provisioning
     ? otherTargets
       ? "Deploy with --region set to a region that has it, or with --target set to a target in " +
@@ -127,8 +132,13 @@ export function assertBoxRegionSupported(
         "agentcore/aws-targets.json, then retry."
     : `Change the region of target '${target.name}' in agentcore/aws-targets.json, or deploy ` +
       "with --target to a target in another region, then retry.";
+  const asks = onV2.length === 1 ? "it asks" : "they ask";
+  const why = isBoxProject(spec)
+    ? "Box runs on AgentCore Runtime V2"
+    : `${asks} for AgentCore Runtime V2`;
   throw new RegionUnsupportedFeatureError(
-    `Cannot deploy Box project '${spec.name}' to target '${target.name}' in ${target.region}: ` +
-      `Box runs on AgentCore Runtime V2, which is not available in ${target.region}. ${wayOut}`,
+    `Cannot deploy runtime ${onV2.join(", ")} of project '${spec.name}' to target ` +
+      `'${target.name}' in ${target.region}: ${why} ("platformVersion": ` +
+      `"${BOX_PLATFORM_VERSION}"), which is not available in ${target.region}. ${wayOut}`,
   );
 }

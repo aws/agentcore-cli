@@ -49,7 +49,7 @@ const toml = (...lines: string[]) => lines.join("\n");
 const APP = "${{ workspace }}";
 const CODE = "${{ inputs.code.dir }}";
 const PYTHON = "${{ inputs.python.path }}";
-const PREFIX = "${{ inputs.python.prefix }}";
+const STDLIB = "${{ inputs.python.stdlib }}";
 const PYTHONPATH = CODE;
 
 /** A local profile with a stdio MCP server and a tool, each with a key build does not know. */
@@ -91,7 +91,7 @@ const LEAVES_ON_RUNTIME = {
     env: { NOTES_DIR: `${CODE}/notes`, LEVEL: "debug", PYTHONPATH },
     // The venv moves to the code folder, which the first grant names already.
     filesystem: {
-      read: [CODE, { path: PREFIX, optional: true }],
+      read: [CODE, { path: STDLIB, optional: true }],
     },
     network: { contain_egress: true },
   },
@@ -214,10 +214,10 @@ describe("the paths rule", () => {
         // The agent's own PYTHONPATH is the additions rule's: this rule adds none to [agent].
         env: { PYTHONPATH: `${CODE}/src:${CODE}`, PYTHON, LEVEL: "debug" },
         filesystem: {
-          read: [CODE, { path: PREFIX, optional: true }],
+          read: [CODE, { path: STDLIB, optional: true }],
           exec: [
             { path: CODE, optional: true },
-            { path: PREFIX, optional: true },
+            { path: STDLIB, optional: true },
           ],
           write_file: [`${CODE}/out.json`],
         },
@@ -272,23 +272,23 @@ describe("the paths rule", () => {
       "[agent]",
       'command = ["${{ inputs.python.path }}", "-m", "main"]',
       "[agent.env]",
-      `PYTHONPATH = "${PREFIX}/lib:${APP}/src:${APP}"`,
+      `PYTHONPATH = "${STDLIB}:${APP}/src:${APP}"`,
       "[mcp.notes]",
       'type = "stdio"',
       `command = ["${APP}/.venv/bin/python3.15", "-m", "notes"]`,
-      `env = { PYTHONPATH = "${PREFIX}/lib:${APP}/lib:${APP}" }`,
+      `env = { PYTHONPATH = "${STDLIB}:${APP}/lib:${APP}" }`,
     );
 
     expect(moved(text)).toEqual({
       agent: {
         command: [PYTHON, "-m", "main"],
-        env: { PYTHONPATH: `${PREFIX}/lib:${CODE}/src:${CODE}` },
+        env: { PYTHONPATH: `${STDLIB}:${CODE}/src:${CODE}` },
       },
       mcp: {
         notes: {
           type: "stdio",
           command: [PYTHON, "-m", "notes"],
-          env: { PYTHONPATH: `${PREFIX}/lib:${CODE}/lib:${CODE}` },
+          env: { PYTHONPATH: `${STDLIB}:${CODE}/lib:${CODE}` },
         },
       },
     });
