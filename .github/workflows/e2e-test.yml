@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      l3Ref:
+        description: aws/agentcore-l3-cdk-constructs ref the Box tests deploy with (branch, tag, or commit)
+        required: false
+        type: string
+        default: box-integration
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN:
         required: true
@@ -39,6 +44,10 @@ on:
         description: Run E2E tests only on Linux
         type: boolean
         default: false
+      l3Ref:
+        description: aws/agentcore-l3-cdk-constructs ref the Box tests deploy with (branch, tag, or commit)
+        type: string
+        default: box-integration
 
 concurrency:
   group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
@@ -112,6 +121,9 @@ jobs:
         with:
           # Keep template installs on the newest Python supported by AgentCore CodeZip.
           python-version: "3.14"
+          # A run whose tag filter leaves nothing to install with uv (for example `box` on Windows,
+          # which has no box) has no cache to save, which setup-uv otherwise reports as a failure.
+          ignore-nothing-to-cache: true
       - run: bun install --frozen-lockfile
       - name: Fetch E2E role from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
@@ -125,9 +137,11 @@ jobs:
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
-      # the Box tests. They skip on a runner with no box on PATH.
+      # the Box tests. They skip on a runner with no box on PATH. macOS is left out for now: its pinned
+      # box build is killed as soon as it starts (`Killed: 9` on `box --version`), so on macOS the Box
+      # tests skip and the rest of the suite still runs.
       - name: Install box
-        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        if: matrix.name == 'Linux-arm64'
         env:
           # The build's key in boxRelease.json, which pins its archive and SHA-256.
           BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
@@ -160,6 +174,40 @@ jobs:
       - name: Allow user namespaces for box
         if: matrix.name == 'Linux-arm64'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # No released @aws/agentcore-cdk deploys a Box project yet, so on the runners that run the Box
+      # tests, they deploy with one built from aws/agentcore-l3-cdk-constructs at inputs.l3Ref. That
+      # repository is private and this job's GITHUB_TOKEN reads only this one, so the token comes
+      # from the repository's GitHub App, scoped to the L3 repository and read-only.
+      - name: Generate a read token for the L3 constructs
+        if: matrix.name == 'Linux-arm64'
+        id: l3-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: aws
+          repositories: agentcore-l3-cdk-constructs
+          permission-contents: read
+      - name: Check out the L3 constructs
+        if: matrix.name == 'Linux-arm64'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aws/agentcore-l3-cdk-constructs
+          ref: ${{ inputs.l3Ref || 'box-integration' }}
+          token: ${{ steps.l3-token.outputs.token }}
+          path: .l3-cdk
+          # Leave no token in .l3-cdk/.git for later steps.
+          persist-credentials: false
+      # Packed onto the runner only: nothing is published. The Box tests install it into each Box
+      # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates.test.ts).
+      - name: Pack the L3 constructs for the Box tests
+        if: matrix.name == 'Linux-arm64'
+        working-directory: .l3-cdk
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          TARBALL=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" | tail -n 1)
+          echo "AGENTCORE_E2E_BOX_CDK=file:${RUNNER_TEMP}/${TARBALL}" >> "$GITHUB_ENV"
       - name: Build CLI
         if: inputs.npmVersion == ''
         run: bun run build
