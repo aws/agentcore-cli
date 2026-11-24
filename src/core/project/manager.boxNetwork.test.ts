@@ -1068,6 +1068,34 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await text(root, SPEC)).toBe(before);
   });
 
+  test("lists the target of each gateway in the record, and removes it when the gateway gets CUSTOM_JWT", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const record = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(record[GATEWAY]).toContain("egress-gateway-tools");
+    const spec = JSON.parse(await text(root, SPEC));
+    Object.assign(
+      spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools"),
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["agentcore"],
+          },
+        },
+      },
+    );
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    const after = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(after[GATEWAY]).not.toContain("egress-gateway-tools");
+  });
+
   test("writes no target and no server, and warns once, when it does not", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
     await addToolsGateway(root);

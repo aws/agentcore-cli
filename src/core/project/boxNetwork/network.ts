@@ -552,6 +552,18 @@ function hostTargets(
       continue;
     }
     gatewayOf.set(gateway.target, gateway.name);
+    const owner = owners.get(gateway.target);
+    if (owner !== undefined) {
+      failures.push({
+        code: "TARGET_NAME_COLLISION",
+        target: gateway.target,
+        reason:
+          `The gateway '${gateway.name}' of this project would get the gateway target ` +
+          `'${gateway.target}', and ${owner} has that name. Rename that target.`,
+        place: PROJECT_SPEC_PLACE,
+      });
+      continue;
+    }
     owners.set(gateway.target, `the target that build adds for the gateway '${gateway.name}'`);
   }
   const describeHost = (host: MappedHost) =>
@@ -609,6 +621,9 @@ function hostTargets(
     });
   }
   const managed = managedTargetsOf(existing.filter(isManaged), hosts, reused);
+  // The target of each gateway of the project is build's too, so the record lists it and a later
+  // build can remove it.
+  for (const gateway of gateways) managed.add(gateway.target);
   return { hosts, failures, managed, warnings };
 }
 

@@ -1372,6 +1372,23 @@ describe("the gateways of the project", () => {
     );
   });
 
+  test("owns the target of each gateway, so the record lists it", () => {
+    const { network } = model("", {}, { gateways: [TOOLS], ownedTargets: new Set() });
+
+    expect([...network.managedTargets]).toEqual(["egress-gateway-tools"]);
+  });
+
+  test("fails a gateway whose target has the name of a target that build does not own", () => {
+    const mine = passthrough("egress-gateway-tools", "https://mine.example.com");
+    const r = model("", {}, { gateways: [TOOLS], targets: [mine], ownedTargets: new Set() });
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "egress-gateway-tools"]]);
+    expect(r.reasons()).toEqual([
+      "The gateway 'tools' of this project would get the gateway target 'egress-gateway-tools', " +
+        "and the gateway target 'egress-gateway-tools' has that name. Rename that target.",
+    ]);
+  });
+
   test("fails two gateways whose targets still have one name, as for two hosts", () => {
     // The target of "a--b" ends in the hash of its name, which a second gateway can have as a name.
     const hash = createHash("sha256").update("a--b").digest("hex").slice(0, 8);

@@ -64,6 +64,7 @@ import {
   addBoxGatewaysToRecord,
   BOX_GATEWAY_TARGETS_FILE,
   FS_RECORD_FILES,
+  readBoxGatewayTargets,
   removeBoxGatewaysFromRecord,
   replaceRecord,
   type RecordFiles,
@@ -115,7 +116,11 @@ import {
   type ManagedBy,
 } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
-import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
+import {
+  type AgentCoreGateway,
+  AgentCoreGatewaySchema,
+  type AgentCoreGatewayTarget,
+} from "../../projectSchemas/gateway";
 import {
   CredentialSchema,
   credentialEnvVarName,
@@ -1379,7 +1384,15 @@ export class FsProjectManager implements ProjectManager {
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
       // Build writes a target on each Box gateway for each other gateway of the project. Such a
       // target goes with its gateway; a target of the user's that names it stays, and fails.
+      // Build owns the targets that the record lists, or by the egress- rule with no record.
       if (input.resourceType === "gateway" && removed) {
+        const record = readBoxGatewayTargets(project.rootPath);
+        // The record, when it names the Box gateway, says which of its targets build owns.
+        const owns = (gateway: AgentCoreGateway, target: AgentCoreGatewayTarget) =>
+          isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
+          (record && Object.hasOwn(record, gateway.name)
+            ? record[gateway.name]!.includes(target.name)
+            : true);
         newSpec = {
           ...(newSpec as object),
           agentCoreGateways: existingProjectSpec.agentCoreGateways
@@ -1387,11 +1400,7 @@ export class FsProjectManager implements ProjectManager {
             .map((gateway) => ({
               ...gateway,
               targets: gateway.targets.filter(
-                (target) =>
-                  !(
-                    isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
-                    target.passthrough?.gateway === input.name
-                  ),
+                (target) => !(owns(gateway, target) && target.passthrough?.gateway === input.name),
               ),
             })),
         };
