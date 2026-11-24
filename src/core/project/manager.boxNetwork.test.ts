@@ -1068,6 +1068,25 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await text(root, SPEC)).toBe(before);
   });
 
+  test("removes the target of a gateway and its record entry when the gateway goes between two builds", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))[GATEWAY]).toContain(
+      "egress-gateway-tools",
+    );
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect(
+      JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))[GATEWAY],
+    ).not.toContain("egress-gateway-tools");
+  });
+
   test("lists the target of each gateway in the record, and removes it when the gateway gets CUSTOM_JWT", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
     await addToolsGateway(root);
