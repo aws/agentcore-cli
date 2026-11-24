@@ -56,10 +56,13 @@ in more detail.
   conversations apart. Custom headers only arrive if they are named
   `X-Amzn-Bedrock-AgentCore-Runtime-Custom-*` and listed in
   `requestHeaderAllowlist`.
-- If `platformVersion` is `V2` in `agentcore/agentcore.json`, keep startup
-  code to work that is the same for every request, and create random values
-  (`/dev/urandom`, not the `crypto` module), timestamps, and credentials
-  inside the request handler.
+- If `platformVersion` is `V2` in `agentcore/agentcore.json`, load models and
+  build reusable clients at top level, before the snapshot, and create random
+  values, IDs and timestamps inside the request handler, with
+  `crypto.randomUUID({ disableEntropyCache: true })` or `/dev/urandom`, never
+  `Math.random()`. Refresh credentials when they expire. Anything that fetches
+  credentials, such as a model whose API key comes from AgentCore Identity,
+  stays per session: build it on the first request, not at import.
 
 ## Must not
 

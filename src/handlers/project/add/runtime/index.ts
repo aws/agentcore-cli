@@ -39,6 +39,8 @@ type JsonRuntimeField =
   | "networkConfig"
   | "authorizerConfiguration"
   | "lifecycleConfiguration"
+  | "resourceConfigurations"
+  | "hooksConfiguration"
   | "filesystemConfigurations";
 
 type WithJsonFields<T> = Omit<T, JsonRuntimeField> & Partial<Record<JsonRuntimeField, unknown>>;
@@ -134,6 +136,18 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag(
         "lifecycle-configuration",
         "session idle timeout and instance lifetime configuration (JSON)",
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag(
+        "resource-configurations",
+        'committed per-session memory baseline, e.g. [{"minimumMemoryInMiB":4096}] (JSON, V2 only)',
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag(
+        "hooks-configuration",
+        "lifecycle hooks, e.g. a build warmup hook (JSON, V2 only)",
         z.string().optional(),
         { group: ENVIRONMENT },
       ),
@@ -288,6 +302,11 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           "lifecycle-configuration",
           flags["lifecycle-configuration"],
         ),
+        resourceConfigurations: parseJsonFlag(
+          "resource-configurations",
+          flags["resource-configurations"],
+        ),
+        hooksConfiguration: parseJsonFlag("hooks-configuration", flags["hooks-configuration"]),
         filesystemConfigurations: parseJsonFlag(
           "filesystem-configurations",
           flags["filesystem-configurations"],

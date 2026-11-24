@@ -84,6 +84,7 @@ type HarnessOptions = {
   codeZip?: { runner: DevRunner };
   container?: { runner: DevRunner };
   ready?: (port: number, signal: AbortSignal) => Promise<void>;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -98,6 +99,11 @@ function harness(options: HarnessOptions = {}) {
     getDevEnvVarsForRuntime: async (agentRuntime) => ({ AGENT: agentRuntime.name }),
     resolvePort: async () => nextPort++,
     waitReady: options.ready ?? (async () => {}),
+    fetch:
+      options.fetch ??
+      (async (url) => {
+        throw new Error(`unexpected HTTP call to ${url}`);
+      }),
     signal: controller.signal,
   });
   return { supervisor, controller, codeZip, container };
@@ -114,6 +120,91 @@ async function drain(
 }
 
 describe("DevSupervisor", () => {
+  describe("build warmup hook", () => {
+    const withHook = (build: ProjectRuntime["build"] = "CodeZip") =>
+      ({
+        ...runtime("orders", build),
+        hooksConfiguration: { build: { warmup: { action: { httpPost: { path: "/warmup" } } } } },
+      }) as ProjectRuntime;
+    const healthy = () =>
+      new Response(JSON.stringify({ status: "Healthy" }), {
+        headers: { "content-type": "application/json" },
+      });
+
+    test("reports running only after a healthy /ping and both warmup calls", async () => {
+      const calls: string[] = [];
+      const { supervisor, controller } = harness({
+        runtimes: [withHook()],
+        fetch: async (url, init) => {
+          const headers = (init.headers ?? {}) as Record<string, string>;
+          calls.push(
+            `${init.method} ${url} ${headers["x-amzn-bedrock-agentcore-runtime-warmup-type"] ?? ""}`.trim(),
+          );
+          return url.endsWith("/ping") ? healthy() : new Response("{}");
+        },
+      });
+      expect(await supervisor.start("orders")).toEqual({ name: "orders", port: 9100 });
+      expect(calls).toEqual([
+        "GET http://127.0.0.1:9100/ping",
+        "POST http://127.0.0.1:9100/warmup memory",
+        "POST http://127.0.0.1:9100/warmup disk",
+      ]);
+      expect(supervisor.snapshot()[0]).toMatchObject({ phase: "running" });
+      const statuses = (await drain(supervisor, controller))
+        .filter((e) => e.event.type === "status")
+        .map((e) => (e.event as { message: string }).message);
+      expect(statuses).toContainEqual(
+        expect.stringContaining("Warmup hook for 'orders' succeeded"),
+      );
+    });
+
+    test("a failing warmup hook fails the start like a V2 deploy would", async () => {
+      const { supervisor, controller } = harness({
+        runtimes: [withHook()],
+        fetch: async (url) =>
+          url.endsWith("/ping") ? healthy() : new Response("boom", { status: 500 }),
+      });
+      await expect(supervisor.start("orders")).rejects.toThrow(
+        "The warmup memory call (POST /warmup on port 9100) returned 500: boom.",
+      );
+      expect(supervisor.snapshot()[0]).toMatchObject({ phase: "failed" });
+      controller.abort();
+    });
+
+    test("a container hook on its own port is called through its mapped host port", async () => {
+      const container = serverRunner();
+      const calls: string[] = [];
+      const runtimeWithPort = {
+        ...withHook("Container"),
+        hooksConfiguration: {
+          build: { warmup: { action: { httpPost: { path: "/warmup", port: 9300 } } } },
+        },
+      } as ProjectRuntime;
+      const { supervisor, controller } = harness({
+        runtimes: [runtimeWithPort],
+        container,
+        fetch: async (url, init) => {
+          calls.push(`${init.method} ${url}`);
+          return url.endsWith("/ping") ? healthy() : new Response("{}");
+        },
+      });
+      await supervisor.start("orders");
+      expect(container.inputs[0]).toMatchObject({ port: 9100, hookPort: 9300 });
+      expect(calls).toEqual([
+        "GET http://127.0.0.1:9100/ping",
+        "POST http://127.0.0.1:9300/warmup",
+        "POST http://127.0.0.1:9300/warmup",
+      ]);
+      controller.abort();
+    });
+
+    test("an agent without a warmup hook makes no HTTP calls", async () => {
+      const { supervisor, controller } = harness({ runtimes: [runtime("orders")] });
+      expect(await supervisor.start("orders")).toEqual({ name: "orders", port: 9100 });
+      controller.abort();
+    });
+  });
+
   test("agents are idle until started, then report running with their port", async () => {
     const { supervisor, controller } = harness();
     expect(supervisor.snapshot()).toMatchObject([

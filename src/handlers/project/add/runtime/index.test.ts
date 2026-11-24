@@ -337,6 +337,10 @@ describe("project add runtime", () => {
     "X-Custom-Header",
     "--lifecycle-configuration",
     '{"idleRuntimeSessionTimeout":300,"maxLifetime":3600}',
+    "--resource-configurations",
+    '[{"minimumMemoryInMiB":4096}]',
+    "--hooks-configuration",
+    '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup","port":8080}}}}}',
     "--environment-variables",
     '{"LOG_LEVEL":"debug","APP_ENV":"staging"}',
     "--filesystem-configurations",
@@ -470,6 +474,10 @@ describe("project add runtime", () => {
       },
       requestHeaderAllowlist: ["X-Custom-Header"],
       lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+      resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 8080 } } } },
+      },
       envVars: [
         { name: "LOG_LEVEL", value: "debug" },
         { name: "APP_ENV", value: "staging" },
@@ -556,6 +564,18 @@ describe("project add runtime", () => {
     [
       "invalid JSON in --network-config",
       ["--name", "my_agent", "--language", "python", "--network-config", "{bad}"],
+    ],
+    [
+      "an empty hook path in --hooks-configuration",
+      [
+        "--name",
+        "my_agent",
+        "--language",
+        "python",
+        "--hooks-configuration",
+        '{"build":{"warmup":{"action":{"httpPost":{"path":""}}}}}',
+      ],
+      "path",
     ],
   ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();

@@ -163,6 +163,8 @@ export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
     }),
     ...(infra.requestHeaderAllowlist && { requestHeaderAllowlist: infra.requestHeaderAllowlist }),
     ...(infra.lifecycleConfiguration && { lifecycleConfiguration: infra.lifecycleConfiguration }),
+    ...(infra.resourceConfigurations && { resourceConfigurations: infra.resourceConfigurations }),
+    ...(infra.hooksConfiguration && { hooksConfiguration: infra.hooksConfiguration }),
     ...(infra.filesystemConfigurations && {
       filesystemConfigurations: infra.filesystemConfigurations,
     }),

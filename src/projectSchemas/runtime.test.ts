@@ -51,6 +51,29 @@ describe("runtime custom validation", () => {
       }).success,
     ).toBe(false);
   });
+  it("keeps V2 resource and hook fields it does not model, and rejects invalid ones", () => {
+    const warmup = { action: { httpPost: { path: "/warmup", port: 8080 } } };
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+        hooksConfiguration: { build: { warmup } },
+      }).success,
+    ).toBe(true);
+    const unmodeled = {
+      build: { warmup: { action: { httpPost: { path: "/w", timeoutSeconds: 30 } } } },
+    };
+    expect(
+      ProjectRuntimeSchema.parse({ ...codeZipAgent, hooksConfiguration: unmodeled })
+        .hooksConfiguration,
+    ).toEqual(unmodeled);
+    for (const fields of [
+      { hooksConfiguration: { build: { warmup: { action: { httpPost: { path: "" } } } } } },
+      { resourceConfigurations: [{ minimumMemoryInMiB: 0 }] },
+    ]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...fields }).success).toBe(false);
+    }
+  });
   it("accepts only the V1 and V2 platform versions", () => {
     for (const platformVersion of ["V1", "V2"]) {
       expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
