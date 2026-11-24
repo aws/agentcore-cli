@@ -63,6 +63,49 @@ describe("the policy decision on each host", () => {
     expect(host(result, "y.example.com")?.reachable).toBe(true);
   });
 
+  test("finds a host reachable when two path patterns of one permit hold on one path", () => {
+    const both = 'context.input.path like "/v1/*" && context.input.path like "*/items"';
+    const result = map(reach("items", "x.example.com", both));
+    expect(host(result, "x.example.com")).toMatchObject({
+      reachable: true,
+      enforcedByBox: ["items"],
+      uncheckedBy: [],
+    });
+    expect(host(result, "x.example.com")?.decision.allowed.map((s) => s.path)).toContain(
+      "/v1/items",
+    );
+  });
+
+  test("finds a path of a permit that a forbid of one path leaves open", () => {
+    const both = 'context.input.path like "/v1/*" && context.input.path like "*/items"';
+    const result = map(
+      reach("items", "x.example.com", both) +
+        forbid("no_list", on("x.example.com", 'context.input.path == "/v1/items"')),
+    );
+    const decided = host(result, "x.example.com");
+    expect(decided?.reachable).toBe(true);
+    expect(decided?.decision.allowed.map((s) => s.path)).not.toContain("/v1/items");
+  });
+
+  test("finds no path when the path patterns of a permit never hold together", () => {
+    const never = 'context.input.path like "/v1/*" && context.input.path like "/v2/*"';
+    expect(host(map(reach("never", "x.example.com", never)), "x.example.com")).toMatchObject({
+      reachable: false,
+      uncheckedBy: [],
+    });
+  });
+
+  test("keeps a host reachable, and names the permit, when its path tests are too many to check", () => {
+    const many = [..."abcdefghijklm"].map((c) => `context.input.path like "*${c}*"`).join(" && ");
+    const result = map(reach("many", "x.example.com", many));
+    expect(result.failures).toEqual([]);
+    expect(host(result, "x.example.com")).toMatchObject({
+      reachable: true,
+      uncheckedBy: ["many"],
+      enforcedByBox: ["many"],
+    });
+  });
+
   test("names the limited permits and the forbids Box enforces on its own, in policy order", () => {
     const result = map(
       forbid("no_admin", on("x.example.com", 'context.input.path like "/admin/*"')) +
@@ -73,6 +116,92 @@ describe("the policy decision on each host", () => {
       reachable: true,
       forbiddenBy: ["no_admin"],
       enforcedByBox: ["no_admin", "get", "big"],
+    });
+  });
+
+  test("names a connection permit that limits the address, and not one that allows any", () => {
+    const lan = 'context.input has ip4 && context.input.ip4 like "10.*"';
+    const result = map(
+      connect("lan", on("a.example.com", lan)) +
+        permit("get_a", on("a.example.com")) +
+        connect("any", on("b.example.com", `(${NC} || ${lan})`)) +
+        permit("get_b", on("b.example.com")),
+    );
+    expect(host(result, "a.example.com")?.enforcedByBox).toEqual(["lan"]);
+    expect(host(result, "b.example.com")?.enforcedByBox).toEqual([]);
+  });
+
+  describe("an attribute that an action test keeps from the action, as Box reads it", () => {
+    const codes = (result: ReturnType<typeof map>) =>
+      result.failures.map(({ code, ruleId }) => [code, ruleId]);
+    const get = permit("get", on("a.example.com", 'context.input.method == "GET"'));
+
+    // The guard of `&&` is false on net:connect, so that rule never allows a connection.
+    test.each([
+      ["||", `(${NC} || context.input.method == "GET")`, true],
+      [
+        "&& with !=",
+        `(action != Box::Action::"net:connect" && context.input.method == "GET")`,
+        false,
+      ],
+      ["if", `(if ${NC} then true else context.input.method == "GET")`, true],
+      [
+        "|| with in",
+        `(action in [Box::Action::"net:connect"] || context.input.method == "GET")`,
+        true,
+      ],
+    ])("accepts a connection rule that reads a request field behind %s", (_, guard, reachable) => {
+      const result = map(connect("guarded", on("a.example.com", guard)) + get);
+      expect(codes(result)).toEqual([]);
+      expect(host(result, "a.example.com")?.reachable).toBe(reachable);
+    });
+
+    test("accepts a request rule that reads a connection field behind an action test", () => {
+      const guarded = permit(
+        "guarded",
+        on("a.example.com", `(${HR} || context.input.ip4 == "1.2.3.4")`),
+      );
+      expect(codes(map(connect("c", on("a.example.com")) + guarded))).toEqual([]);
+    });
+
+    test("accepts a later condition that an earlier action test keeps from the action", () => {
+      const later = rule(
+        "later",
+        `permit (principal, ${NC}, resource) when { ${HR} } when { context.input.method == "GET" };`,
+      );
+      expect(codes(map(later + reach("get", "a.example.com")))).toEqual([]);
+    });
+
+    // Box 0.1.11-preview.10 accepts each of these bodies before a host `when`.
+    test.each([
+      [
+        "temporal",
+        "exists (n: Long). ((count for (t: Timepoint). where (formerly within 10m (" +
+          'Box::Action::"http:request"::response{ input.host: "api.github.com" } && tp(t)))) == n ' +
+          "&& n < 3)",
+      ],
+      ["guardrails", 'context.input.method == "GET"'],
+    ])(
+      "reads a host condition after a %s condition, which no action test decides",
+      (kind, body) => {
+        const limited = rule(
+          "limited",
+          `permit (principal, ${HR}, resource) when ${kind} { ${body} } when { ${on("a.example.com")} };`,
+        );
+        const result = map(connect("c", on("a.example.com")) + limited);
+        expect(codes(result)).toEqual([]);
+        expect(host(result, "a.example.com")).toMatchObject({
+          reachable: true,
+          enforcedByBox: ["limited"],
+        });
+      },
+    );
+
+    test("refuses the field when no action test keeps it from the action", () => {
+      const result = map(
+        connect("bare", on("a.example.com", 'context.input.method == "GET"')) + get,
+      );
+      expect(codes(result)).toEqual([["UNKNOWN_ATTRIBUTE", "bare"]]);
     });
   });
 

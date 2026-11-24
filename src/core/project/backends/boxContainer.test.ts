@@ -160,6 +160,7 @@ function model(policyFiles: string[]): BoxNetwork {
     region: "us-west-2",
     hosts: [],
     envRoutes: [],
+    managedTargets: new Set<string>(),
     policyFiles,
     runtimeProfile: {
       packs: ["@box/base", "@box/agentcore"],

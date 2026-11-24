@@ -8,6 +8,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { z } from "zod";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
@@ -23,6 +25,7 @@ import {
   boxStartFolder,
   runtimeRunsInBox,
 } from "./templates/boxProfile";
+import { readBoxGatewayTargets } from "./boxGatewayTargets";
 import {
   boxGatewayOf,
   buildBoxNetwork,
@@ -37,6 +40,7 @@ import {
 } from "./boxNetwork";
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
 import { profileKeyPlaces } from "./runtimeProfile/context";
+import { isTable } from "./runtimeProfile/projectPaths";
 import type { TomlTable } from "./runtimeProfile/types";
 
 /** The policy of an agent that has no local box profile at `profilePath`. */
@@ -68,6 +72,7 @@ export async function readBoxNetworks(
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
   const keys: SharedKeys = new Map();
+  const record = readBoxGatewayTargets(projectRoot);
   for (const runtime of runtimes) {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
     const entry = boxGatewayOf(withDefaults, runtime.name);
@@ -88,6 +93,8 @@ export async function readBoxNetworks(
       targets: entry.targets,
       grantedActions: granted.actions,
       ...(projectGatewayCheck && { projectGatewayCheck }),
+      ...(record &&
+        Object.hasOwn(record, entry.name) && { ownedTargets: new Set(record[entry.name]) }),
     });
     networks.push({
       ...network,
@@ -137,7 +144,10 @@ function sharedKeyFailures(
 ): BoxNetworkFailure[] {
   const failures: BoxNetworkFailure[] = [];
   for (const { outboundAuth: auth, sources } of network.hosts) {
-    if (auth.kind !== "apiKey") continue;
+    // Build copies the key of another variable to the credential's own, so it is the same key.
+    if (auth.kind !== "apiKey" || auth.variable === credentialEnvVarName(auth.credentialName)) {
+      continue;
+    }
     const holder = keys.get(auth.credentialName);
     if (holder === undefined) {
       keys.set(auth.credentialName, { variable: auth.variable, runtime: network.runtime });
@@ -246,7 +256,7 @@ async function readResolvedPolicy(
  */
 function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
   try {
-    return { table: parseToml(text) as TomlTable, places: profileKeyPlaces(text, profileFile) };
+    return { table: parseToml(text), places: profileKeyPlaces(text, profileFile) };
   } catch {
     return undefined;
   }
@@ -259,9 +269,6 @@ function profileText(projectRoot: string, agentName: string): string | undefined
   const path = boxLocalProfilePath(projectRoot, agentName);
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
-
-const isTable = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The `[options] bedrock.region` of the profile `table`, as a dotted or a quoted key. */
 function bedrockRegionOf(table: Record<string, unknown>): unknown {
@@ -277,9 +284,9 @@ function bedrockRegionOf(table: Record<string, unknown>): unknown {
  * region. An edit of the line that sets the region keeps every other line where it is.
  */
 function profileForRegion(text: string, region: string): string | undefined {
-  let table: Record<string, unknown>;
+  let table: TomlTable;
   try {
-    table = parseToml(text) as Record<string, unknown>;
+    table = parseToml(text);
   } catch {
     return undefined;
   }
@@ -423,6 +430,15 @@ function policyFileProblem(
   return undefined;
 }
 
+/** The part of an IAM policy document that build reads: one statement, or a list of them. */
+const PolicyDocumentSchema = z.object({ Statement: z.unknown().optional() });
+
+/** An Allow statement, with the action or the list of actions it names. */
+const AllowStatementSchema = z.object({
+  Effect: z.literal("Allow"),
+  Action: z.union([z.string(), z.array(z.unknown())]),
+});
+
 /** The policy files that build writes for the gateway's role. */
 const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([BOX_BEDROCK_POLICY_FILE]);
 
@@ -450,7 +466,7 @@ function grantedActions(
     try {
       text = readFileSync(join(projectRoot, ...policy.split("/")), "utf8");
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
+      const code = error instanceof Error && "code" in error ? String(error.code) : undefined;
       if (code === "ENOENT") {
         skipped("does not exist", "Create it, or remove it from additionalPolicies.");
       } else {
@@ -465,18 +481,23 @@ function grantedActions(
     try {
       document = JSON.parse(text);
     } catch (error) {
-      skipped(`is not valid JSON (${(error as Error).message})`, "Correct the JSON.");
+      skipped(
+        `is not valid JSON (${error instanceof Error ? error.message : String(error)})`,
+        "Correct the JSON.",
+      );
       continue;
     }
-    if (typeof document !== "object" || document === null || Array.isArray(document)) {
+    const policyDocument = PolicyDocumentSchema.safeParse(document);
+    if (!policyDocument.success) {
       skipped("is not a JSON object", "Make it an IAM policy document.");
       continue;
     }
-    const { Statement } = document as { Statement?: unknown };
-    const statements = Array.isArray(Statement) ? Statement : [Statement];
-    for (const statement of statements as { Effect?: unknown; Action?: unknown }[]) {
-      if (statement?.Effect !== "Allow") continue;
-      const named = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+    const { Statement } = policyDocument.data;
+    for (const statement of Array.isArray(Statement) ? Statement : [Statement]) {
+      const allow = AllowStatementSchema.safeParse(statement);
+      if (!allow.success) continue;
+      const { Action } = allow.data;
+      const named = Array.isArray(Action) ? Action : [Action];
       actions.push(...named.filter((action): action is string => typeof action === "string"));
     }
   }

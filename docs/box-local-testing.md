@@ -226,8 +226,20 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   gets one passthrough target on `<runtime>-box-egress`. The target of an MCP server is
   `egress-<server>`. Its `protocolType` is `CUSTOM`, thus only Box makes the decision on each
   `mcp:call`. A host the gateway already has a target for keeps that target. Build owns only the
-  targets whose name starts with `egress-`: it adds them, changes them, and removes one when no host
-  needs it. It never changes another target.
+  targets it wrote, which it lists in `agentcore/box-gateway-targets.json`: it adds them, changes
+  them, and removes one when no host needs it. It never changes another target, also one whose name
+  starts with `egress-`. `agentcore add gateway-target` refuses the names `bedrock`, `agentcore`,
+  and `egress-*` on a Box gateway, so such a target comes only from an edit by hand or an older CLI.
+  `agentcore create` and `agentcore add runtime` write an empty entry for
+  each new Box gateway, so build owns none of its targets until it writes one. For a gateway that
+  the file does not list, which an older CLI made, build takes each `egress-` target that has the
+  shape it writes as its own, once, and warns for each other `egress-` target, which it keeps as
+  yours. Commit `agentcore/box-gateway-targets.json` with `agentcore.json`: in a clone without it,
+  build goes back to that `egress-` rule, and can take or give up the wrong targets. The
+  `.gitignore` that `agentcore create` writes does not exclude it. Build writes the file, but you
+  edit it in one case: when you change a target that build wrote, build stops and tells you to
+  remove that target's name from the file to keep the target as yours. Then build no longer records,
+  changes, or removes it.
 - **The other gateways of the project.** A runtime without a box gets each gateway without
   `boundRuntime` in `AGENTCORE_GATEWAY_<NAME>_URL`. For a box runtime, each of these gateways gets
   the target `egress-gateway-<name>` on `<runtime>-box-egress`, with `passthrough.gateway` set to
@@ -235,28 +247,34 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   gateway's role `bedrock-agentcore:InvokeGateway` on that gateway only, and sets
   `AGENTCORE_GATEWAY_<NAME>_URL` and `_HOST` on the runtime. A `PRIVATE_VPC` runtime gets none of
   them. A `CUSTOM_JWT` gateway gets no target, and `agentcore add gateway`, and `agentcore add runtime` for a
-  box runtime, give one notice for it. You write nothing for them. A profile
+  box runtime, give one notice for it. The file
+  `agentcore/box-gateway-targets.json` lists these targets too. You write nothing for them. A profile
   entry that signs for a gateway host with `aws://` stops build. Build writes these targets only when
   the `@aws/agentcore-cdk` in `agentcore/cdk` accepts `passthrough.gateway`: it asks that library
   with `node`. When the library refuses the field, build writes none of them, removes the ones it
   wrote before, and gives one warning. When build cannot do the check (no `node_modules`, no `node`,
   a check that takes more than 60 seconds, or one that fails), it stops and writes nothing.
-- **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret sends an
-  API key from AgentCore Identity, and an entry with no secret sends no credential.
-- **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard host,
-  a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one host, a
-  path, or a port other than 443, and similar cases stop them too. The error starts with
-  `Build stopped:` or `Deploy stopped:` and the number of problems, then gives one line for each
-  problem: its `file:line:column` in your profile or policy file, what is wrong, and how to fix it.
-  A rule of your policy file is found by its `@id`. For a rule that Box adds, the line names the
-  entry that makes Box add it, such as `[egress.github]`. Nothing is written.
-- **Warnings.** Build warns when Box enforces rules that the gateway does not (a path, method, or
-  forbid), when an entry's host gets no target, and when a target is signed for an AWS service that
-  no policy of the gateway's role grants. It also warns for a `.json` file in the gateway's
-  `additionalPolicies` that does not exist, cannot be read, or is not a JSON object, as it counts
-  none of its actions.
-- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local profile.
-  Each key of the local profile stays, and build changes only what must differ on AgentCore Runtime:
+- **Outbound auth.** An `aws://` secret signs with the gateway's role, an `env://` secret
+  sends an API key from AgentCore Identity, and an entry with no secret sends no credential.
+  This includes the model-provider route that `agentcore create` writes when you give it no key,
+  such as `[egress.openai]` with `env://OPENAI_API_KEY` (also for Anthropic and Gemini). When that
+  key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
+  `openai`, and deploy provisions your key in AgentCore Identity.
+- **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
+  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
+  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  number of problems, then gives one line for each problem: its `file:line:column` in your
+  profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
+  by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as
+  `[egress.github]`. Nothing is written.
+- **Warnings.** Build warns when Box enforces rules that the gateway does not (a path,
+  method, or forbid), when an entry's host gets no target, and when a target is signed for an
+  AWS service that no policy of the gateway's role grants. It also warns for a `.json` file in
+  the gateway's `additionalPolicies` that does not exist, cannot be read, or is not a JSON
+  object, as it counts none of its actions.
+- **The AgentCore Runtime profile.** Build derives `.box-dist/profile.toml` from the local
+  profile. Each key of the local profile stays, and build changes only what must differ on
+  AgentCore Runtime:
   - each `[egress]` host with a gateway target becomes one route to `<runtime>-box-egress`: the
     first host of an entry keeps the name of the entry, so a pack's own entry of that name merges
     with it, and each other host gets `[egress.<target>]`; an HTTP `[mcp.<name>]` server gets the

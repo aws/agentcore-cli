@@ -22,7 +22,7 @@
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
 import { posix } from "node:path";
-import { agentCoreDataPlaneHost } from "../../../../handlers/project/shortcuts";
+import { agentCoreDataPlaneHost } from "../../boxNetwork/egress";
 import { BOX_MEMORY_ROUTE_NAME, hasDefaultMemory } from "../../boxMemory";
 import { parseDestination } from "../../boxNetwork/egress";
 import {

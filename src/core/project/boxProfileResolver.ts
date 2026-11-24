@@ -3,7 +3,7 @@
  * the `box.toml` and `policy.dw` that a run of the profile gets, with every pack, option, and rule
  * Box adds already in them, so build reads them rather than compiling the profile itself.
  */
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
@@ -196,21 +196,47 @@ function boxError(stderr: readonly string[]): string[] {
   return lines.filter((line) => line.trim() !== "");
 }
 
+/** The most places where Box wraps one error that build tries both ways. */
+const MAX_WRAPS = 8;
+
 /**
- * The agent's folder, from the project root, when Box refuses the profile because the agent's
- * `.venv` lies under a write grant, as it does before `uv sync` makes the venv; else `undefined`.
+ * The agent's folder, from the project root and quoted when it has a space, when Box refuses the
+ * profile because the agent's `.venv` lies under a write grant, as it does before `uv sync` makes
+ * the venv; else `undefined`. Box wraps its error onto lines that start with spaces, at a space
+ * or inside a word, so the folder is the one way of joining the lines that names a folder on disk.
  */
 function venvAgentFolder(lines: readonly string[], projectRoot: string): string | undefined {
-  for (const line of lines) {
-    if (!line.includes("write grant")) continue;
-    const folder = /(\S+?)[\\/]\.venv[\\/]/.exec(line)?.[1];
-    if (folder === undefined) continue;
-    const inside = relative(realPath(projectRoot), realPath(folder));
-    if (inside === "") return "the project folder";
-    const outside = inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
-    return outside ? folder : inside.split(sep).join("/");
+  const folders = new Set<string>();
+  for (const pieces of wrappedErrors(lines)) {
+    const wraps = Math.min(pieces.length - 1, MAX_WRAPS);
+    for (let joins = 0; joins < 2 ** wraps; joins++) {
+      const text = pieces.reduce(
+        (joined, piece, i) => `${joined}${(joins >> (i - 1)) & 1 ? " " : ""}${piece}`,
+      );
+      const folder = /^box: error: (.+?)[\\/]\.venv[\\/]\S* lies under the write grant /.exec(
+        text,
+      )?.[1];
+      if (folder !== undefined && existsSync(folder)) folders.add(folder);
+    }
   }
-  return undefined;
+  const [folder, other] = [...folders];
+  if (folder === undefined || other !== undefined) return undefined;
+  const inside = relative(realPath(projectRoot), realPath(folder));
+  if (inside === "") return "the project folder";
+  const outside = inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  const named = outside ? folder : inside.split(sep).join("/");
+  return /\s/.test(named) ? `"${named}"` : named;
+}
+
+/** Each error of Box as the pieces of its lines: a line that starts with a space goes on the last. */
+function wrappedErrors(lines: readonly string[]): string[][] {
+  const errors: string[][] = [];
+  for (const line of lines) {
+    const last = errors.at(-1);
+    if (last && /^\s/.test(line)) last.push(line.trimStart());
+    else errors.push([line]);
+  }
+  return errors;
 }
 
 /** The path with every link resolved, or the path itself when it does not exist. */

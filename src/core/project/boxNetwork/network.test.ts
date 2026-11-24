@@ -49,6 +49,8 @@ interface Options {
   readonly runtime?: Partial<ProjectRuntime>;
   /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
+  /** The targets that agentcore/box-gateway-targets.json names for the gateway. */
+  readonly ownedTargets?: ReadonlySet<string>;
 }
 
 /** The local box profile of runtime `agent`. */
@@ -101,6 +103,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
     projectGatewayCheck: options.projectGatewayCheck ?? { accepts: true },
+    ...(options.ownedTargets && { ownedTargets: options.ownedTargets }),
   });
   return {
     spec,
@@ -293,40 +296,79 @@ describe("the gateway's targets", () => {
     ]);
   });
 
-  test("refuses to manage an egress- target that build would not write, and names it", () => {
-    const r = model(
-      "",
-      { github: GITHUB },
-      {
-        targets: [
-          passthrough("egress-github", "https://api.github.com", {
-            passthrough: { endpoint: "https://api.github.com", protocolType: "MCP" },
-          }),
-          passthrough("egress-old", "https://old.example.com", {
-            outboundAuth: {
-              type: "API_KEY",
-              credentialName: "old",
-              location: "QUERY_PARAMETER",
-              parameterName: "key",
-            },
-          }),
-        ],
+  describe("the targets build owns", () => {
+    const mcpTarget = passthrough("egress-github", "https://api.github.com", {
+      passthrough: { endpoint: "https://api.github.com", protocolType: "MCP" },
+    });
+    const queryKey = passthrough("egress-old", "https://old.example.com", {
+      outboundAuth: {
+        type: "API_KEY",
+        credentialName: "old",
+        location: "QUERY_PARAMETER",
+        parameterName: "key",
       },
-    );
-    expect(r.failures()).toEqual([
-      ["MANAGED_TARGET_CHANGED", "egress-github"],
-      ["MANAGED_TARGET_CHANGED", "egress-old"],
-    ]);
-    expect(r.lines()).toEqual([
-      "agentcore/agentcore.json  The gateway target 'egress-github' has protocolType MCP, " +
-        'which build does not write for a target whose name starts with "egress-", so build ' +
-        'does not change or remove it. Rename it without "egress-" to keep it as yours, or ' +
-        "remove it so build writes it again.",
-      "agentcore/agentcore.json  The gateway target 'egress-old' sends the API key credential " +
-        "'old' in the query parameter key, which build does not write for a target whose name " +
-        'starts with "egress-", so build does not change or remove it. Rename it without ' +
-        '"egress-" to keep it as yours, or remove it so build writes it again.',
-    ]);
+    });
+
+    test("are the ones agentcore/box-gateway-targets.json names, and a user's egress- target is not", () => {
+      const r = model(
+        "",
+        { github: GITHUB },
+        {
+          targets: [passthrough("egress-mine", "https://mine.example.com"), queryKey],
+          ownedTargets: new Set(),
+        },
+      );
+      expect(r.failures()).toEqual([]);
+      expect([...r.network.managedTargets]).toEqual(["egress-github"]);
+      expect(r.network.warnings.filter((w) => w.includes("'egress-"))).toEqual([]);
+    });
+
+    test("fail a target the file names that the user changed, and say how to keep it", () => {
+      const r = model(
+        "",
+        { github: GITHUB },
+        {
+          targets: [mcpTarget, queryKey],
+          ownedTargets: new Set(["egress-github", "egress-old"]),
+        },
+      );
+      expect(r.failures()).toEqual([
+        ["MANAGED_TARGET_CHANGED", "egress-github"],
+        ["MANAGED_TARGET_CHANGED", "egress-old"],
+      ]);
+      expect(r.lines()[1]).toBe(
+        "agentcore/agentcore.json  The gateway target 'egress-old' sends the API key credential " +
+          "'old' in the query parameter key, which build does not write, and " +
+          "agentcore/box-gateway-targets.json names it as a target that build writes, so build " +
+          "does not change or remove it. Remove 'egress-old' from that file to keep the target " +
+          "as yours, or remove the target so build writes it again.",
+      );
+    });
+
+    test("are, for a gateway the file does not name, the egress- targets that build would write", () => {
+      const r = model(
+        "",
+        { github: GITHUB },
+        {
+          targets: [passthrough("egress-stale", "https://stale.example.com"), queryKey],
+        },
+      );
+      expect(r.failures()).toEqual([]);
+      expect([...r.network.managedTargets]).toEqual(["egress-stale", "egress-github"]);
+      // The one build that takes the old egress- targets says which one it keeps as the user's.
+      expect(r.network.warnings.filter((w) => w.includes("'egress-"))).toEqual([
+        "agentcore/agentcore.json: build keeps the gateway target 'egress-old' as yours, because " +
+          "it sends the API key credential 'old' in the query parameter key, which build does " +
+          "not write. Build does not change or remove it. Remove the target if build wrote it " +
+          "before and you do not use it.",
+      ]);
+    });
+
+    test("leave a user's target of another shape on an entry's host to the user", () => {
+      const r = model("", { github: GITHUB }, { targets: [mcpTarget] });
+      expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "github"]]);
+      expect([...r.network.managedTargets]).toEqual([]);
+    });
   });
 
   test("lets a new host take the name of an egress- target that no host takes now", () => {
@@ -466,24 +508,23 @@ describe("outbound auth", () => {
     ]);
   });
 
-  test("fails an entry named for a credential that another entry's variable takes", () => {
-    const shared = model(
-      "",
-      {
-        mirror: {
-          destinations: ["mirror.example.com"],
-          secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
-        },
-        github: GITHUB,
-      },
-      { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }] },
-    );
-    expect(shared.failures()).toEqual([["API_KEY_CREDENTIAL_SHARED", "github"]]);
-    expect(shared.lines()).toEqual([
-      ".box/agent/local/profile.toml:3:1  [egress.github] needs the API key credential 'github' for " +
-        "env://GITHUB_TOKEN, and [egress.mirror] takes that credential for " +
-        "env://AGENTCORE_CREDENTIAL_GITHUB. One credential holds one key. Rename the entry.",
-    ]);
+  test("takes one credential for its own variable and for one other variable, which build copies to it", () => {
+    const github = { authorizerType: "ApiKeyCredentialProvider", name: "github" } as const;
+    const mirror = {
+      destinations: ["mirror.example.com"],
+      secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
+    };
+    for (const egress of [
+      { mirror, github: GITHUB },
+      { github: GITHUB, mirror },
+    ]) {
+      const shared = model("", egress, { credentials: [github] });
+      expect(shared.failures()).toEqual([]);
+      expect(shared.network.hosts.map(({ outboundAuth }) => outboundAuth)).toMatchObject([
+        { kind: "apiKey", credentialName: "github" },
+        { kind: "apiKey", credentialName: "github" },
+      ]);
+    }
   });
 
   test("leaves an env:// entry that cannot name an API key credential to the credentials writer", () => {
@@ -563,6 +604,23 @@ describe("hosts the model cannot carry", () => {
         '(context.input.host != "evil.example.com"), and each gateway target needs one fixed ' +
         `host. Name each host it allows, ${example}`,
     ]);
+  });
+
+  test.each([65536, 0, -1])("fails each rule that names port %d, which is not a port", (port) => {
+    const pinned = `context.input.port == ${port}`;
+    const r = model(
+      connect("odd_connect", on("api.example.com", pinned)) +
+        permit("odd", on("api.example.com", pinned)),
+    );
+    expect(r.lines()).toEqual(
+      [".box/agent/local/policy.dw:1:1", ".box/agent/local/policy.dw:2:1"].map(
+        (place, i) =>
+          `${place}  The rule "${["odd_connect", "odd"][i]}" allows api.example.com on port ` +
+          `${port}, which is not a port. Name a port from 1 to 65535, such as ` +
+          "context.input.port == 443.",
+      ),
+    );
+    expect(r.targets()).toEqual([]);
   });
 
   test("fails a host reachable only over plain HTTP", () => {
@@ -1013,6 +1071,18 @@ describe("warnings", () => {
     ]);
   });
 
+  test("names a permit whose path tests build cannot check together, and keeps its host", () => {
+    const many = [..."abcdefghijklm"].map((c) => `context.input.path like "*${c}*"`).join(" && ");
+    const r = model(reach("many", "x.example.com", many));
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual(["x.example.com -> egress-x-example-com"]);
+    expect(r.network.warnings[0]).toBe(
+      '.box/agent/local/policy.dw:2:1: The rule "many" has more path conditions than build can ' +
+        "check together, so build cannot tell whether your policy allows a request to " +
+        "x.example.com. Build gives the host a gateway target, and Box still applies the rule.",
+    );
+  });
+
   test("names an entry whose host gets no target, and the forbids that deny it", () => {
     expect(
       model(forbid("no_github", on("api.github.com")), { github: GITHUB }).network.warnings,
@@ -1289,6 +1359,23 @@ describe("the gateways of the project", () => {
       "takes the gateway target 'egress-gateway-tools' for api.github.com, and the target that " +
         "build adds for the gateway 'tools' has that name.",
     );
+  });
+
+  test("owns the target of each gateway, so the record lists it", () => {
+    const { network } = model("", {}, { gateways: [TOOLS], ownedTargets: new Set() });
+
+    expect([...network.managedTargets]).toEqual(["egress-gateway-tools"]);
+  });
+
+  test("fails a gateway whose target has the name of a target that build does not own", () => {
+    const mine = passthrough("egress-gateway-tools", "https://mine.example.com");
+    const r = model("", {}, { gateways: [TOOLS], targets: [mine], ownedTargets: new Set() });
+
+    expect(r.failures()).toEqual([["TARGET_NAME_COLLISION", "egress-gateway-tools"]]);
+    expect(r.reasons()).toEqual([
+      "The gateway 'tools' of this project would get the gateway target 'egress-gateway-tools', " +
+        "and the gateway target 'egress-gateway-tools' has that name. Rename that target.",
+    ]);
   });
 
   test("fails two gateways whose targets still have one name, as for two hosts", () => {

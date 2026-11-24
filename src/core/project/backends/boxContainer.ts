@@ -4,16 +4,10 @@ import { dirname, join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import type { BoxNetwork } from "../boxNetwork";
-import {
-  boxNetworkEdits,
-  runtimeProfileWriter,
-  writeBoxNetworkFiles,
-  writeRenderedBoxFiles,
-} from "../boxNetworkWriters";
 import { isFile } from "../runtimeBuild";
 import { runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
-import { assertImageCopiesPolicyFiles } from "./boxStaging";
+import { assertImageCopiesPolicyFiles, stagedRuntimeProfiles } from "./boxStaging";
 
 /** The folder a box image's Dockerfile copies its box profile and policy files from. */
 export const BOX_IMAGE_DIST = ".box-dist";
@@ -128,13 +122,7 @@ export async function stageBoxContainers(
     dist: posix.join(runtime.buildContextPath ?? runtime.codeLocation, BOX_IMAGE_DIST),
     kind: "container" as const,
   }));
-  const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
-    spec: project.spec,
-    projectRoot: project.rootPath,
-    env: {},
-    envLocal: {},
-  });
-  const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
+  const writeProfile = stagedRuntimeProfiles(project, networks, staged);
   for (const runtime of runtimes) {
     const policyFiles = networks.find((n) => n.runtime === runtime.name)?.policyFiles ?? [];
     assertImageCopiesPolicyFiles(
@@ -143,14 +131,12 @@ export async function stageBoxContainers(
       policyFiles,
     );
   }
-  for (const [index, { dist }] of staged.entries()) {
-    const runtime = runtimes[index]!;
-    const folder = join(project.rootPath, ...dist.split("/"));
+  for (const stage of staged) {
+    const folder = join(project.rootPath, ...stage.dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
-    writeBoxNetworkFiles(project.rootPath, filesOf(dist));
-    writeRenderedBoxFiles(project.rootPath, runtime.name, dist, filesOf(dist));
+    writeProfile(stage);
   }
   return runtimes.map((runtime) => runtime.name);
 }

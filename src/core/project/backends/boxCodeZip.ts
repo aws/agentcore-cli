@@ -2,14 +2,9 @@ import { chmodSync, copyFileSync, cpSync, mkdirSync, rmSync, writeFileSync } fro
 import { join, posix } from "node:path";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
-import {
-  boxNetworkEdits,
-  runtimeProfileWriter,
-  writeBoxNetworkFiles,
-  writeRenderedBoxFiles,
-} from "../boxNetworkWriters";
 import { BOX_CODEZIP_DIST, runtimeRunsInBox } from "../templates/boxProfile";
 import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
+import { stagedRuntimeProfiles } from "./boxStaging";
 
 /** The `.gitignore` staged into `.box-dist/`: build and deploy rewrite the folder every time. */
 export const BOX_DIST_GITIGNORE =
@@ -40,17 +35,12 @@ export async function stageBoxCodeZip(
     // @box/agentcore and @box/agentcore-codezip packs.
     kind: "codezip" as const,
   }));
-  const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
-    spec: project.spec,
-    projectRoot: project.rootPath,
-    env: {},
-    envLocal: {},
-  });
-  const filesOf = (dist: string) => files.filter(({ path }) => path.startsWith(`${dist}/`));
+  const writeProfile = stagedRuntimeProfiles(project, networks, staged);
   // Every runtime ships the pinned box, which downloads once.
   const build = await box();
 
-  for (const { runtime, dist } of staged) {
+  for (const stage of staged) {
+    const { dist } = stage;
     const folder = join(project.rootPath, ...dist.split("/"));
     rmSync(folder, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
@@ -62,8 +52,7 @@ export async function stageBoxCodeZip(
       chmodSync(join(folder, binary), 0o755);
     }
     cpSync(build.resources, join(folder, "resources"), { recursive: true });
-    writeBoxNetworkFiles(project.rootPath, filesOf(dist));
-    writeRenderedBoxFiles(project.rootPath, runtime, dist, filesOf(dist));
+    writeProfile(stage);
   }
   return runtimes.map((runtime) => runtime.name);
 }

@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { parse } from "smol-toml";
-import { InputValidationError, InvalidEnvironmentError } from "../../errors/errors";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  ProjectStateError,
+} from "../../errors/errors";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
@@ -15,7 +19,10 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
+import { FS_RECORD_FILES, type RecordFiles } from "./boxGatewayTargets";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
+import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { renderAwsMetadataPolicy } from "./templates/boxProfile";
 import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
@@ -133,15 +140,46 @@ async function drain<T>(generator: AsyncGenerator<{ type: string; message?: stri
 /** A JSON reader and writer that counts its writes of agentcore.json. */
 function countingJson() {
   const real = new FsReadWriteJson({ logger: createSilentLogger() });
-  const counter = { specWrites: 0 };
+  /**
+   * `refuseSpec` and `refuseRecord` make the next writes of agentcore.json or the record fail, and
+   * `refuseRawSpecRead` each read of agentcore.json as a plain object, which build patches.
+   * `breakRawSpec` gives that read an invalid project name, so the patched spec fails the schema.
+   */
+  const counter = {
+    specWrites: 0,
+    refuseSpec: false,
+    refuseRecord: false,
+    refuseRawSpecRead: false,
+    breakRawSpec: false,
+  };
   const json: ReadWriteJson = {
-    read: (path, schema) => real.read(path, schema),
+    read: (path, schema) => {
+      const raw = path.endsWith("agentcore.json") && !Object.is(schema, ProjectSpecSchema);
+      if (counter.refuseRawSpecRead && raw) {
+        throw new Error(`the test refuses the read of ${path}`);
+      }
+      const read = real.read(path, schema);
+      if (!(counter.breakRawSpec && raw)) return read;
+      return read.then(
+        (value) => ({ ...(value as object), name: "not a valid name!" }) as typeof value,
+      );
+    },
     write: (path, data) => {
-      if (path.endsWith("agentcore.json")) counter.specWrites++;
+      if (path.endsWith("agentcore.json")) {
+        if (counter.refuseSpec) throw new Error(`the test refuses the write of ${path}`);
+        counter.specWrites++;
+      }
       return real.write(path, data);
     },
   };
-  return { json, counter };
+  const recordFiles: RecordFiles = {
+    write: (path, text) => {
+      if (counter.refuseRecord) throw new Error(`the test refuses the write of ${path}`);
+      FS_RECORD_FILES.write(path, text);
+    },
+    remove: (path) => FS_RECORD_FILES.remove(path),
+  };
+  return { json, counter, recordFiles };
 }
 
 /** A new Strands project, with the Box gateway entry and the box profile `create` writes. */
@@ -157,7 +195,7 @@ async function strandsProject(
 ) {
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
-  const { json, counter } = countingJson();
+  const { json, counter, recordFiles } = countingJson();
   const box = new RegionalBoxProfileResolver(shows());
   const manager = new FsProjectManager({
     logger: createSilentLogger(),
@@ -166,6 +204,7 @@ async function strandsProject(
     runner: async () => {},
     checkTool: async () => {},
     json,
+    recordFiles,
     processEnv: {
       HOME: await boxHome(),
       AWS_REGION: "us-west-2",
@@ -207,6 +246,8 @@ async function strandsProject(
 
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
+/** The `host` or `host:port` a host warning starts with, before its first ": ". */
+const authorityOf = (warning: string) => warning.slice(0, Math.max(warning.indexOf(": "), 0));
 
 /**
  * Adds `tables` to the end of the profile and, as a user adds rules of their own, writes `policy`
@@ -412,14 +453,15 @@ describe("build writes the Box network of the box profile", () => {
     await editProfile(root, { tables: GITHUB_ROUTE });
     box.answer = shows({ github: GITHUB });
 
-    const { steps } = await build(manager, root);
+    const { steps, warnings } = await build(manager, root);
 
     expect(await targetNames(root)).toEqual(["bedrock"]);
     expect(JSON.parse(await text(root, SPEC)).credentials ?? []).toEqual([]);
-    expect(steps).toContain(
-      `not adding gateway target 'egress-github' of '${GATEWAY}' for api.github.com: it sends ` +
-        "the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential 'github' " +
-        "to hold it",
+    expect(steps.some((step) => step.startsWith("not adding gateway target"))).toBe(false);
+    expect(warnings).toContain(
+      "api.github.com: build gives [egress.github] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. GITHUB_TOKEN is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set GITHUB_TOKEN, or AGENTCORE_CREDENTIAL_GITHUB, and build again.",
     );
     // With no target, the Runtime profile has no route to api.github.com, as the old renderer.
     const egress = (await runtimeProfile(root)).egress as Record<
@@ -427,6 +469,146 @@ describe("build writes the Box network of the box profile", () => {
       { destinations: string[] }
     >;
     expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock-api-key"]);
+  });
+
+  test("writes the target of a model-provider route once its key is set, as the warning says", async () => {
+    const { manager, root, box } = await strandsProject();
+    const openai = {
+      destinations: ["api.openai.com"],
+      secret: { ref: "env://OPENAI_API_KEY" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[egress.openai]\ndestinations = ["api.openai.com"]\n' +
+        'secret.ref = "env://OPENAI_API_KEY"\n',
+    });
+    box.answer = shows({ openai });
+
+    const first = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
+    expect(first.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toHaveLength(1);
+    expect(first.warnings).toContain(
+      "api.openai.com: build gives [egress.openai] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. OPENAI_API_KEY is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set OPENAI_API_KEY, or AGENTCORE_CREDENTIAL_OPENAI, and build again.",
+    );
+
+    await new EnvLocalFile(root).insertIfNew([
+      { key: "OPENAI_API_KEY", value: "sk-test", comment: "the key the agent reads locally" },
+    ]);
+    const second = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "egress-openai"]);
+    expect(second.warnings.filter((w) => authorityOf(w) === "api.openai.com")).toEqual([]);
+  });
+
+  test("keeps a user's egress- target that a new project has before its first build", async () => {
+    const { manager, root } = await strandsProject();
+    // create wrote an empty entry for the Box gateway, so build owns none of its targets yet.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).toEqual(["egress-mine", "bedrock"]);
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+    // The Runtime profile routes the user's target, as a target build does not own.
+    const egress = (await runtimeProfile(root)).egress as Record<
+      string,
+      { destinations: string[] }
+    >;
+    expect(egress["egress-mine"]?.destinations).toEqual(["mine.example.com"]);
+  });
+
+  test("takes the old egress- targets of a gateway that an older CLI made, one time", async () => {
+    const { manager, root } = await strandsProject();
+    // A project of an older CLI has no record, and build wrote egress-old for a host it has left.
+    await rm(path(root, "agentcore/box-gateway-targets.json"));
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-old", "https://old.example.com")),
+    );
+
+    const first = await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock"]);
+    expect(first.steps).toContain(
+      `removing gateway target 'egress-old' from '${GATEWAY}': the Box profile no longer allows ` +
+        "old.example.com",
+    );
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))).toEqual({
+      [GATEWAY]: [],
+    });
+
+    // Once the record names the gateway, a user's egress- target of the shape build writes stays.
+    await editGateway(root, (gateway) =>
+      gateway.targets.push(userTarget("egress-mine", "https://mine.example.com")),
+    );
+    await build(manager, root);
+    expect(await targetNames(root)).toEqual(["bedrock", "egress-mine"]);
+  });
+
+  test("keeps agentcore.json as it was when build cannot write the record of its targets", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseRecord = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the write of");
+
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("keeps the record of its targets as it was when build cannot read agentcore.json to patch it", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseRawSpecRead = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the read of");
+
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("keeps the record of its targets as it was when the patched agentcore.json fails the schema", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.breakRawSpec = true;
+
+    await expect(build(manager, root)).rejects.toThrow(ProjectStateError);
+
+    expect(counter.specWrites).toBe(0);
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("puts the record of its targets back when build cannot write agentcore.json", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseSpec = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the write of");
+
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
   });
 
   test("changes nothing on a second build", async () => {
@@ -502,13 +684,13 @@ describe("build writes the Box network of the box profile", () => {
     });
     box.answer = boxShowOf({ egress: { bedrock: BEDROCK }, mcp: { tools } });
 
-    const { steps } = await build(manager, root);
+    const { warnings } = await build(manager, root);
 
     expect(await targetNames(root)).toEqual(["bedrock"]);
-    expect(steps).toContain(
-      `not adding gateway target 'egress-tools' of '${GATEWAY}' for tools.example.com: it sends ` +
-        "the key of env://TOOLS_TOKEN, and agentcore.json has no API key credential 'tools' " +
-        "to hold it",
+    expect(warnings).toContain(
+      "tools.example.com: build gives [mcp.tools] no gateway target, so the agent cannot reach " +
+        `this host on AgentCore Runtime. TOOLS_TOKEN is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. ` +
+        "Set TOOLS_TOKEN, or AGENTCORE_CREDENTIAL_TOOLS, and build again.",
     );
     // With no target, the Runtime profile has no [mcp.tools] server, as it has no route above.
     expect((await runtimeProfile(root)).mcp).toBeUndefined();
@@ -838,6 +1020,31 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await targetNames(root)).not.toContain("egress-gateway-tools");
   });
 
+  test("lets remove gateway keep an egress- target of the user that names the gateway and is not in the record", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const record = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(record[GATEWAY]).toContain("egress-gateway-tools");
+    // The user's own target names the gateway too, and has the egress- prefix, but build did not
+    // write it, so the record leaves it out.
+    const mine = {
+      name: "egress-mine",
+      targetType: "passthrough",
+      passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+    };
+    await editGateway(root, (gateway) => gateway.targets.push(mine));
+    expect(record[GATEWAY]).not.toContain("egress-mine");
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    const names = await targetNames(root);
+    expect(names).not.toContain("egress-gateway-tools");
+    expect(names).toContain("egress-mine");
+  });
+
   test("reads the project and removes the target after a build when the gateway gets boundRuntime", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
     await addToolsGateway(root);
@@ -1042,6 +1249,53 @@ describe("build routes the other gateways of the project for the boxed agent", (
       manager.removeResource(project, { resourceType: "gateway", name: "tools" }),
     ).rejects.toThrow('Target "egress-mine" of gateway "front" names the gateway "tools"');
     expect(await text(root, SPEC)).toBe(before);
+  });
+
+  test("removes the target of a gateway and its record entry when the gateway goes between two builds", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    expect(JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))[GATEWAY]).toContain(
+      "egress-gateway-tools",
+    );
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect(
+      JSON.parse(await text(root, "agentcore/box-gateway-targets.json"))[GATEWAY],
+    ).not.toContain("egress-gateway-tools");
+  });
+
+  test("lists the target of each gateway in the record, and removes it when the gateway gets CUSTOM_JWT", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const record = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(record[GATEWAY]).toContain("egress-gateway-tools");
+    const spec = JSON.parse(await text(root, SPEC));
+    Object.assign(
+      spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools"),
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["agentcore"],
+          },
+        },
+      },
+    );
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    const after = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(after[GATEWAY]).not.toContain("egress-gateway-tools");
   });
 
   test("writes no target and no server, and warns once, when it does not", async () => {

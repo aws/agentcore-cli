@@ -1,5 +1,6 @@
 export { parseEndpoint } from "./egress";
 export {
+  BOX_GATEWAY_TARGETS_FILE,
   boxGatewayIamWarnings,
   boxGatewayOf,
   buildBoxNetwork,
