@@ -147,7 +147,6 @@ describe("project create", () => {
     ["agent-python-langchain-box", { version: BOX_RELEASE.version }],
     ["a2a-python-strands-box", { version: BOX_RELEASE.version }],
     ["agui-python-strands-box", { version: BOX_RELEASE.version }],
-    ["mcp-python-fastmcp-box", { version: BOX_RELEASE.version }],
     ["agent-python-strands", undefined],
     ["agent-python-minimal", undefined],
     ["agent-python-langchain", undefined],
