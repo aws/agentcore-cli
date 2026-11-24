@@ -268,12 +268,6 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     profile: BMA_TEMPLATE_PROFILE,
   },
   "mcp-python-fastmcp": MCP_PYTHON_FASTMCP,
-  "mcp-python-fastmcp-box": {
-    ...MCP_PYTHON_FASTMCP,
-    runtimeName: "mcp_python_fastmcp_box",
-    description: "MCP server exposing tools with FastMCP, in Strands Box",
-    box: true,
-  },
   "a2a-python-strands": A2A_PYTHON_STRANDS,
   "a2a-python-strands-box": {
     ...A2A_PYTHON_STRANDS,

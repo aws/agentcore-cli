@@ -29,7 +29,6 @@ describe("template order", () => {
       "agui-python-strands",
       "agui-python-strands-box",
       "mcp-python-fastmcp",
-      "mcp-python-fastmcp-box",
       "empty",
     ]);
   });

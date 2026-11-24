@@ -203,10 +203,10 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-Seven templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+Six templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
 the CodeZip templates `agent-python-strands-box`, `agent-python-minimal-box`,
-`agent-python-langchain-box`, `a2a-python-strands-box`, `agui-python-strands-box`, and
-`mcp-python-fastmcp-box`, and the container template `agent-python-strands-box-container`.
+`agent-python-langchain-box`, `a2a-python-strands-box`, and `agui-python-strands-box`, and the
+container template `agent-python-strands-box-container`.
 `agentcore create --template <name>` makes a Box project from one of them; every other template
 runs its agent without box. Each runtime of a Box project runs in a box, with its own box profile,
 `.box/<runtime>/local/profile.toml`. `agentcore add runtime` adds a Python CodeZip runtime in a box

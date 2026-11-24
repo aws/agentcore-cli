@@ -196,13 +196,6 @@ const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
     payload: { prompt: "Reply with a short greeting." },
   },
   {
-    name: "mcp_python_fastmcp_box",
-    template: "mcp-python-fastmcp-box",
-    protocol: "MCP" as const,
-    payload: MCP_INITIALIZE_PAYLOAD,
-    invokeFlags: MCP_INITIALIZE_FLAGS,
-  },
-  {
     name: "a2a_python_strands_box",
     template: "a2a-python-strands-box",
     protocol: "A2A" as const,

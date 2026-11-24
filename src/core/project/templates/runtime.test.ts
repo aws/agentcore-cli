@@ -106,7 +106,6 @@ describe("runtime templates", () => {
     "agent-python-langchain-box",
     "a2a-python-strands-box",
     "agui-python-strands-box",
-    "mcp-python-fastmcp-box",
     "agent-python-strands",
   ])("%s keeps enableOtel on", async (template) => {
     const { runtime } = await addTemplate("my_agent", template);

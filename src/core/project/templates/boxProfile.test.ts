@@ -43,6 +43,18 @@ function profile(name: RuntimeTemplateShortcutName, overrides: Record<string, st
 
 const STRANDS = template("agent-python-strands-box");
 
+/**
+ * A box MCP server, as add runtime writes one in a Box project: no create template runs FastMCP in
+ * a box, so this is the FastMCP scaffold input marked a box template.
+ */
+function mcpProfile() {
+  const runtime = {
+    ...resolveRuntimeTemplateShortcut("mcp-python-fastmcp", { runtimeName: "agent" }),
+    boxTemplate: true,
+  };
+  return parse(renderBoxProfile("V3Demo", runtime, REGION)!) as Record<string, any>;
+}
+
 const VENV_GRANTS = {
   read: [
     "${{ workspace }}",
@@ -139,9 +151,9 @@ describe("renderBoxProfile", () => {
   test.each([
     ["agui-python-strands-box", "PORT", 8080],
     ["a2a-python-strands-box", "A2A_PORT", 9000],
-    ["mcp-python-fastmcp-box", "FASTMCP_PORT", 8000],
+    ["a box MCP server", "FASTMCP_PORT", 8000],
   ] as const)("runs %s as a module on its own port, one above dev's", (name, variable, devPort) => {
-    const { agent } = profile(name);
+    const { agent } = name === "a box MCP server" ? mcpProfile() : profile(name);
     expect(agent.command).toEqual(["${{ workspace }}/.venv/bin/python", "-m", "main"]);
     expect(agent.env).toMatchObject({
       PYTHONPATH: "${{ workspace }}",
@@ -163,7 +175,7 @@ describe("renderBoxProfile", () => {
   });
 
   test("gives the MCP server no route, because it calls no model", () => {
-    const mcp = profile("mcp-python-fastmcp-box");
+    const mcp = mcpProfile();
     expect(mcp.packs).toEqual(["@box/base"]);
     expect(mcp.options).toBeUndefined();
     expect(mcp.egress).toBeUndefined();
@@ -453,7 +465,6 @@ describe("startsInBoxOnCodeZip", () => {
     ["agent-python-langchain-box", true],
     ["a2a-python-strands-box", true],
     ["agui-python-strands-box", true],
-    ["mcp-python-fastmcp-box", true],
     ["agent-python-strands-box-container", false],
     ["agent-python-minimal", false],
     ["agent-python-langchain", false],
