@@ -58,9 +58,7 @@ export function boxEgressCredentialName(
 /**
  * Whether {@link planBoxProfileCredentials} skips `route` before it looks up any key, because
  * something else holds the key: a credential whose variables `reserved` holds reserves the route's
- * variable. A model-provider route that `agentcore create` writes with no key (`openai` reading
- * `OPENAI_API_KEY`) is a route like any other: on AgentCore Runtime its gateway target sends the
- * key of its credential.
+ * variable.
  */
 function boxRouteKeyHeldElsewhere(
   { variable }: BoxEnvRoute,
@@ -98,7 +96,9 @@ export function boxKeyVariables(
  * in `sources.env` first and then in `sources.envLocal`. Deploy provisions every declared
  * credential and fails on one with no key, so a route whose key is in neither place gets no
  * credential: only a warning that names the variable to set. A credential an earlier build added
- * is kept, and gets the same warning if its key has gone.
+ * is kept, and gets the same warning if its key has gone. A model-provider route that
+ * `agentcore create` writes with no key (`openai` reading `OPENAI_API_KEY`) is a route like any
+ * other: on AgentCore Runtime its gateway target sends the key of its credential.
  *
  * Mutates `spec.credentials` in place, and is idempotent. It skips, with no message:
  *   - a route whose key something else holds ({@link boxRouteKeyHeldElsewhere});
