@@ -97,11 +97,7 @@ const SHOWN_POLICY =
   boxReachRules("mcp", "docs", ["docs.example.com"]);
 
 /** The last sentence of each error that says to install another box: the pinned release. */
-const INSTALL =
-  `Install box ${BOX_RELEASE.version} (https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}), then retry. ` +
-  "On macOS, use box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
-  "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS build " +
-  "of 0.3.0 does not run.";
+const INSTALL = `Install box ${BOX_RELEASE.version} (https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}), then retry.`;
 
 /**
  * `box profile show open --format json --full` for a profile with the routes `auth` and `github`
