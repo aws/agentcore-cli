@@ -297,16 +297,18 @@ describe("build writes the Box network of the box profile", () => {
     expect(profile.policies).toEqual(["policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
     const egress = profile.egress as Record<string, unknown>;
-    // The route of [egress.github] keeps the name of its entry, and goes to its target.
+    // The route of [egress.github] keeps the name of its entry, and goes to its target. The
+    // Bedrock route is the api-key route of @box/bedrock, whose env:// secret box takes beside a
+    // backend.
     expect(Object.keys(egress).sort()).toEqual([
       "agentcore",
-      "bedrock",
+      "bedrock-api-key",
       "egress-httpbin-org",
       "github",
     ]);
     expect(egress.github).toEqual(gatewayRoute("egress-github", "api.github.com"));
     expect(egress["egress-httpbin-org"]).toEqual(gatewayRoute("egress-httpbin-org", "httpbin.org"));
-    expect(egress.bedrock).toEqual(
+    expect(egress["bedrock-api-key"]).toEqual(
       gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
     );
     expect(await boxFiles(root)).toEqual(before);
@@ -377,7 +379,7 @@ describe("build writes the Box network of the box profile", () => {
       string,
       { destinations: string[] }
     >;
-    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock"]);
+    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock-api-key"]);
   });
 
   test("changes nothing on a second build", async () => {
@@ -433,7 +435,7 @@ describe("build writes the Box network of the box profile", () => {
     );
     expect(warnings).toEqual([]);
     const profile = await runtimeProfile(root);
-    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock-api-key", "agentcore"]);
     expect(profile.mcp).toEqual({
       tools: { ...tools, backends: gatewayRoute("egress-tools", "tools.example.com").backends },
     });
@@ -520,7 +522,7 @@ describe("build writes the Box network of the box profile", () => {
     expect(await targetNames(root)).toEqual(["bedrock", "agentcore"]);
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
     // The route of [egress.memory] keeps the name of its entry, and goes to the agentcore target.
-    expect(Object.keys(egress)).toEqual(["bedrock", "memory"]);
+    expect(Object.keys(egress)).toEqual(["bedrock-api-key", "memory"]);
     expect(egress.memory).toEqual(
       gatewayRoute("agentcore", "bedrock-agentcore.us-west-2.amazonaws.com"),
     );
@@ -1044,11 +1046,13 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
       outboundAuth: { region: "eu-central-1" },
     });
     const profile = await runtimeProfile(root);
-    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
+    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1", "sign-in": "api-key" } });
     const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
-    expect(egress.bedrock!.destinations).toEqual(["bedrock-runtime.eu-central-1.amazonaws.com"]);
+    expect(egress["bedrock-api-key"]!.destinations).toEqual([
+      "bedrock-runtime.eu-central-1.amazonaws.com",
+    ]);
     // The backend signs for the Runtime's own region, which box reads from AWS_REGION there.
-    expect(JSON.stringify(egress.bedrock!.backends)).toContain(
+    expect(JSON.stringify(egress["bedrock-api-key"]!.backends)).toContain(
       '"region":"${{ inputs.aws.region }}"',
     );
   });
@@ -1061,7 +1065,9 @@ describe("build writes the Bedrock and Memory targets for the region it builds f
 
     const { targets } = await boxGateway(root);
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-northeast-1"));
-    expect((await runtimeProfile(root)).options).toEqual({ bedrock: { region: "ap-northeast-1" } });
+    expect((await runtimeProfile(root)).options).toEqual({
+      bedrock: { region: "ap-northeast-1", "sign-in": "api-key" },
+    });
   });
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {

@@ -483,13 +483,20 @@ function rendered(label: string): TomlTable {
 /**
  * The `[egress]` routes of the old renderer under the keys that the gateway rule gives them: the
  * old renderer named each route after its target, and the rule names the route of the first host of
- * an entry after the entry, so that a pack table of that name merges with it. The routes are the
- * same.
+ * an entry after the entry, so that a pack table of that name merges with it. With @box/bedrock,
+ * the Bedrock route is `bedrock-api-key`, the route of the pack that the Runtime profile signs in
+ * with. The routes are the same.
  */
-const withEntryKeys = (egress: unknown) =>
+const withEntryKeys = (egress: unknown, bedrockPack = true) =>
   Object.fromEntries(
     Object.entries(egress as TomlTable).map(([key, route]) => [
-      { "egress-github": "github", "egress-models-api-one-example-com": "models" }[key] ?? key,
+      (
+        {
+          ...(bedrockPack && { bedrock: "bedrock-api-key" }),
+          "egress-github": "github",
+          "egress-models-api-one-example-com": "models",
+        } as Record<string, string>
+      )[key] ?? key,
       route,
     ]),
   );
@@ -702,7 +709,8 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
       ["MCP_DESTINATION_NOT_ONE_HOST", "pathed"],
     ]);
     expect(derived.problems).toEqual([]);
-    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
+    // The profile imports no @box/bedrock, so its Bedrock route keeps its name.
+    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress, false));
     expect(derived.profile.mcp).toBeUndefined();
     expect(old.mcp).toBeUndefined();
   });

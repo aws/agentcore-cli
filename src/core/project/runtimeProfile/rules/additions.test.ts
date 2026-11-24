@@ -12,7 +12,13 @@ import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from "../../boxNetwork";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderAgentCorePack, renderBoxProfile } from "../../templates/boxProfile";
+import {
+  BOX_BEDROCK_API_KEY_ROUTE,
+  BOX_BEDROCK_PACK,
+  BOX_BEDROCK_ROUTE,
+  renderAgentCorePack,
+  renderBoxProfile,
+} from "../../templates/boxProfile";
 import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
@@ -160,6 +166,29 @@ const OTEL_START: Record<Build, string[]> = {
 };
 
 /**
+ * `profile`, a Runtime profile that the old renderer wrote, as the derivation writes it for box
+ * 0.3: with @box/bedrock, `bedrock.sign-in` is `api-key`, and the Bedrock route through the
+ * gateway is `[egress.bedrock-api-key]`, the pack's route for that sign-in. Nothing else changes.
+ */
+function withApiKeySignIn(profile: TomlTable): TomlTable {
+  const packs = profile.packs;
+  if (!Array.isArray(packs) || !packs.includes(BOX_BEDROCK_PACK)) return profile;
+  const result = structuredClone(profile);
+  const options = result.options as TomlTable;
+  options.bedrock = { ...(options.bedrock as TomlTable), "sign-in": "api-key" };
+  const egress = result.egress as TomlTable | undefined;
+  if (egress !== undefined && Object.hasOwn(egress, BOX_BEDROCK_ROUTE)) {
+    result.egress = Object.fromEntries(
+      Object.entries(egress).map(([name, route]) => [
+        name === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : name,
+        route,
+      ]),
+    );
+  }
+  return result;
+}
+
+/**
  * `profile`, a Runtime profile with OTEL off, as OTEL on gives it: the agent starts under
  * opentelemetry-instrument, and the default X-Ray target comes last when no target is
  * `cloudwatch_traces`. Nothing else changes.
@@ -263,7 +292,8 @@ describe("deriveRuntimeProfile on the created templates", () => {
       const recorded = OLD_RENDERER.templates[
         `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
       ] as TomlTable;
-      const expected = otel ? withOtel(recorded, build) : recorded;
+      const signedIn = withApiKeySignIn(recorded);
+      const expected = otel ? withOtel(signedIn, build) : signedIn;
       expect(problems).toEqual([]);
       for (const key of OWNED)
         expect([key, profile[key]]).toEqual([key, expected[key] ?? undefined]);
@@ -338,7 +368,8 @@ describe("deriveRuntimeProfile on each box template of create", () => {
           `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
         ]!;
       expect(problems).toEqual([]);
-      expect(profile).toEqual(otel ? withOtel(recorded, input.build as Build) : recorded);
+      const signedIn = withApiKeySignIn(recorded);
+      expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
     },
   );
 });
@@ -422,19 +453,26 @@ describe("the additions rule", () => {
     });
   });
 
-  test("sets bedrock.region to the build region, and keeps the other options", () => {
+  test("sets bedrock.region to the build region and bedrock.sign-in to api-key, and keeps the other options", () => {
+    // Box refuses the aws:// route of @box/bedrock beside the gateway backend, so the Runtime
+    // signs in with the pack's api-key route, whose env:// secret box replaces with a stand-in.
     const dotted = { options: { bedrock: { region: CREATE_REGION }, other: { input: "x" } } };
     const quoted = { options: { "bedrock.region": CREATE_REGION } };
+    const signedIn = { options: { bedrock: { region: CREATE_REGION, "sign-in": "aws" } } };
 
     expect(apply(dotted, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
       other: { input: "x" },
     });
     expect(apply(quoted, contextOf(CODEZIP)).table.options).toEqual({
       "bedrock.region": BUILD_REGION,
+      "bedrock.sign-in": "api-key",
+    });
+    expect(apply(signedIn, contextOf(CODEZIP)).table.options).toEqual({
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
   });

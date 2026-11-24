@@ -54,6 +54,23 @@ const BOX_BASE_PACK = "@box/base";
 /** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
 export const BOX_BEDROCK_PACK = "@box/bedrock";
 
+/**
+ * The route of {@link BOX_BEDROCK_PACK} that signs each Bedrock call with the AWS credentials,
+ * `aws://`, for its `bedrock.sign-in` input `aws`, the default. The local profile uses it.
+ */
+export const BOX_BEDROCK_ROUTE = "bedrock";
+
+/**
+ * The route of {@link BOX_BEDROCK_PACK} for its `bedrock.sign-in` input `api-key`, whose secret is
+ * `env://AWS_BEARER_TOKEN_BEDROCK`. The Runtime profile uses it: there each Bedrock call goes
+ * through a Box gateway backend, and box takes only an `env://` secret beside a backend. Box gives
+ * the agent a stand-in for it and strips it, and the gateway signs the call with its own role.
+ */
+export const BOX_BEDROCK_API_KEY_ROUTE = "bedrock-api-key";
+
+/** The `bedrock.sign-in` of the Runtime profile, which selects {@link BOX_BEDROCK_API_KEY_ROUTE}. */
+export const BOX_BEDROCK_RUNTIME_SIGN_IN = "api-key";
+
 /** {@link renderAgentCorePack}. */
 export const AGENTCORE_PACK_NAME = "@box/agentcore";
 export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";

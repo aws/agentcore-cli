@@ -15,12 +15,21 @@
  * | an entry with no host in the Box network model | removed; the model fails the entry, and build stops |
  *
  * A stdio `[mcp.<name>]` stays as it is: the `refusals` and `paths` rules own it.
+ *
+ * With @box/bedrock, the route of its `[egress.bedrock]` is `[egress.bedrock-api-key]`: the
+ * `additions` rule picks that route of the pack with `bedrock.sign-in = "api-key"`, because box
+ * refuses the `aws://` secret of `[egress.bedrock]` beside a backend.
  */
 import { InputValidationError } from "../../../../errors/errors";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
 import type { BoxHostSource, BoxNetworkHost } from "../../boxNetwork";
 import { BOX_EGRESS_TARGET_PREFIX } from "../../boxNetwork/egress";
 import { gatewayTargetFor } from "../../boxNetwork/projectSpec";
+import {
+  BOX_BEDROCK_API_KEY_ROUTE,
+  BOX_BEDROCK_PACK,
+  BOX_BEDROCK_ROUTE,
+} from "../../templates/boxProfile";
 import { isHttpServer, isTable } from "../projectPaths";
 import {
   RUNTIME_AWS_SIGNER,
@@ -44,6 +53,12 @@ interface GatewayRoute {
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const routes = gatewayRoutes(context);
   const written = new Set<string>();
+  const bedrockPack = Array.isArray(table.packs) && table.packs.includes(BOX_BEDROCK_PACK);
+  // The route of @box/bedrock that the Runtime profile signs in with merges with this one.
+  const keyOf = (route: GatewayRoute) => {
+    const key = routeKey(route, routes, context);
+    return bedrockPack && key === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : key;
+  };
 
   const egress: TomlTable = {};
   for (const [name, entry] of Object.entries(isTable(table.egress) ? table.egress : {})) {
@@ -55,7 +70,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       host.sources.some((source) => source.kind === "entry" && source.egressEntry === name),
     );
     for (const route of routesOf(hosts, routes)) {
-      egress[routeKey(route, routes, context)] = egressRoute(entry, route);
+      egress[keyOf(route)] = egressRoute(entry, route);
       written.add(route.target);
     }
   }
@@ -77,7 +92,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     if (route.server) {
       mcp[route.server.mcpEntry] = mcpServer({}, route, route.server);
     } else {
-      egress[routeKey(route, routes, context)] = egressRoute({}, route);
+      egress[keyOf(route)] = egressRoute({}, route);
     }
   }
 
