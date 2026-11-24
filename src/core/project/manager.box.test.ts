@@ -12,7 +12,8 @@ import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { boxStartFolder } from "./templates/boxProfile";
+import { boxStartFolder, renderAwsMetadataPolicy } from "./templates/boxProfile";
+import { customJwtGatewayNotice } from "./boxNetwork/projectGateways";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 
 /**
@@ -89,6 +90,7 @@ async function createdProject(
     runtimeVersion: "PYTHON_3_14",
     protocol: "HTTP",
     box: { version: BOX_RELEASE.version },
+    platformVersion: "V2" as const,
   }));
   for (const name of runtimes)
     await mkdir(join(created.rootPath, "app", name), { recursive: true });
@@ -233,6 +235,9 @@ describe("agentcore create", () => {
     expect((spec.agentCoreGateways ?? []).map(({ name }) => name)).toEqual(
       projectType ? ["agent-box-egress"] : [],
     );
+    // Box runs only on AgentCore Runtime V2, so only a box runtime pins it.
+    const [runtime] = spec.runtimes as { platformVersion?: string }[];
+    expect(runtime?.platformVersion).toBe(projectType ? "V2" : undefined);
     expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
@@ -372,6 +377,36 @@ describe("gateway targets in a Box project", () => {
     expect(await specText(project)).toBe(before);
   });
 
+  test("add runtime gives the notice of each CUSTOM_JWT gateway without boundRuntime, as the new runtime is boxed", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    const spec = await specOnDisk(project);
+    spec.agentCoreGateways.push({
+      name: "secure",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+          allowedAudience: ["agentcore"],
+        },
+      },
+      protocolType: "MCP",
+      targets: [],
+    } as never);
+    await writeFile(join(project.rootPath, "agentcore", "agentcore.json"), JSON.stringify(spec));
+
+    const warnings: string[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      if (next.value.type === "warning") warnings.push(next.value.message);
+    }
+
+    expect(warnings).toContain(customJwtGatewayNotice("secure"));
+  });
+
   test("add runtime gives the new runtime a box, its Box gateway, and its own box profile", async () => {
     const manager = subject();
     const project = await createdProject(manager);
@@ -388,6 +423,7 @@ describe("gateway targets in a Box project", () => {
     const spec = await parsedSpec(project);
     const search = spec.runtimes.find(({ name }) => name === "search")!;
     expect(search.box).toEqual({ version: BOX_RELEASE.version });
+    expect(search.platformVersion).toBe("V2");
     expect(search.entrypoint).toBe("start.py");
     expect(spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === "search")).toEqual(
       expect.objectContaining(boxGatewaySpec("search")),
@@ -396,6 +432,10 @@ describe("gateway targets in a Box project", () => {
     // dev starts this profile's box in app/search, the runtime's own folder.
     expect(boxStartFolder(search)).toBe("app/search");
     expect(events).toContainEqual({ type: "step", message: `writing box profile ${profile}` });
+    // Beside it, the policy file the profile names, which keeps the agent from AWS instance metadata.
+    const policy = join(dirname(profile), "aws-metadata-block.dw");
+    expect(events).toContainEqual({ type: "step", message: `writing box policy file ${policy}` });
+    expect(await readFile(policy, "utf8")).toBe(renderAwsMetadataPolicy());
     expect(existsSync(join(project.rootPath, "app", "search", "start.py"))).toBe(true);
     expect(existsSync(join(project.rootPath, "app", "search", ".venv"))).toBe(true);
     // The notice of the default log target comes after agentcore.json is written.
@@ -533,6 +573,46 @@ describe("gateway targets in a Box project", () => {
     ]);
   });
 
+  test("add runtime replaces a policy file already beside the new profile with the CLI's", async () => {
+    const manager = subject();
+    const project = await createdProject(manager, ["agent"]);
+    const policy = join(project.rootPath, ".box", "search", "local", "aws-metadata-block.dw");
+    await mkdir(dirname(policy), { recursive: true });
+    await writeFile(policy, "// an old copy\n");
+
+    const events: unknown[] = [];
+    const generator = manager.addResource(project, {
+      resourceType: "runtime",
+      resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+    } as never);
+    for (let next = await generator.next(); !next.done; next = await generator.next()) {
+      events.push(next.value);
+    }
+
+    expect(await readFile(policy, "utf8")).toBe(renderAwsMetadataPolicy());
+    expect(events).toContainEqual({ type: "step", message: `writing box policy file ${policy}` });
+    expect(existsSync(join(dirname(policy), "profile.toml"))).toBe(true);
+  });
+
+  test("a failed write of the policy file leaves no profile that names it", async () => {
+    const manager = subject();
+    const project = await createdProject(manager, ["agent"]);
+    // A folder where the policy file goes makes its write fail.
+    const policy = join(project.rootPath, ".box", "search", "local", "aws-metadata-block.dw");
+    await mkdir(policy, { recursive: true });
+
+    await expect(
+      drain(
+        manager.addResource(project, {
+          resourceType: "runtime",
+          resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+        } as never),
+      ),
+    ).rejects.toThrow();
+
+    expect(existsSync(join(dirname(policy), "profile.toml"))).toBe(false);
+  });
+
   test("add runtime refuses a start.py of the user's own, and changes nothing", async () => {
     const manager = subject();
     const project = await createdProject(manager);
@@ -642,6 +722,8 @@ describe("gateway targets in a Box project", () => {
       })(),
     ).rejects.toThrow(`the test refuses the write of ${specFile}`);
     expect(events.some((event) => (event as { type?: string }).type === "warning")).toBe(false);
+    // The box folder add runtime made goes, with the profile and the policy file in it.
+    expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
   });
 
   test("a failed write of agentcore.json gives no notice that the new Box gateway sends its logs", async () => {

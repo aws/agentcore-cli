@@ -79,7 +79,12 @@ export function isContainerBuild(spec: {
   containerUri?: string;
   dockerfile?: string;
 }): boolean {
-  return spec.build === "Container" || !!spec.containerUri || !!spec.dockerfile;
+  return (
+    spec.build === "Container" ||
+    spec.build === "ContainerLocal" ||
+    !!spec.containerUri ||
+    !!spec.dockerfile
+  );
 }
 export const ProtocolModeSchema = z.enum(["HTTP", "MCP", "A2A", "AGUI"]);
 export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;

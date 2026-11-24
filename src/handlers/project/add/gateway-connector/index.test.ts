@@ -106,7 +106,12 @@ describe("project add gateway-connector", () => {
     const spec = await projectSpec(projectRoot);
     const runtime = spec.runtimes[0].name;
     const box = boxGatewaySpec(runtime);
-    await writeProjectSpec(projectRoot, { ...spec, projectType: "box", agentCoreGateways: [box] });
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
+      agentCoreGateways: [box],
+    });
     const note = `Gateway '${box.name}' is bound to runtime '${runtime}', so only that runtime gets its variables`;
 
     const human = await run([

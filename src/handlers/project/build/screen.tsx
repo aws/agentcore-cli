@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
-import { ProjectKey } from "../../../router";
+import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
 import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
@@ -23,20 +23,19 @@ export function BuildProjectScreen({ ctx, core }: ScreenProps) {
       seed={ctx.value(ProjectKey)}
       onBack={() => navigate(PROJECT_MENU)}
     >
-      {(project) => <BuildConfirm project={project} core={core} region={ctx.value(RegionKey)} />}
+      {(project) => <BuildConfirm ctx={ctx} project={project} core={core} />}
     </ProjectGate>
   );
 }
 
 function BuildConfirm({
+  ctx,
   project,
   core,
-  region,
 }: {
+  ctx: Context;
   project: Project;
   core: ScreenProps["core"];
-  /** The region withRegion resolved, as the build command passes it. */
-  region: string | undefined;
 }) {
   const navigate = useNavigate();
 
@@ -49,7 +48,12 @@ function BuildConfirm({
       isPending={false}
       error={null}
       action={async function* () {
-        yield* core.projectManager.build(project, { region });
+        const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
+        // withRegion resolved --region, as the build command passes it.
+        yield* core.projectManager.build(project, {
+          region: ctx.value(RegionKey),
+          disableDependencyManagement: globalConfig?.disableDependencyManagement,
+        });
         return { rows: {} };
       }}
       successTitle={builtMessage(project)}

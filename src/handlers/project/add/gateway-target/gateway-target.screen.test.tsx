@@ -321,6 +321,7 @@ describe("project add gateway-target wizard", () => {
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
       agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
     });
     const screen = renderScreen("/agentcore/add/gateway-target");
@@ -469,7 +470,13 @@ describe("project add gateway-target wizard", () => {
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
-      runtimes: [{ ...spec.runtimes[0], box: { version: BOX_RELEASE.version } }],
+      runtimes: [
+        {
+          ...spec.runtimes[0],
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
       agentCoreGateways: [box],
     });
     const screen = renderScreen("/agentcore/add/gateway-target");

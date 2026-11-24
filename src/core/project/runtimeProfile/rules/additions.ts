@@ -7,6 +7,7 @@
  * | `packs` | the user's packs in their order, then @box/agentcore, and @box/agentcore-codezip for CodeZip |
  * | `[profile] name` | the project's name |
  * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
+ * | `[options] bedrock.sign-in` | `api-key`, beside `bedrock.region`: the gateway signs each Bedrock call, and box refuses the `aws://` route of @box/bedrock beside its backend |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
@@ -28,6 +29,7 @@ import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
+  BOX_BEDROCK_RUNTIME_SIGN_IN,
   boxIngressPort,
   boxWorkloadPort,
   OBSERVABILITY_OFF_ENV,
@@ -334,7 +336,8 @@ function runtimePacks(packs: unknown, context: RuntimeProfileContext): unknown {
 
 /**
  * `[options]` with `bedrock.region` in the build region, the region of the gateway's `bedrock`
- * target: where the profile sets it, as a dotted or a quoted key, or where it imports @box/bedrock.
+ * target, and `bedrock.sign-in` of the route that goes through the gateway: where the profile sets
+ * `bedrock.region`, as a dotted or a quoted key, or where it imports @box/bedrock.
  */
 function runtimeOptions(options: unknown, bedrock: boolean, region: string): unknown {
   if (options !== undefined && !isTable(options)) return options;
@@ -342,8 +345,14 @@ function runtimeOptions(options: unknown, bedrock: boolean, region: string): unk
   const dotted = options !== undefined && isTable(options.bedrock);
   if (!quoted && !dotted && !bedrock) return options;
   const result: TomlTable = { ...options };
-  if (quoted) result["bedrock.region"] = region;
-  if (dotted || !quoted) result.bedrock = { ...(result.bedrock as TomlTable), region };
+  const signIn = BOX_BEDROCK_RUNTIME_SIGN_IN;
+  if (quoted) {
+    result["bedrock.region"] = region;
+    result["bedrock.sign-in"] = signIn;
+  }
+  if (dotted || !quoted) {
+    result.bedrock = { ...(result.bedrock as TomlTable), region, "sign-in": signIn };
+  }
   return result;
 }
 

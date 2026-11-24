@@ -6,7 +6,11 @@
 import type { SourceSpan } from "./dogwood";
 import { placeOf, type ParsedPolicy } from "./policyParser";
 
-/** The rules Box writes into every profile, for the cloud metadata hosts and addresses. */
+/**
+ * The `@id`s of the cloud metadata forbids that Box's security guide recommends. Box writes no
+ * metadata rule into a profile itself; the messages below still name a rule of either id that no
+ * policy file holds as one Box adds to every profile.
+ */
 export const BOX_METADATA_RULE_IDS: ReadonlySet<string> = new Set([
   "metadata_hosts",
   "metadata_addresses",

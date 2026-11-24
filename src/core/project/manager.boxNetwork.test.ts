@@ -16,6 +16,8 @@ import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
+import { renderAwsMetadataPolicy } from "./templates/boxProfile";
+import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -144,7 +146,14 @@ function countingJson() {
 
 /** A new Strands project, with the Box gateway entry and the box profile `create` writes. */
 async function strandsProject(
-  options: { backends?: { CDK: ProjectBackend }; env?: NodeJS.ProcessEnv } = {},
+  options: {
+    backends?: { CDK: ProjectBackend };
+    env?: NodeJS.ProcessEnv;
+    /** What the probe of agentcore/cdk answers; it refuses passthrough.gateway when absent. */
+    acceptsPassthroughGateway?: boolean;
+    /** What the probe answers, in place of `acceptsPassthroughGateway`; a test can change it. */
+    check?: { current: PassthroughGatewayCheck };
+  } = {},
 ) {
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
@@ -163,6 +172,11 @@ async function strandsProject(
       ...options.env,
     },
     boxProfileResolver: box,
+    cdkAcceptsPassthroughGateway: async () =>
+      options.check?.current ??
+      (options.acceptsPassthroughGateway
+        ? { accepts: true }
+        : { accepts: false, reason: "refuses" }),
     ...(options.backends && { backends: options.backends }),
   });
   const { value: created, warnings: createWarnings } = await drain(
@@ -178,7 +192,15 @@ async function strandsProject(
     }),
   );
   const root = created.rootPath;
-  await mkdir(join(root, "agentcore", "cdk", "node_modules"), { recursive: true });
+  // Build installs the CDK dependencies unless the library is there at the version create vends.
+  const cdk = join(root, "agentcore", "cdk");
+  const { dependencies } = JSON.parse(await readFile(join(cdk, "package.json"), "utf8"));
+  const library = join(cdk, "node_modules", "@aws", "agentcore-cdk");
+  await mkdir(library, { recursive: true });
+  await writeFile(
+    join(library, "package.json"),
+    JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+  );
   counter.specWrites = 0;
   return { manager, root, counter, box, createWarnings };
 }
@@ -186,12 +208,20 @@ async function strandsProject(
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
 
-/** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/agent_python_strands/local/policy.dw`. */
-async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
-  const profile = await text(root, PROFILE);
-  await writeFile(path(root, PROFILE), `${edit.top ?? ""}${profile}${edit.tables ?? ""}`);
-  if (edit.policy !== undefined)
+/**
+ * Adds `tables` to the end of the profile and, as a user adds rules of their own, writes `policy`
+ * to `.box/agent_python_strands/local/policy.dw` and lists it under `policies` after the file that
+ * create writes.
+ */
+async function editProfile(root: string, edit: { tables?: string; policy?: string }) {
+  let profile = await text(root, PROFILE);
+  if (edit.policy !== undefined) {
+    const created = 'policies = ["aws-metadata-block.dw"]\n';
+    expect(profile).toContain(created);
+    profile = profile.replace(created, 'policies = ["aws-metadata-block.dw", "policy.dw"]\n');
     await writeFile(path(root, ".box/agent_python_strands/local/policy.dw"), edit.policy);
+  }
+  await writeFile(path(root, PROFILE), `${profile}${edit.tables ?? ""}`);
 }
 
 /** Changes the Box gateway entry of agentcore.json, as a user does by hand. */
@@ -264,7 +294,6 @@ describe("build writes the Box network of the box profile", () => {
       env: { GITHUB_TOKEN: "ghp_123" },
     });
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables: GITHUB_ROUTE,
       policy: POLICY,
     });
@@ -292,13 +321,18 @@ describe("build writes the Box network of the box profile", () => {
 
     // The Runtime profile routes each target of the Box gateway, the model's included.
     const profile = await runtimeProfile(root);
-    expect(profile.policies).toEqual(["policy.dw"]);
+    expect(profile.policies).toEqual(["aws-metadata-block.dw", "policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
+    expect(await text(root, "app/agent_python_strands/.box-dist/aws-metadata-block.dw")).toBe(
+      renderAwsMetadataPolicy(),
+    );
     const egress = profile.egress as Record<string, unknown>;
-    // The route of [egress.github] keeps the name of its entry, and goes to its target.
+    // The route of [egress.github] keeps the name of its entry, and goes to its target. The
+    // Bedrock route is the api-key route of @box/bedrock, whose env:// secret box takes beside a
+    // backend.
     expect(Object.keys(egress).sort()).toEqual([
       "agentcore",
-      "bedrock",
+      "bedrock-api-key",
       "egress-httpbin-org",
       "github",
     ]);
@@ -309,7 +343,7 @@ describe("build writes the Box network of the box profile", () => {
       destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
       secret: { ref: "aws://" },
     });
-    expect(egress.bedrock).toEqual(
+    expect(egress["bedrock-api-key"]).toEqual(
       gatewayRoute("bedrock", "bedrock-runtime.us-west-2.amazonaws.com"),
     );
     expect(await boxFiles(root)).toEqual(before);
@@ -337,6 +371,18 @@ describe("build writes the Box network of the box profile", () => {
     const { createWarnings } = await strandsProject();
 
     expect(createWarnings).toContain(boxGatewayLogsNotice(GATEWAY));
+  });
+
+  test("stages the policy file create writes beside the profile it leaves as written", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = shows();
+
+    await build(manager, root);
+
+    expect((await runtimeProfile(root)).policies).toEqual(["aws-metadata-block.dw"]);
+    expect(await text(root, "app/agent_python_strands/.box-dist/aws-metadata-block.dw")).toBe(
+      renderAwsMetadataPolicy(),
+    );
   });
 
   test("keeps the enableApplicationLogs of the Box gateway as the user wrote it", async () => {
@@ -380,7 +426,7 @@ describe("build writes the Box network of the box profile", () => {
       string,
       { destinations: string[] }
     >;
-    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock"]);
+    expect(Object.keys(egress).sort()).toEqual(["agentcore", "bedrock-api-key"]);
   });
 
   test("changes nothing on a second build", async () => {
@@ -436,7 +482,7 @@ describe("build writes the Box network of the box profile", () => {
     );
     expect(warnings).toEqual([]);
     const profile = await runtimeProfile(root);
-    expect(Object.keys(profile.egress as object)).toEqual(["bedrock", "agentcore"]);
+    expect(Object.keys(profile.egress as object)).toEqual(["bedrock-api-key", "agentcore"]);
     expect(profile.mcp).toEqual({
       tools: { ...tools, backends: gatewayRoute("egress-tools", "tools.example.com").backends },
     });
@@ -518,7 +564,7 @@ describe("build writes the Box network of the box profile", () => {
     // alone. So on the Runtime the entry goes to the host directly, signed with the execution
     // role, and it carries the Memory calls too.
     const egress = (await runtimeProfile(root)).egress as Record<string, unknown>;
-    expect(Object.keys(egress)).toEqual(["bedrock", "tools"]);
+    expect(Object.keys(egress)).toEqual(["bedrock-api-key", "tools"]);
     expect(egress.tools).toEqual({ destinations: [host], secret: { ref: "aws://" } });
     // The Runtime does not use a gateway target for the host, so build writes none, and gives no
     // warning about the gateway role's grants for one.
@@ -571,7 +617,6 @@ describe("build writes the Box network of the box profile", () => {
       "",
     ].join("\n");
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables:
         '\n[egress.github]\ndestinations = ["api.github.com"]\n' +
         '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n' +
@@ -629,7 +674,6 @@ describe("build writes the Box network of the box profile", () => {
       secret: { ref: "aws://default" },
     };
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables:
         GITHUB_ROUTE +
         '\n[egress.blocked]\ndestinations = ["blocked.example.com"]\n' +
@@ -675,19 +719,293 @@ describe("build writes the Box network of the box profile", () => {
   });
 });
 
+describe("build routes the other gateways of the project for the boxed agent", () => {
+  /** Adds the gateway `tools` without boundRuntime, as `agentcore add gateway` writes it. */
+  async function addToolsGateway(root: string) {
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.push({
+      name: "tools",
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      enableSemanticSearch: false,
+      exceptionLevel: "NONE",
+      targets: [],
+    });
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+  }
+
+  test("writes the target and the server when the @aws/agentcore-cdk of the project accepts passthrough.gateway", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+
+    const { warnings } = await build(manager, root);
+
+    expect((await boxGateway(root)).targets).toContainEqual({
+      name: "egress-gateway-tools",
+      targetType: "passthrough",
+      passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+    });
+    expect((await runtimeProfile(root)).mcp).toHaveProperty("tools");
+    expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([]);
+  });
+
+  test("lets remove gateway remove the gateway after a build, with the target build wrote for it", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const user = userTarget("mine", "https://mine.example.com");
+    await editGateway(root, (gateway) => gateway.targets.push(user));
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.agentCoreGateways.map(({ name }: { name: string }) => name)).toEqual([GATEWAY]);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect((await boxGateway(root)).targets).toContainEqual(user);
+    // The next build writes no target for the gateway that is gone.
+    await build(manager, root);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
+  test("reads the project and removes the target after a build when the gateway gets boundRuntime", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools").boundRuntime =
+      "agent_python_strands";
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect(steps).toContain(
+      "removing gateway target 'egress-gateway-tools' from 'agent-python-strands-box-egress': " +
+        "the boxed agent no longer calls the gateway 'tools'",
+    );
+  });
+
+  test("reads the project and removes the target when the gateway is gone from agentcore.json", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways = spec.agentCoreGateways.filter(
+      ({ name }: { name: string }) => name !== "tools",
+    );
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
+  test("add gateway gives one notice for a CUSTOM_JWT gateway, and build gives none", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    const jwt = {
+      name: "secure",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+          allowedAudience: ["agentcore"],
+        },
+      },
+      enableSemanticSearch: false,
+      exceptionLevel: "NONE",
+      protocolType: "MCP",
+      targets: [],
+    };
+
+    const added = await drain(
+      manager.addResource(project, {
+        resourceType: "gateway",
+        resourceConfig: jwt,
+      } as unknown as Parameters<FsProjectManager["addResource"]>[1]),
+    );
+    const built = await build(manager, root);
+
+    const notice =
+      "the gateway 'secure' takes CUSTOM_JWT tokens, and a Box gateway signs only with its IAM " +
+      "role, so a boxed agent cannot call 'secure' on AgentCore Runtime, and build adds no route " +
+      "to it. Set its authorizerType to AWS_IAM to let a boxed agent call it";
+    expect(added.warnings).toEqual([notice]);
+    expect(built.warnings.filter((warning) => warning.includes("CUSTOM_JWT"))).toEqual([]);
+  });
+
+  test("stops, and keeps the route of a host, when a new gateway takes the name of its target", async () => {
+    const { manager, root, box } = await strandsProject({
+      acceptsPassthroughGateway: true,
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, {
+      tables:
+        '\n[egress.gateway-tools]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+    });
+    box.answer = shows({ "gateway-tools": GITHUB });
+    await build(manager, root);
+    const before = await text(root, SPEC);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    await addToolsGateway(root);
+    const added = await text(root, SPEC);
+
+    await expect(build(manager, root)).rejects.toThrow(
+      "takes the gateway target 'egress-gateway-tools' for api.github.com",
+    );
+
+    expect(await text(root, SPEC)).toBe(added);
+    expect(JSON.parse(before).agentCoreGateways[0].targets).toContainEqual(
+      expect.objectContaining({
+        name: "egress-gateway-tools",
+        passthrough: { endpoint: "https://api.github.com", protocolType: "CUSTOM" },
+      }),
+    );
+  });
+
+  test.each([
+    [
+      { accepts: false, reason: "not-installed" },
+      "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, then build again.",
+    ],
+    [
+      { accepts: false, reason: "no-node" },
+      "build cannot run node to check the @aws/agentcore-cdk in agentcore/cdk. Put node on PATH, then build again.",
+    ],
+    [
+      { accepts: false, reason: "timed-out" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk took more than 60 seconds. Build again.",
+    ],
+    [
+      { accepts: false, reason: "failed", detail: "the library is broken" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk failed: the library is broken. Build again.",
+    ],
+  ] as const)(
+    "stops, and keeps the target and agentcore.json, when the check gives %o",
+    async (answer, why) => {
+      const check: { current: PassthroughGatewayCheck } = { current: { accepts: true } };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      await build(manager, root);
+      const before = await text(root, SPEC);
+      const profile = await text(root, RUNTIME_PROFILE);
+      check.current = answer;
+
+      await expect(build(manager, root)).rejects.toThrow(
+        "Build stopped, and wrote nothing: build cannot tell if it can route the gateways 'tools' " +
+          `of this project for a boxed agent, because ${why}`,
+      );
+
+      expect(await text(root, SPEC)).toBe(before);
+      expect(await text(root, RUNTIME_PROFILE)).toBe(profile);
+      expect(await targetNames(root)).toContain("egress-gateway-tools");
+    },
+  );
+
+  test.each([
+    [
+      "only a CUSTOM_JWT gateway",
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["agentcore"],
+          },
+        },
+      },
+      {},
+    ],
+    ["a PRIVATE_VPC runtime", {}, { containment: "PRIVATE_VPC" }],
+  ])(
+    "does not check the CDK library when no gateway gets a target: %s",
+    async (_, gatewayFields, runtimeFields) => {
+      let checks = 0;
+      const check = {
+        get current(): PassthroughGatewayCheck {
+          checks++;
+          return { accepts: true };
+        },
+      };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      const spec = JSON.parse(await text(root, SPEC));
+      Object.assign(
+        spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools"),
+        gatewayFields,
+      );
+      Object.assign(spec.runtimes[0], runtimeFields);
+      await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+      await build(manager, root);
+
+      expect(checks).toBe(0);
+      expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    },
+  );
+
+  test("remove gateway keeps an egress- target that the user wrote on an ordinary gateway", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.push({
+      name: "front",
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      targets: [
+        {
+          name: "egress-mine",
+          targetType: "passthrough",
+          passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+        },
+      ],
+    });
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const before = await text(root, SPEC);
+    const project = (await manager.resolve({ filePath: root })) as Project;
+
+    // The target is the user's, so remove keeps it, and the schema refuses it with its name.
+    await expect(
+      manager.removeResource(project, { resourceType: "gateway", name: "tools" }),
+    ).rejects.toThrow('Target "egress-mine" of gateway "front" names the gateway "tools"');
+    expect(await text(root, SPEC)).toBe(before);
+  });
+
+  test("writes no target and no server, and warns once, when it does not", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
+    await addToolsGateway(root);
+
+    const { warnings } = await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect((await runtimeProfile(root)).mcp).toBeUndefined();
+    expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([
+      "The gateways 'tools' of this project get no route for a boxed agent on AgentCore " +
+        "Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
+        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
+        "version that accepts it, then build again.",
+    ]);
+  });
+});
+
 describe("build sets box.version to the pinned box", () => {
   // The box features and the profiles that the CLI writes change together, so a project created
   // by an earlier CLI builds with the box this one ships, and agentcore.json says so.
   test("updates a runtime's older box.version, and says so", async () => {
     const { manager, root } = await strandsProject();
     const spec = JSON.parse(await text(root, SPEC));
-    spec.runtimes[0].box = { version: "0.1.11-linux-preview.6" };
+    spec.runtimes[0].box = { version: "0.2.4" };
     await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
 
     const { steps } = await build(manager, root);
 
     expect(steps).toContain(
-      "updating box.version of runtime 'agent_python_strands' from 0.1.11-linux-preview.6 to " +
+      "updating box.version of runtime 'agent_python_strands' from 0.2.4 to " +
         `${BOX_RELEASE.version}, the box this CLI ships`,
     );
     expect(JSON.parse(await text(root, SPEC)).runtimes[0].box).toEqual({
@@ -1073,11 +1391,13 @@ describe("build writes the Bedrock target and the Memory route for the region it
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("eu-central-1"));
     expect(targets.find(({ name }) => name === "agentcore")).toBeUndefined();
     const profile = await runtimeProfile(root);
-    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1" } });
+    expect(profile.options).toEqual({ bedrock: { region: "eu-central-1", "sign-in": "api-key" } });
     const egress = profile.egress as Record<string, { destinations: string[]; backends: unknown }>;
-    expect(egress.bedrock!.destinations).toEqual(["bedrock-runtime.eu-central-1.amazonaws.com"]);
+    expect(egress["bedrock-api-key"]!.destinations).toEqual([
+      "bedrock-runtime.eu-central-1.amazonaws.com",
+    ]);
     // The backend signs for the Runtime's own region, which box reads from AWS_REGION there.
-    expect(JSON.stringify(egress.bedrock!.backends)).toContain(
+    expect(JSON.stringify(egress["bedrock-api-key"]!.backends)).toContain(
       '"region":"${{ inputs.aws.region }}"',
     );
     // The Memory route goes to the Memory host of that region, with no backend.
@@ -1095,7 +1415,9 @@ describe("build writes the Bedrock target and the Memory route for the region it
 
     const { targets } = await boxGateway(root);
     expect(targets.find(({ name }) => name === "bedrock")).toEqual(bedrockTarget("ap-northeast-1"));
-    expect((await runtimeProfile(root)).options).toEqual({ bedrock: { region: "ap-northeast-1" } });
+    expect((await runtimeProfile(root)).options).toEqual({
+      bedrock: { region: "ap-northeast-1", "sign-in": "api-key" },
+    });
   });
 
   test("has box resolve the profile for that region, from a copy it then removes", async () => {

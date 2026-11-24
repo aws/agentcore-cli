@@ -46,6 +46,7 @@ describe("project add gateway-target", () => {
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
       agentCoreGateways: [box],
     });
     await addGateway();
@@ -85,7 +86,11 @@ describe("project add gateway-target", () => {
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
-      runtimes: [boxed ? { ...runtime, box: { version: BOX_RELEASE.version } } : runtime],
+      runtimes: [
+        boxed
+          ? { ...runtime, box: { version: BOX_RELEASE.version }, platformVersion: "V2" as const }
+          : { ...runtime, platformVersion: "V2" as const },
+      ],
       agentCoreGateways: [box],
     });
     await addGateway();

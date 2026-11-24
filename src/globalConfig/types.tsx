@@ -21,6 +21,7 @@ export const globalConfigFileSchema = z.object({
     .optional(),
   installationId: z.uuid().optional(),
   transactionSearch: z.boolean().optional(),
+  disableDependencyManagement: z.boolean().optional(),
 });
 
 /** The raw shape stored on disk for overriding defaults. */

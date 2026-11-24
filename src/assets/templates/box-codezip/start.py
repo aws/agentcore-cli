@@ -3,15 +3,16 @@
 # zip into a folder this user owns (box runs only a profile its user owns), exports the Python and
 # code paths that only the microVM knows, and hands over to `box run`.
 #
-# The box profile reads the deployed resources, the gateway URL, the Python interpreter and the code
-# directory from the environment through the @box/agentcore and @box/agentcore-codezip packs, and
-# signs AWS routes with the execution role through a bare `aws://`. So there is nothing to fill in,
-# no credentials to write, and no start.sh.
+# The box profile reads the deployed resources, the gateway URL, the Python interpreter, its
+# standard library and the code directory from the environment through the @box/agentcore and
+# @box/agentcore-codezip packs, and signs AWS routes with the execution role through a bare
+# `aws://`. So there is nothing to fill in, no credentials to write, and no start.sh.
 import json
 import os
 import re
 import shutil
 import sys
+import sysconfig
 
 try:
     import tomllib
@@ -91,7 +92,7 @@ def main():
             "HOME": HOME,
             "BOX_CODE": CODE,
             "BOX_PYTHON": box_python(sys.executable, sys.version_info),
-            "BOX_PYTHON_PREFIX": sys.base_prefix,
+            "BOX_PYTHON_STDLIB": sysconfig.get_path("stdlib"),
         },
     )
 

@@ -1,6 +1,6 @@
 /**
  * A stand-in for `box profile show --format json --full`, for the tests of the Box network, and the
- * network rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the
+ * network rules that box prints. `boxProfileResolver.test.ts` compares the rules with the
  * real box when one with `--format json --full` is on PATH.
  */
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
@@ -8,7 +8,10 @@ import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolve
 const NC = 'action == Box::Action::"net:connect"';
 const HR = 'action == Box::Action::"http:request"';
 
-/** The forbids Box writes into every policy, for the cloud metadata hosts and addresses. */
+/**
+ * The cloud metadata forbids that Box's security guide (docs/user/security.md) recommends. Box writes
+ * no metadata rule into a profile itself; these stand in for the rules of a policy file that has them.
+ */
 export const BOX_METADATA_RULES =
   `@id("metadata_hosts") forbid (principal, ${NC}, resource) when { context.input.host == "metadata.google.internal" || context.input.host == "metadata.azure.internal" };\n` +
   `@id("metadata_addresses") forbid (principal, ${NC}, resource) when { (context.input has ip4 && context.input.ip4 like "169.254.*") || (context.input has ip6 && (context.input.ip6 == "fd00:ec2::254" || context.input.ip6 like "fe8*" || context.input.ip6 like "fe9*" || context.input.ip6 like "fea*" || context.input.ip6 like "feb*")) };\n`;
@@ -48,7 +51,7 @@ export function boxReachRules(
   );
 }
 
-/** Box's metadata forbids, then its permits for each route of `egress` and HTTP server of `mcp`. */
+/** The recommended metadata forbids, then Box's permits for each route of `egress` and HTTP server of `mcp`. */
 export function boxNetworkRules(
   egress: Readonly<Record<string, unknown>>,
   mcp: Readonly<Record<string, unknown>> = {},

@@ -149,6 +149,12 @@ Global flags, available on every command:
 (`transformAgentCoreJson`). All three come from `@aws/agentcore-cdk`, so that
 logic is updated through the library rather than changes to your CDK app.
 
+`agentcore build` and `agentcore deploy` keep the dependencies `agentcore create`
+wrote to `agentcore/cdk/package.json` at the versions this CLI vends, and run
+`npm install` when they change or are not installed, so both commands may need
+network access to npm. Dependencies you add yourself are left alone. To manage
+the CDK dependencies yourself, run `agentcore config disableDependencyManagement true`.
+
 `lib/cdk-stack.ts` instantiates one `AgentCoreApplication`. This is the file you
 edit to add your own resources. Runtimes and harnesses implement `iam.IGrantable`,
 so you can pass them to a resource's CDK grant methods to give your agents access.
@@ -208,10 +214,11 @@ to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import th
 `agentcore export harness` refuses a Box project. Each box runtime needs its
 `"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
 box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
-each runtime from its local profile. box comes from the public GitHub release `v0.1.11-preview.10` of
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
-is needed to download it. Use that release's build for your machine for `agentcore dev` and the
-profile checks of `build`: an older box cannot read the profiles that this CLI writes.
+each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
+release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
+or account is needed to download it. Use that release's build for your machine for `agentcore dev`
+and the profile checks of `build`: an older box cannot read the profiles that this CLI writes. On
+macOS, use the build of `v0.3.0-preview.1` instead: the macOS build of `v0.3.0` does not run.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
@@ -254,7 +261,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-preview.10`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.3.0`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.
@@ -283,7 +290,7 @@ private VPC with no internet path. It writes `"containment": "PRIVATE_VPC"` on t
 - `ExpiredTokenException` from `aws` or `deploy`: your AWS credentials expired. Refresh them and
   run the command again.
 - `curl: (22) The requested URL returned error: 404` in the CodeBuild log, or a deploy error that
-  names the release URL: the pinned version is not published in `mquang-amazon/box-releases`.
+  names the release URL: the pinned version is not published in `strands-agents/box`.
 - `SHA-256 ... not the pinned` or `sha256sum: WARNING: 1 computed checksum did NOT match`: the
   release asset changed after it was pinned. Nothing was installed.
 - `box run` exits with an error in the runtime log: box refused its profile, and the agent does
