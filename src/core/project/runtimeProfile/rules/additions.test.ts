@@ -1184,6 +1184,79 @@ describe("the additions rule", () => {
       });
     });
 
+    test.each([
+      { kind: "egress", entry: {} },
+      { kind: "mcp", entry: { type: "http" } },
+    ] as const)(
+      "stops build for an [$kind] entry that sends an env:// key to the AgentCore host",
+      ({ kind, entry }) => {
+        const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+        const context = {
+          ...contextOf(CODEZIP, { memories: [MEMORY] }),
+          hosts: [
+            {
+              host,
+              authority: host,
+              target: "egress-tools",
+              outboundAuth: {
+                kind: "apiKey",
+                credentialName: "tools",
+                variable: "TOOLS_TOKEN",
+                header: "Authorization",
+              },
+              sources: [
+                kind === "egress"
+                  ? { kind: "entry", egressEntry: "tools", destinations: [host] }
+                  : { kind: "mcp", mcpEntry: "tools", destinations: [host] },
+              ],
+            },
+          ],
+        } as unknown as Parameters<typeof apply>[1];
+        // As the gateway rule writes it: a backend to the target that sends the key.
+        const local = {
+          [kind]: {
+            tools: {
+              ...entry,
+              destinations: [host],
+              backends: [{ url: "${{ inputs.gateway.url }}/egress-tools" }],
+            },
+          },
+        };
+
+        const { problems } = apply(local, context);
+
+        expect(problems).toEqual([
+          {
+            code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+            key: [kind, "tools"],
+            place: PROFILE_FILE,
+            reason:
+              `[${kind}.tools] sends env://TOOLS_TOKEN to ${host}. On AgentCore Runtime, runtime ` +
+              "'agent' has its default Memory, so box sends every call to that host directly, " +
+              "signed with the execution role, and not through the Box gateway. Box cannot route " +
+              "one host both ways, so the key would not be sent. Remove the secret from " +
+              `[${kind}.tools] if the service takes the execution role's signature, or remove the ` +
+              "default Memory of runtime 'agent' from agentcore.json.",
+          },
+        ]);
+      },
+    );
+
+    test("stops build for a route to the AgentCore host that still holds a secret other than aws://", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = {
+        mcp: {
+          tools: { type: "http", destinations: [host], secret: { ref: "env://TOOLS_TOKEN" } },
+        },
+      };
+
+      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems.map(({ code, key }) => [code, key])).toEqual([
+        ["RUNTIME_AGENTCORE_HOST_CREDENTIAL", ["mcp", "tools"]],
+      ]);
+    });
+
     test("counts a route to the AgentCore host with :443, in another case, or as a wildcard", () => {
       const context = contextOf(CODEZIP, { memories: [MEMORY] });
       for (const destination of [
@@ -1498,10 +1571,15 @@ describe("the additions rule", () => {
     expect(standIns).toEndWith("Every AWS route goes to the Box gateway.");
     const context = contextOf(CODEZIP, { memories: [defaultMemoryName("agent")] });
     const withMemory = runtimeProfileHeader(context, apply(createdProfile(CODEZIP), context).table);
+    const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
     expect(withMemory[2]).toEndWith(
-      `except each route to bedrock-agentcore.${BUILD_REGION}.amazonaws.com, such as ` +
-        `[egress.${MEMORY_ROUTE}]: box sends the calls to that host directly, so Memory can hold ` +
-        "each call to the session of the runtime.",
+      `except [egress.${MEMORY_ROUTE}], to ${host}: box sends the calls to that host directly, so ` +
+        "Memory can hold each call to the session of the runtime.",
+    );
+    // A route of the user that replaces [egress.agentcore] is the one the header names.
+    const routed = apply({ egress: { tools: { destinations: [host] } } }, context).table;
+    expect(runtimeProfileHeader(context, routed)[2]).toContain(
+      `except [egress.tools], to ${host}:`,
     );
     const text = serializeRuntimeProfile(
       apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table,

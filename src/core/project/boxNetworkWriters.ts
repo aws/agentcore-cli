@@ -19,6 +19,7 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
+import { agentCoreDataPlaneHost } from "../../handlers/project/shortcuts";
 import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
@@ -251,10 +252,14 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
       ? []
       : [{ ...host, target: host.target }],
   );
-  // A host whose route the Runtime profile sends directly, not to its target, takes no target: the
-  // agent's Memory calls go to the AgentCore host directly (runtimeProfile/rules/additions.ts).
+  // The AgentCore host takes no target when the Runtime profile sends its calls directly: with the
+  // default Memory, every call of the box to that host goes there (runtimeProfile/rules/additions.ts).
+  // Only that host, so a rule that drops another route never removes its target with this message.
   const routed = gatewayRoutedTargets(network.runtimeProfile);
-  const direct = served.filter((host) => routed !== undefined && !routed.has(host.target));
+  const agentCoreHost = agentCoreDataPlaneHost(network.region);
+  const direct = served.filter(
+    (host) => host.host === agentCoreHost && routed !== undefined && !routed.has(host.target),
+  );
   const used = served.filter((host) => !direct.includes(host));
   const sent = used.filter((host) => undeclaredKey(spec, host) === undefined);
   const unsent = used.filter((host) => undeclaredKey(spec, host) !== undefined);

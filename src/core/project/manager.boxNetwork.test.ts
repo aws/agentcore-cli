@@ -578,6 +578,74 @@ describe("build writes the Box network of the box profile", () => {
     expect(await text(root, SPEC)).toBe(spec);
   });
 
+  const AGENTCORE_HOST = "bedrock-agentcore.us-west-2.amazonaws.com";
+  test.each([
+    {
+      form: "an HTTP [mcp] server",
+      label: "[mcp.tools]",
+      tables: `\n[mcp.tools]\ntype = "http"\ndestinations = ["${AGENTCORE_HOST}"]\nsecret.ref = "env://TOOLS_TOKEN"\n`,
+      answer: {
+        egress: { bedrock: BEDROCK },
+        mcp: {
+          tools: {
+            type: "http",
+            destinations: [AGENTCORE_HOST],
+            secret: { ref: "env://TOOLS_TOKEN" },
+          },
+        },
+      },
+    },
+    {
+      form: "an [egress] entry",
+      label: "[egress.tools]",
+      tables: `\n[egress.tools]\ndestinations = ["${AGENTCORE_HOST}"]\nsecret.ref = "env://TOOLS_TOKEN"\n`,
+      answer: {
+        egress: {
+          bedrock: BEDROCK,
+          tools: { destinations: [AGENTCORE_HOST], secret: { ref: "env://TOOLS_TOKEN" } },
+        },
+      },
+    },
+    {
+      form: "an [egress] entry with another host too",
+      label: "[egress.tools]",
+      tables: `\n[egress.tools]\ndestinations = ["${AGENTCORE_HOST}", "api.github.com"]\nsecret.ref = "env://TOOLS_TOKEN"\n`,
+      answer: {
+        egress: {
+          bedrock: BEDROCK,
+          tools: {
+            destinations: [AGENTCORE_HOST, "api.github.com"],
+            secret: { ref: "env://TOOLS_TOKEN" },
+          },
+        },
+      },
+    },
+  ])(
+    "stops for $form that sends an env:// key to the AgentCore host, and writes nothing",
+    async ({ label, tables, answer }) => {
+      const { manager, root, box } = await strandsProject({ env: { TOOLS_TOKEN: "tools-123" } });
+      await editProfile(root, { tables });
+      box.answer = boxShowOf(answer);
+      const spec = await text(root, SPEC);
+
+      const error = await build(manager, root).then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+      // With the default Memory, box sends every call to the AgentCore host directly, signed with
+      // the execution role, so the key would never reach the server.
+      expect(error).toBeInstanceOf(InputValidationError);
+      expect((error as Error).message).toContain(
+        `${label} sends env://TOOLS_TOKEN to ${AGENTCORE_HOST}. On AgentCore Runtime, runtime ` +
+          "'agent_python_strands' has its default Memory, so box sends every call to that host " +
+          "directly, signed with the execution role",
+      );
+      // Build provisions no credential that nothing would send.
+      expect(await text(root, SPEC)).toBe(spec);
+    },
+  );
+
   test("stops for a user target named agentcore, the name of the Memory route, and keeps it", async () => {
     const { manager, root, box } = await strandsProject();
     const mine = {
