@@ -37,14 +37,17 @@ export const ProjectTypeSchema = z.enum(["box"]);
 /** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /**
- * The start of the name of each target that build adds to a Box gateway. Build manages every
- * target whose name has it, and no other.
+ * The start of the name of each target that build adds to a Box gateway. Build writes no target
+ * without it, but a target of the user can have it too: `agentcore/box-gateway-targets.json`
+ * lists the targets that build wrote.
  */
 export const BOX_EGRESS_TARGET_PREFIX = "egress-";
 /**
- * Whether build writes and removes `target` of `gateway`: a target whose name starts with
+ * Whether build can own `target` of `gateway`: a target whose name starts with
  * {@link BOX_EGRESS_TARGET_PREFIX}, on the Box gateway of a runtime (a gateway with
- * `boundRuntime`), in a project with `"projectType": "box"`.
+ * `boundRuntime`), in a project with `"projectType": "box"`. Build owns such a target when the
+ * record in `agentcore/box-gateway-targets.json` lists it, or when the record has no entry for its
+ * gateway.
  */
 export function isBuildOwnedTarget(
   spec: { projectType?: string },
