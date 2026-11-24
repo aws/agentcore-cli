@@ -1383,7 +1383,9 @@ export class FsProjectManager implements ProjectManager {
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
       // Build writes a target on each Box gateway for each other gateway of the project. Such a
-      // target goes with its gateway; a target of the user's that names it stays, and fails.
+      // target goes with its gateway. A target of the user's that names it stays: the schema does
+      // not check an egress- target on a Box gateway, so the next deploy stops at synth because
+      // the project has no gateway of that name.
       // Build owns the targets that the record lists, or by the egress- rule with no record.
       if (input.resourceType === "gateway" && removed) {
         const record = readBoxGatewayTargets(project.rootPath);
