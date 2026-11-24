@@ -446,7 +446,10 @@ describe("the Runtime profile of each CodeZip box template of create", () => {
       const input = resolveRuntimeTemplateShortcut(template);
       const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
 
-      const { profile, problems } = deriveRuntimeProfile(local, contextOf(createdRuntime(input)));
+      const { profile, problems } = deriveRuntimeProfile(
+        local,
+        contextOf(createdRuntime(input, false)),
+      );
 
       expect(problems).toEqual([]);
       const filesystem = agentOf(profile).filesystem as Record<string, unknown[]>;
