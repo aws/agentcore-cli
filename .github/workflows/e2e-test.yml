@@ -137,9 +137,10 @@ jobs:
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
-      # the Box tests. They skip on a runner with no box on PATH. macOS is left out for now: its pinned
-      # box build is killed as soon as it starts (`Killed: 9` on `box --version`), so on macOS the Box
-      # tests skip and the rest of the suite still runs.
+      # the Box tests. They skip on a runner with no box on PATH. macOS is left out for now: there the
+      # macOS box (v0.3.0-preview.1, validly signed) was killed as soon as it started after this
+      # install (`Killed: 9` on `box --version`), so on macOS the Box tests skip and the rest of the
+      # suite still runs. Re-enable it once a run shows the pinned build starts here.
       - name: Install box
         if: matrix.name == 'Linux-arm64'
         env:

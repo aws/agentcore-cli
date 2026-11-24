@@ -28,8 +28,9 @@ are optional and need a `box` on your PATH: `create` checks for one for a CodeZi
 `build` and `deploy` run `box profile show` for every Box template, the container one too. Without
 one, they skip. box ships only arm64 builds, so in CI only the Linux arm64 runner
 (`ubuntu-24.04-arm`) has one: it installs the box that `src/core/project/backends/boxRelease.json`
-pins. The macOS runner (Apple silicon) is left out for now, because the pinned macOS box build is
-killed as soon as it starts (`Killed: 9`), so there the Box tests skip. `create` also installs the agent's dependencies
+pins. The macOS runner (Apple silicon) is left out for now: there the macOS box
+(`v0.3.0-preview.1`, validly signed) was killed as soon as it started after the workflow's install
+(`Killed: 9`), so the Box tests skip on macOS until a run shows the pinned build starts there. `create` also installs the agent's dependencies
 and the CDK app's, which `dev` and `deploy` use, so the tests don't pass `--skip-install`.
 
 The tests that deploy also need `AGENTCORE_E2E_BOX_CDK`: the pinned `@aws/agentcore-cdk` release
