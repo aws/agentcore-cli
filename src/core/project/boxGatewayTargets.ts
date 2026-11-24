@@ -3,7 +3,7 @@
  * owns those targets, and no other. `agentcore create` and `agentcore add runtime` write an empty
  * entry for each new Box gateway, so the `egress-` rule applies only to a gateway an older CLI made.
  */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { ProjectStateError } from "../../errors/errors";
@@ -52,9 +52,21 @@ export interface RecordFiles {
   readonly remove: (path: string) => void;
 }
 
-/** The record file on disk. */
+/**
+ * The record file on disk. A write goes to a file beside it, which then takes its name, so a crash
+ * during the write leaves the old record whole.
+ */
 export const FS_RECORD_FILES: RecordFiles = {
-  write: (path, text) => writeFileSync(path, text),
+  write: (path, text) => {
+    const partial = `${path}.${process.pid}.tmp`;
+    try {
+      writeFileSync(partial, text);
+      renameSync(partial, path);
+    } catch (error) {
+      rmSync(partial, { force: true });
+      throw error;
+    }
+  },
   remove: (path) => rmSync(path, { force: true }),
 };
 
