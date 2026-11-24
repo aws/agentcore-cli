@@ -13,6 +13,7 @@
  * | a target that no entry of the profile names | `[egress.<target>]`, or the `[mcp]` server it serves |
  * | an entry whose hosts the policy denies | removed; the Box network model warns for it |
  * | an entry with no host in the Box network model | removed; the model fails the entry, and build stops |
+ * | a gateway of the project that the agent calls (projectGatewaysOf) | `[mcp.<gateway>]` to the host in `<prefix>_HOST`, a backend to its target |
  *
  * A stdio `[mcp.<name>]` stays as it is: the `refusals` and `paths` rules own it.
  *
@@ -24,6 +25,7 @@ import { InputValidationError } from "../../../../errors/errors";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
 import type { BoxHostSource, BoxNetworkHost } from "../../boxNetwork";
 import { BOX_EGRESS_TARGET_PREFIX } from "../../boxNetwork/egress";
+import { projectGatewayInputs, type BoxProjectGateway } from "../../boxNetwork/projectGateways";
 import { gatewayTargetFor } from "../../boxNetwork/projectSpec";
 import {
   BOX_BEDROCK_API_KEY_ROUTE,
@@ -36,6 +38,7 @@ import {
   RUNTIME_INPUTS,
   type RuleResult,
   type RuntimeProfileContext,
+  type RuntimeProfileProblem,
   type TomlTable,
 } from "../types";
 
@@ -96,12 +99,45 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     }
   }
 
+  // A server of the local profile keeps its name, also one that gets no route here, because the
+  // policy names it; a gateway of the project cannot take that name.
+  const local = isTable(table.mcp) ? table.mcp : {};
+  const problems: RuntimeProfileProblem[] = [];
+  for (const gateway of context.projectGateways ?? []) {
+    if (Object.hasOwn(mcp, gateway.name) || Object.hasOwn(local, gateway.name)) {
+      problems.push({
+        code: "RUNTIME_GATEWAY_SERVER_NAME_TAKEN",
+        key: ["mcp", gateway.name],
+        reason:
+          `[mcp.${gateway.name}] has the name of the gateway '${gateway.name}' of this project. ` +
+          `On AgentCore Runtime, build adds the server [mcp.${gateway.name}] so the agent can ` +
+          "call that gateway. Rename your server.",
+        place: context.placeOf(["mcp", gateway.name]),
+      });
+      continue;
+    }
+    mcp[gateway.name] = projectGatewayServer(gateway);
+  }
+
   // Each table keeps its place when the profile has it, and comes last when it does not. An empty
   // table goes.
   const result: TomlTable = { ...table, egress, mcp };
   if (Object.keys(egress).length === 0) delete result.egress;
   if (Object.keys(mcp).length === 0) delete result.mcp;
-  return { table: result, problems: [], warnings: [] };
+  return { table: result, problems, warnings: [] };
+}
+
+/**
+ * The HTTP `[mcp.<gateway>]` server for a gateway of the project: the host the CDK library sets in
+ * `<prefix>_HOST`, through the Box gateway target that calls the gateway. Box permits each tool of
+ * the server, and a forbid rule of the policy still applies.
+ */
+function projectGatewayServer(gateway: BoxProjectGateway): TomlTable {
+  return {
+    type: "http",
+    destinations: [`\${{ inputs.${projectGatewayInputs(gateway).host} }}`],
+    backends: [gatewayBackend({ target: gateway.target })],
+  };
 }
 
 /**
@@ -130,10 +166,11 @@ function gatewayRoutes(context: RuntimeProfileContext): GatewayRoute[] {
     if (!targets.some(({ name }) => name === host.target)) targets.push(gatewayTargetFor(host));
   }
 
+  // A target that names a gateway of the project has no host here: that gateway's server does.
   const passthrough = targets.filter(
-    (target) => target.targetType === "passthrough" && target.passthrough,
+    (target) => target.targetType === "passthrough" && target.passthrough?.endpoint !== undefined,
   );
-  const hostOf = (target: AgentCoreGatewayTarget) => new URL(target.passthrough!.endpoint).host;
+  const hostOf = (target: AgentCoreGatewayTarget) => new URL(target.passthrough!.endpoint!).host;
   const byHost = new Map<string, string>();
   for (const target of passthrough) {
     const other = byHost.get(hostOf(target));
@@ -241,7 +278,7 @@ function mcpServer(entry: Readonly<TomlTable>, route: GatewayRoute, server: McpS
  * The backend of a route: the route's gateway target, signed for the gateway in the Runtime's own
  * region, which box reads from the `aws.region` input of the agentcore pack.
  */
-function gatewayBackend(route: GatewayRoute): TomlTable {
+function gatewayBackend(route: Pick<GatewayRoute, "target">): TomlTable {
   return {
     url: `${RUNTIME_INPUTS.gatewayUrl}/${route.target}`,
     auth: {

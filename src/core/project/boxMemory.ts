@@ -305,7 +305,7 @@ function boxGatewayFor(spec: ProjectSpec, runtime: ProjectRuntime): AgentCoreGat
  */
 function servesTarget(targets: readonly AgentCoreGatewayTarget[], wanted: AgentCoreGatewayTarget) {
   const endpoint = (target: AgentCoreGatewayTarget) =>
-    target.passthrough && new URL(target.passthrough.endpoint).host;
+    target.passthrough?.endpoint && new URL(target.passthrough.endpoint).host;
   return targets.some(
     (target) => target.name === wanted.name || endpoint(target) === endpoint(wanted),
   );

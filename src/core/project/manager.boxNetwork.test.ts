@@ -16,6 +16,7 @@ import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { renderAwsMetadataPolicy } from "./templates/boxProfile";
+import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -144,7 +145,14 @@ function countingJson() {
 
 /** A new Strands project, with the Box gateway entry and the box profile `create` writes. */
 async function strandsProject(
-  options: { backends?: { CDK: ProjectBackend }; env?: NodeJS.ProcessEnv } = {},
+  options: {
+    backends?: { CDK: ProjectBackend };
+    env?: NodeJS.ProcessEnv;
+    /** What the probe of agentcore/cdk answers; it refuses passthrough.gateway when absent. */
+    acceptsPassthroughGateway?: boolean;
+    /** What the probe answers, in place of `acceptsPassthroughGateway`; a test can change it. */
+    check?: { current: PassthroughGatewayCheck };
+  } = {},
 ) {
   const directory = await temporary("agentcore-box-network-");
   process.chdir(directory);
@@ -163,6 +171,11 @@ async function strandsProject(
       ...options.env,
     },
     boxProfileResolver: box,
+    cdkAcceptsPassthroughGateway: async () =>
+      options.check?.current ??
+      (options.acceptsPassthroughGateway
+        ? { accepts: true }
+        : { accepts: false, reason: "refuses" }),
     ...(options.backends && { backends: options.backends }),
   });
   const { value: created, warnings: createWarnings } = await drain(
@@ -671,6 +684,280 @@ describe("build writes the Box network of the box profile", () => {
         ".box/agent_python_strands/local/profile.toml.",
     );
     expect(await text(root, SPEC)).toBe(spec);
+  });
+});
+
+describe("build routes the other gateways of the project for the boxed agent", () => {
+  /** Adds the gateway `tools` without boundRuntime, as `agentcore add gateway` writes it. */
+  async function addToolsGateway(root: string) {
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.push({
+      name: "tools",
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      enableSemanticSearch: false,
+      exceptionLevel: "NONE",
+      targets: [],
+    });
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+  }
+
+  test("writes the target and the server when the @aws/agentcore-cdk of the project accepts passthrough.gateway", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+
+    const { warnings } = await build(manager, root);
+
+    expect((await boxGateway(root)).targets).toContainEqual({
+      name: "egress-gateway-tools",
+      targetType: "passthrough",
+      passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+    });
+    expect((await runtimeProfile(root)).mcp).toHaveProperty("tools");
+    expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([]);
+  });
+
+  test("lets remove gateway remove the gateway after a build, with the target build wrote for it", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const user = userTarget("mine", "https://mine.example.com");
+    await editGateway(root, (gateway) => gateway.targets.push(user));
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.agentCoreGateways.map(({ name }: { name: string }) => name)).toEqual([GATEWAY]);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect((await boxGateway(root)).targets).toContainEqual(user);
+    // The next build writes no target for the gateway that is gone.
+    await build(manager, root);
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
+  test("reads the project and removes the target after a build when the gateway gets boundRuntime", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools").boundRuntime =
+      "agent_python_strands";
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    const { steps } = await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect(steps).toContain(
+      "removing gateway target 'egress-gateway-tools' from 'agent-python-strands-box-egress': " +
+        "the boxed agent no longer calls the gateway 'tools'",
+    );
+  });
+
+  test("reads the project and removes the target when the gateway is gone from agentcore.json", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways = spec.agentCoreGateways.filter(
+      ({ name }: { name: string }) => name !== "tools",
+    );
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+    await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+  });
+
+  test("add gateway gives one notice for a CUSTOM_JWT gateway, and build gives none", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    const jwt = {
+      name: "secure",
+      authorizerType: "CUSTOM_JWT",
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+          allowedAudience: ["agentcore"],
+        },
+      },
+      enableSemanticSearch: false,
+      exceptionLevel: "NONE",
+      protocolType: "MCP",
+      targets: [],
+    };
+
+    const added = await drain(
+      manager.addResource(project, {
+        resourceType: "gateway",
+        resourceConfig: jwt,
+      } as unknown as Parameters<FsProjectManager["addResource"]>[1]),
+    );
+    const built = await build(manager, root);
+
+    const notice =
+      "the gateway 'secure' takes CUSTOM_JWT tokens, and a Box gateway signs only with its IAM " +
+      "role, so a boxed agent cannot call 'secure' on AgentCore Runtime, and build adds no route " +
+      "to it. Set its authorizerType to AWS_IAM to let a boxed agent call it";
+    expect(added.warnings).toEqual([notice]);
+    expect(built.warnings.filter((warning) => warning.includes("CUSTOM_JWT"))).toEqual([]);
+  });
+
+  test("stops, and keeps the route of a host, when a new gateway takes the name of its target", async () => {
+    const { manager, root, box } = await strandsProject({
+      acceptsPassthroughGateway: true,
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, {
+      tables:
+        '\n[egress.gateway-tools]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+    });
+    box.answer = shows({ "gateway-tools": GITHUB });
+    await build(manager, root);
+    const before = await text(root, SPEC);
+    expect(await targetNames(root)).toContain("egress-gateway-tools");
+    await addToolsGateway(root);
+    const added = await text(root, SPEC);
+
+    await expect(build(manager, root)).rejects.toThrow(
+      "takes the gateway target 'egress-gateway-tools' for api.github.com",
+    );
+
+    expect(await text(root, SPEC)).toBe(added);
+    expect(JSON.parse(before).agentCoreGateways[0].targets).toContainEqual(
+      expect.objectContaining({
+        name: "egress-gateway-tools",
+        passthrough: { endpoint: "https://api.github.com", protocolType: "CUSTOM" },
+      }),
+    );
+  });
+
+  test.each([
+    [
+      { accepts: false, reason: "not-installed" },
+      "build found no @aws/agentcore-cdk in agentcore/cdk. Run npm install in agentcore/cdk, then build again.",
+    ],
+    [
+      { accepts: false, reason: "no-node" },
+      "build cannot run node to check the @aws/agentcore-cdk in agentcore/cdk. Put node on PATH, then build again.",
+    ],
+    [
+      { accepts: false, reason: "timed-out" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk took more than 60 seconds. Build again.",
+    ],
+    [
+      { accepts: false, reason: "failed", detail: "the library is broken" },
+      "the check of the @aws/agentcore-cdk in agentcore/cdk failed: the library is broken. Build again.",
+    ],
+  ] as const)(
+    "stops, and keeps the target and agentcore.json, when the check gives %o",
+    async (answer, why) => {
+      const check: { current: PassthroughGatewayCheck } = { current: { accepts: true } };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      await build(manager, root);
+      const before = await text(root, SPEC);
+      const profile = await text(root, RUNTIME_PROFILE);
+      check.current = answer;
+
+      await expect(build(manager, root)).rejects.toThrow(
+        "Build stopped, and wrote nothing: build cannot tell if it can route the gateways 'tools' " +
+          `of this project for a boxed agent, because ${why}`,
+      );
+
+      expect(await text(root, SPEC)).toBe(before);
+      expect(await text(root, RUNTIME_PROFILE)).toBe(profile);
+      expect(await targetNames(root)).toContain("egress-gateway-tools");
+    },
+  );
+
+  test.each([
+    [
+      "only a CUSTOM_JWT gateway",
+      {
+        authorizerType: "CUSTOM_JWT",
+        authorizerConfiguration: {
+          customJwtAuthorizer: {
+            discoveryUrl: "https://idp.example.com/.well-known/openid-configuration",
+            allowedAudience: ["agentcore"],
+          },
+        },
+      },
+      {},
+    ],
+    ["a PRIVATE_VPC runtime", {}, { containment: "PRIVATE_VPC" }],
+  ])(
+    "does not check the CDK library when no gateway gets a target: %s",
+    async (_, gatewayFields, runtimeFields) => {
+      let checks = 0;
+      const check = {
+        get current(): PassthroughGatewayCheck {
+          checks++;
+          return { accepts: true };
+        },
+      };
+      const { manager, root } = await strandsProject({ check });
+      await addToolsGateway(root);
+      const spec = JSON.parse(await text(root, SPEC));
+      Object.assign(
+        spec.agentCoreGateways.find(({ name }: { name: string }) => name === "tools"),
+        gatewayFields,
+      );
+      Object.assign(spec.runtimes[0], runtimeFields);
+      await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+
+      await build(manager, root);
+
+      expect(checks).toBe(0);
+      expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    },
+  );
+
+  test("remove gateway keeps an egress- target that the user wrote on an ordinary gateway", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.agentCoreGateways.push({
+      name: "front",
+      authorizerType: "AWS_IAM",
+      protocolType: "None",
+      targets: [
+        {
+          name: "egress-mine",
+          targetType: "passthrough",
+          passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+          outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+        },
+      ],
+    });
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const before = await text(root, SPEC);
+    const project = (await manager.resolve({ filePath: root })) as Project;
+
+    // The target is the user's, so remove keeps it, and the schema refuses it with its name.
+    await expect(
+      manager.removeResource(project, { resourceType: "gateway", name: "tools" }),
+    ).rejects.toThrow('Target "egress-mine" of gateway "front" names the gateway "tools"');
+    expect(await text(root, SPEC)).toBe(before);
+  });
+
+  test("writes no target and no server, and warns once, when it does not", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: false });
+    await addToolsGateway(root);
+
+    const { warnings } = await build(manager, root);
+
+    expect(await targetNames(root)).not.toContain("egress-gateway-tools");
+    expect((await runtimeProfile(root)).mcp).toBeUndefined();
+    expect(warnings.filter((warning) => warning.includes("passthrough.gateway"))).toEqual([
+      "The gateways 'tools' of this project get no route for a boxed agent on AgentCore " +
+        "Runtime, because the @aws/agentcore-cdk in agentcore/cdk does not accept " +
+        "passthrough.gateway. Update @aws/agentcore-cdk in agentcore/cdk/package.json to a " +
+        "version that accepts it, then build again.",
+    ]);
   });
 });
 

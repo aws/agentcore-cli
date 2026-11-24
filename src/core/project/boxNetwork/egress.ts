@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BOX_EGRESS_TARGET_PREFIX } from "../../../projectSchemas/project";
 import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
 
@@ -132,6 +133,12 @@ const AWS_ENDPOINTS = [
     api: "lambda-url",
     service: "lambda",
   },
+  {
+    pattern:
+      /^[a-z0-9][a-z0-9-]*\.gateway\.bedrock-agentcore\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "gateway",
+    service: "bedrock-agentcore",
+  },
 ] as const;
 
 /** The API of an AWS endpoint that the gateway signs for. */
@@ -154,11 +161,7 @@ export function signingService(host: string): { service: string; region: string 
   return endpoint && { service: endpoint.service, region: endpoint.region };
 }
 
-/**
- * The start of the name of each target that build adds to a Box gateway. Build manages every
- * target whose name has it, and no other.
- */
-export const BOX_EGRESS_TARGET_PREFIX = "egress-";
+export { BOX_EGRESS_TARGET_PREFIX };
 
 /**
  * The gateway target name build gives `name`: {@link BOX_EGRESS_TARGET_PREFIX}, then the letters
@@ -191,6 +194,17 @@ export function outboundAuthFor(
   if (!secret) return { ok: true, auth: { kind: "none" } };
   const [scheme, value = ""] = secret.ref.split("://", 2);
   if (scheme === "aws") {
+    if (awsEndpoint(host)?.api === "gateway") {
+      return {
+        ok: false,
+        code: "UNSIGNABLE_HOST",
+        reason:
+          `signs requests to ${host}, the host of an AgentCore gateway, with ${secret.ref}. ` +
+          "Build signs only for the gateways of this project, and it adds the route to each of " +
+          "them on AgentCore Runtime itself, as [mcp.<gateway name>], with the host that the " +
+          "deploy gives the gateway. Remove this entry. To call a gateway, add it to this project.",
+      };
+    }
     const signing = signingService(host);
     if (!signing) {
       return {
