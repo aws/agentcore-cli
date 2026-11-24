@@ -71,12 +71,14 @@ import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
   boxAwsDir,
+  boxLocalMetadataPolicyPath,
   boxLocalProfileFile,
   boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
   observabilityOff,
+  renderAwsMetadataPolicy,
   renderBoxProfile,
   runsInBox,
   startsInBoxOnCodeZip,
@@ -2232,8 +2234,10 @@ export class FsProjectManager implements ProjectManager {
   /**
    * Writes the box profile that runs the scaffolded agent into the agent's
    * `.box/<runtime>/local/` folder, named after the project and the runtime,
-   * calling Bedrock in `region`. An existing profile is the user's, so it is
-   * never overwritten.
+   * calling Bedrock in `region`, and first, beside it, the policy file the
+   * profile lists. An existing profile is the user's, so it is never
+   * overwritten, and then neither file is written. The policy file is the CLI's,
+   * so it replaces one already there.
    */
   private async *writeBoxProfile(
     projectRoot: string,
@@ -2259,8 +2263,13 @@ export class FsProjectManager implements ProjectManager {
       }
       return;
     }
-    yield { type: "step", message: `writing box profile ${path}` };
     await mkdir(dirname(path), { recursive: true });
+    // The profile lists this file under `policies`, and box refuses the profile without it, so it
+    // is written first: a failed write then leaves no profile that names a missing file.
+    const policy = boxLocalMetadataPolicyPath(projectRoot, runtime.runtimeName);
+    yield { type: "step", message: `writing box policy file ${policy}` };
+    await writeFile(policy, renderAwsMetadataPolicy());
+    yield { type: "step", message: `writing box profile ${path}` };
     await writeFile(path, text, { flag: "wx" });
     for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
   }

@@ -143,6 +143,60 @@ function boxLocalProfileName(projectName: string, agentName: string): string {
   return `${projectName}-${agentName}`;
 }
 
+/**
+ * The policy file that each box profile `agentcore create` or `agentcore add runtime` writes lists
+ * under `policies`, beside the profile. While the profile lists it, build copies it beside the
+ * AgentCore Runtime profile, so its forbids hold there too. It has a name of its own, so
+ * `policy.dw`, the name Box gives the policy a user edits, stays free for the user.
+ */
+export const AWS_METADATA_POLICY_FILE = "aws-metadata-block.dw";
+
+/** The `@id`s of the rules of {@link AWS_METADATA_POLICY_FILE}. */
+export const AWS_METADATA_RULE_IDS: ReadonlySet<string> = new Set([
+  "aws_metadata_addresses",
+  "aws_metadata_hosts",
+]);
+
+/** An agent's {@link AWS_METADATA_POLICY_FILE} at `projectRoot`, beside its local box profile. */
+export function boxLocalMetadataPolicyPath(projectRoot: string, agentName: string): string {
+  return join(projectRoot, boxLocalDir(agentName), AWS_METADATA_POLICY_FILE);
+}
+
+/**
+ * The text of {@link AWS_METADATA_POLICY_FILE}: forbids on a connection to the AWS instance metadata
+ * service (IMDS on EC2, MMDS on AgentCore Runtime), which serves the role's credentials. A forbid
+ * wins over every permit, so these hold even when a route or a rule the user adds permits the host.
+ * Build copies the file into the AgentCore Runtime profile, so Box refuses these connections there
+ * too, and a route to one of these hosts gets no gateway target.
+ */
+export function renderAwsMetadataPolicy(): string {
+  return `// Written by \`agentcore create\` or \`agentcore add runtime\`, which replace this file each time
+// they write the box profile beside it. The profile lists it under \`policies\`, and build copies
+// it beside the AgentCore Runtime profile. Put rules of your own in another file beside the
+// profile, such as policy.dw, and add it to \`policies\`.
+
+// The agent cannot connect to the AWS instance metadata service, which serves the role's
+// credentials: 169.254.169.254 and fd00:ec2::254 (IMDS on EC2, MMDS on AgentCore Runtime), and the
+// names instance-data and instance-data.ec2.internal. Box's gateway, outside the box, signs the
+// agent's AWS calls, so the agent needs no credentials of its own. Other link-local addresses and
+// the metadata services of other clouds are not forbidden here.
+@id("aws_metadata_addresses")
+forbid (principal, action == Box::Action::"net:connect", resource)
+when {
+  (context.input has ip4 && context.input.ip4 == "169.254.169.254") ||
+  (context.input has ip6 && context.input.ip6 == "fd00:ec2::254")
+};
+
+@id("aws_metadata_hosts")
+forbid (principal, action == Box::Action::"net:connect", resource)
+when {
+  context.input.host == "169.254.169.254" ||
+  context.input.host == "instance-data" ||
+  context.input.host == "instance-data.ec2.internal"
+};
+`;
+}
+
 /** An agent's local box profile at `projectRoot`. */
 export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
   return join(projectRoot, boxLocalProfileFile(agentName));
@@ -527,6 +581,10 @@ secret.ref = "aws://"
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
 packs = ${packs}
+# The policy files whose rules box loads, beside this profile. ${AWS_METADATA_POLICY_FILE} keeps the
+# agent from the AWS instance metadata service. Put rules of your own in another file beside it,
+# such as policy.dw, and add it to this list.
+policies = ${list([AWS_METADATA_POLICY_FILE])}
 
 [profile]
 name = ${str(boxLocalProfileName(projectName, runtime.runtimeName))}

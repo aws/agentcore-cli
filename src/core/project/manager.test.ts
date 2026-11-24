@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
@@ -46,7 +46,12 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import {
+  boxLocalProfileFile,
+  boxProfileWarnings,
+  renderAwsMetadataPolicy,
+  renderBoxProfile,
+} from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
@@ -847,6 +852,14 @@ describe("FsProjectManager.create box profile", () => {
         renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
       );
       expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+      // Beside it, the policy file it lists, written first.
+      const policy = join(dirname(path), "aws-metadata-block.dw");
+      expect(await readFile(policy, "utf8")).toBe(renderAwsMetadataPolicy());
+      const messages = events.map((event) => (event as { message?: string }).message);
+      expect(messages.indexOf(`writing box policy file ${policy}`)).toBeGreaterThanOrEqual(0);
+      expect(messages.indexOf(`writing box policy file ${policy}`)).toBeLessThan(
+        messages.indexOf(`writing box profile ${path}`),
+      );
       expect(events).toContainEqual({
         type: "warning",
         message: defaultLogTargetNotice(AGENT_PYTHON_STRANDS_BOX.runtimeName, BOX_PROFILE_FILE),

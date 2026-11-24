@@ -15,6 +15,7 @@ import type { ResolvedBoxProfile } from "./boxProfileResolver";
 import { seedBoxCache } from "./backends/box-release-test-support";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
+import { renderAwsMetadataPolicy } from "./templates/boxProfile";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
 const FIXTURES = join(import.meta.dir, "__fixtures__");
@@ -193,12 +194,20 @@ async function strandsProject(
 const path = (root: string, relative: string) => join(root, ...relative.split("/"));
 const text = (root: string, relative: string) => readFile(path(root, relative), "utf8");
 
-/** Adds `tables` to the end of the profile, `top` to its start, and writes `.box/agent_python_strands/local/policy.dw`. */
-async function editProfile(root: string, edit: { top?: string; tables?: string; policy?: string }) {
-  const profile = await text(root, PROFILE);
-  await writeFile(path(root, PROFILE), `${edit.top ?? ""}${profile}${edit.tables ?? ""}`);
-  if (edit.policy !== undefined)
+/**
+ * Adds `tables` to the end of the profile and, as a user adds rules of their own, writes `policy`
+ * to `.box/agent_python_strands/local/policy.dw` and lists it under `policies` after the file that
+ * create writes.
+ */
+async function editProfile(root: string, edit: { tables?: string; policy?: string }) {
+  let profile = await text(root, PROFILE);
+  if (edit.policy !== undefined) {
+    const created = 'policies = ["aws-metadata-block.dw"]\n';
+    expect(profile).toContain(created);
+    profile = profile.replace(created, 'policies = ["aws-metadata-block.dw", "policy.dw"]\n');
     await writeFile(path(root, ".box/agent_python_strands/local/policy.dw"), edit.policy);
+  }
+  await writeFile(path(root, PROFILE), `${profile}${edit.tables ?? ""}`);
 }
 
 /** Changes the Box gateway entry of agentcore.json, as a user does by hand. */
@@ -270,7 +279,6 @@ describe("build writes the Box network of the box profile", () => {
       env: { GITHUB_TOKEN: "ghp_123" },
     });
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables: GITHUB_ROUTE,
       policy: POLICY,
     });
@@ -302,8 +310,11 @@ describe("build writes the Box network of the box profile", () => {
 
     // The Runtime profile routes each target of the Box gateway, the model's included.
     const profile = await runtimeProfile(root);
-    expect(profile.policies).toEqual(["policy.dw"]);
+    expect(profile.policies).toEqual(["aws-metadata-block.dw", "policy.dw"]);
     expect(await text(root, "app/agent_python_strands/.box-dist/policy.dw")).toBe(POLICY);
+    expect(await text(root, "app/agent_python_strands/.box-dist/aws-metadata-block.dw")).toBe(
+      renderAwsMetadataPolicy(),
+    );
     const egress = profile.egress as Record<string, unknown>;
     // The route of [egress.github] keeps the name of its entry, and goes to its target.
     expect(Object.keys(egress).sort()).toEqual([
@@ -342,6 +353,18 @@ describe("build writes the Box network of the box profile", () => {
     const { createWarnings } = await strandsProject();
 
     expect(createWarnings).toContain(boxGatewayLogsNotice(GATEWAY));
+  });
+
+  test("stages the policy file create writes beside the profile it leaves as written", async () => {
+    const { manager, root, box } = await strandsProject();
+    box.answer = shows();
+
+    await build(manager, root);
+
+    expect((await runtimeProfile(root)).policies).toEqual(["aws-metadata-block.dw"]);
+    expect(await text(root, "app/agent_python_strands/.box-dist/aws-metadata-block.dw")).toBe(
+      renderAwsMetadataPolicy(),
+    );
   });
 
   test("keeps the enableApplicationLogs of the Box gateway as the user wrote it", async () => {
@@ -547,7 +570,6 @@ describe("build writes the Box network of the box profile", () => {
       "",
     ].join("\n");
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables:
         '\n[egress.github]\ndestinations = ["api.github.com"]\n' +
         '\n[egress.signed]\ndestinations = ["api.example.com"]\nsecret.ref = "aws://default"\n' +
@@ -605,7 +627,6 @@ describe("build writes the Box network of the box profile", () => {
       secret: { ref: "aws://default" },
     };
     await editProfile(root, {
-      top: 'policies = ["policy.dw"]\n',
       tables:
         GITHUB_ROUTE +
         '\n[egress.blocked]\ndestinations = ["blocked.example.com"]\n' +
