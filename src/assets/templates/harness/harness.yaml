@@ -181,7 +181,9 @@ tags: {}
 {{#if yaml.networkConfig}}
 {{yaml.networkConfig}}
 {{else}}
+{{#unless containerLocal}}
 # For VPC Dockerfile builds, also supply networkConfig.vpcId.
+{{/unless}}
 {{/if}}
 {{#if yaml.connections}}
 # Grants existing project resources and exposes their connection variables.

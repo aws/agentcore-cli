@@ -8,6 +8,7 @@ import type {
   AddResourceOptions,
   AddResourceInput,
   CreateProjectInput,
+  BuildProjectInput,
   DeployProjectInput,
   DeployResult,
   EnvLocalEntry,
@@ -81,7 +82,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { assertBoxRegionSupported, validateBoxRuntimes } from "./boxValidation";
+import { assertRuntimeV2RegionSupported, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -111,7 +112,7 @@ import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
-import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, RuntimeEndpointSchema } from "../../projectSchemas/runtime";
 import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
@@ -129,6 +130,7 @@ import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
 import { resolveAwsAccount } from "./backends/cdk/environment";
+import { pinnedVersion } from "./backends/cdk/dependencies";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -154,6 +156,8 @@ import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
 import { LATEST_PYTHON, prepareRuntimes } from "./runtimeBuild";
+import { isContainerBuild } from "../../projectSchemas/constants";
+import { resolveWorkloads } from "./backends/cdk/localContainers";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -485,6 +489,7 @@ export class FsProjectManager implements ProjectManager {
         checkTool: config.checkTool,
         json: config.json,
         processEnv: config.processEnv,
+        source: this.assetSource,
       }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
@@ -537,9 +542,8 @@ export class FsProjectManager implements ProjectManager {
     const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
     if (typeof declared !== "string") return undefined;
 
-    const spec = declared.trim();
-    const version = semver.valid(spec.replace(/^[~^=]/, ""));
-    return version ? { spec, version } : undefined;
+    const version = pinnedVersion(declared)?.version;
+    return version ? { spec: declared.trim(), version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -551,12 +555,12 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    const destination = join(process.cwd(), input.name);
     if (input.scaffoldHarnessInput) {
-      validateHarnessTemplateSource(input.scaffoldHarnessInput);
+      validateHarnessTemplateSource(input.scaffoldHarnessInput, destination);
     }
 
     const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
-    const destination = join(process.cwd(), input.name);
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
@@ -603,7 +607,8 @@ export class FsProjectManager implements ProjectManager {
         yield* this.installRuntimeDependencies(appDir, scaffoldRuntimeInput);
       }
     } else if (
-      scaffoldRuntimeInput?.build === "Container" &&
+      scaffoldRuntimeInput !== undefined &&
+      isContainerBuild({ build: scaffoldRuntimeInput.build }) &&
       templateManagesDependencies(resolveRuntimeTemplateProfile(scaffoldRuntimeInput))
     ) {
       // Container builds install from a lockfile, so generate it even with no-install.
@@ -833,11 +838,20 @@ export class FsProjectManager implements ProjectManager {
         if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
+          projectRoot: project.rootPath,
           assetSource: this.assetSource,
           templateRenderer: this.templateRenderer,
         });
         const result = await resolver.resolve(resourceConfig);
         await result.tree.write(dirname(outputPath));
+        if (resourceConfig.dockerfile && !resourceConfig.buildContextPath) {
+          yield {
+            type: "step",
+            message:
+              `copied ${resourceConfig.dockerfile} to app/${harnessName}/Dockerfile; later ` +
+              "edits to the original are not used",
+          };
+        }
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
         if (harnessEnvEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
@@ -874,7 +888,11 @@ export class FsProjectManager implements ProjectManager {
           const relativeFolder = `app/${input.resourceConfig.name}`;
           yield { type: "step", message: `writing runtime docs to '${relativeFolder}'` };
           const tree = await runtimeDocsTree(
-            { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
+            {
+              assetSource: this.assetSource,
+              templateRenderer: this.templateRenderer,
+              projectRoot: project.rootPath,
+            },
             input.resourceConfig,
           );
           // Tracked as each file is written, so a write that fails partway is
@@ -888,6 +906,14 @@ export class FsProjectManager implements ProjectManager {
             throw err;
           }
           if (folderExisted) scaffoldedPaths.push(...written);
+          if (written.includes(join(outputPath, "Dockerfile"))) {
+            yield {
+              type: "step",
+              message:
+                `copied ${input.resourceConfig.dockerfile} to ${relativeFolder}/Dockerfile; ` +
+                "later edits to the original are not used",
+            };
+          }
           for (const child of tree.children) {
             if (!written.includes(join(outputPath, child.name))) {
               yield {
@@ -1639,7 +1665,7 @@ export class FsProjectManager implements ProjectManager {
 
   public async *build(
     project: Project,
-    options: { region?: string } = {},
+    input: BuildProjectInput & { region?: string } = {},
   ): AsyncGenerator<ProjectEvent, void> {
     assertV1Project(project, "build");
     // Half-written project files from an interrupted `agentcore migrate` must not
@@ -1655,10 +1681,13 @@ export class FsProjectManager implements ProjectManager {
     const boxed = await this.applyBoxNetwork(
       synced.project,
       "build",
-      await resolveRegion(options.region, this.processEnv),
+      await resolveRegion(input.region, this.processEnv),
     );
     yield* boxed.events;
-    yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
+    yield* this.backendFor(project).build(boxed.project, {
+      disableDependencyManagement: input.disableDependencyManagement,
+      boxNetworks: boxed.networks,
+    });
   }
 
   /**
@@ -1810,7 +1839,7 @@ export class FsProjectManager implements ProjectManager {
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
       // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
-      assertBoxRegionSupported(
+      assertRuntimeV2RegionSupported(
         project.spec,
         { name: DEFAULT_TARGET_NAME, region: input.region },
         { provisioning: true, otherTargets: targets.length > 0 },
@@ -1844,7 +1873,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
-    assertBoxRegionSupported(project.spec, target);
+    assertRuntimeV2RegionSupported(project.spec, target);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
@@ -1855,6 +1884,10 @@ export class FsProjectManager implements ProjectManager {
     const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
+    // Resolved once, after auto-detection, so the caller (telemetry) and the
+    // backend see the build modes this deploy actually uses.
+    const { builds: workloadBuilds, local: localWorkloads } = resolveWorkloads(project);
+    input.onWorkloadBuilds?.(workloadBuilds);
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
@@ -1957,6 +1990,9 @@ export class FsProjectManager implements ProjectManager {
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
       boxNetworks: boxed.networks,
+      workloadBuilds,
+      localWorkloads,
+      disableDependencyManagement: input.disableDependencyManagement,
     });
   }
 
@@ -2155,6 +2191,8 @@ export class FsProjectManager implements ProjectManager {
     const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
     // The box release build and deploy ship, as create pins it.
     runtime.box = { version: BOX_RELEASE.version };
+    // Box runs only on AgentCore Runtime V2, as create pins it.
+    runtime.platformVersion = BOX_PLATFORM_VERSION;
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
@@ -27,6 +27,7 @@ const defaultSettings = {
 const config = {
   assetSource: new FsAssetSource(),
   templateRenderer: new HandlebarsTemplateRenderer(),
+  projectRoot: process.cwd(),
 };
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -221,6 +222,18 @@ test("renders supplied deployment settings once in their sections", async () => 
     ...defaultSettings,
     ...overrides,
   });
+});
+
+test.each([
+  ["Container", true],
+  ["ContainerLocal", false],
+] as const)("a %s harness hints at networkConfig.vpcId: %s", async (build, hinted) => {
+  const dockerfileRoot = await mkdtemp(join(tmpdir(), "harness-dockerfile-"));
+  roots.push(dockerfileRoot);
+  const dockerfile = join(dockerfileRoot, "Dockerfile");
+  await writeFile(dockerfile, "FROM scratch\n");
+  const { yaml } = await scaffold({ build, dockerfile });
+  expect(yaml.includes("networkConfig.vpcId")).toBe(hinted);
 });
 
 test("preserves explicit empty settings and disabled truncation", async () => {

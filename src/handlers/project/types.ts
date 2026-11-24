@@ -14,7 +14,11 @@ import type {
 } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
-import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
+import {
+  isContainerBuild,
+  ProtocolModeSchema,
+  RuntimeVersionSchema,
+} from "../../projectSchemas/constants";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
@@ -157,7 +161,7 @@ export const ScaffoldRuntimeInputSchema = z
         path: ["runtimeVersion"],
       });
     }
-    if (build === "Container" && runtimeVersion !== undefined) {
+    if (isContainerBuild({ build }) && runtimeVersion !== undefined) {
       ctx.addIssue({
         code: "custom",
         message: "runtimeVersion is not supported for Container builds",
@@ -223,7 +227,12 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
-export type DeployProjectInput = {
+export type BuildProjectInput = {
+  /** Leaves agentcore/cdk/package.json alone instead of syncing it to the CLI's pins (global config). */
+  disableDependencyManagement?: boolean;
+};
+
+export type DeployProjectInput = BuildProjectInput & {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
   /**
@@ -238,7 +247,32 @@ export type DeployProjectInput = {
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
   skipBootstrap?: boolean;
+  /**
+   * Called once, before anything is deployed, with the build mode every runtime
+   * and harness deploys with: after Dockerfile auto-detection, read from
+   * agentcore.json and each harness.yaml.
+   */
+  onWorkloadBuilds?: (builds: WorkloadBuilds) => void;
 };
+
+/** How a workload's code reaches AgentCore, as @aws/agentcore-cdk records it. */
+export type WorkloadBuildMode =
+  "CodeZip" | "Container" | "ContainerLocal" | "ContainerUri" | "Managed";
+/** A workload's key: `runtime/<name>` or `harness/<name>`, matching @aws/agentcore-cdk. */
+export type WorkloadKey = `runtime/${string}` | `harness/${string}`;
+/** Build mode of every runtime and harness in a project. */
+export type WorkloadBuilds = Record<WorkloadKey, WorkloadBuildMode>;
+/** Where a ContainerLocal workload is built from, as agentcore.json or harness.yaml sets it. */
+export type LocalWorkloadSource = {
+  /** Project-relative build context: buildContextPath, else the workload's directory. */
+  context: string;
+  /** The Dockerfile, relative to the build context. */
+  dockerfile: string;
+  /** The bring-your-own execution role, when one is set. */
+  executionRoleArn?: string;
+};
+/** Each ContainerLocal workload's build source, by workload key. */
+export type LocalWorkloadSources = Map<WorkloadKey, LocalWorkloadSource>;
 
 export type DeployResult = {
   /**
@@ -574,7 +608,10 @@ export interface ProjectManager {
    * region build builds for, which the Box gateway's targets and Runtime profiles take; without
    * it, build resolves the region as `--region` does with no flag.
    */
-  build(project: Project, options?: { region?: string }): AsyncGenerator<ProjectEvent, void>;
+  build(
+    project: Project,
+    input?: BuildProjectInput & { region?: string },
+  ): AsyncGenerator<ProjectEvent, void>;
 
   /**
    * Re-derives runtime build settings (build, dockerfile, runtimeVersion,

@@ -385,6 +385,10 @@ describe("project remove screen", () => {
       JSON.stringify({
         ...onDisk,
         projectType: "box",
+        runtimes: (onDisk.runtimes as object[]).map((runtime) => ({
+          ...runtime,
+          platformVersion: "V2",
+        })),
         agentCoreGateways: [boxGatewaySpec(RUNTIME)],
       }),
     );
@@ -413,7 +417,15 @@ describe("project remove screen", () => {
     };
     await writeFile(
       specPath,
-      JSON.stringify({ ...onDisk, projectType: "box", agentCoreGateways: [boxGateway] }),
+      JSON.stringify({
+        ...onDisk,
+        projectType: "box",
+        runtimes: (onDisk.runtimes as object[]).map((runtime) => ({
+          ...runtime,
+          platformVersion: "V2",
+        })),
+        agentCoreGateways: [boxGateway],
+      }),
     );
     const project = (await core.projectManager.resolve({ filePath: created.rootPath }))!;
     const r = render("/agentcore/remove/runtime/0", core, project);

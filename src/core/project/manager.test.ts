@@ -1515,6 +1515,7 @@ describe("FsProjectManager.addResource", () => {
           bedrockManagedAgents?: boolean;
           tags?: Record<string, string>;
           additionalPolicies?: string[];
+          platformVersion?: string;
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1560,7 +1561,16 @@ describe("FsProjectManager.addResource", () => {
       expect(deployCalls).toEqual([]);
     });
 
-    describe("Box projects in a region without Runtime V2", () => {
+    test("deploy of a project that is not a Box project needs no platformVersion", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("us-west-2");
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
+    });
+
+    describe("runtimes on Runtime V2 in a region without it", () => {
       // partition.test.ts covers which regions have no Runtime V2; one is enough here.
       test.each(["us-west-1"])(
         "deploy of a Box project to %s fails before anything is written",
@@ -1577,8 +1587,9 @@ describe("FsProjectManager.addResource", () => {
           const { error } = await deployOutcome(subject, project);
           expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
           expect(String(error)).toContain(
-            `Cannot deploy Box project 'example' to target 'primary' in ${region}: Box runs on ` +
-              `AgentCore Runtime V2, which is not available in ${region}. Change the region of ` +
+            `Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target ` +
+              `'primary' in ${region}: Box runs on AgentCore Runtime V2 ("platformVersion": "V2"), ` +
+              `which is not available in ${region}. Change the region of ` +
               "target 'primary' in agentcore/aws-targets.json, or deploy with --target to a target " +
               "in another region, then retry.",
           );
@@ -1641,8 +1652,9 @@ describe("FsProjectManager.addResource", () => {
 
         await expect(deploying).rejects.toThrow(
           new RegionUnsupportedFeatureError(
-            "Cannot deploy Box project 'example' to target 'default' in us-west-1: Box runs on " +
-              "AgentCore Runtime V2, which is not available in us-west-1. Deploy with --region set " +
+            "Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target " +
+              "'default' in us-west-1: Box runs on AgentCore Runtime V2 (\"platformVersion\": " +
+              '"V2"), which is not available in us-west-1. Deploy with --region set ' +
               "to a region that has it, or add a target in another region to " +
               "agentcore/aws-targets.json, then retry.",
           ),
@@ -1658,6 +1670,24 @@ describe("FsProjectManager.addResource", () => {
         const { error } = await deployOutcome(subject, project);
         expect(error).toBeUndefined();
         expect(deployCalls).toHaveLength(1);
+      });
+
+      // Outside a Box project too: CloudFormation could not create a V2 runtime there either.
+      test("refuses a runtime that asks for V2 in a project that is not a Box project, by name", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        spec.runtimes[0].platformVersion = "V2";
+        await writeFile(specPath, JSON.stringify(spec, null, 2));
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+        expect(String(error)).toContain(
+          `Cannot deploy runtime '${spec.runtimes[0].name}' of project 'example' to target ` +
+            "'primary' in us-west-1: it asks for AgentCore Runtime V2",
+        );
+        expect(deployCalls).toEqual([]);
       });
 
       test("names --target, not a new target, when aws-targets.json has targets", async () => {
@@ -2173,7 +2203,7 @@ describe("FsProjectManager.build", () => {
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
-  // never produces them, so tests stub the directory in.
+  // never produces them, so tests stub in the library at the pin create() vends.
   async function scaffolded(
     subject: FsProjectManager,
     directory: string,
@@ -2186,9 +2216,16 @@ describe("FsProjectManager.build", () => {
       skipGit: true,
     });
     if (withDependencies) {
-      await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-        recursive: true,
-      });
+      const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+      const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+      const { dependencies } = JSON.parse(
+        await readFile(join(cdkDirectory, "package.json"), "utf8"),
+      );
+      await mkdir(library, { recursive: true });
+      await writeFile(
+        join(library, "package.json"),
+        JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+      );
     }
     return project;
   }
@@ -2271,6 +2308,26 @@ describe("FsProjectManager.build", () => {
     expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
   });
 
+  // An existing Box project has no platformVersion, the common case; a V1 one is a hand edit.
+  // The project schema holds the rule, so every command stops when it reads agentcore.json, before
+  // build, deploy, or any other step writes a file.
+  test.each([
+    ["no platformVersion", undefined, "has no platformVersion"],
+    ['"platformVersion": "V1"', "V1", 'has "platformVersion": "V1"'],
+  ])("a Box runtime with %s stops the project from loading", async (_label, version, actual) => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = manager(await boxHome());
+    const project = await scaffolded(subject, directory);
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8"));
+    spec.runtimes[0].platformVersion = version;
+    await writeFile(specPath, JSON.stringify(spec, null, 2));
+
+    await expect(subject.resolve({ filePath: project.rootPath })).rejects.toThrow(
+      `${actual}, but every runtime of a Box project runs on AgentCore Runtime V2.`,
+    );
+  });
+
   test("downloads box from the public box release when it is not cached", async () => {
     const directory = await inTempDirectory();
     const home = await mkdtemp(join(tmpdir(), "agentcore-box-home-"));
@@ -2286,13 +2343,34 @@ describe("FsProjectManager.build", () => {
     expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });
 
-  test("fails actionably when the CDK dependencies are missing", async () => {
+  test("installs the CDK dependencies when node_modules is missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager(await boxHome());
+    const project = await scaffolded(subject, directory, false);
+    commands.length = 0;
+    const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+
+    const events = await drain(subject.build(project));
+
+    expect(events).toContainEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commands.map(({ command, cwd }) => [command.slice(0, 2), cwd])).toEqual([
+      [["npm", "install"], cdkDirectory],
+      [["npm", "run"], cdkDirectory],
+    ]);
+  });
+
+  test("fails actionably when node_modules is missing and dependency management is off", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
     const project = await scaffolded(subject, directory, false);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/npm install/);
+    await expect(
+      drain(subject.build(project, { disableDependencyManagement: true })),
+    ).rejects.toThrow(/Run 'npm install'/);
     expect(commands).toEqual([]);
   });
 
@@ -2314,15 +2392,7 @@ describe("FsProjectManager.build", () => {
   test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager(await boxHome());
-    const { project } = await runCreate(subject, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall: true,
-      skipGit: true,
-    });
-    await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-      recursive: true,
-    });
+    const project = await scaffolded(subject, directory);
 
     const events = await drain(subject.build(project));
 
