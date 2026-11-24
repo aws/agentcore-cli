@@ -44,14 +44,19 @@ fork of [strands-agents/box](https://github.com/strands-agents/box), then run
   [aws/agentcore-l3-cdk-constructs#470](https://github.com/aws/agentcore-l3-cdk-constructs/pull/470),
   as its `box-integration` branch does. The Box gateway that `create` writes has
   `enableApplicationLogs`, and an older L3 refuses it at synth with a `ConfigValidationError`.
+  A boxed runtime with Memory also needs
+  [aws/agentcore-l3-cdk-constructs#481](https://github.com/aws/agentcore-l3-cdk-constructs/pull/481): it gives the
+  runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
+  the box cannot reach Memory.
 - `box` `0.3.0` on your `PATH` (`0.3.0-preview.1` on macOS), the release the CLI pins. Use that
   release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
   run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
   the agent with it. See [Install box](#install-box).
-- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock and Memory
-  targets for `AWS_REGION` (else your AWS profile's region), and deploy for its target's region.
+- AWS credentials for a **dev or test** account. Build writes the Box gateway's Bedrock target and
+  the Runtime profile's direct AgentCore route for `AWS_REGION` (else your AWS profile's region), and
+  deploy for its target's region.
 - `bun` for the CLI, `npm` for the generated CDK app.
 
 ## Install box

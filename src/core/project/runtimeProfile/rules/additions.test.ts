@@ -24,12 +24,14 @@ import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
 import type { TomlTable } from "../types";
+import { defaultMemoryName } from "../../../../projectSchemas/memory";
 import {
   agentStartsUnderOtel,
   apply,
   DEFAULT_TELEMETRY_TARGET,
   DEFAULT_TRACES_TARGET,
   defaultTracesTelemetry,
+  MEMORY_ROUTE,
   runtimeProfileHeader,
 } from "./additions";
 
@@ -37,6 +39,26 @@ const PROFILE_FILE = ".box/agent/local/profile.toml";
 /** The region create resolved, which the local profile names: not the build region. */
 const CREATE_REGION = "us-east-1";
 const BUILD_REGION = "us-west-2";
+
+/**
+ * The Runtime form of `recorded`, a profile the old renderer wrote for a runtime with its default
+ * Memory: the Memory route goes to the AgentCore host directly, under the same name, in the same
+ * place.
+ */
+function withDirectMemory(recorded: TomlTable): TomlTable {
+  const result = structuredClone(recorded);
+  if (isTableValue(result.egress)) result.egress[MEMORY_ROUTE] = DIRECT_MEMORY_ROUTE;
+  return result;
+}
+
+const isTableValue = (value: unknown): value is TomlTable =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The route of the agent's Memory calls: to Memory directly, signed with the execution role. */
+const DIRECT_MEMORY_ROUTE = {
+  destinations: [`bedrock-agentcore.${BUILD_REGION}.amazonaws.com`],
+  secret: { ref: "aws://" },
+};
 
 type Build = "CodeZip" | "Container";
 type Protocol = NonNullable<ProjectRuntime["protocol"]>;
@@ -72,14 +94,12 @@ function passthrough(name: string, endpoint: string): AgentCoreGatewayTarget {
   } as AgentCoreGatewayTarget;
 }
 
-/** A Box project with `runtime`, its Box gateway with the targets build adds, and `memories`. */
+/**
+ * A Box project with `runtime`, its Box gateway with the target build adds, and `memories`. Build
+ * adds no target for Memory: the agent's Memory calls go to Memory directly.
+ */
 function specOf(runtime: ProjectRuntime, memories: readonly string[] = []) {
-  const targets = [
-    passthrough("bedrock", `https://bedrock-runtime.${BUILD_REGION}.amazonaws.com`),
-    ...(memories.length > 0
-      ? [passthrough("agentcore", `https://bedrock-agentcore.${BUILD_REGION}.amazonaws.com`)]
-      : []),
-  ];
+  const targets = [passthrough("bedrock", `https://bedrock-runtime.${BUILD_REGION}.amazonaws.com`)];
   return {
     name: "demo",
     runtimes: [runtime],
@@ -303,13 +323,14 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded = withApiKeySignIn(
+      const old = withApiKeySignIn(
         withCreatePolicy(
           OLD_RENDERER.templates[
             `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
           ] as TomlTable,
         ),
       );
+      const recorded = memories.length > 0 ? withDirectMemory(old) : old;
       const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
       for (const key of OWNED)
@@ -377,14 +398,19 @@ describe("deriveRuntimeProfile on each box template of create", () => {
 
       const { profile, problems } = deriveRuntimeProfile(
         local,
-        contextOf(runtime, { memories, telemetry }),
+        contextOf(runtime, {
+          memories: memories.length > 0 ? [defaultMemoryName(runtime.name)] : [],
+          telemetry,
+        }),
       );
 
-      const recorded = withCreatePolicy(
+      // The old renderer sent the Memory calls through the gateway's `agentcore` target.
+      const old = withCreatePolicy(
         OLD_RENDERER.boxTemplates[
           `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
         ]!,
       );
+      const recorded = memories.length > 0 ? withDirectMemory(old) : old;
       expect(problems).toEqual([]);
       const signedIn = withApiKeySignIn(recorded);
       expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
@@ -1098,6 +1124,217 @@ describe("the additions rule", () => {
     });
   });
 
+  describe("the Memory route", () => {
+    const MEMORY = defaultMemoryName("agent");
+
+    test("sends the Memory calls of a runtime with its default Memory to Memory directly, signed with the execution role", () => {
+      const { table, problems } = apply(
+        createdProfile(CODEZIP),
+        contextOf(CODEZIP, { memories: [MEMORY] }),
+      );
+
+      expect(problems).toEqual([]);
+      const route = (table.egress as TomlTable)[MEMORY_ROUTE];
+      expect(route).toEqual(DIRECT_MEMORY_ROUTE);
+      // No backend: the Box gateway would sign the calls with its own role.
+      expect(route).not.toHaveProperty("backends");
+    });
+
+    test("keeps each route of the profile, and adds the Memory route after them", () => {
+      const local = {
+        ...createdProfile(CONTAINER),
+        egress: { github: { destinations: ["api.github.com"] } },
+      };
+
+      const egress = apply(local, contextOf(CONTAINER, { memories: [MEMORY] })).table
+        .egress as TomlTable;
+
+      expect(Object.keys(egress)).toEqual(["github", MEMORY_ROUTE]);
+      expect(egress.github).toEqual({ destinations: ["api.github.com"] });
+    });
+
+    test("adds no Memory route for a runtime with no default Memory", () => {
+      const none = apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table;
+      const other = apply(createdProfile(CODEZIP), contextOf(CODEZIP, { memories: ["shared"] }));
+      expect(none.egress).not.toHaveProperty(MEMORY_ROUTE);
+      expect(other.table.egress).not.toHaveProperty(MEMORY_ROUTE);
+    });
+
+    test("sends a route or HTTP MCP server of the profile to the AgentCore host directly, with its name, and adds no second route", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const backends = [{ url: "${{ inputs.gateway.url }}/egress-tools" }];
+      const local = {
+        egress: { tools: { destinations: [host], backends, when: "true" } },
+        mcp: { recall: { type: "http", destinations: [host], backends } },
+      };
+
+      const { table, problems, warnings } = apply(
+        local,
+        contextOf(CODEZIP, { memories: [MEMORY] }),
+      );
+
+      // Box chooses where a connection goes from its host alone, so every call to the AgentCore
+      // host goes there directly. Box refuses two signed routes for one host.
+      expect([problems, warnings]).toEqual([[], []]);
+      expect(table.egress).toEqual({
+        tools: { destinations: [host], when: "true", secret: { ref: "aws://" } },
+      });
+      expect(table.mcp).toEqual({
+        recall: { type: "http", destinations: [host], secret: { ref: "aws://" } },
+      });
+    });
+
+    test.each([
+      { kind: "egress", entry: {} },
+      { kind: "mcp", entry: { type: "http" } },
+    ] as const)(
+      "stops build for an [$kind] entry that sends an env:// key to the AgentCore host",
+      ({ kind, entry }) => {
+        const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+        const context = {
+          ...contextOf(CODEZIP, { memories: [MEMORY] }),
+          hosts: [
+            {
+              host,
+              authority: host,
+              target: "egress-tools",
+              outboundAuth: {
+                kind: "apiKey",
+                credentialName: "tools",
+                variable: "TOOLS_TOKEN",
+                header: "Authorization",
+              },
+              sources: [
+                kind === "egress"
+                  ? { kind: "entry", egressEntry: "tools", destinations: [host] }
+                  : { kind: "mcp", mcpEntry: "tools", destinations: [host] },
+              ],
+            },
+          ],
+        } as unknown as Parameters<typeof apply>[1];
+        // As the gateway rule writes it: a backend to the target that sends the key.
+        const local = {
+          [kind]: {
+            tools: {
+              ...entry,
+              destinations: [host],
+              backends: [{ url: "${{ inputs.gateway.url }}/egress-tools" }],
+            },
+          },
+        };
+
+        const { problems } = apply(local, context);
+
+        expect(problems).toEqual([
+          {
+            code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+            key: [kind, "tools"],
+            place: PROFILE_FILE,
+            reason:
+              `[${kind}.tools] sends env://TOOLS_TOKEN to ${host}. On AgentCore Runtime, runtime ` +
+              "'agent' has its default Memory, so box sends every call to that host directly, " +
+              "signed with the execution role, and not through the Box gateway. Box cannot route " +
+              "one host both ways, so the key would not be sent. Remove the secret from " +
+              `[${kind}.tools] if the service takes the execution role's signature, or remove the ` +
+              "default Memory of runtime 'agent' from agentcore.json.",
+          },
+        ]);
+      },
+    );
+
+    test("stops build for a route to the AgentCore host that still holds a secret other than aws://", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = {
+        mcp: {
+          tools: { type: "http", destinations: [host], secret: { ref: "env://TOOLS_TOKEN" } },
+        },
+      };
+
+      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems.map(({ code, key }) => [code, key])).toEqual([
+        ["RUNTIME_AGENTCORE_HOST_CREDENTIAL", ["mcp", "tools"]],
+      ]);
+    });
+
+    test("counts a route to the AgentCore host with :443, in another case, or as a wildcard", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      for (const destination of [
+        `bedrock-agentcore.${BUILD_REGION}.amazonaws.com:443`,
+        `Bedrock-AgentCore.${BUILD_REGION}.amazonaws.com`,
+        "*.amazonaws.com",
+      ]) {
+        const local = { egress: { tools: { destinations: [destination] } } };
+
+        expect([destination, apply(local, context).table.egress]).toEqual([
+          destination,
+          { tools: { destinations: [destination], secret: { ref: "aws://" } } },
+        ]);
+      }
+      // Another port, or a wildcard of another domain, is not the AgentCore host.
+      const other = {
+        egress: {
+          tools: {
+            destinations: ["*.example.com", `bedrock-agentcore.${BUILD_REGION}.amazonaws.com:8443`],
+          },
+        },
+      };
+      expect(Object.keys(apply(other, context).table.egress as TomlTable)).toEqual([
+        "tools",
+        MEMORY_ROUTE,
+      ]);
+    });
+
+    test("leaves a gateway route to the Memory host alone for a runtime with no default Memory", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = { egress: { memory: { destinations: [host], backends: [{ url: "x" }] } } };
+
+      const { table, problems, warnings } = apply(local, contextOf(CODEZIP));
+      expect([problems, warnings]).toEqual([[], []]);
+      expect(table.egress).toEqual(local.egress);
+    });
+
+    test("names the gateway target when a target of the user takes the Memory route's name", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      const withTarget = {
+        ...context,
+        gateway: {
+          ...context.gateway,
+          targets: [
+            ...context.gateway.targets,
+            passthrough("agentcore", "https://memory.example.com"),
+          ],
+        },
+      };
+      const local = { egress: { [MEMORY_ROUTE]: { destinations: ["memory.example.com"] } } };
+
+      const [problem] = apply(local, withTarget).problems;
+
+      expect(problem?.place).toBe("agentcore/agentcore.json");
+      expect(problem?.reason).toEndWith(
+        `Rename the 'agentcore' target of gateway '${context.gateway.name}'.`,
+      );
+    });
+
+    test("stops build for a route of the user under the name of the Memory route", () => {
+      const local = { egress: { [MEMORY_ROUTE]: { destinations: ["api.example.com"] } } };
+
+      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems).toEqual([
+        {
+          code: "RUNTIME_ROUTE_NAME_TAKEN",
+          key: ["egress", MEMORY_ROUTE],
+          place: PROFILE_FILE,
+          reason:
+            `[egress.${MEMORY_ROUTE}] is the name of the route that the agent's Memory calls ` +
+            `take on AgentCore Runtime, to bedrock-agentcore.${BUILD_REGION}.amazonaws.com. ` +
+            "Rename that entry.",
+        },
+      ]);
+    });
+  });
+
   describe("with OTEL on", () => {
     const OTEL_CODEZIP = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
     const OTEL_CONTAINER = runtimeOf("Container", "HTTP", "Bedrock", true);
@@ -1331,6 +1568,19 @@ describe("the additions rule", () => {
     expect(derived).toContain("@box/agentcore and @box/agentcore-codezip packs");
     expect(runtimeProfileHeader(contextOf(CONTAINER))[1]).not.toContain("@box/agentcore-codezip");
     expect(standIns).toContain("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are stand-ins");
+    expect(standIns).toEndWith("Every AWS route goes to the Box gateway.");
+    const context = contextOf(CODEZIP, { memories: [defaultMemoryName("agent")] });
+    const withMemory = runtimeProfileHeader(context, apply(createdProfile(CODEZIP), context).table);
+    const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+    expect(withMemory[2]).toEndWith(
+      `except [egress.${MEMORY_ROUTE}], to ${host}: box sends the calls to that host directly, so ` +
+        "Memory can hold each call to the session of the runtime.",
+    );
+    // A route of the user that replaces [egress.agentcore] is the one the header names.
+    const routed = apply({ egress: { tools: { destinations: [host] } } }, context).table;
+    expect(runtimeProfileHeader(context, routed)[2]).toContain(
+      `except [egress.tools], to ${host}:`,
+    );
     const text = serializeRuntimeProfile(
       apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table,
       runtimeProfileHeader(contextOf(CODEZIP)),

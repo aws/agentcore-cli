@@ -268,7 +268,15 @@ second answer should say teal, and the runtime log shows `running profile ...` w
 
 A boxed agent gets the deployed Memory IDs and the Runtime's region inside the box. It does not get
 the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
-its Box gateway.
+its Box gateway. With its default Memory, its calls to the AgentCore host
+(`bedrock-agentcore.<region>.amazonaws.com`) are the exception: box signs them with the execution
+role and sends them to that host directly, so Memory can hold each call to the session of the
+runtime. Box routes a connection by its host alone, and Code Interpreter, Browser, and the other
+AgentCore APIs share that host, so their calls go there directly too. A `PRIVATE_VPC` runtime
+reaches that host through the AgentCore endpoint of its private VPC, which only the runtime's role
+may call through. Code in the box can make any AgentCore call on that host that the
+execution role allows, so a `bedrock-agentcore` grant added through `additionalPolicies` is open
+to it. A runtime in a VPC of your own needs a `bedrock-agentcore` VPC endpoint.
 
 A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
 and deploy now render profiles that those files cannot start. Create the project again, or copy

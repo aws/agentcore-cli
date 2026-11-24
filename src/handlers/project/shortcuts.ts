@@ -31,8 +31,8 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
 /**
  * The Bedrock region of the box profile `agentcore create` writes when the caller passes no
  * region. Both create paths pass the region they resolved. Build and deploy write the Box
- * gateway's `bedrock` and `agentcore` targets, and the AgentCore Runtime profile, for the region
- * they build for instead (`--region`, else `resolveRegion`).
+ * gateway's `bedrock` target, and the AgentCore Runtime profile, for the region they build for
+ * instead (`--region`, else `resolveRegion`).
  */
 export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
 
@@ -57,29 +57,11 @@ export function getBoxGatewayBedrockTargetSpec(
 }
 
 /**
- * The name of the Box gateway's AgentCore target, which build and deploy add
- * for a boxed agent's default Memory; also the name of the box route to it.
+ * The AgentCore data-plane host of `region`. A boxed agent's Memory calls go to it directly, signed
+ * with the execution role, and not through the Box gateway.
  */
-export const BOX_GATEWAY_AGENTCORE_TARGET_NAME = "agentcore";
-
-/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
-export function boxGatewayAgentCoreHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
+export function agentCoreDataPlaneHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
   return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
-}
-
-/**
- * The Box gateway's passthrough target for the AgentCore data plane (Memory),
- * signed with the gateway's role.
- */
-export function getBoxGatewayAgentCoreTargetSpec(
-  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
-): AgentCoreGatewayTarget {
-  return {
-    name: BOX_GATEWAY_AGENTCORE_TARGET_NAME,
-    targetType: "passthrough",
-    passthrough: { endpoint: `https://${boxGatewayAgentCoreHost(region)}`, protocolType: "CUSTOM" },
-    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region },
-  };
 }
 
 /**

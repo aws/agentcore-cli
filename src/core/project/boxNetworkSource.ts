@@ -14,7 +14,7 @@ import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors"
 import type { PolicyFileCopy } from "./backends/boxContainer";
 import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
-import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_BEDROCK_PACK,
   boxLocalDir,
@@ -62,8 +62,8 @@ export async function readBoxNetworks(
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
   assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
-  // The model sees the targets build adds for the model and Memory calls, so no host takes a
-  // second target for their endpoints.
+  // The model sees the target build adds for the model calls, so no host takes a second target for
+  // its endpoint.
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
@@ -424,10 +424,7 @@ function policyFileProblem(
 }
 
 /** The policy files that build writes for the gateway's role. */
-const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([
-  BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
-]);
+const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([BOX_BEDROCK_POLICY_FILE]);
 
 /**
  * The actions that the Allow statements of the `.json` policy files of `policies` grant, and a
