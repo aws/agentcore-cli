@@ -310,8 +310,10 @@ export function buildBoxNetwork(
 }
 
 /**
- * The `env://` route of each host whose target sends an API key, once for each route. An HTTP MCP
- * server's route has the server's name.
+ * The `env://` route of each host whose target sends an API key, once for each route and variable:
+ * an `[egress]` entry and an `[mcp]` server of one name can read one credential from its own
+ * variable and from one other, and build copies the other's key. An HTTP MCP server's route has
+ * the server's name.
  */
 function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];
@@ -319,8 +321,9 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
     const entry = sources.find((source): source is EntrySource => source.kind !== "rule");
     if (target === undefined || outboundAuth.kind !== "apiKey" || !entry) continue;
     const route = entry.kind === "entry" ? entry.egressEntry : entry.mcpEntry;
-    if (routes.some((other) => other.route === route)) continue;
-    routes.push({ route, variable: outboundAuth.variable });
+    const { variable } = outboundAuth;
+    if (routes.some((other) => other.route === route && other.variable === variable)) continue;
+    routes.push({ route, variable });
   }
   return routes;
 }

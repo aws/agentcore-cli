@@ -190,6 +190,43 @@ describe("FsProjectManager.build: box env:// credentials", () => {
     expect(warnings).toContainEqual(expect.stringContaining("so dev and deploy can differ"));
   });
 
+  test("stores a rotated GITHUB_TOKEN of an [mcp] server that shares the credential of an [egress] route", async () => {
+    const shown = boxShowOf({
+      egress: {
+        github: {
+          destinations: ["api.github.com", "uploads.github.com"],
+          secret: { ref: `env://${RESERVED}` },
+        },
+      },
+      mcp: {
+        github: {
+          type: "http",
+          destinations: ["mcp.github.com"],
+          secret: { ref: "env://GITHUB_TOKEN" },
+        },
+      },
+    });
+    const { subject } = manager({ GITHUB_TOKEN: "ghp_new" }, shown);
+    const created = await project(
+      subject,
+      '[egress.github]\ndestinations = ["api.github.com", "uploads.github.com"]\n' +
+        `secret.ref = "env://${RESERVED}"\n\n` +
+        '[mcp.github]\ntype = "http"\ndestinations = ["mcp.github.com"]\n' +
+        'secret.ref = "env://GITHUB_TOKEN"\n',
+    );
+    const specFile = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specFile, "utf8")) as { credentials?: unknown[] };
+    spec.credentials = [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }];
+    await writeFile(specFile, JSON.stringify(spec, undefined, 2));
+    await new EnvLocalFile(created.rootPath).insertIfNew([
+      { key: RESERVED, value: "ghp_old", comment: "the key before the rotation" },
+    ]);
+
+    await drain(subject.build((await subject.resolve({ filePath: created.rootPath }))!));
+
+    expect(await storedKey(created.rootPath)).toBe("ghp_new");
+  });
+
   test("seeds the key that agentcore dev stored in .env.local under the box variable", async () => {
     const { subject } = manager({});
     const created = await project(subject, GITHUB_PROFILE);
