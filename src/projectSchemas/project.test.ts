@@ -678,7 +678,7 @@ describe("a passthrough target that names a gateway", () => {
       const result = ProjectSpecSchema.safeParse({
         ...minimalProject,
         ...(projectType && { projectType }),
-        runtimes: [runtime],
+        runtimes: [projectType === "box" ? { ...runtime, platformVersion: "V2" } : runtime],
         agentCoreGateways: gateways,
       });
       return result.success ? [] : result.error.issues.map(({ message }) => message);
