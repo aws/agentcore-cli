@@ -32,7 +32,7 @@ const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
     places,
   });
 
-/** The keys of a profile that no rule of the derivation changes, as box 0.1.11-linux-preview.6 takes them. */
+/** The keys of a profile that no rule of the derivation changes, as box takes them. */
 const CARRIED: TomlTable = {
   "agent-args": ["--verbose"],
   "file-attributes": true,

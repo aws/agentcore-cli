@@ -86,7 +86,6 @@ describe("renderBoxProfile", () => {
         filesystem: VENV_GRANTS,
         ingress: [{ listen: "127.0.0.1:8080", workload_port: 8081 }],
       },
-      tool: { uname: { filesystem: { deny_write: VENV_GRANTS.deny_write } } },
       egress: { bedrock: { secret: { ref: "aws://" } } },
     });
   });
@@ -109,7 +108,7 @@ describe("renderBoxProfile", () => {
   // agentcore dev starts box in app/<runtime>, so ${{ workspace }} and the project grant are that
   // folder: agentcore/.env.local, with the model's key, .git and agentcore/cdk lie outside them.
   test("grants the agent its own folder and no other folder of the project", () => {
-    const { project, agent, tool } = profile("agent-python-strands-box", {
+    const { project, agent } = profile("agent-python-strands-box", {
       modelProvider: "OpenAI",
       apiKey: "sk-test",
     });
@@ -118,7 +117,6 @@ describe("renderBoxProfile", () => {
       const path = typeof grant === "string" ? grant : grant.path;
       expect(path).not.toMatch(/agentcore|\.git|\.\./);
     }
-    expect(JSON.stringify(tool)).not.toMatch(/agentcore|\.git|\.\./);
   });
 
   test("names no host path, so the profile works on any machine and after a move", () => {

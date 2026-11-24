@@ -14,6 +14,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   AWS_METADATA_POLICY_FILE,
+  BOX_BEDROCK_API_KEY_ROUTE,
+  BOX_BEDROCK_PACK,
+  BOX_BEDROCK_ROUTE,
   renderAgentCorePack,
   renderBoxProfile,
 } from "../../templates/boxProfile";
@@ -164,6 +167,29 @@ const OTEL_START: Record<Build, string[]> = {
 };
 
 /**
+ * `profile`, a Runtime profile that the old renderer wrote, as the derivation writes it for box
+ * 0.3: with @box/bedrock, `bedrock.sign-in` is `api-key`, and the Bedrock route through the
+ * gateway is `[egress.bedrock-api-key]`, the pack's route for that sign-in. Nothing else changes.
+ */
+function withApiKeySignIn(profile: TomlTable): TomlTable {
+  const packs = profile.packs;
+  if (!Array.isArray(packs) || !packs.includes(BOX_BEDROCK_PACK)) return profile;
+  const result = structuredClone(profile);
+  const options = result.options as TomlTable;
+  options.bedrock = { ...(options.bedrock as TomlTable), "sign-in": "api-key" };
+  const egress = result.egress as TomlTable | undefined;
+  if (egress !== undefined && Object.hasOwn(egress, BOX_BEDROCK_ROUTE)) {
+    result.egress = Object.fromEntries(
+      Object.entries(egress).map(([name, route]) => [
+        name === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : name,
+        route,
+      ]),
+    );
+  }
+  return result;
+}
+
+/**
  * `profile`, a Runtime profile with OTEL off, as OTEL on gives it: the agent starts under
  * opentelemetry-instrument, and the default X-Ray target comes last when no target is
  * `cloudwatch_traces`. Nothing else changes.
@@ -196,7 +222,7 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the gateway fixture. The gateway fixture is recorded from renderRuntimeBoxProfile of
  * box-integration (f5503f02). The two template sets are recorded, with the default telemetry
  * target, from the renderer of aws/agentcore-cli#2867 (f40ebce7): box-integration (7252504c) with
- * the `@box/` pack names and no ffi shim.
+ * the `@box/` pack names.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
@@ -274,10 +300,12 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded = withCreatePolicy(
-        OLD_RENDERER.templates[
-          `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
-        ] as TomlTable,
+      const recorded = withApiKeySignIn(
+        withCreatePolicy(
+          OLD_RENDERER.templates[
+            `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
+          ] as TomlTable,
+        ),
       );
       const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
@@ -355,7 +383,8 @@ describe("deriveRuntimeProfile on each box template of create", () => {
         ]!,
       );
       expect(problems).toEqual([]);
-      expect(profile).toEqual(otel ? withOtel(recorded, input.build as Build) : recorded);
+      const signedIn = withApiKeySignIn(recorded);
+      expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
     },
   );
 });
@@ -394,20 +423,14 @@ describe("the additions rule", () => {
     expect(local).toEqual(before);
   });
 
-  test("removes the [tool.uname] table that a CodeZip template writes, and keeps each tool table of the user", () => {
+  test("writes no tool table for a CodeZip template, and keeps each tool table of the user", () => {
     const local = createdProfile(CODEZIP);
     const notes = { program: "/usr/bin/notes" };
-    const changed = { filesystem: { deny_write: ["${{ workspace }}/app/agent/data"] } };
 
-    expect(Object.keys(local.tool as TomlTable)).toEqual(["uname"]);
+    // The pinned box's @box/base has no tools, so the template gives none the project write grant.
+    expect(local).not.toHaveProperty("tool");
     expect(apply(local, contextOf(CODEZIP)).table).not.toHaveProperty("tool");
-    expect(
-      apply({ ...local, tool: { ...(local.tool as TomlTable), notes } }, contextOf(CODEZIP)).table
-        .tool,
-    ).toEqual({ notes });
-    expect(apply({ ...local, tool: { uname: changed } }, contextOf(CODEZIP)).table.tool).toEqual({
-      uname: changed,
-    });
+    expect(apply({ ...local, tool: { notes } }, contextOf(CODEZIP)).table.tool).toEqual({ notes });
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {
@@ -445,19 +468,26 @@ describe("the additions rule", () => {
     });
   });
 
-  test("sets bedrock.region to the build region, and keeps the other options", () => {
+  test("sets bedrock.region to the build region and bedrock.sign-in to api-key, and keeps the other options", () => {
+    // Box refuses the aws:// route of @box/bedrock beside the gateway backend, so the Runtime
+    // signs in with the pack's api-key route, whose env:// secret box replaces with a stand-in.
     const dotted = { options: { bedrock: { region: CREATE_REGION }, other: { input: "x" } } };
     const quoted = { options: { "bedrock.region": CREATE_REGION } };
+    const signedIn = { options: { bedrock: { region: CREATE_REGION, "sign-in": "aws" } } };
 
     expect(apply(dotted, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
       other: { input: "x" },
     });
     expect(apply(quoted, contextOf(CODEZIP)).table.options).toEqual({
       "bedrock.region": BUILD_REGION,
+      "bedrock.sign-in": "api-key",
+    });
+    expect(apply(signedIn, contextOf(CODEZIP)).table.options).toEqual({
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
   });

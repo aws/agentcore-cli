@@ -1,6 +1,6 @@
 /**
  * A stand-in for `box profile show --format json --full`, for the tests of the Box network, and the
- * network rules that box 0.1.11 prints. `boxProfileResolver.test.ts` compares the rules with the
+ * network rules that box prints. `boxProfileResolver.test.ts` compares the rules with the
  * real box when one with `--format json --full` is on PATH.
  */
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
