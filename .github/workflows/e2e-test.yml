@@ -164,9 +164,11 @@ jobs:
           echo "${SHA}  ${WORK}/${ASSET}" | $SUM -c -
           # box reads its packs from resources/ beside it, so keep the release together.
           if [[ "$BUILD" == darwin ]]; then
-            # On macOS, unpack as the runner user into a folder it owns, as a developer does: the
-            # signed box was killed at start (Killed: 9) after a sudo unpack into /opt/box.
-            DIR="${RUNNER_TEMP}/box"
+            # On macOS, unpack as the runner user into a folder it owns, as a developer does. The
+            # folder must not be named `box`: macOS reads a folder `box` that holds an executable
+            # `box` as a bundle, finds the signature invalid (`invalid Info.plist`), and kills box at
+            # launch (Killed: 9). That is what happened under /opt/box.
+            DIR="${RUNNER_TEMP}/box-${VER}"
             mkdir -p "$DIR"
             tar -xzf "${WORK}/${ASSET}" -C "$DIR"
             echo "$DIR" >> "$GITHUB_PATH"

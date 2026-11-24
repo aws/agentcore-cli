@@ -67,7 +67,9 @@ Linux x86_64 (`x86_64-unknown-linux-gnu`). The release's `box-v<version>-*` arch
 without its packs; do not use them. Each `box-cli` archive unpacks flat: `box`, its two helpers,
 `release.json`, and `resources/` (box's packs, which it finds beside itself).
 
-Download the archive for your machine, check it, and unpack it into a versioned folder.
+Download the archive for your machine, check it, and unpack it into a versioned folder. On macOS, do
+not unpack it into a folder named `box`: macOS reads a folder `box` that holds the executable `box` as
+a bundle, reports its signature as invalid (`invalid Info.plist`), and kills box at launch.
 
 macOS on an Apple chip:
 
