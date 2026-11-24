@@ -487,6 +487,35 @@ describe("project add runtime", () => {
     });
   });
 
+  test("an S3 bucket mount is written to the spec entry", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "s3_agent",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--filesystem-configurations",
+      JSON.stringify([
+        {
+          s3BucketMount: {
+            bucket: "amzn-s3-demo-bucket",
+            mountPath: "/mnt/data",
+            prefix: "sessions/{runtimeSessionId}/",
+            s3BucketOwner: "123456789012",
+            s3BucketRegion: "us-west-2",
+          },
+        },
+      ]),
+    ]);
+
+    expect(await runtimeOf(projectRoot, "s3_agent")).toMatchSnapshot();
+  });
+
   test("an existing folder keeps the user's files; only missing docs are added", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

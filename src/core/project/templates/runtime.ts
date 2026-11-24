@@ -398,11 +398,17 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
         : [],
     );
+    const s3BucketMounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3BucketMount" in configuration
+        ? [{ mountPath: configuration.s3BucketMount.mountPath }]
+        : [],
+    );
     const context = {
       name: toPythonPackageName(input.name),
       sessionStorageMountPath,
       efsMounts,
       s3Mounts,
+      s3BucketMounts,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
       // container launches main.py as the `main` module under
@@ -438,6 +444,11 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
         : [],
     );
+    const s3BucketMounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3BucketMount" in configuration
+        ? [{ mountPath: configuration.s3BucketMount.mountPath }]
+        : [],
+    );
     const memory = input.scaffoldRuntimeInput.memory;
     const modelScaffold = resolveModelProviderScaffold(input);
     const modelProvider = input.scaffoldRuntimeInput.modelProvider ?? "Bedrock";
@@ -454,6 +465,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       sessionStorageMountPath,
       efsMounts,
       s3Mounts,
+      s3BucketMounts,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
       // container launches main.py as the `main` module under

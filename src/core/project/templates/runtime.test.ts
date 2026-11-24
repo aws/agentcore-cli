@@ -76,6 +76,24 @@ const mounts = {
 } as const;
 
 describe("runtime templates", () => {
+  test.each(["mcp-python-fastmcp", "a2a-python-strands"] as const)(
+    "%s gives its file tools access to an S3 bucket mount",
+    async (template) => {
+      const { appDir } = await addTemplate("my_agent", template, {
+        infra: {
+          platformVersion: "V2",
+          filesystemConfigurations: [
+            { s3BucketMount: { bucket: "amzn-s3-demo-bucket", mountPath: "/mnt/bucket" } },
+          ],
+        } as Partial<RuntimeInput>,
+      });
+      const main = await Bun.file(join(appDir, "main.py")).text();
+      expect(main).toMatch(/_MOUNT_PATHS = \[\s*"\/mnt\/bucket",\s*\]/);
+      if (template === "a2a-python-strands")
+        expect(main).toContain("- /mnt/bucket: S3 bucket mount");
+    },
+  );
+
   test.each<[RuntimeTemplateShortcutName, Record<string, unknown>, Partial<RuntimeInput>]>([
     ["agent-python-minimal", { build: "CodeZip", runtimeVersion: "PYTHON_3_14" }, {}],
     ["agent-python-strands", { build: "CodeZip", protocol: "HTTP" }, {}],
