@@ -217,8 +217,7 @@ box profile; build and deploy stop without them. Build derives the AgentCore Run
 each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
 release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
 or account is needed to download it. Use that release's build for your machine for `agentcore dev`
-and the profile checks of `build`: an older box cannot read the profiles that this CLI writes. On
-macOS, use the build of `v0.3.0-preview.1` instead: the macOS build of `v0.3.0` does not run.
+and the profile checks of `build`: an older box cannot read the profiles that this CLI writes.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
