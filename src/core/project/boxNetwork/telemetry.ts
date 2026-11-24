@@ -134,7 +134,7 @@ export function withDeployRegion(
 }
 
 /** The kinds of target that send to a third party's OTLP endpoint, and not to AWS. */
-const THIRD_PARTY_KINDS = ["otlp", "langfuse", "langsmith"] as const;
+export const THIRD_PARTY_KINDS = ["otlp", "langfuse", "langsmith"] as const;
 
 /** A value of a telemetry table that build copies: a string, a string array, or a string table. */
 export type TelemetryValue = string | readonly string[] | Readonly<Record<string, string>>;

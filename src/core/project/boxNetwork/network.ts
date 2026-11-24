@@ -231,6 +231,7 @@ export function buildBoxNetwork(
   );
   const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);
+  const thirdParty = runtimeTelemetry(parsed.profile, project, targets.hosts);
   const telemetry =
     parsed.profile.telemetry &&
     withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
@@ -246,6 +247,8 @@ export function buildBoxNetwork(
       hosts: targets.hosts,
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
+      thirdPartyTelemetry: thirdParty.targets,
+      secretsManager: project.secretsManager ?? false,
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
@@ -257,7 +260,6 @@ export function buildBoxNetwork(
     telemetry || defaultTraces.length > 0
       ? [...(telemetry?.telemetry ?? []), ...defaultTraces]
       : undefined;
-  const thirdParty = runtimeTelemetry(parsed.profile, project, targets.hosts);
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,

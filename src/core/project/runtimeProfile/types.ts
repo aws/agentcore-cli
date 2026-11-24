@@ -6,7 +6,7 @@
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import type { BoxNetworkHost, CloudWatchTelemetry } from "../boxNetwork";
+import type { BoxNetworkHost, CloudWatchTelemetry, ThirdPartyTelemetry } from "../boxNetwork";
 import type { BoxProjectGateway } from "../boxNetwork/projectGateways";
 
 /** A TOML table as smol-toml parses it: a key holds a string, a number, a boolean, a list, or a table. */
@@ -80,6 +80,13 @@ export interface RuntimeProfileContext {
   readonly projectGateways?: readonly BoxProjectGateway[];
   /** The CloudWatch targets of the local profile, with the deploy region set. */
   readonly telemetry: readonly CloudWatchTelemetry[];
+  /**
+   * The third-party targets of the local profile that the Box network model carries to AgentCore
+   * Runtime. Only {@link secretsManager} carries one; absent means none.
+   */
+  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  /** Whether AGENTCORE_BOX_SECRETS_MANAGER is `1` for this build (boxTelemetrySecrets.ts). */
+  readonly secretsManager?: boolean;
   readonly paths: RuntimePaths;
   /**
    * The profile that `agentcore create` writes for this runtime, `local`, and its Runtime form,
