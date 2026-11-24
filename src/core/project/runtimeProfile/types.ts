@@ -24,6 +24,10 @@ export const RUNTIME_INPUTS = {
   gatewayUrl: "${{ inputs.gateway.url }}",
   /** The Runtime's region (@box/agentcore). */
   awsRegion: "${{ inputs.aws.region }}",
+  /** The runtime's own log group, for its spans (@box/agentcore). */
+  tracesLogGroup: "${{ inputs.runtime.traces_log_group }}",
+  /** The log stream of the runtime's spans (@box/agentcore). */
+  tracesLogStream: "${{ inputs.runtime.traces_log_stream }}",
   /** The unpacked zip of a CodeZip runtime (@box/agentcore-codezip). */
   codeDir: "${{ inputs.code.dir }}",
   /** The Python of a CodeZip Runtime (@box/agentcore-codezip). */

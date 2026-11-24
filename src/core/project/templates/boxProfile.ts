@@ -1,4 +1,5 @@
 import { join, posix } from "node:path";
+import semver from "semver";
 import { callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
@@ -48,6 +49,27 @@ const BOX_CODE_ENV = "BOX_CODE";
  * `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
  */
 export const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
+/**
+ * The variable in which AgentCore Runtime names the runtime's own log group and the log stream of
+ * its spans, as `x-aws-log-group=<group>,x-aws-log-stream=<stream>`, with other keys.
+ */
+export const RUNTIME_TRACES_HEADERS_ENV = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+
+/**
+ * The first box release whose `cloudwatch_traces` target takes `log_group` and `log_stream`
+ * (strands-agents/box#629). Set it to the release that ships that change.
+ */
+export const BOX_TRACES_LOG_GROUP_VERSION = "0.3.2";
+
+/**
+ * Whether the box of `runtime` sends its spans to the log group that the Runtime names: its
+ * `box.version` is {@link BOX_TRACES_LOG_GROUP_VERSION} or later.
+ */
+export function tracesToRuntimeLogGroup(runtime: Pick<ProjectRuntime, "box">): boolean {
+  const version = semver.valid(runtime.box?.version ?? "");
+  return version !== null && semver.gte(version, BOX_TRACES_LOG_GROUP_VERSION);
+}
 
 /** The pack of box that each box profile imports. */
 const BOX_BASE_PACK = "@box/base";
@@ -717,7 +739,10 @@ const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
  * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
- * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One
+ * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. With
+ * OTEL on and {@link tracesToRuntimeLogGroup}, the `runtime.traces_log_group` and
+ * `runtime.traces_log_stream` inputs each read one key of {@link RUNTIME_TRACES_HEADERS_ENV}, for
+ * the default X-Ray target. One
  * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
  * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
  * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
@@ -728,7 +753,7 @@ const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
  */
 export function renderAgentCorePack(
   spec: ProjectSpec,
-  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
+  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars" | "box">,
   gateways: readonly BoxProjectGateway[] = [],
 ): string {
   const otel = otelOn(runtime);
@@ -760,7 +785,23 @@ from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
 [inputs.runtime.resource_attributes]
 description = "The OpenTelemetry resource attributes of the runtime."
 from = ${str(`env:${RUNTIME_RESOURCE_ATTRIBUTES_ENV}`)}
-default = ${str(`service.name=${runtime.name}`)}`
+default = ${str(`service.name=${runtime.name}`)}${
+        tracesToRuntimeLogGroup(runtime)
+          ? `
+
+# The runtime's own log group and the log stream of its spans, for the default X-Ray target. The
+# Runtime names both in ${RUNTIME_TRACES_HEADERS_ENV}.
+[inputs.runtime.traces_log_group]
+description = "The runtime's own CloudWatch Logs log group, for its spans."
+from = ${str(`env:${RUNTIME_TRACES_HEADERS_ENV}`)}
+key = "x-aws-log-group"
+
+[inputs.runtime.traces_log_stream]
+description = "The log stream of the runtime's spans."
+from = ${str(`env:${RUNTIME_TRACES_HEADERS_ENV}`)}
+key = "x-aws-log-stream"`
+          : ""
+      }`
     : "";
   const gatewayInputs = gateways
     .map((gateway) => {

@@ -33,6 +33,7 @@ import {
   defaultTracesTelemetry,
   MEMORY_ROUTE,
   runtimeProfileHeader,
+  runtimeTracesTarget,
 } from "./additions";
 
 const PROFILE_FILE = ".box/agent/local/profile.toml";
@@ -173,12 +174,17 @@ const DEFAULT_TARGET = {
   secret: { ref: "aws://" },
 };
 
-/** The default X-Ray target of a Runtime profile with OTEL on. */
+/**
+ * The default X-Ray target of a Runtime profile with OTEL on, for a box that takes the log group
+ * and stream of a `cloudwatch_traces` target, as the box of {@link runtimeOf} does.
+ */
 const DEFAULT_TRACES = {
   kind: "cloudwatch_traces",
   region: "${{ inputs.aws.region }}",
   include: ["deny", "permit", "trace"],
   secret: { ref: "aws://" },
+  log_group: "${{ inputs.runtime.traces_log_group }}",
+  log_stream: "${{ inputs.runtime.traces_log_stream }}",
 };
 
 /** The words that start the agent under opentelemetry-instrument on the Runtime. */
@@ -1426,7 +1432,40 @@ describe("the additions rule", () => {
         expect(tableOf(apply({}, contextOf(runtimeOf(build))).table)).toEqual({
           agentcore: DEFAULT_TARGET,
         });
-        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(DEFAULT_TRACES);
+        expect(runtimeTracesTarget(otelRuntime(build))).toEqual(DEFAULT_TRACES);
+      },
+    );
+
+    test.each([
+      ["0.3.0", false],
+      ["0.3.1", false],
+      ["0.3.0-preview.1", false],
+      ["0.1.11-preview.10", false],
+      ["0.3.2-preview.1", false],
+      ["0.3.2", true],
+      ["0.4.0", true],
+      ["1.0.0", true],
+    ])(
+      "sends the spans of the default X-Ray target to the runtime's own log group and stream only for a box that takes them (box %s)",
+      (version, routed) => {
+        const runtime = { ...OTEL_CONTAINER, box: { version } } as ProjectRuntime;
+        const traces = tableOf(apply({}, contextOf(runtime)).table).agentcore_traces;
+        const { log_group, log_stream, ...rest } = DEFAULT_TRACES;
+
+        expect(traces).toEqual(routed ? DEFAULT_TRACES : rest);
+        expect(defaultTracesTelemetry(apply({}, contextOf(runtime)).table, BUILD_REGION)).toEqual([
+          {
+            name: "agentcore_traces",
+            kind: "cloudwatch_traces",
+            region: BUILD_REGION,
+            include: rest.include,
+          },
+        ]);
+        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(rest);
+        expect([log_group, log_stream]).toEqual([
+          "${{ inputs.runtime.traces_log_group }}",
+          "${{ inputs.runtime.traces_log_stream }}",
+        ]);
       },
     );
 
@@ -1517,10 +1556,18 @@ describe("the additions rule", () => {
       expect(inputs.aws.region).toMatchObject({ from: "env:AWS_REGION" });
     });
 
-    test("names the default X-Ray target in the header", () => {
-      const context = contextOf(OTEL_CODEZIP);
+    test("names the default X-Ray target in the header, with the runtime's own log group when the box takes it", () => {
+      const routed = contextOf(OTEL_CODEZIP);
+      const plain = contextOf({ ...OTEL_CODEZIP, box: { version: "0.3.0" } } as ProjectRuntime);
 
-      expect(runtimeProfileHeader(context, apply({}, context).table).at(-1)).toBe(
+      expect(runtimeProfileHeader(routed, apply({}, routed).table).at(-1)).toBe(
+        "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
+          "own, in the Runtime's region, to the runtime's own log group and log stream, which " +
+          "box reads from OTEL_EXPORTER_OTLP_TRACES_HEADERS when the run starts. Add a " +
+          `cloudwatch_traces target to ${PROFILE_FILE} to use another, or set ` +
+          "instrumentation.enableOtel to false in agentcore.json to send none.",
+      );
+      expect(runtimeProfileHeader(plain, apply({}, plain).table).at(-1)).toBe(
         "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
           `own, in the Runtime's region. Add a cloudwatch_traces target to ${PROFILE_FILE} to ` +
           "use another, or set instrumentation.enableOtel to false in agentcore.json to send none.",

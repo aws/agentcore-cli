@@ -476,6 +476,8 @@ describe("the default X-Ray target of a runtime with OTEL on", () => {
       region: "${{ inputs.aws.region }}",
       include: ["deny", "permit", "trace"],
       secret: { ref: "aws://" },
+      log_group: "${{ inputs.runtime.traces_log_group }}",
+      log_stream: "${{ inputs.runtime.traces_log_stream }}",
     });
     const [file] = policyOf(on!);
     expect(JSON.parse((file as { text: string }).text)).toEqual({
