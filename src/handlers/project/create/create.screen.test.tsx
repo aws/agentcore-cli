@@ -1,9 +1,11 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
+  assertMetricEmitted,
+  getTestTelemetryClient,
   renderScreen,
   waitForText,
   flatFrame,
@@ -23,6 +25,7 @@ import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
+import { CommandRunMetricEventKey, type Context } from "../../../router";
 import { readEnvFile } from "../../../io/envFile";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
@@ -50,6 +53,24 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
   return inputs;
 }
 
+async function trackCommandRun() {
+  const { client, filePath, cleanup } = await getTestTelemetryClient();
+  cleanups.push(cleanup);
+  const event = client.createMetricEvent("cli.command_run", {
+    exit_reason: "success",
+    command_path: "/agentcore/create",
+    is_tui: true,
+  });
+  return {
+    filePath,
+    withContext: (ctx: Context) => ctx.withValue(CommandRunMetricEventKey, event),
+    emit: async () => {
+      await event.emit(100);
+      await client.shutdown();
+    },
+  };
+}
+
 const DEFAULT_MODEL_ID = "global.anthropic.claude-sonnet-5-5";
 const STRANDS_BEDROCK_MODEL_ID = DEFAULT_MODEL_IDS.Bedrock;
 const API_KEY_HELP = "file://<path> to the key file";
@@ -60,7 +81,8 @@ describe("project create wizard", () => {
     cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
-    const r = renderScreen("/agentcore/create", { core });
+    const commandRun = await trackCommandRun();
+    const r = renderScreen("/agentcore/create", { core, withContext: commandRun.withContext });
 
     await waitForText(r.lastFrame, "name your project");
     await r.write("DemoApp");
@@ -122,6 +144,9 @@ describe("project create wizard", () => {
     const spec = await Bun.file(join(directory, "DemoApp", "agentcore", "agentcore.json")).json();
     expect(spec.harnesses).toEqual([{ name: "DemoApp", path: "app/DemoApp" }]);
     expect(spec.runtimes).toEqual([]);
+    await commandRun.emit();
+    const [entry] = (await readFile(commandRun.filePath, "utf8")).trim().split("\n");
+    expect(JSON.parse(entry!).attrs).not.toHaveProperty("project_template");
     r.unmount();
   }, 10000);
 
@@ -493,7 +518,8 @@ describe("project create wizard", () => {
     cleanups.push(cleanup);
     const core = new TestCoreClient();
     const inputs = spyOnCreate(core);
-    const r = renderScreen("/agentcore/create", { core });
+    const commandRun = await trackCommandRun();
+    const r = renderScreen("/agentcore/create", { core, withContext: commandRun.withContext });
 
     await waitForText(r.lastFrame, "name your project");
     await r.write("StrandsApp");
@@ -565,6 +591,10 @@ describe("project create wizard", () => {
     expect(spec.runtimes.map((runtime: { name: string }) => runtime.name)).toEqual(["agent"]);
     // The strands template ships with longAndShortTerm memory pre-configured.
     expect(spec.memories).toHaveLength(1);
+    await commandRun.emit();
+    await assertMetricEmitted(commandRun.filePath, "cli.command_run", {
+      project_template: "agent-python-strands",
+    });
     r.unmount();
   }, 10000);
 
