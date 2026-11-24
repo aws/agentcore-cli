@@ -206,6 +206,7 @@ declares, not the ones you add in the stack.
 - [Command reference](command.md): every command and flag.
 - [Harness project configuration](docs/harness-project-configuration.md): Harness YAML, prompts, tools, skills, and environment settings.
 - [China regions](docs/china-regions.md): what is available there and how the restrictions are enforced.
+- [Policy engines and Cedar policies](docs/policies.md): `add policy-engine`, `add policy`, how a Gateway is attached, and behaviors to know before relying on enforcement.
 - [Amazon Bedrock AgentCore documentation](https://docs.aws.amazon.com/bedrock-agentcore/): service guides and API references.
 - [Contributing](CONTRIBUTING.md): development, builds, architecture, and testing.
 - [Security](SECURITY.md) · [License](LICENSE): Apache-2.0.
