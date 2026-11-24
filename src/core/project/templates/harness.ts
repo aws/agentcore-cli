@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { stringify } from "yaml";
 import { ZodError, z } from "zod";
 import {
@@ -59,6 +60,7 @@ export function harnessApiKeyCredentialName(
 type GetHarnessTemplateResolverConfig = {
   assetSource: AssetSource;
   templateRenderer: TemplateRenderer;
+  projectRoot: string;
 };
 
 /** Given a harness spec, resolve the {@link TemplateResolver} that renders its config directory **/
@@ -67,12 +69,16 @@ export function getHarnessTemplateResolver(
 ): TemplateResolver<z.input<typeof HarnessSpecSchema>> {
   return {
     async resolve(spec) {
-      validateHarnessTemplateSource(spec);
+      validateHarnessTemplateSource(spec, config.projectRoot);
 
       const parsed = parseHarnessSpec({
         ...spec,
         memory: spec.memory === undefined ? { mode: "managed" } : spec.memory,
-        dockerfile: spec.dockerfile ? "Dockerfile" : undefined,
+        dockerfile: spec.dockerfile
+          ? spec.buildContextPath
+            ? spec.dockerfile
+            : "Dockerfile"
+          : undefined,
       });
       const { systemPrompt, ...settings } = parsed;
       const context = buildTemplateContext(settings);
@@ -89,7 +95,22 @@ export function getHarnessTemplateResolver(
           "system-prompt.md",
           async () => systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
         ),
-        ...(spec.dockerfile ? [FsTreeNode.fromTextFile("Dockerfile", spec.dockerfile)] : []),
+        // Without a build context the Dockerfile is copied into the harness
+        // directory; a Dockerfile-specific ignore file, which Docker reads instead
+        // of .dockerignore, goes with it under the copied name.
+        ...(spec.dockerfile && !spec.buildContextPath
+          ? [
+              FsTreeNode.fromTextFile("Dockerfile", spec.dockerfile),
+              ...(existsSync(`${spec.dockerfile}.dockerignore`)
+                ? [
+                    FsTreeNode.fromTextFile(
+                      "Dockerfile.dockerignore",
+                      `${spec.dockerfile}.dockerignore`,
+                    ),
+                  ]
+                : []),
+            ]
+          : []),
       );
 
       return {
@@ -122,15 +143,24 @@ function buildTemplateContext(spec: HarnessSpec) {
     apiKeyExample: provider !== "bedrock" && !model.apiKeyArn && !model.apiKeyCredentialName,
     modelMaxTokensExample: !("maxTokens" in spec.model),
     managedMemoryEmpty: mode === "managed" && Object.keys(memoryConfig).length === 0,
+    // A local build needs no CodeBuild VPC, so it gets no networkConfig.vpcId hint.
+    containerLocal: spec.build === "ContainerLocal",
     additionalSettings: Object.entries(yaml)
       .filter(([key]) => !TEMPLATE_FIELDS.has(key))
       .map(([, value]) => value),
   };
 }
 
-export function validateHarnessTemplateSource(spec: z.input<typeof HarnessSpecSchema>): void {
-  if (spec.dockerfile && !existsSync(spec.dockerfile)) {
-    throw new ResourceNotFoundError(`no dockerfile exists at ${spec.dockerfile}`);
+export function validateHarnessTemplateSource(
+  spec: z.input<typeof HarnessSpecSchema>,
+  projectRoot: string,
+): void {
+  const dockerfile =
+    spec.dockerfile && typeof spec.buildContextPath === "string"
+      ? resolve(projectRoot, spec.buildContextPath, spec.dockerfile)
+      : spec.dockerfile;
+  if (dockerfile && !existsSync(dockerfile)) {
+    throw new ResourceNotFoundError(`no dockerfile exists at ${dockerfile}`);
   }
 }
 

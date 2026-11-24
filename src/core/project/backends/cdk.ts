@@ -1,21 +1,39 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Stack } from "@aws-sdk/client-cloudformation";
+import { GetTemplateCommand, type Stack } from "@aws-sdk/client-cloudformation";
+import { parse as parseYaml } from "yaml";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
+  BuildProjectInput,
   DeployResult,
   Project,
   ProjectEvent,
   DeployableResource,
   ResolvedDeployedResource,
   ResolvedProjectResource,
+  LocalWorkloadSources,
+  WorkloadBuilds,
+  WorkloadKey,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
 import { stageBoxContainers } from "./boxContainer";
 import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
 import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
 import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
-import { cdkCompatibilityWarning } from "./cdk/compatibility";
+import { assertCdkLocalContainerSupport, cdkCompatibilityWarning } from "./cdk/compatibility";
+import {
+  assertSupportedBuildTransitions,
+  byoExecutionRoleWarning,
+  hasLocalContainerBuilds,
+  resolveWorkloads,
+  type DeployedTemplate,
+} from "./cdk/localContainers";
+import { buildxDriverWarning, checkArm64Builder, selectBuildxBuilder } from "./cdk/arm64Builder";
+import { localImageBuilds } from "./cdk/localImages";
+import { resolveCdkDockerExecutable } from "../../dev/containerTool";
+import { syncCdkDependencies } from "./cdk/dependencies";
+import { declaresNothingDeployable } from "../spec";
+import { defaultSource, type AssetSource } from "../source";
 import {
   createLineSplitter,
   FsReadWriteJson,
@@ -80,6 +98,7 @@ import {
   type CdkRunner,
   type CdkRunOptions,
   type CdkRunResult,
+  type CdkCredentialProvider,
 } from "./cdk/toolkit";
 import {
   createPaymentConnectorAuthorizationUrlReporter,
@@ -143,6 +162,8 @@ export type CdkBackendConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  /** Where the CDK package.json this CLI vends is read from, as the pins to sync to. */
+  source?: AssetSource;
   createCloudFormationClient?: CreateCloudFormationClient;
   /** Identity client used to provision the project's credential providers. */
   identity: CredentialProviderCalls;
@@ -158,6 +179,9 @@ export type CdkBackendConfig = {
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
   /** The environment box downloads read (HOME for the box cache); process.env by default. */
   processEnv?: NodeJS.ProcessEnv;
+  checkLocalBuilder?: typeof checkArm64Builder;
+  resolveContainerExecutable?: () => Promise<string>;
+  assertLocalCdkSupport?: typeof assertCdkLocalContainerSupport;
 };
 
 /**
@@ -186,12 +210,30 @@ export function boxOtelWarnings(
     );
 }
 
+// Stacks in these states hold no deployed workloads: deleted, rolled back after a
+// failed first create, or a change set created but never executed.
+const NOT_DEPLOYED_STACK_STATUSES = new Set([
+  "DELETE_COMPLETE",
+  "ROLLBACK_COMPLETE",
+  "REVIEW_IN_PROGRESS",
+]);
+
+function isAuthorizationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+  return (
+    status === 403 ||
+    ["AccessDenied", "AccessDeniedException", "UnauthorizedOperation"].includes(error.name)
+  );
+}
+
 /** Builds and deploys projects through the scaffolded CDK app. */
 export class CdkBackend implements ProjectBackend {
   private readonly logger: Logger;
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly source: AssetSource;
   private readonly cdk: CdkRunner;
   private readonly resolveCredentials: CdkCredentialResolver;
   private readonly bootstrap: BootstrapProbe;
@@ -203,13 +245,24 @@ export class CdkBackend implements ProjectBackend {
   private readonly describeStack: StackDescriber;
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
   private readonly processEnv: NodeJS.ProcessEnv;
+  private readonly checkLocalBuilder: typeof checkArm64Builder;
+  private readonly resolveContainerExecutable: () => Promise<string>;
+  private readonly assertLocalCdkSupport: typeof assertCdkLocalContainerSupport;
+  private readonly createCloudFormationClient: CreateCloudFormationClient;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
     this.processEnv = config.processEnv ?? process.env;
     this.runner = config.runner ?? runProcess;
+    this.checkLocalBuilder = config.checkLocalBuilder ?? checkArm64Builder;
+    this.resolveContainerExecutable =
+      config.resolveContainerExecutable ?? (() => resolveCdkDockerExecutable());
+    this.assertLocalCdkSupport = config.assertLocalCdkSupport ?? assertCdkLocalContainerSupport;
+    this.createCloudFormationClient =
+      config.createCloudFormationClient ?? createCloudFormationClient;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.source = config.source ?? defaultSource();
     this.cdk = config.cdk ?? createCdkRunner(config.logger);
     this.resolveCredentials =
       config.resolveCredentials ?? createCdkCredentialResolver(config.logger);
@@ -241,16 +294,30 @@ export class CdkBackend implements ProjectBackend {
   // toolchain or dependencies fails without having provisioned credentials.
   private async *ensureCdkDependencies(
     project: Project,
-    boxNetworks: BuildBackendInput["boxNetworks"],
+    input: BuildProjectInput & BuildBackendInput & { lenient?: boolean },
   ): AsyncGenerator<ProjectEvent, void> {
     const cdkDir = this.cdkDirectory(project);
-    if (!existsSync(join(cdkDir, "node_modules"))) {
+    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    // The sync installs a missing node_modules, unless the user manages dependencies
+    // themselves or there is no package.json to install from.
+    if (
+      !existsSync(join(cdkDir, "node_modules")) &&
+      (input.disableDependencyManagement || !existsSync(join(cdkDir, "package.json")))
+    ) {
       throw new ProjectStateError(
         `CDK dependencies are missing for project '${project.name}'. ` +
           `Run 'npm install' in ${cdkDir}.`,
       );
     }
-    await this.checkTool("npm", "Install Node.js: https://nodejs.org/");
+    yield* syncCdkDependencies({
+      cdkDirectory: cdkDir,
+      vendedManifest: await this.source.read("cdk/package.json"),
+      json: this.json,
+      runner: this.runner,
+      logger: this.logger,
+      disabled: input.disableDependencyManagement,
+      lenient: input.lenient,
+    });
     // The zip carries box and the image its box profile, so both are staged before synth packages
     // the code. The box release downloads only when a CodeZip runtime runs in a box, and its notice
     // goes out when the download starts, not once staging ends.
@@ -263,18 +330,17 @@ export class CdkBackend implements ProjectBackend {
           onDownload: (download) =>
             emit({ type: "step", message: boxDownloadMessage(download, "AgentCore Runtime") }),
         });
-      await stageBoxCodeZip(project, boxNetworks, box);
-      await stageBoxContainers(project, boxNetworks);
+      await stageBoxCodeZip(project, input.boxNetworks, box);
+      await stageBoxContainers(project, input.boxNetworks);
     });
   }
 
   private async *synthesize(
     project: Project,
     explainUndeployedCredentials: boolean,
+    builds: WorkloadBuilds,
     boxNetworks: BuildBackendInput["boxNetworks"],
   ): AsyncGenerator<ProjectEvent, void> {
-    yield* this.ensureCdkDependencies(project, boxNetworks);
-
     for (const message of boxOtelWarnings(project.spec, boxNetworks)) {
       yield { type: "warning", message };
     }
@@ -284,6 +350,9 @@ export class CdkBackend implements ProjectBackend {
       yield { type: "warning", message: compatibilityWarning };
     }
 
+    if (hasLocalContainerBuilds(builds)) {
+      this.assertLocalCdkSupport(this.cdkDirectory(project));
+    }
     yield { type: "step", message: "synthesizing CloudFormation templates" };
     try {
       yield* withOutputEvents((emit) => {
@@ -315,9 +384,68 @@ export class CdkBackend implements ProjectBackend {
 
   public async *build(
     project: Project,
-    input: BuildBackendInput,
+    input: BuildProjectInput & BuildBackendInput,
   ): AsyncGenerator<ProjectEvent, void> {
-    yield* this.synthesize(project, true, input.boxNetworks);
+    yield* this.ensureCdkDependencies(project, input);
+    const { builds, local } = resolveWorkloads(project);
+    yield* this.synthesize(project, true, builds, input.boxNetworks);
+    yield* this.buildLocalImages(project, builds, local);
+  }
+
+  /**
+   * Builds, but does not push, each ContainerLocal image from the staged context
+   * in the synthesized assembly, so `agentcore build` catches Dockerfile errors
+   * without AWS credentials. `agentcore deploy` builds and publishes through CDK.
+   */
+  private async *buildLocalImages(
+    project: Project,
+    builds: WorkloadBuilds,
+    local: LocalWorkloadSources,
+  ): AsyncGenerator<ProjectEvent, void> {
+    if (!hasLocalContainerBuilds(builds)) return;
+    const images = await localImageBuilds(
+      this.json,
+      this.assemblyDirectory(project),
+      project.name,
+      builds,
+    );
+    if (images.length === 0) return;
+    const executable = await this.resolveContainerExecutable();
+    yield { type: "step", message: `checking that ${executable} can build Linux ARM64 images` };
+    const report = await this.checkLocalBuilder(this.runner, project.rootPath, executable);
+    const warning = buildxDriverWarning(report, executable);
+    if (warning) yield { type: "warning", message: warning };
+    // Docker with buildx may build with a driver that keeps the image out of the
+    // local store; --load keeps it there. Finch and Podman load by default.
+    const load = report.buildx !== undefined;
+    for (const image of images) {
+      yield { type: "step", message: `building ${image.resource} image ${image.tag}` };
+      try {
+        yield* withOutputEvents((emit) => {
+          const lines = createLineSplitter(emit);
+          return this.runner(image.command(executable, { load }), {
+            cwd: image.directory,
+            onOutput: (chunk) => {
+              this.logger.debug(chunk);
+              lines.push(chunk);
+            },
+          }).finally(() => lines.flush());
+        });
+      } catch (error) {
+        // The failing command ran in the staged copy inside the assembly; name the
+        // project directory and Dockerfile the image is actually built from.
+        const source = local.get(image.resource as WorkloadKey);
+        const from = source
+          ? ` Build context: ${source.context}/ (COPY and ADD paths resolve against it); ` +
+            `Dockerfile: ${source.context}/${source.dockerfile}.`
+          : "";
+        throw new ProjectStateError(
+          `Building the ${image.resource} image failed.${from}\n\n` +
+            (error instanceof Error ? error.message : String(error)),
+          { cause: error },
+        );
+      }
+    }
   }
 
   public async *deploy(
@@ -331,14 +459,51 @@ export class CdkBackend implements ProjectBackend {
     // Fail on local setup errors (missing toolchain/deps) and malformed state
     // before any AWS mutation, so a local problem never leaves credentials
     // provisioned or the stack ARN unrecorded.
-    yield* this.ensureCdkDependencies(project, input.boxNetworks);
+    // A project that declares nothing is about to have its stack removed, and a
+    // dependency problem must not keep that from happening.
+    yield* this.ensureCdkDependencies(project, {
+      ...input,
+      lenient: declaresNothingDeployable(project),
+    });
+    const { builds, local } = input.workloadBuilds
+      ? { builds: input.workloadBuilds, local: input.localWorkloads ?? new Map() }
+      : resolveWorkloads(project);
+    const deployedState = (await readDeployedState(this.json, project.rootPath)).targets[
+      target.name
+    ];
+    // CDK builds and publishes ContainerLocal images with CDK_DOCKER and the
+    // BUILDX_BUILDER chosen here, so the check runs on that same builder.
+    let containerExecutable: string | undefined;
+    let buildxBuilder: string | undefined;
+    if (hasLocalContainerBuilds(builds)) {
+      this.assertLocalCdkSupport(this.cdkDirectory(project));
+      containerExecutable = await this.resolveContainerExecutable();
+      yield {
+        type: "step",
+        message: `checking that ${containerExecutable} can build Linux ARM64 images`,
+      };
+      const selection = await selectBuildxBuilder(
+        this.runner,
+        project.rootPath,
+        containerExecutable,
+      );
+      buildxBuilder = selection.buildxBuilder;
+      const report = await this.checkLocalBuilder(
+        this.runner,
+        project.rootPath,
+        containerExecutable,
+        { ...(buildxBuilder && { buildxBuilder }) },
+      );
+      const warning = selection.warning ?? buildxDriverWarning(report, containerExecutable);
+      if (warning) yield { type: "warning", message: warning };
+      const roleWarning = byoExecutionRoleWarning(local);
+      if (roleWarning) yield { type: "warning", message: roleWarning };
+    }
 
     // Read before provisioning rewrites the credentials map: it is the only record
     // of what this target provisioned, so it is the only way to find a provider whose
     // credential has since left the spec.
-    const recorded =
-      (await readDeployedState(this.json, project.rootPath)).targets[target.name]?.resources
-        ?.credentials ?? {};
+    const recorded = deployedState?.resources?.credentials ?? {};
     assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
 
@@ -356,10 +521,29 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
-    yield* this.synthesize(project, false, input.boxNetworks);
+    yield* this.synthesize(project, false, builds, input.boxNetworks);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
-    const options = { assemblyDirectory, credentials, region: target.region };
+    // Checked against the stack this deploy is about to update, before teardown
+    // detection, bootstrap, or the deploy itself touch it.
+    if (Object.keys(builds).length) {
+      yield { type: "step", message: "checking deployed workload build modes" };
+      const warning = await this.assertBuildModesUnchanged(
+        project,
+        target,
+        credentials,
+        builds,
+        artifact.stackName,
+      );
+      if (warning) yield { type: "warning", message: warning };
+    }
+    const options = {
+      assemblyDirectory,
+      credentials,
+      region: target.region,
+      ...(containerExecutable && { containerExecutable }),
+      ...(buildxBuilder && { buildxBuilder }),
+    };
 
     // Decided before the Toolkit is handed the assembly: it reads a template
     // with nothing in it as an instruction to delete the stack, and reports that
@@ -795,6 +979,60 @@ export class CdkBackend implements ProjectBackend {
         }),
       ),
     ];
+  }
+
+  /**
+   * Rejects switching a deployed workload into or out of ContainerLocal, or a
+   * deployed Runtime between CodeZip and Container.
+   * Reads the live template of the synthesized stack, looked up by name (never by
+   * a recorded ARN, which can point at a deleted stack), after synthesis and
+   * before the stack is touched. Credential providers are already provisioned.
+   * Returns a warning when the check could not run for lack of permissions and no
+   * workload uses ContainerLocal, since nothing can then be switched into it.
+   */
+  private async assertBuildModesUnchanged(
+    project: Project,
+    target: AwsDeploymentTarget,
+    credentials: CdkCredentialProvider,
+    builds: WorkloadBuilds,
+    stackName: string,
+  ): Promise<string | undefined> {
+    let template: string | undefined;
+    try {
+      const stack = await this.describeStack(target.region, credentials, stackName);
+      if (!stack || NOT_DEPLOYED_STACK_STATUSES.has(stack.StackStatus ?? "")) return undefined;
+      const client = this.createCloudFormationClient({ region: target.region, credentials });
+      const previous = await client.send(
+        new GetTemplateCommand({
+          StackName: stack.StackId ?? stackName,
+          TemplateStage: "Original",
+        }),
+      );
+      template = previous.TemplateBody;
+    } catch (error) {
+      if (!isAuthorizationError(error)) throw error;
+      const message =
+        `Cannot read stack '${stackName}' to check build modes: the deployment credentials ` +
+        "need cloudformation:DescribeStacks and cloudformation:GetTemplate on it.";
+      if (hasLocalContainerBuilds(builds)) {
+        throw new ProjectStateError(`${message} This check is required for ContainerLocal.`, {
+          cause: error,
+        });
+      }
+      return `${message} Skipping the check because no workload uses ContainerLocal.`;
+    }
+    if (!template) {
+      throw new ProjectStateError(
+        "Cannot verify build modes: the deployed stack template is unavailable.",
+      );
+    }
+    assertSupportedBuildTransitions(
+      parseYaml(template) as DeployedTemplate,
+      builds,
+      project.name,
+      project.spec.migratedFrom ? undefined : target.name,
+    );
+    return undefined;
   }
 
   private async credentialsForTarget(target: AwsDeploymentTarget) {

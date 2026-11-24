@@ -70,24 +70,6 @@ export const isBoundGateway = (gateway: { boundRuntime?: string }) =>
 export const gatewayDiscoveryPrefix = (gateway: { name: string; discoveryPrefix?: string }) =>
   gateway.discoveryPrefix ??
   `AGENTCORE_GATEWAY_${gateway.name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-/** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
-export function declaresNoResources(spec: ProjectSpec): boolean {
-  const collections = [
-    spec.runtimes,
-    spec.memories,
-    spec.knowledgeBases,
-    spec.credentials,
-    spec.evaluators,
-    spec.onlineEvalConfigs,
-    spec.agentCoreGateways,
-    spec.policyEngines,
-    spec.configBundles,
-    spec.harnesses,
-    spec.toolRuntimes ?? [],
-    spec.payments ?? [],
-  ];
-  return collections.every((collection) => collection.length === 0);
-}
 const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
 const toEnvironmentName = (name: string) => name.replace(/-/g, "_").toUpperCase();

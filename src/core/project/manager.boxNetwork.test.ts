@@ -177,7 +177,15 @@ async function strandsProject(
     }),
   );
   const root = created.rootPath;
-  await mkdir(join(root, "agentcore", "cdk", "node_modules"), { recursive: true });
+  // Build installs the CDK dependencies unless the library is there at the version create vends.
+  const cdk = join(root, "agentcore", "cdk");
+  const { dependencies } = JSON.parse(await readFile(join(cdk, "package.json"), "utf8"));
+  const library = join(cdk, "node_modules", "@aws", "agentcore-cdk");
+  await mkdir(library, { recursive: true });
+  await writeFile(
+    join(library, "package.json"),
+    JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+  );
   counter.specWrites = 0;
   return { manager, root, counter, box, createWarnings };
 }

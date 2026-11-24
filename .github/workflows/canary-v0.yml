@@ -22,7 +22,7 @@ env:
 
 jobs:
   resolve_release:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
     steps:
@@ -42,7 +42,7 @@ jobs:
 
   canary:
     needs: resolve_release
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       # Use the test harness from the same release as the published CLI.
@@ -89,7 +89,7 @@ jobs:
   heartbeat:
     needs: [resolve_release, canary]
     if: ${{ !cancelled() }}
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     steps:
       # Use the emitter from this branch; the canary job checks out the v0 release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

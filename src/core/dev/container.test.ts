@@ -175,6 +175,17 @@ function commandCall(calls: ProcessCall[], operation: "build" | "run" | "stop"):
 }
 
 describe("ContainerDevRunner", () => {
+  test("uses an absolute buildContextPath inside the project without prefixing it again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-container-"));
+    tempDirectories.push(root);
+    await mkdir(join(root, "ctx"), { recursive: true });
+    await writeFile(join(root, "ctx", "Dockerfile"), "FROM scratch\n");
+    const { calls, runner } = harness();
+
+    await collect(runner.run(input(root, runtime({ buildContextPath: join(root, "ctx") }))));
+
+    expect(commandCall(calls, "build").options.cwd).toBe(join(root, "ctx"));
+  });
   test("builds with a widened context and redacts build arg values from errors", async () => {
     const projectRuntime = runtime({
       buildContextPath: ".",

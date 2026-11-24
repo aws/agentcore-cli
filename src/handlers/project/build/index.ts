@@ -1,4 +1,9 @@
-import { createHandler, ProjectKey, type Middleware } from "../../../router";
+import {
+  createHandler,
+  GlobalConfigAccessorKey,
+  ProjectKey,
+  type Middleware,
+} from "../../../router";
 import type { AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionKey } from "../../keys";
@@ -31,10 +36,15 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
       // and the subprocess output stays in the debug log (ProcessFailedError
       // carries it on failure). --json forces the plain path so no ANSI
       // reaches a scripted caller's stderr.
+      const globalConfig = await ctx.require(GlobalConfigAccessorKey).get();
       try {
         // withRegion resolved --region, else the environment and the AWS config file.
         const region = ctx.value(RegionKey);
-        await runWithProgress(config.projectManager.build(project, { region }), {
+        const build = config.projectManager.build(project, {
+          region,
+          disableDependencyManagement: globalConfig.disableDependencyManagement,
+        });
+        await runWithProgress(build, {
           io: config.io,
           interactive: jsonOutput ? false : undefined,
         });
