@@ -49,7 +49,7 @@ env:
 
 jobs:
   authorize:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
@@ -87,10 +87,8 @@ jobs:
     if: needs.authorize.outputs.is-authorized == 'true'
     runs-on: >-
       ${{ fromJSON(
-        matrix.name == 'Linux' &&
-          format('["codebuild-agentcore-e2e-{0}-{1}","e2e-linux"]', github.run_id, github.run_attempt)
-        || matrix.name == 'Windows' &&
-          format('["codebuild-agentcore-e2e-{0}-{1}","image:windows-1.0","e2e-windows"]', github.run_id, github.run_attempt)
+        matrix.name == 'Linux' && '["ubuntu-latest"]'
+        || matrix.name == 'Windows' && '["windows-latest"]'
         || matrix.name == 'macOS' && '["macos-latest"]'
       ) }}
     permissions:

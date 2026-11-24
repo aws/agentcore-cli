@@ -15,7 +15,7 @@ permissions:
 jobs:
   # Resolve the commit hash for npm's latest published version.
   resolve_release:
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
       version: ${{ steps.resolve.outputs.version }}
@@ -56,7 +56,7 @@ jobs:
     needs: [resolve_release, e2e]
     # A cancelled run emits no failure sample; the alarm may still breach on missing data.
     if: ${{ !cancelled() }}
-    runs-on: codebuild-agentcore-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
