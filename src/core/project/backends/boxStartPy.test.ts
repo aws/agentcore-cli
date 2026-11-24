@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
@@ -90,5 +90,49 @@ describe.skipIf(PYTHON === undefined)("start.py with no tomllib, as on Python 3.
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("has a `policies` line start.py cannot read");
+  });
+});
+
+/**
+ * Runs start.py's main with its folders in a test folder and os.execve replaced, and prints what main
+ * hands box: the BOX_ variables, and the standard library and base prefix of this Python.
+ */
+const MAIN_HARNESS = `
+import json, os, sys, sysconfig, types
+start = types.ModuleType("start")
+start.__file__ = sys.argv[1]
+exec(compile(open(sys.argv[1]).read(), "start.py", "exec"), start.__dict__)
+folder = sys.argv[2]
+start.DIST = os.path.join(folder, "dist")
+start.BOX = os.path.join(start.DIST, "box")
+start.HOME = os.path.join(folder, "home")
+start.WORKSPACE = os.path.join(folder, "workspace")
+start.PROFILE_DIR = os.path.join(folder, "profile")
+start.PROFILE = os.path.join(start.PROFILE_DIR, "profile.toml")
+def execve(path, args, env):
+    box = {name: value for name, value in env.items() if name.startswith("BOX_")}
+    print(json.dumps({"box": box, "stdlib": sysconfig.get_path("stdlib"), "prefix": sys.base_prefix}))
+    sys.exit(0)
+os.execve = execve
+start.main()
+`;
+
+describe.skipIf(PYTHON === undefined)("start.py", () => {
+  test("gives box the standard library of the Runtime's Python, and not its base prefix, which box refuses as a system root (/usr on the Runtime)", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "box-start-py-"));
+    folders.push(folder);
+    await mkdir(join(folder, "dist"));
+    await writeFile(join(folder, "dist", "profile.toml"), runtimeProfile());
+
+    const result = Bun.spawnSync([PYTHON!, "-c", MAIN_HARNESS, START_PY, folder]);
+
+    expect(result.stderr.toString()).toBe("");
+    const { box, stdlib, prefix } = JSON.parse(result.stdout.toString()) as {
+      box: Record<string, string>;
+      stdlib: string;
+      prefix: string;
+    };
+    expect(box.BOX_PYTHON_STDLIB).toBe(stdlib);
+    expect(Object.values(box)).not.toContain(prefix);
   });
 });

@@ -222,7 +222,10 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the gateway fixture. The gateway fixture is recorded from renderRuntimeBoxProfile of
  * box-integration (f5503f02). The two template sets are recorded, with the default telemetry
  * target, from the renderer of aws/agentcore-cli#2867 (f40ebce7): box-integration (7252504c) with
- * the `@box/` pack names.
+ * the `@box/` pack names. Their read and exec grants of the Runtime's Python name its standard
+ * library, `${{ inputs.python.stdlib }}`, where that renderer named its prefix,
+ * `${{ inputs.python.prefix }}`: the prefix is /usr on the Runtime, which box refuses as a system
+ * root.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
@@ -385,6 +388,89 @@ describe("deriveRuntimeProfile on each box template of create", () => {
       expect(problems).toEqual([]);
       const signedIn = withApiKeySignIn(recorded);
       expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
+    },
+  );
+});
+
+/**
+ * The value of each input of @box/agentcore-codezip on a CodeZip AgentCore Runtime, as start.py
+ * exports it there. Measured on a PYTHON_3_14 Runtime: its Python is /usr/bin/python3.14, with the
+ * base prefix /usr and the standard library /usr/lib/python3.14.
+ */
+const CODEZIP_RUNTIME_INPUTS: Readonly<Record<string, string>> = {
+  "${{ inputs.code.dir }}": "/var/task",
+  "${{ inputs.python.path }}": "/usr/bin/python3.14",
+  "${{ inputs.python.stdlib }}": "/usr/lib/python3.14",
+  "${{ inputs.python.prefix }}": "/usr",
+};
+
+/** The system roots that box refuses as a grant in each list (the floor of Box Core). */
+const BOX_SYSTEM_ROOTS: ReadonlySet<string> = new Set([
+  "/",
+  "/bin",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/srv",
+  "/sys",
+  "/tmp",
+  "/usr",
+  "/usr/bin",
+  "/usr/local",
+  "/usr/sbin",
+  "/usr/share",
+  "/var",
+]);
+
+/** The loader folders, which box grants only to `read`, as a whole tree. */
+const BOX_LOADER_FOLDERS: ReadonlySet<string> = new Set([
+  "/lib",
+  "/lib64",
+  "/usr/lib",
+  "/usr/lib64",
+]);
+
+describe("the Runtime profile of each CodeZip box template of create", () => {
+  const templates = BOX_TEMPLATES.filter(
+    (template) => resolveRuntimeTemplateShortcut(template).build === "CodeZip",
+  );
+
+  test.each(templates)(
+    "lets the Runtime's Python read its standard library and load its native modules, and grants no folder that box refuses on the Runtime (%s)",
+    (template) => {
+      const input = resolveRuntimeTemplateShortcut(template);
+      const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
+
+      const { profile, problems } = deriveRuntimeProfile(
+        local,
+        contextOf(createdRuntime(input, false)),
+      );
+
+      expect(problems).toEqual([]);
+      const filesystem = agentOf(profile).filesystem as Record<string, unknown[]>;
+      // A non-loader folder that box reads cannot map code, so lib-dynload needs exec too.
+      expect(filesystem.read).toContain("${{ inputs.python.stdlib }}");
+      expect(filesystem.exec).toContain("${{ inputs.python.stdlib }}");
+      for (const [list, grants] of Object.entries(filesystem)) {
+        for (const grant of grants) {
+          const path = typeof grant === "string" ? grant : (grant as { path: string }).path;
+          const onRuntime = CODEZIP_RUNTIME_INPUTS[path] ?? path;
+          const refused =
+            BOX_SYSTEM_ROOTS.has(onRuntime) ||
+            (list !== "read" && BOX_LOADER_FOLDERS.has(onRuntime));
+          expect({ list, path, onRuntime, refused }).toEqual({
+            list,
+            path,
+            onRuntime,
+            refused: false,
+          });
+        }
+      }
     },
   );
 });
@@ -689,12 +775,12 @@ describe("the additions rule", () => {
       expect(agentOf(deriveRuntimeProfile(local, contextOf(CODEZIP)).profile).filesystem).toEqual({
         read: [
           "${{ inputs.code.dir }}",
-          "${{ inputs.python.prefix }}",
+          "${{ inputs.python.stdlib }}",
           "/usr/lib64",
           "/lib64",
           "${{ inputs.code.dir }}/data",
         ],
-        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}"],
+        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.stdlib }}"],
         deny_write: ["${{ inputs.code.dir }}/secrets"],
         write: ["/tmp/agent"],
       });
