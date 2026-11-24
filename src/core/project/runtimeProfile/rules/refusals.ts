@@ -6,7 +6,7 @@
  * | Key | Problem |
  * | --- | --- |
  * | `network.contain_egress = false` on `[agent]`, a stdio `[mcp.<name>]`, or a `[tool.<name>]` | RUNTIME_EGRESS_NOT_CONTAINED |
- * | a `[telemetry.<name>]` that is not `cloudwatch_logs`, `cloudwatch_traces`, or `file`, and that the Box network model does not carry (`context.thirdPartyTelemetry`) | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
+ * | a `[telemetry.<name>]` that is not `cloudwatch_logs`, `cloudwatch_traces`, or `file` | RUNTIME_TELEMETRY_NOT_CLOUDWATCH |
  * | a CloudWatch `[telemetry.<name>]` that box refuses when a run starts, so it is not in `context.telemetry` | RUNTIME_TELEMETRY_REFUSED |
  * | CodeZip: a path of the project outside the code folder, of the home folder (`${{ home }}`, `~`, `/Users`, `/home`), or in the venv | RUNTIME_PATH_NOT_FOUND |
  * | CodeZip: an `[agent]`, stdio server, or tool program that is not the venv's Python or a file in the code folder | RUNTIME_PROGRAM_NOT_FOUND |
@@ -29,8 +29,6 @@ import {
   programOf,
   type PathProblem,
 } from "../projectPaths";
-import { THIRD_PARTY_KINDS } from "../../boxNetwork/telemetry";
-import { BOX_SECRETS_MANAGER_ENV, BOX_SECRETS_MANAGER_PLUGIN } from "../../boxTelemetrySecrets";
 import type {
   RuleResult,
   RuntimeProfileContext,
@@ -87,8 +85,6 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       );
       continue;
     }
-    // The additions rule carries each third-party target that the Box network model carries.
-    if (context.thirdPartyTelemetry?.some((carried) => carried.name === name)) continue;
     // The additions rule leaves out a file target, with a warning: nobody reads the microVM's files.
     if (kind === FILE_TELEMETRY_KIND) continue;
     // A table with no kind adds to the target of that name that a pack gives, which box resolves.
@@ -97,7 +93,10 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
-      notCloudWatch(name, kind, context),
+      `${typeof kind === "string" ? `is ${JSON.stringify(kind)}` : "is not set"}. At this time, ` +
+        "a box on AgentCore Runtime can send telemetry only to CloudWatch: kind " +
+        `"cloudwatch_logs" or "cloudwatch_traces". Remove [telemetry.${name}], or change its ` +
+        "kind to one of these.",
     );
   }
 
@@ -201,33 +200,6 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     problems: inProfileOrder(problems),
     warnings,
   };
-}
-
-/**
- * Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. A third-party target goes
- * there only through AWS Secrets Manager: the message names that switch when it is off, and the
- * warning of the Box network model when the switch is on and build cannot carry the target.
- */
-function notCloudWatch(name: string, kind: unknown, context: RuntimeProfileContext): string {
-  const thirdParty = THIRD_PARTY_KINDS.some((candidate) => candidate === kind);
-  if (thirdParty && context.secretsManager) {
-    return (
-      `is ${JSON.stringify(kind)}, and build cannot carry this target to AgentCore Runtime: the ` +
-      `warning for [telemetry.${name}] gives the reason. Correct that, remove ` +
-      `[telemetry.${name}], or change its kind to "cloudwatch_logs" or "cloudwatch_traces".`
-    );
-  }
-  const reason =
-    `${typeof kind === "string" ? `is ${JSON.stringify(kind)}` : "is not set"}. At this time, ` +
-    "a box on AgentCore Runtime can send telemetry only to CloudWatch: kind " +
-    `"cloudwatch_logs" or "cloudwatch_traces". Remove [telemetry.${name}], or change its ` +
-    "kind to one of these.";
-  if (!thirdParty) return reason;
-  return (
-    `${reason} With a box build that has the ${BOX_SECRETS_MANAGER_PLUGIN} plugin, you can set ` +
-    `${BOX_SECRETS_MANAGER_ENV}=1 instead: then build carries the target, and deploy moves its ` +
-    "key to AWS Secrets Manager."
-  );
 }
 
 /** Whether `path`, as a CodeZip Runtime profile names it, is the code folder or in it. */

@@ -36,19 +36,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -57,25 +58,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -133,19 +115,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -154,25 +137,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -236,19 +200,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -257,25 +222,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -337,19 +283,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -358,42 +305,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -451,19 +362,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -472,42 +384,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -571,19 +447,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -592,42 +469,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -683,19 +524,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -704,25 +547,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -774,19 +598,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -795,25 +621,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -871,19 +678,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -892,25 +701,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -966,19 +756,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -987,42 +779,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -1074,19 +830,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1095,42 +853,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -1188,19 +910,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1209,42 +933,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -1293,19 +981,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1314,25 +1004,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -1377,19 +1048,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1398,25 +1071,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -1467,19 +1121,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1488,25 +1144,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -1555,19 +1192,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1576,42 +1215,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -1656,19 +1259,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1677,42 +1282,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -1763,19 +1332,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1784,42 +1355,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -1868,19 +1403,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1889,25 +1426,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -1952,19 +1470,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -1973,25 +1493,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -2042,19 +1543,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2063,25 +1566,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -2130,19 +1614,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2151,42 +1637,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -2231,19 +1681,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2252,42 +1704,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -2338,19 +1754,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2359,42 +1777,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -2447,22 +1829,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2471,25 +1854,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -2538,22 +1902,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2562,25 +1927,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -2635,22 +1981,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2659,25 +2006,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -2730,22 +2058,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2754,42 +2083,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -2838,22 +2131,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2862,42 +2156,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -2952,22 +2210,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -2976,42 +2235,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -3058,22 +2281,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3082,25 +2307,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -3143,22 +2349,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3167,25 +2375,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -3234,22 +2423,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3258,25 +2449,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -3323,22 +2495,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3347,42 +2521,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -3425,22 +2563,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3449,42 +2589,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -3533,22 +2637,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3557,42 +2663,6 @@
             "workload_port": 9001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -3647,19 +2717,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3668,25 +2739,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -3737,19 +2789,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3758,25 +2811,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -3833,19 +2867,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3854,25 +2889,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -3927,19 +2943,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -3948,42 +2965,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -4034,19 +3015,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4055,42 +3037,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -4147,19 +3093,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4168,42 +3115,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -4252,19 +3163,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4273,25 +3186,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -4336,19 +3230,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4357,25 +3253,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -4426,19 +3303,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4447,25 +3326,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -4514,19 +3374,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4535,42 +3397,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -4615,19 +3441,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4636,42 +3464,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -4722,19 +3514,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -4743,42 +3537,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -4838,6 +3596,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -4869,25 +3628,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -4943,6 +3683,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -4974,25 +3715,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -5054,6 +3776,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5085,25 +3808,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -5163,6 +3867,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5194,42 +3899,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -5285,6 +3954,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5316,42 +3986,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -5413,6 +4047,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5444,42 +4079,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -5533,6 +4132,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5564,25 +4165,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -5632,6 +4214,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5663,25 +4247,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -5737,6 +4302,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5768,25 +4335,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -5840,6 +4388,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5871,42 +4421,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -5956,6 +4470,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -5987,42 +4503,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -6078,6 +4558,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6109,42 +4591,6 @@
             "workload_port": 8081
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -6198,6 +4644,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6229,25 +4677,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -6297,6 +4726,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6328,25 +4759,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -6402,6 +4814,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6433,25 +4847,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -6505,6 +4900,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6536,42 +4933,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -6621,6 +4982,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6652,42 +5015,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -6743,6 +5070,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6774,42 +5103,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -6863,6 +5156,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6894,25 +5189,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -6962,6 +5238,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -6993,25 +5271,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -7067,6 +5326,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -7098,25 +5359,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -7170,6 +5412,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -7201,42 +5445,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "agentcore": {
@@ -7286,6 +5494,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -7317,42 +5527,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "logs": {
@@ -7408,6 +5582,8 @@
           "PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -7439,42 +5615,6 @@
             "workload_port": 8001
           }
         ]
-      },
-      "egress": {
-        "bedrock": {
-          "destinations": [
-            "bedrock-runtime.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/bedrock",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        },
-        "agentcore": {
-          "destinations": [
-            "bedrock-agentcore.us-west-2.amazonaws.com"
-          ],
-          "backends": [
-            {
-              "url": "${{ inputs.gateway.url }}/agentcore",
-              "auth": {
-                "ref": "aws://",
-                "aws": {
-                  "service": "bedrock-agentcore",
-                  "region": "${{ inputs.aws.region }}"
-                }
-              }
-            }
-          ]
-        }
       },
       "telemetry": {
         "x-ray": {
@@ -7529,22 +5669,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -7620,22 +5761,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -7717,22 +5859,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -7812,22 +5955,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -7920,22 +6064,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8034,22 +6179,23 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8140,22 +6286,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8225,22 +6373,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8316,22 +6466,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8405,22 +6557,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8507,22 +6661,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8615,22 +6771,24 @@
         "env": {
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "A2A_PORT": "9001",
-          "AGENTCORE_RUNTIME_URL": "http://localhost:9000/",
+          "AGENTCORE_RUNTIME_URL": "${{ inputs.runtime.url }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8736,19 +6894,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8833,19 +6992,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -8936,19 +7096,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9037,19 +7198,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9151,19 +7313,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9271,19 +7434,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9389,19 +7553,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9486,19 +7651,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9589,19 +7755,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9690,19 +7857,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9804,19 +7972,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -9924,19 +8093,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10042,19 +8212,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10139,19 +8310,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10242,19 +8414,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10343,19 +8516,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10457,19 +8631,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10577,19 +8752,20 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10689,19 +8865,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10780,19 +8958,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10877,19 +9057,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -10972,19 +9154,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -11080,19 +9264,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -11194,19 +9380,21 @@
           "PYTHONPATH": "${{ inputs.code.dir }}",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -11310,6 +9498,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -11415,6 +9604,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -11526,6 +9716,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -11635,6 +9826,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -11757,6 +9949,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -11885,6 +10078,7 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12005,6 +10199,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12104,6 +10300,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12209,6 +10407,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12312,6 +10512,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12428,6 +10630,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12550,6 +10754,8 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
@@ -12671,19 +10877,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -12761,19 +10968,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -12857,19 +11065,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -12951,19 +11160,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13058,19 +11268,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13171,19 +11382,20 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13276,19 +11488,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13360,19 +11574,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13450,19 +11666,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13538,19 +11756,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13639,19 +11859,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13746,19 +11968,21 @@
           "PORT": "8081",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13851,19 +12075,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -13935,19 +12161,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -14025,19 +12253,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -14113,19 +12343,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -14214,19 +12446,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -14321,19 +12555,21 @@
           "FASTMCP_PORT": "8001",
           "PYTHONUTF8": "1",
           "PYTHONUNBUFFERED": "1",
+          "AWS_REGION": "${{ inputs.aws.region }}",
+          "AWS_DEFAULT_REGION": "${{ inputs.aws.region }}",
           "AWS_ACCESS_KEY_ID": "box-stand-in",
           "AWS_SECRET_ACCESS_KEY": "box-stand-in"
         },
         "filesystem": {
           "read": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}",
+            "${{ inputs.python.stdlib }}",
             "/usr/lib64",
             "/lib64"
           ],
           "exec": [
             "${{ inputs.code.dir }}",
-            "${{ inputs.python.prefix }}"
+            "${{ inputs.python.stdlib }}"
           ]
         },
         "ingress": [
@@ -14850,1059 +13086,6 @@
         }
       },
       "mcp": {}
-    }
-  },
-  "secretsManager": {
-    "agent-python-strands-box telemetry=langfuse and otlp": {
-      "local": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock"
-        ],
-        "profile": {
-          "name": "demo-agent_python_strands_box"
-        },
-        "project": {
-          "access": "write"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-east-1"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/app/agent_python_strands_box/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}/app/agent_python_strands_box",
-            "--reload",
-            "--reload-dir",
-            "${{ workspace }}/app/agent_python_strands_box",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}/app/agent_python_strands_box",
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "127.0.0.1:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "tool": {
-          "uname": {
-            "filesystem": {
-              "deny_write": [
-                {
-                  "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                  "optional": true
-                }
-              ]
-            }
-          }
-        },
-        "egress": {
-          "bedrock": {
-            "secret": {
-              "ref": "aws://default"
-            }
-          }
-        },
-        "telemetry": {
-          "langfuse": {
-            "kind": "langfuse",
-            "destination": "https://cloud.langfuse.com",
-            "secret": {
-              "ref": "env://LANGFUSE_KEY",
-              "header": "Authorization",
-              "prefix": "Basic "
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock",
-          "@box/agentcore",
-          "@box/agentcore-codezip"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "write"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-west-2"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ inputs.python.path }}",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ inputs.code.dir }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "PORT": "8081",
-            "PYTHONPATH": "${{ inputs.code.dir }}",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}",
-              "/usr/lib64",
-              "/lib64"
-            ],
-            "exec": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}"
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      }
-    },
-    "agent-python-strands-box telemetry=otlp only": {
-      "local": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock"
-        ],
-        "profile": {
-          "name": "demo-agent_python_strands_box"
-        },
-        "project": {
-          "access": "write"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-east-1"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/app/agent_python_strands_box/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}/app/agent_python_strands_box",
-            "--reload",
-            "--reload-dir",
-            "${{ workspace }}/app/agent_python_strands_box",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}/app/agent_python_strands_box",
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "127.0.0.1:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "tool": {
-          "uname": {
-            "filesystem": {
-              "deny_write": [
-                {
-                  "path": "${{ workspace }}/app/agent_python_strands_box/.venv",
-                  "optional": true
-                }
-              ]
-            }
-          }
-        },
-        "egress": {
-          "bedrock": {
-            "secret": {
-              "ref": "aws://default"
-            }
-          }
-        },
-        "telemetry": {
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock",
-          "@box/agentcore",
-          "@box/agentcore-codezip"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "write"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-west-2"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ inputs.python.path }}",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ inputs.code.dir }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "PORT": "8081",
-            "PYTHONPATH": "${{ inputs.code.dir }}",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}",
-              "/usr/lib64",
-              "/lib64"
-            ],
-            "exec": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}"
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      }
-    },
-    "agent-python-strands-box-container telemetry=langfuse and otlp": {
-      "local": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock"
-        ],
-        "profile": {
-          "name": "demo-agent_python_strands_box_container"
-        },
-        "project": {
-          "access": "read"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-east-1"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}",
-            "--reload",
-            "--reload-dir",
-            "${{ workspace }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              },
-              "/usr/local/bin",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "egress": {
-          "bedrock": {
-            "secret": {
-              "ref": "aws://default"
-            }
-          }
-        },
-        "telemetry": {
-          "langfuse": {
-            "kind": "langfuse",
-            "destination": "https://cloud.langfuse.com",
-            "secret": {
-              "ref": "env://LANGFUSE_KEY",
-              "header": "Authorization",
-              "prefix": "Basic "
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock",
-          "@box/agentcore"
-        ],
-        "plugins": [
-          "@box/aws-secrets-manager"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "read"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-west-2"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              },
-              "/usr/local/bin",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "langfuse": {
-            "kind": "langfuse",
-            "destination": "https://cloud.langfuse.com",
-            "secret": {
-              "ref": "aws-secretsmanager://agentcore/demo/agent_python_strands_box_container/box#telemetry.langfuse",
-              "header": "Authorization",
-              "prefix": "Basic "
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      }
-    },
-    "agent-python-strands-box-container telemetry=otlp only": {
-      "local": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock"
-        ],
-        "profile": {
-          "name": "demo-agent_python_strands_box_container"
-        },
-        "project": {
-          "access": "read"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-east-1"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}",
-            "--reload",
-            "--reload-dir",
-            "${{ workspace }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              },
-              "/usr/local/bin",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "egress": {
-          "bedrock": {
-            "secret": {
-              "ref": "aws://default"
-            }
-          }
-        },
-        "telemetry": {
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/bedrock",
-          "@box/agentcore"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "read"
-        },
-        "options": {
-          "bedrock": {
-            "region": "us-west-2"
-          }
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/.venv/bin/python",
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--app-dir",
-            "${{ workspace }}",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8081"
-          ],
-          "env": {
-            "PORT": "8081",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              },
-              "/usr/local/bin",
-              "/usr/local/lib",
-              "/usr/lib/aarch64-linux-gnu"
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8080",
-              "workload_port": 8081
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      }
-    },
-    "mcp-python-fastmcp-box telemetry=langfuse and otlp": {
-      "local": {
-        "packs": [
-          "@box/base"
-        ],
-        "profile": {
-          "name": "demo-mcp_python_fastmcp_box"
-        },
-        "project": {
-          "access": "write"
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/app/mcp_python_fastmcp_box/.venv/bin/python",
-            "-m",
-            "main"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PYTHONPATH": "${{ workspace }}/app/mcp_python_fastmcp_box",
-            "FASTMCP_PORT": "8001",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}/app/mcp_python_fastmcp_box",
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "127.0.0.1:8000",
-              "workload_port": 8001
-            }
-          ]
-        },
-        "tool": {
-          "uname": {
-            "filesystem": {
-              "deny_write": [
-                {
-                  "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                  "optional": true
-                }
-              ]
-            }
-          }
-        },
-        "telemetry": {
-          "langfuse": {
-            "kind": "langfuse",
-            "destination": "https://cloud.langfuse.com",
-            "secret": {
-              "ref": "env://LANGFUSE_KEY",
-              "header": "Authorization",
-              "prefix": "Basic "
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/agentcore",
-          "@box/agentcore-codezip"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "write"
-        },
-        "agent": {
-          "command": [
-            "${{ inputs.python.path }}",
-            "-m",
-            "main"
-          ],
-          "env": {
-            "PYTHONPATH": "${{ inputs.code.dir }}",
-            "FASTMCP_PORT": "8001",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}",
-              "/usr/lib64",
-              "/lib64"
-            ],
-            "exec": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}"
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8000",
-              "workload_port": 8001
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com",
-            "headers": {
-              "x-team": "box"
-            }
-          }
-        }
-      }
-    },
-    "mcp-python-fastmcp-box telemetry=otlp only": {
-      "local": {
-        "packs": [
-          "@box/base"
-        ],
-        "profile": {
-          "name": "demo-mcp_python_fastmcp_box"
-        },
-        "project": {
-          "access": "write"
-        },
-        "agent": {
-          "command": [
-            "${{ workspace }}/app/mcp_python_fastmcp_box/.venv/bin/python",
-            "-m",
-            "main"
-          ],
-          "env": {
-            "LOCAL_DEV": "1",
-            "PYTHONPATH": "${{ workspace }}/app/mcp_python_fastmcp_box",
-            "FASTMCP_PORT": "8001",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1"
-          },
-          "filesystem": {
-            "read": [
-              "${{ workspace }}/app/mcp_python_fastmcp_box",
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "exec": [
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              },
-              {
-                "path": "${{ home }}/.local/share/uv/python",
-                "optional": true
-              }
-            ],
-            "deny_write": [
-              {
-                "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                "optional": true
-              }
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "127.0.0.1:8000",
-              "workload_port": 8001
-            }
-          ]
-        },
-        "tool": {
-          "uname": {
-            "filesystem": {
-              "deny_write": [
-                {
-                  "path": "${{ workspace }}/app/mcp_python_fastmcp_box/.venv",
-                  "optional": true
-                }
-              ]
-            }
-          }
-        },
-        "telemetry": {
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      },
-      "old": {
-        "packs": [
-          "@box/base",
-          "@box/agentcore",
-          "@box/agentcore-codezip"
-        ],
-        "profile": {
-          "name": "demo"
-        },
-        "project": {
-          "access": "write"
-        },
-        "agent": {
-          "command": [
-            "${{ inputs.python.path }}",
-            "-m",
-            "main"
-          ],
-          "env": {
-            "PYTHONPATH": "${{ inputs.code.dir }}",
-            "FASTMCP_PORT": "8001",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "AWS_ACCESS_KEY_ID": "box-stand-in",
-            "AWS_SECRET_ACCESS_KEY": "box-stand-in"
-          },
-          "filesystem": {
-            "read": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}",
-              "/usr/lib64",
-              "/lib64"
-            ],
-            "exec": [
-              "${{ inputs.code.dir }}",
-              "${{ inputs.python.prefix }}"
-            ]
-          },
-          "ingress": [
-            {
-              "listen": "0.0.0.0:8000",
-              "workload_port": 8001
-            }
-          ]
-        },
-        "telemetry": {
-          "agentcore": {
-            "kind": "cloudwatch_logs",
-            "region": "${{ inputs.aws.region }}",
-            "log_group": "${{ inputs.runtime.log_group }}",
-            "log_stream": "${{ inputs.runtime.log_stream }}",
-            "include": [
-              "deny",
-              "permit",
-              "trace"
-            ],
-            "secret": {
-              "ref": "aws://"
-            }
-          },
-          "collector": {
-            "kind": "otlp",
-            "destination": "https://collector.example.com"
-          }
-        }
-      }
     }
   }
 }

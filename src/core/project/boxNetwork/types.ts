@@ -39,7 +39,6 @@ export const FAILURE_CODES = [
   "UNSIGNABLE_HOST",
   "UNSUPPORTED_SECRET",
   "UNSUPPORTED_SECRET_PLACEMENT",
-  "API_KEY_CREDENTIAL_MISSING",
   "API_KEY_CREDENTIAL_SHARED",
   "EXISTING_TARGET_CONFLICT",
   "MANAGED_TARGET_CHANGED",
@@ -66,6 +65,22 @@ export interface ConversionFailure {
   readonly span?: SourceSpan;
   /** For a duplicate `@id`, the span of the first rule with that `@id`. */
   readonly firstSpan?: SourceSpan;
+}
+
+/** Why build cannot convert the box profile, and where. */
+export interface BoxNetworkFailure {
+  readonly code: FailureCode;
+  readonly ruleId?: string;
+  readonly egressEntry?: string;
+  readonly mcpEntry?: string;
+  readonly target?: string;
+  /** The problem and how to fix it, in whole sentences that name its rule, entry, or target. */
+  readonly reason: string;
+  /**
+   * The user's own file, as `file:line:column` or the file alone: a rule Box adds is at the part
+   * of the profile that makes Box add it.
+   */
+  readonly place?: string;
 }
 
 /** A sample request the converter evaluates the whole Box policy on: a method and a path. */

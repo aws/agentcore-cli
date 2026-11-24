@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { getBoxGatewayBedrockEntry } from "../../handlers/project/box-gateway-test-support";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
-import type { ProjectSpec } from "../../projectSchemas/project";
+import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
-import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
   boxNetworkEdits,
@@ -14,18 +13,40 @@ import {
   telemetryPolicyWriter,
   type BoxNetworkWriter,
 } from "./boxNetworkWriters";
+import { AGENTCORE_CODEZIP_PACK_PATH, AGENTCORE_PACK_PATH } from "./templates/boxProfile";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
+/**
+ * A network of the runtime `agent`. Its Runtime profile routes each host with a target through the
+ * gateway, as the gateway rule writes it, unless `overrides` gives another profile.
+ */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
+  const routes = (overrides.hosts ?? []).flatMap((each) =>
+    each.target === undefined
+      ? []
+      : [
+          [
+            each.target,
+            {
+              destinations: [each.authority],
+              backends: [{ url: `\${{ inputs.gateway.url }}/${each.target}` }],
+            },
+          ],
+        ],
+  );
   return {
     runtime: "agent",
-    gateway: "agent-box",
+    gateway: "agent-box-egress",
     region: "us-west-2",
     hosts: [],
-    credentials: [],
+    envRoutes: [],
     policyFiles: [],
-    runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
+    runtimeProfile: {
+      packs: ["@box/base", "@box/agentcore"],
+      profile: { name: "demo" },
+      ...(routes.length > 0 && { egress: Object.fromEntries(routes) }),
+    },
     runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
@@ -54,16 +75,29 @@ function host(
   };
 }
 
-function spec(targets: AgentCoreGatewayTarget[] = getBoxGatewayBedrockEntry("agent").targets) {
+/** The target a user keeps on the Box gateway, which build does not manage. */
+const MINE: AgentCoreGatewayTarget = {
+  name: "mine",
+  targetType: "passthrough",
+  passthrough: { endpoint: "https://mine.example.com", protocolType: "CUSTOM" },
+};
+
+function spec(targets: AgentCoreGatewayTarget[] = [MINE]) {
   return {
     name: "demo",
     projectType: "box",
     runtimes: [
-      { name: "agent", build: "CodeZip", entrypoint: "start.py", codeLocation: "app/agent" },
+      {
+        name: "agent",
+        build: "CodeZip",
+        entrypoint: "start.py",
+        codeLocation: "app/agent",
+        box: { version: "1.0.0" },
+      },
     ],
     memories: [],
     credentials: [],
-    agentCoreGateways: [{ ...getBoxGatewayBedrockEntry("agent"), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
   } as unknown as ProjectSpec;
 }
 
@@ -73,12 +107,24 @@ const passthrough = (name: string, endpoint: string): AgentCoreGatewayTarget => 
   passthrough: { endpoint, protocolType: "CUSTOM" },
 });
 
+/** What each writer reads besides the models, for `project`. */
+const contextFor = (project = spec()) => ({
+  spec: project,
+  projectRoot: "/nonexistent/project",
+  env: { GITHUB_TOKEN: "ghp_1" },
+  envLocal: {},
+});
+
 const run = (writers: readonly BoxNetworkWriter[], networks: BoxNetwork[], project = spec()) =>
-  boxNetworkEdits(writers, networks, {
-    spec: project,
-    projectRoot: "/nonexistent/project",
-    env: { GITHUB_TOKEN: "ghp_1" },
-  });
+  boxNetworkEdits(writers, networks, contextFor(project));
+
+const GITHUB_AUTH = {
+  kind: "apiKey",
+  credentialName: "github",
+  variable: "GITHUB_TOKEN",
+  header: "Authorization",
+  prefix: "Bearer",
+} as const;
 
 const targetNames = (project: ProjectSpec) =>
   project.agentCoreGateways[0]!.targets.map(({ name }) => name);
@@ -88,7 +134,7 @@ describe("boxNetworkEdits", () => {
     expect(() =>
       run([gatewayTargetsWriter, { ...gatewayTargetsWriter, name: "copy" }], [network()]),
     ).toThrow(
-      `Box network writers 'gateway targets' and 'copy' both write {"kind":"gatewayTargets","gateway":"agent-box"}`,
+      `Box network writers 'gateway targets' and 'copy' both write {"kind":"gatewayTargets","gateway":"agent-box-egress"}`,
     );
   });
 
@@ -101,8 +147,8 @@ describe("boxNetworkEdits", () => {
     );
 
     expect(edits.specChanged).toBe(true);
-    expect(targetNames(edits.spec)).toEqual(["bedrock", "egress-api"]);
-    expect(targetNames(project)).toEqual(["bedrock"]);
+    expect(targetNames(edits.spec)).toEqual(["mine", "egress-api", "bedrock"]);
+    expect(targetNames(project)).toEqual(["mine"]);
   });
 
   test("changes nothing when the spec holds what the model gives", () => {
@@ -117,25 +163,56 @@ describe("boxNetworkEdits", () => {
 });
 
 describe("gatewayTargetsWriter", () => {
+  test("writes no target for a host that the Runtime profile sends directly, and removes a managed one it holds", () => {
+    const MEMORY_HOST = "bedrock-agentcore.us-west-2.amazonaws.com";
+    // The additions rule sends a route to the AgentCore host directly when the runtime has its
+    // default Memory, so the route has no backend to the host's target.
+    const direct = (targets: AgentCoreGatewayTarget[]) =>
+      run(
+        [gatewayTargetsWriter],
+        [
+          network({
+            hosts: [host(MEMORY_HOST, "egress-tools"), host("httpbin.org", "egress-httpbin-org")],
+            runtimeProfile: {
+              egress: {
+                tools: { destinations: [MEMORY_HOST], secret: { ref: "aws://" } },
+                "egress-httpbin-org": {
+                  destinations: ["httpbin.org"],
+                  backends: [{ url: "${{ inputs.gateway.url }}/egress-httpbin-org" }],
+                },
+              },
+            },
+          }),
+        ],
+        spec(targets),
+      );
+
+    const first = direct([MINE]);
+    expect(targetNames(first.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(first.messages).toEqual([
+      "adding gateway target 'egress-httpbin-org' to 'agent-box-egress' for httpbin.org",
+    ]);
+
+    const held = direct([MINE, passthrough("egress-tools", `https://${MEMORY_HOST}`)]);
+    expect(targetNames(held.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(held.messages).toContain(
+      "removing gateway target 'egress-tools' from 'agent-box-egress': on AgentCore Runtime the " +
+        `box sends the calls to ${MEMORY_HOST} directly, not through the gateway`,
+    );
+  });
+
   test("adds a host's target, rewrites a managed one, removes a stale one, and keeps the user's", () => {
     const project = spec([
-      passthrough("bedrock", "https://bedrock-runtime.us-west-2.amazonaws.com"),
+      passthrough("ours", "https://ours.example.com"),
       passthrough("egress-github", "https://api.github.com"),
       passthrough("egress-old", "https://old.example.com"),
-      passthrough("mine", "https://mine.example.com"),
+      MINE,
     ]);
+    project.credentials.push({ authorizerType: "ApiKeyCredentialProvider", name: "github" });
     const models = [
       network({
         hosts: [
-          host("api.github.com", "egress-github", {
-            outboundAuth: {
-              kind: "apiKey",
-              credentialName: "github",
-              variable: "GITHUB_TOKEN",
-              header: "Authorization",
-              prefix: "Bearer",
-            },
-          }),
+          host("api.github.com", "egress-github", { outboundAuth: GITHUB_AUTH }),
           host("httpbin.org", "egress-httpbin-org"),
           host("unreached.example.com", "egress-unreached", {
             reachable: false,
@@ -148,7 +225,7 @@ describe("gatewayTargetsWriter", () => {
     const edits = run([gatewayTargetsWriter], models, project);
 
     expect(targetNames(edits.spec)).toEqual([
-      "bedrock",
+      "ours",
       "egress-github",
       "mine",
       "egress-httpbin-org",
@@ -161,9 +238,9 @@ describe("gatewayTargetsWriter", () => {
       prefix: "Bearer",
     });
     expect(edits.messages).toEqual([
-      "updating gateway target 'egress-github' of 'agent-box' for api.github.com",
-      "removing gateway target 'egress-old' from 'agent-box': the Box profile no longer allows old.example.com",
-      "adding gateway target 'egress-httpbin-org' to 'agent-box' for httpbin.org",
+      "updating gateway target 'egress-github' of 'agent-box-egress' for api.github.com",
+      "removing gateway target 'egress-old' from 'agent-box-egress': the Box profile no longer allows old.example.com",
+      "adding gateway target 'egress-httpbin-org' to 'agent-box-egress' for httpbin.org",
     ]);
   });
 
@@ -177,32 +254,124 @@ describe("gatewayTargetsWriter", () => {
     );
 
     expect(edits.messages).toEqual([
-      "updating gateway target 'egress-github' of 'agent-box' for api.github.com",
+      "updating gateway target 'egress-github' of 'agent-box-egress' for api.github.com",
     ]);
     expect(edits.spec.agentCoreGateways[0]!.targets).toEqual([
       passthrough("egress-github", "https://api.github.com"),
     ]);
   });
 
-  test("creates the gateway entry only when a host needs a target", () => {
-    const empty = { ...spec(), agentCoreGateways: [] } as ProjectSpec;
+  test("writes no target that sends an API key whose credential agentcore.json lacks, and says so", () => {
+    const project = spec([MINE, passthrough("egress-github", "https://api.github.com")]);
+    const models = [
+      network({ hosts: [host("api.github.com", "egress-github", { outboundAuth: GITHUB_AUTH })] }),
+    ];
 
-    expect(run([gatewayTargetsWriter], [network()], empty).specChanged).toBe(false);
+    const edits = run([gatewayTargetsWriter], models, project);
+
+    expect(targetNames(edits.spec)).toEqual(["mine"]);
+    expect(edits.messages).toEqual([
+      "removing gateway target 'egress-github' of 'agent-box-egress' for api.github.com: it " +
+        "sends the key of env://GITHUB_TOKEN, and agentcore.json has no API key credential " +
+        "'github' to hold it",
+    ]);
+    const fresh = run([gatewayTargetsWriter], models);
+    expect(fresh.specChanged).toBe(false);
+    expect(fresh.messages[0]).toStartWith("not adding gateway target 'egress-github'");
+  });
+
+  test("writes to the gateway bound to the runtime, whatever its name", () => {
+    const project = spec();
+    project.agentCoreGateways[0]!.name = "renamed";
+
     const edits = run(
       [gatewayTargetsWriter],
       [network({ hosts: [host("a.example.com", "egress-a")] })],
-      empty,
+      project,
     );
-    expect(edits.messages[0]).toBe("adding gateway 'agent-box' to agentcore.json");
+
+    expect(edits.messages).toEqual([
+      "adding gateway target 'egress-a' to 'renamed' for a.example.com",
+    ]);
+  });
+});
+
+describe("gatewayTargetsWriter for the gateways of the project", () => {
+  const TOOLS = {
+    name: "tools",
+    target: "egress-gateway-tools",
+    variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+    auth: "iam",
+  } as const;
+  const OPEN = {
+    name: "open",
+    target: "egress-gateway-open",
+    variablePrefix: "AGENTCORE_GATEWAY_OPEN",
+    auth: "none",
+  } as const;
+  const toolsTarget: AgentCoreGatewayTarget = {
+    name: "egress-gateway-tools",
+    targetType: "passthrough",
+    passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+  };
+
+  test("adds a target that names each gateway, signed with the role only for an AWS_IAM gateway", () => {
+    const edits = run([gatewayTargetsWriter], [network({ projectGateways: [TOOLS, OPEN] })]);
+
+    expect(edits.spec.agentCoreGateways[0]!.targets).toEqual([
+      MINE,
+      toolsTarget,
+      {
+        name: "egress-gateway-open",
+        targetType: "passthrough",
+        passthrough: { gateway: "open", protocolType: "CUSTOM" },
+      },
+    ]);
+    expect(edits.messages).toEqual([
+      "adding gateway target 'egress-gateway-tools' to 'agent-box-egress', for the boxed agent's calls to the gateway 'tools'",
+      "adding gateway target 'egress-gateway-open' to 'agent-box-egress', for the boxed agent's calls to the gateway 'open'",
+    ]);
+  });
+
+  test("removes a region that an earlier build wrote, as the L3 signs in the region of the stack, and changes nothing the next time", () => {
+    const stale = {
+      ...toolsTarget,
+      outboundAuth: { ...toolsTarget.outboundAuth!, region: "us-east-1" },
+    };
+    const edits = run(
+      [gatewayTargetsWriter],
+      [network({ projectGateways: [TOOLS] })],
+      spec([stale, MINE]),
+    );
+
+    expect(edits.spec.agentCoreGateways[0]!.targets).toEqual([toolsTarget, MINE]);
+    expect(edits.messages).toEqual([
+      "updating gateway target 'egress-gateway-tools' of 'agent-box-egress' for the gateway 'tools'",
+    ]);
+    const again = run([gatewayTargetsWriter], [network({ projectGateways: [TOOLS] })], edits.spec);
+    expect(again.specChanged).toBe(false);
+  });
+
+  test("removes the target of a gateway that the agent no longer calls", () => {
+    const edits = run([gatewayTargetsWriter], [network()], spec([toolsTarget, MINE]));
+
+    expect(targetNames(edits.spec)).toEqual(["mine"]);
+    expect(edits.messages).toEqual([
+      "removing gateway target 'egress-gateway-tools' from 'agent-box-egress': the boxed agent no longer calls the gateway 'tools'",
+    ]);
   });
 });
 
 describe("credentialsWriter", () => {
   test("declares each credential once and seeds its key from the box variable", () => {
-    const credentials = [{ name: "github", variable: "GITHUB_TOKEN" }];
+    const envRoutes = [{ route: "github", variable: "GITHUB_TOKEN" }];
     const edits = run(
       [credentialsWriter],
-      [network({ credentials }), network({ runtime: "other", gateway: "other-box", credentials })],
+      [
+        network({ envRoutes }),
+        network({ runtime: "other", gateway: "other-box-egress", envRoutes }),
+      ],
     );
 
     expect(edits.spec.credentials).toEqual([
@@ -212,10 +381,24 @@ describe("credentialsWriter", () => {
       expect.objectContaining({ key: "AGENTCORE_CREDENTIAL_GITHUB", value: "ghp_1" }),
     ]);
   });
+
+  test("runs before the gateway targets, so a target gets the credential it adds", () => {
+    const models = [
+      network({
+        hosts: [host("api.github.com", "egress-github", { outboundAuth: GITHUB_AUTH })],
+        envRoutes: [{ route: "github", variable: "GITHUB_TOKEN" }],
+      }),
+    ];
+
+    const edits = run(BOX_NETWORK_WRITERS, models);
+
+    expect(targetNames(edits.spec)).toEqual(["mine", "egress-github", "bedrock"]);
+    expect(edits.spec.credentials.map(({ name }) => name)).toEqual(["github"]);
+  });
 });
 
 describe("defaultTargetsWriter", () => {
-  test("adds the Memory target and writes the role policies, as addBoxGatewayTargets does", () => {
+  test("adds the model target and writes its role policy, and none for the default Memory, as addBoxGatewayTargets does", () => {
     const project = spec();
     project.memories.push({
       name: "agentMemory",
@@ -225,34 +408,34 @@ describe("defaultTargetsWriter", () => {
 
     const edits = run([defaultTargetsWriter], [network()], project);
 
-    expect(targetNames(edits.spec)).toEqual(["bedrock", "agentcore"]);
-    expect(edits.files.map(({ path }) => path)).toEqual([
-      BOX_BEDROCK_POLICY_FILE,
-      BOX_MEMORY_POLICY_FILE,
+    // The agent's Memory calls go to Memory directly, so they take no target and no gateway policy.
+    expect(targetNames(edits.spec)).toEqual(["mine", "bedrock"]);
+    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
+  });
+
+  test("writes the Bedrock policy for the region of the bedrock target it writes", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
+
+    const bedrock = edits.spec.agentCoreGateways[0]!.targets.find(({ name }) => name === "bedrock");
+    expect(bedrock?.outboundAuth?.region).toBe("eu-central-1");
+    const policy = edits.files.find(({ path }) => path === BOX_BEDROCK_POLICY_FILE);
+    const resources = JSON.parse((policy as { text: string }).text).Statement.map(
+      ({ Resource }: { Resource: string[] }) => Resource,
+    );
+    expect(resources).toEqual([
+      ["arn:aws:bedrock:eu-central-1:*:inference-profile/*"],
+      ["arn:aws:bedrock:eu-central-1::foundation-model/*"],
+      ["arn:aws:bedrock:*::foundation-model/*"],
     ]);
   });
 
-  test("writes the Memory policy for the region of the agentcore target it writes", () => {
-    const project = spec();
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
+  test("writes the model target for the region of the build", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
 
-    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
-
-    const agentcore = edits.spec.agentCoreGateways[0]!.targets.find(
-      ({ name }) => name === "agentcore",
+    const regions = edits.spec.agentCoreGateways[0]!.targets.map(
+      ({ name, outboundAuth }) => `${name}:${outboundAuth?.region}`,
     );
-    expect(agentcore?.outboundAuth?.region).toBe("eu-central-1");
-    const memory = edits.files.find(({ path }) => path === BOX_MEMORY_POLICY_FILE);
-    expect(JSON.parse((memory as { text: string }).text).Statement).toEqual([
-      expect.objectContaining({
-        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
-        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
-      }),
-    ]);
+    expect(regions).toEqual(["mine:undefined", "bedrock:eu-central-1"]);
   });
 
   test("adds no default target for an endpoint a target serves already", () => {
@@ -264,12 +447,6 @@ describe("defaultTargetsWriter", () => {
 
     expect(targetNames(edits.spec)).toEqual(["egress-models"]);
     expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_BEDROCK_POLICY_FILE]);
-  });
-
-  test("runs after the egress targets, so a new egress- target is not doubled", () => {
-    const models = [network({ hosts: [host("api.example.com", "egress-api")] })];
-
-    expect(targetNames(run(BOX_NETWORK_WRITERS, models).spec)).toEqual(["bedrock", "egress-api"]);
   });
 });
 
@@ -302,13 +479,13 @@ describe("telemetryPolicyWriter", () => {
     );
     const models = [
       network({ telemetry: [logs("group-a")] }),
-      network({ runtime: "second", gateway: "second-box", telemetry: [logs("group-b")] }),
-      network({ runtime: "quiet", gateway: "quiet-box" }),
+      network({ runtime: "second", gateway: "second-box-egress", telemetry: [logs("group-b")] }),
+      network({ runtime: "quiet", gateway: "quiet-box-egress" }),
     ];
 
     const edits = run([telemetryPolicyWriter], models, project);
 
-    expect(telemetryPolicyWriter.writes(models)).toEqual([
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
@@ -329,6 +506,7 @@ describe("telemetryPolicyWriter", () => {
       ["../../agentcore/box-telemetry-policy-second.json"],
       undefined,
     ]);
+    expect(edits.changedFields).toEqual(["runtimes"]);
     expect(edits.messages).toEqual([
       "adding agentcore/box-telemetry-policy-agent.json to additionalPolicies of 'agent', so its " +
         "box can send telemetry to CloudWatch",
@@ -338,93 +516,37 @@ describe("telemetryPolicyWriter", () => {
         "box sends no telemetry to CloudWatch",
     ]);
   });
-});
 
-describe("the secrets of third-party telemetry targets", () => {
-  const langsmith = {
-    name: "langsmith",
-    kind: "langsmith",
-    keys: [],
-    secret: { variable: "LANGSMITH_KEY", keys: [] },
-  } as const;
-  const logs = {
-    name: "logs",
-    kind: "cloudwatch_logs",
-    region: "us-west-2",
-    logGroup: "g",
-    logStream: "s",
-  } as const;
-  const SECRET_ARN = "arn:aws:secretsmanager:us-west-2:*:secret:agentcore/demo/agent/box-??????";
+  test("declares the policy file of every runtime, also one with no box, which it removes", () => {
+    const project = spec();
+    project.runtimes.push({
+      ...project.runtimes[0]!,
+      name: "plain",
+      codeLocation: "app/plain",
+    } as ProjectSpec["runtimes"][number]);
+    const models = [network({ telemetry: [logs("group-a")] })];
+    const plain = { kind: "file", path: "agentcore/box-telemetry-policy-plain.json" } as const;
 
-  test("adds the read of each secret to the runtime's telemetry policy, after its CloudWatch grant", () => {
-    const edits = run(
-      [telemetryPolicyWriter],
-      [network({ telemetry: [logs], thirdPartyTelemetry: [langsmith] })],
-    );
-
-    const [file] = edits.files;
-    expect(JSON.parse("text" in file! ? file.text : "")).toEqual({
-      Version: "2012-10-17",
-      Statement: [
-        expect.objectContaining({ Sid: "BoxTelemetryToCloudWatchLogs" }),
-        {
-          Sid: "BoxTelemetrySecrets",
-          Effect: "Allow",
-          Action: ["secretsmanager:GetSecretValue"],
-          Resource: [SECRET_ARN],
-        },
-      ],
+    expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
+      { kind: "runtimePolicies" },
+      { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
+      plain,
+    ]);
+    expect(run([telemetryPolicyWriter], models, project).files.at(-1)).toEqual({
+      path: plain.path,
+      remove: true,
     });
-    expect(edits.spec.runtimes[0]!.additionalPolicies).toEqual([
-      "../../agentcore/box-telemetry-policy-agent.json",
-    ]);
-  });
-
-  test("writes the policy for a runtime whose only grant is the read of a secret", () => {
-    const edits = run([telemetryPolicyWriter], [network({ thirdPartyTelemetry: [langsmith] })]);
-
-    const [file] = edits.files;
-    expect(JSON.parse("text" in file! ? file.text : "").Statement).toEqual([
-      expect.objectContaining({ Sid: "BoxTelemetrySecrets", Resource: [SECRET_ARN] }),
-    ]);
-  });
-
-  test("grants no read for a target with no key", () => {
-    const open = { name: "open", kind: "otlp", keys: [["destination", "https://o.example"]] };
-
-    const edits = run([telemetryPolicyWriter], [network({ thirdPartyTelemetry: [open as never] })]);
-
-    expect(edits.files).toEqual([
-      { path: "agentcore/box-telemetry-policy-agent.json", remove: true },
-    ]);
-  });
-
-  test("copies each key the box profile's variable holds to .env.local for deploy", () => {
-    const edits = boxNetworkEdits(
-      [credentialsWriter],
-      [network({ thirdPartyTelemetry: [langsmith] })],
-      {
-        spec: spec(),
-        projectRoot: "/nonexistent/project",
-        env: { LANGSMITH_KEY: "dummy-key" },
-      },
+    const other: BoxNetworkWriter = { name: "other", writes: () => [plain], edits: () => ({}) };
+    expect(() => run([telemetryPolicyWriter, other], models, project)).toThrow(
+      `Box network writers 'telemetry policy' and 'other' both write ${JSON.stringify(plain)}`,
     );
-
-    expect(edits.envLocal).toEqual([
-      expect.objectContaining({
-        key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
-        value: "dummy-key",
-      }),
-    ]);
-    // The target needs a secret, not a credential provider.
-    expect(edits.spec.credentials).toEqual([]);
   });
 });
 
 describe("runtimeProfileWriter", () => {
   test("writes the Runtime profile and a byte copy of each policy file beside it", () => {
     const writer = runtimeProfileWriter([
-      { runtime: "agent", dist: "app/agent/.box-dist", container: false, codezip: false },
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "codezip" },
     ]);
     const policies = ["policy.dw", "rules/extra.dw"];
     const runtimeProfile = { packs: ["@box/base", "@box/agentcore"], policies };
@@ -432,12 +554,18 @@ describe("runtimeProfileWriter", () => {
 
     const { files } = run([writer], models);
 
-    expect(writer.writes(models)).toEqual([
+    expect(writer.writes(models, contextFor())).toEqual([
       { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_CODEZIP_PACK_PATH}` },
       { kind: "file", path: "app/agent/.box-dist/policy.dw" },
       { kind: "file", path: "app/agent/.box-dist/rules/extra.dw" },
     ]);
-    expect(files.slice(1)).toEqual([
+    // The writer writes exactly the files it declares.
+    expect(files.map(({ path }) => ({ kind: "file", path })) as unknown).toEqual(
+      writer.writes(models, contextFor()),
+    );
+    expect(files.slice(3)).toEqual([
       { path: "app/agent/.box-dist/policy.dw", copyOf: ".box/agent/local/policy.dw" },
       { path: "app/agent/.box-dist/rules/extra.dw", copyOf: ".box/agent/local/rules/extra.dw" },
     ]);
@@ -449,11 +577,42 @@ describe("runtimeProfileWriter", () => {
 
   test("stops for a runtime that it stages with no derived Runtime profile", () => {
     const writer = runtimeProfileWriter([
-      { runtime: "agent", dist: ".box/agent/aws", container: false, codezip: true },
+      { runtime: "agent", dist: ".box/agent/aws", kind: "codezip" },
     ]);
 
     expect(() => run([writer], [])).toThrow(
       'runtime "agent" runs its agent in a box, but build has no AgentCore Runtime profile for it',
     );
+  });
+
+  test("stages the inputs of each gateway that the agent calls in the @box/agentcore pack", () => {
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
+    ]);
+    const tools = {
+      name: "tools",
+      target: "egress-gateway-tools",
+      variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+      auth: "iam",
+    } as const;
+
+    const { files } = run([writer], [network({ projectGateways: [tools] })]);
+
+    const pack = files.find(({ path }) => path.endsWith(AGENTCORE_PACK_PATH));
+    expect(pack && "text" in pack && pack.text).toContain(
+      "[inputs.gateways.tools.host]\ndescription = \"The deployed 'tools' gateway host.\"\n" +
+        'from = "env:AGENTCORE_GATEWAY_TOOLS_HOST"\n',
+    );
+  });
+
+  test("stages only the @box/agentcore pack for a container", () => {
+    const writer = runtimeProfileWriter([
+      { runtime: "agent", dist: "app/agent/.box-dist", kind: "container" },
+    ]);
+
+    expect(writer.writes([network()], contextFor())).toEqual([
+      { kind: "file", path: "app/agent/.box-dist/profile.toml" },
+      { kind: "file", path: `app/agent/.box-dist/${AGENTCORE_PACK_PATH}` },
+    ]);
   });
 });

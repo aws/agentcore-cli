@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expectError } from "../../../../testing";
-import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
+import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { InputValidationError } from "../../../../errors";
 
 const { addGateway, cleanup, inProject, projectSpec, run } =
@@ -108,11 +108,8 @@ describe("project add policy-engine", () => {
     ]);
 
     const spec = await projectSpec(projectRoot);
-    // the agent-box gateway entry is not named, so it stays unattached.
-    const [box, ...attached] = spec.agentCoreGateways;
-    expect(box).toEqual(DEFAULT_BOX_GATEWAY);
-    expect(attached).toHaveLength(2);
-    for (const gateway of attached) {
+    expect(spec.agentCoreGateways).toHaveLength(2);
+    for (const gateway of spec.agentCoreGateways) {
       expect(gateway.policyEngineConfiguration).toEqual({
         policyEngineName: "Guardrails",
         mode,

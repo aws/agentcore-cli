@@ -6,12 +6,12 @@ import {
   SECURITY_GROUP_ID_PATTERN,
   SUBNET_ID_PATTERN,
   VPC_ID_PATTERN,
-  isContainerBuild,
 } from "./constants";
 import type { DirectoryPath } from "./types";
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from "./auth";
 import { ConnectionSchema } from "./connections";
 import { TagsSchema } from "./tags";
+import { uniqueBy } from "./zod-util";
 import { z } from "zod";
 export const AgentNameSchema = z
   .string()
@@ -41,7 +41,7 @@ export const AccessSchema = z.enum(["read", "readwrite"]);
 export type Access = z.infer<typeof AccessSchema>;
 export const AgentTypeSchema = z.literal("AgentCoreRuntime");
 export type AgentType = z.infer<typeof AgentTypeSchema>;
-export const BuildTypeSchema = z.enum(["CodeZip", "Container"]);
+export const BuildTypeSchema = z.enum(["CodeZip", "Container", "ContainerLocal"]);
 export type BuildType = z.infer<typeof BuildTypeSchema>;
 export const EntrypointSchema = z
   .string()
@@ -289,6 +289,68 @@ export const BoxVersionSchema = z
   .string()
   .regex(/^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/, "a box version is letters, digits, '.', '+' and '-'");
 
+/**
+ * How far a runtime of a Box project is contained. `SANDBOXED`, or no field: the agent runs in a box
+ * behind its Box gateway. `PRIVATE_VPC`: also in a private VPC with no internet path.
+ */
+export const ContainmentSchema = z.enum(["SANDBOXED", "PRIVATE_VPC"]);
+export type Containment = z.infer<typeof ContainmentSchema>;
+export const PRIVATE_VPC_LIMIT =
+  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each contained runtime.';
+
+/**
+ * The AgentCore Runtime platform a runtime runs on, set as `PlatformVersion` on its
+ * `AWS::BedrockAgentCore::Runtime`. No field leaves the choice to the service.
+ */
+export const PlatformVersionSchema = z.enum(["V1", "V2"]);
+export type PlatformVersion = z.infer<typeof PlatformVersionSchema>;
+/** The platform a runtime of a Box project needs: Box runs only on AgentCore Runtime V2. */
+export const BOX_PLATFORM_VERSION: PlatformVersion = "V2";
+
+function isVpcCidr(value: string): boolean {
+  const [address = "", prefix = "", ...rest] = value.split("/");
+  const octets = address.split(".");
+  if (rest.length > 0 || !/^\d{2}$/.test(prefix) || octets.length !== 4) return false;
+  if (!octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255))
+    return false;
+  const bits = Number(prefix);
+  const ip = octets.reduce((total, octet) => total * 256 + Number(octet), 0);
+  return bits >= 16 && bits <= 24 && ip % 2 ** (32 - bits) === 0;
+}
+/** Everything else about a PRIVATE_VPC runtime's VPC is set in CDK through `AgentCoreApplication.network(runtimeName)`. */
+export const ContainedNetworkSchema = z
+  .object({
+    mode: z.enum(["CONTAINED"]).optional(),
+    cidr: z
+      .string()
+      .refine(
+        isVpcCidr,
+        "Must be an aligned IPv4 CIDR block with a /16 to /24 prefix, such as 10.0.0.0/16",
+      )
+      .optional(),
+    availabilityZoneIds: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^[a-z]{3,6}\d{1,2}-az\d{1,2}$/,
+            "Must be an Availability Zone ID, such as usw2-az1",
+          ),
+      )
+      .min(2)
+      .max(3)
+      .superRefine(
+        uniqueBy(
+          (id) => id,
+          (id) => `Duplicate Availability Zone ID: ${id}`,
+        ),
+      )
+      .optional(),
+    ipAddressType: z.enum(["IPV4", "DUAL_STACK"]).optional(),
+  })
+  .strict();
+export type ContainedNetwork = z.infer<typeof ContainedNetworkSchema>;
+
 export const ProjectRuntimeSchema = z
   .object({
     name: AgentNameSchema,
@@ -321,7 +383,8 @@ export const ProjectRuntimeSchema = z
      * The box release a runtime that runs its agent in a box uses on AgentCore Runtime: build and
      * deploy ship its Linux build in a CodeZip runtime's zip, and a container image downloads it
      * (under `agentcore dev` too). `agentcore dev` runs a CodeZip agent with the `box` on your PATH
-     * instead. Absent means the box release this CLI pins.
+     * instead. Every runtime of a Box project needs it, and only a runtime with it runs in a box;
+     * `agentcore create` writes the box release this CLI pins.
      */
     box: z.object({ version: BoxVersionSchema }).optional(),
     envVars: z.array(EnvVarSchema).optional(),
@@ -341,8 +404,31 @@ export const ProjectRuntimeSchema = z
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),
+    containment: ContainmentSchema.optional(),
+    /** Only with `"containment": "PRIVATE_VPC"`. */
+    network: ContainedNetworkSchema.optional(),
+    /** No default. Every runtime of a Box project needs `"V2"`; create writes it. */
+    platformVersion: PlatformVersionSchema.optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.network && data.containment !== "PRIVATE_VPC") {
+      ctx.addIssue({
+        code: "custom",
+        message: '"network" is only allowed with "containment": "PRIVATE_VPC"',
+        path: ["network"],
+      });
+    }
+    if (
+      data.containment === "PRIVATE_VPC" &&
+      (data.networkMode !== undefined || data.networkConfig !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          '"containment": "PRIVATE_VPC" puts the runtime in its own private VPC, so leave networkMode and networkConfig unset',
+        path: ["containment"],
+      });
+    }
     if (data.networkMode === "VPC" && !data.networkConfig) {
       ctx.addIssue({
         code: "custom",
@@ -359,7 +445,7 @@ export const ProjectRuntimeSchema = z
     }
     if (
       data.networkMode === "VPC" &&
-      isContainerBuild(data) &&
+      data.build === "Container" &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
@@ -401,7 +487,7 @@ export const ProjectRuntimeSchema = z
     // runtimeVersion: it is the field that selects the packager. Validating it here
     // means the CLI reports it against agentcore.json instead of letting synthesis
     // fail later with the same rule.
-    if (data.build !== "Container" && !data.runtimeVersion) {
+    if (data.build === "CodeZip" && !data.runtimeVersion) {
       ctx.addIssue({
         code: "custom",
         message: "runtimeVersion is required for CodeZip builds",
@@ -409,7 +495,7 @@ export const ProjectRuntimeSchema = z
       });
     }
     for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
-      if (data.build !== "Container" && data[field]) {
+      if (data.build === "CodeZip" && data[field]) {
         ctx.addIssue({
           code: "custom",
           message: `${field} is only allowed for Container builds`,
@@ -417,8 +503,10 @@ export const ProjectRuntimeSchema = z
         });
       }
     }
+    // Reserved by the CodeBuild build environment; ContainerLocal builds locally.
+    // Keep in step with the @aws/agentcore-cdk schema.
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
-      if (isReservedBuildArgKey(key)) {
+      if (data.build !== "ContainerLocal" && isReservedBuildArgKey(key)) {
         ctx.addIssue({
           code: "custom",
           message: `customDockerBuildArgs key "${key}" is reserved by the build environment (must not be ${RESERVED_BUILD_ARG_KEYS.join(", ")}, or start with CODEBUILD_ or AWS_)`,

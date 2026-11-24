@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeMigrationState } from "../../core/project/migrate/journal";
 import type { DeployBackendInput, ProjectBackend } from "../../core/project";
-import { CommandRunMetricEventKey } from "../../router";
+import { DEFAULT_GLOBAL_CONFIG } from "../../globalConfig";
+import { CommandRunMetricEventKey, GlobalConfigAccessorKey, type Context } from "../../router";
 import {
   assertMetricEmitted,
   cleanupScreens,
@@ -15,12 +16,14 @@ import {
   inTempDirectory,
   renderScreen,
   TestCoreClient,
+  TestGlobalConfigAccessor,
   waitFor,
   waitForFlatText,
   waitForText,
 } from "../../testing";
 import type { DeployResult, Project, ProjectEvent } from "./types";
 import { ProjectKey } from "../../router";
+import { RegionKey } from "../keys";
 import { TuiHandoffKey } from "../../tui/handoff";
 
 // The build and deploy screens run the same ProjectManager generators the
@@ -42,8 +45,10 @@ type FakeBackendOptions = {
 
 function fakeBackend(options: FakeBackendOptions = {}) {
   const deploys: { project: Project; input: DeployBackendInput; confirmed?: boolean }[] = [];
+  const builds: Parameters<ProjectBackend["build"]>[1][] = [];
   const backend: ProjectBackend = {
-    async *build() {
+    async *build(_project, input) {
+      builds.push(input);
       yield* options.events ?? EVENTS;
       if (options.failure) throw options.failure;
     },
@@ -68,7 +73,17 @@ function fakeBackend(options: FakeBackendOptions = {}) {
       return [];
     },
   };
-  return { backend, deploys };
+  return { backend, deploys, builds };
+}
+
+/** The global config accessor the TUI's command context carries, with dependency management off. */
+function optedOut(ctx: Context): Context {
+  return ctx.withValue(
+    GlobalConfigAccessorKey,
+    new TestGlobalConfigAccessor({
+      initialConfigData: { ...DEFAULT_GLOBAL_CONFIG, disableDependencyManagement: true },
+    }),
+  );
 }
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -159,6 +174,39 @@ describe("project build screen", () => {
     // Enter stays in the TUI: back to the root menu.
     await r.press("return");
     await waitForText(r.lastFrame, "the platform for production AI agents");
+    r.unmount();
+  });
+
+  test("builds for the region the launch context resolved, as the command does", async () => {
+    const { backend } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const build = core.projectManager.build.bind(core.projectManager);
+    const regions: (string | undefined)[] = [];
+    core.projectManager.build = (project, options) => {
+      regions.push(options?.region);
+      return build(project, options);
+    };
+    const r = renderScreen("/agentcore/build", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "eu-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
+    expect(regions).toEqual(["eu-west-1"]);
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the build", async () => {
+    const { backend, builds } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const r = renderScreen("/agentcore/build", {
+      core,
+      withContext: optedOut,
+    });
+
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
+    expect(builds).toEqual([{ disableDependencyManagement: true, boxNetworks: [] }]);
     r.unmount();
   });
 
@@ -279,10 +327,24 @@ describe("project deploy screen", () => {
       is_tui: true,
       project_runtime_count: 1,
       project_memory_count: 0,
-      // the agent-box gateway entry that create declares.
+      // agent-python-minimal is not a box template, so the project has no Box gateway.
       project_gateway_count: 0,
       project_harness_count: 0,
     });
+    r.unmount();
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the deploy", async () => {
+    const { backend, deploys } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const r = renderScreen("/agentcore/deploy", {
+      core,
+      withContext: optedOut,
+    });
+
+    await waitForText(r.lastFrame, "✔ deployed project 'orders' to target 'default'");
+    expect(deploys[0]!.input.disableDependencyManagement).toBe(true);
     r.unmount();
   });
 
@@ -461,35 +523,6 @@ describe("project deploy screen", () => {
     });
     // Nothing is left to invoke.
     expect(r.lastFrame()).not.toContain("agentcore invoke");
-    r.unmount();
-  });
-
-  test("a project that lost projectType asks before deleting the recorded Box gateways", async () => {
-    const { backend, deploys } = fakeBackend();
-    const core = new TestCoreClient({ backends: { CDK: backend } });
-    const projectRoot = await inProject(core);
-    const specPath = join(projectRoot, "agentcore", "agentcore.json");
-    const { projectType: _projectType, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
-    await writeFile(specPath, JSON.stringify(spec));
-    core.projectManager.recordedBoxGateways = async () => ["orders-default-agent-box"];
-
-    const r = renderScreen("/agentcore/deploy", { core });
-
-    await waitForFlatText(r.lastFrame, "so this deploy will delete the Box gateway");
-    // Confirm lays its (y/N) inline, so the question wraps around it.
-    expect(flatFrame(r.lastFrame)).toContain("'orders-default-agent-box'. Continue?");
-    expect(deploys).toHaveLength(0);
-    await r.write("y");
-
-    await waitFor(() => deploys.length === 1);
-    const input = deploys[0]!.input;
-    expect(
-      await input.confirmBoxGatewayDeletion?.({
-        projectName: "orders",
-        targetName: "default",
-        gatewayNames: ["orders-default-agent-box"],
-      }),
-    ).toBe(true);
     r.unmount();
   });
 

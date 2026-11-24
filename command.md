@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.0.2`.
+This reference was generated from `agentcore --help` for version `1.2.0`.
 
 ## Table of contents
 
@@ -160,6 +160,11 @@ This reference was generated from `agentcore --help` for version `1.0.2`.
       - [`agentcore eval dataset delete`](#agentcore-eval-dataset-delete)
       - [`agentcore eval dataset update`](#agentcore-eval-dataset-update)
       - [`agentcore eval dataset publish`](#agentcore-eval-dataset-publish)
+    - [`agentcore eval dataset-generation`](#agentcore-eval-dataset-generation)
+      - [`agentcore eval dataset-generation start`](#agentcore-eval-dataset-generation-start)
+      - [`agentcore eval dataset-generation get`](#agentcore-eval-dataset-generation-get)
+      - [`agentcore eval dataset-generation list`](#agentcore-eval-dataset-generation-list)
+      - [`agentcore eval dataset-generation delete`](#agentcore-eval-dataset-generation-delete)
     - [`agentcore eval batch-evaluation`](#agentcore-eval-batch-evaluation)
       - [`agentcore eval batch-evaluation evaluate`](#agentcore-eval-batch-evaluation-evaluate)
       - [`agentcore eval batch-evaluation simulate`](#agentcore-eval-batch-evaluation-simulate)
@@ -193,6 +198,14 @@ This reference was generated from `agentcore --help` for version `1.0.2`.
       - [`agentcore eval recommendation get`](#agentcore-eval-recommendation-get)
       - [`agentcore eval recommendation list`](#agentcore-eval-recommendation-list)
       - [`agentcore eval recommendation delete`](#agentcore-eval-recommendation-delete)
+    - [`agentcore eval insight`](#agentcore-eval-insight)
+      - [`agentcore eval insight list`](#agentcore-eval-insight-list)
+      - [`agentcore eval insight get`](#agentcore-eval-insight-get)
+      - [`agentcore eval insight update`](#agentcore-eval-insight-update)
+    - [`agentcore eval insight-store`](#agentcore-eval-insight-store)
+      - [`agentcore eval insight-store list`](#agentcore-eval-insight-store-list)
+      - [`agentcore eval insight-store get`](#agentcore-eval-insight-store-get)
+      - [`agentcore eval insight-store update`](#agentcore-eval-insight-store-update)
   - [`agentcore payment`](#agentcore-payment)
     - [`agentcore payment manager`](#agentcore-payment-manager)
       - [`agentcore payment manager get`](#agentcore-payment-manager-get)
@@ -244,6 +257,7 @@ create a new project
 
 - `--name <name>`: name of the project to create (required)
 - `--template <template>`: the template to scaffold the Runtime from (default: "empty")
+- `--containment <containment>`: how contained the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path) (default: "sandboxed")
 - `--skip-install`: skip installing dependencies (npm install, uv sync) (default: false)
 - `--skip-git`: skip initializing a git repository (default: false)
 
@@ -290,6 +304,7 @@ add a harness to the current project (not available in China regions)
 - `--execution-role-arn <execution-role-arn>`: IAM role the harness assumes; a default role is created when omitted
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
 - `--authorizer-configuration <authorizer-configuration>`: inbound authorizer configuration (JSON)
+- `--build-config <build-config>`: advanced build settings (JSON object): build (Container or ContainerLocal), dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
 
 #### `agentcore add runtime`
 
@@ -319,6 +334,7 @@ add a Runtime to the current project
 - `--agent-id <agent-id>`: Bedrock Agent ID to import; translates that agent version into runtime code instead of writing docs
 - `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --agent-id)
 - `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)
+- `--build-config <build-config>`: advanced build settings (JSON object): build (CodeZip, Container, or ContainerLocal), dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
 
 #### `agentcore add runtime-endpoint`
 
@@ -532,7 +548,7 @@ add an LLM-as-a-Judge evaluator to the current project
 - `--model-provider <model-provider>`: model provider for the judge: Bedrock (default) or OpenResponses
 - `--model <model>`: judge model: a Bedrock model ID / inference-profile-or-foundation-model ARN, or an OpenResponses model ID (required)
 - `--instructions <instructions>`: scoring instructions for the judge (inline text, 'file://&lt;path&gt;', or '-' for stdin); use level placeholders like '{context}' (required)
-- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or an inline JSON rating scale (required)
+- `--rating-scale <rating-scale>`: a rating scale preset (1-5-quality, 1-3-simple, pass-fail, good-neutral-bad) or a JSON rating scale (inline, file://&lt;path&gt;, or - for stdin) (required)
 - `--description <description>`: a description of what this evaluator measures
 - `--kms-key-arn <kms-key-arn>`: customer-managed KMS key ARN to encrypt the evaluator
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
@@ -2311,13 +2327,12 @@ manage AgentCore evaluation datasets
 agentcore eval dataset create [options]
 ```
 
-create a dataset from JSONL examples
+create a dataset, optionally seeded from JSONL examples
 
 **Options**
 
 - `--name <name>`: the name of the dataset (required)
-- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin (required)
-- `--schema-type <schema-type>`: the structure of the dataset's examples, immutable after creation (predefined | simulated) (required)
+- `--source <source>`: dataset examples: a JSONL file (file://&lt;path&gt;), an S3 JSONL object (s3://&lt;bucket&gt;/&lt;key&gt;), or - for stdin; omit to create an empty dataset
 - `--description <description>`: a description of the dataset
 - `--kms-key-arn <kms-key-arn>`: customer managed KMS key ARN for dataset data
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
@@ -2386,6 +2401,70 @@ publish the current DRAFT as a new immutable version
 **Options**
 
 - `--id <id>`: the ID of the dataset to publish (required)
+
+#### `agentcore eval dataset-generation`
+
+```text
+agentcore eval dataset-generation [options] [command]
+```
+
+generate dataset examples from agent traces
+
+##### `agentcore eval dataset-generation start`
+
+```text
+agentcore eval dataset-generation start [options]
+```
+
+start an asynchronous generation into a dataset's DRAFT
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset to write examples into (required)
+- `--name <name>`: the name of the generation (required)
+- `--description <description>`: a description of the generation
+- `--scenario-type <scenario-type>`: the kind of example every scenario becomes (fixed | dynamic); service defaults to dynamic when omitted
+- `--generation-config <generation-config>`: where traces are read from and which become examples (JSON inline, file://&lt;path&gt;, or - for stdin) (required)
+
+##### `agentcore eval dataset-generation get`
+
+```text
+agentcore eval dataset-generation get [options]
+```
+
+get a generation by ID
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--id <id>`: the ID of the generation (required)
+
+##### `agentcore eval dataset-generation list`
+
+```text
+agentcore eval dataset-generation list [options]
+```
+
+list a dataset's generations
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-100)
+
+##### `agentcore eval dataset-generation delete`
+
+```text
+agentcore eval dataset-generation delete [options]
+```
+
+delete a generation record (its examples stay in the DRAFT)
+
+**Options**
+
+- `--dataset-id <dataset-id>`: the ID of the dataset (required)
+- `--id <id>`: the ID of the generation (required)
 
 #### `agentcore eval batch-evaluation`
 
@@ -2830,6 +2909,105 @@ delete a recommendation by ID
 **Options**
 
 - `--id <id>`: the ID of the recommendation to delete (required)
+
+#### `agentcore eval insight`
+
+```text
+agentcore eval insight [options] [command]
+```
+
+read and archive AgentCore Agent Insights
+
+##### `agentcore eval insight list`
+
+```text
+agentcore eval insight list [options]
+```
+
+list Agent Insights for an application or a batch evaluation
+
+**Options**
+
+- `--application-name <application-name>`: list the Insights of this application
+- `--batch-evaluation-id <batch-evaluation-id>`: list the Insights a batch evaluation produced
+- `--archive-status <archive-status>`: list only Insights in this archive state (ACTIVE | ARCHIVED)
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-50)
+
+##### `agentcore eval insight get`
+
+```text
+agentcore eval insight get [options]
+```
+
+get an Agent Insight with its root causes and sample sessions
+
+**Options**
+
+- `--application-name <application-name>`: the application the Insight belongs to (required)
+- `--id <id>`: the ID of the Agent Insight (required)
+
+##### `agentcore eval insight update`
+
+```text
+agentcore eval insight update [options]
+```
+
+archive an Agent Insight, or restore an archived one
+
+**Options**
+
+- `--application-name <application-name>`: the application the Insight belongs to (required)
+- `--id <id>`: the ID of the Agent Insight (required)
+- `--archive-status <archive-status>`: the archive state to set (ACTIVE | ARCHIVED) (required)
+
+#### `agentcore eval insight-store`
+
+```text
+agentcore eval insight-store [options] [command]
+```
+
+manage the AgentCore Agent Insight Store
+
+##### `agentcore eval insight-store list`
+
+```text
+agentcore eval insight-store list [options]
+```
+
+list Agent Insight Stores
+
+**Options**
+
+- `--next-token <next-token>`: pagination token returned by a previous request
+- `--max-results <max-results>`: maximum number of items to return (1-100)
+
+##### `agentcore eval insight-store get`
+
+```text
+agentcore eval insight-store get [options]
+```
+
+get an Agent Insight Store by ID
+
+**Options**
+
+- `--id <id>`: the ID of the Agent Insight Store (required)
+
+##### `agentcore eval insight-store update`
+
+```text
+agentcore eval insight-store update [options]
+```
+
+enable or disable an Agent Insight Store, or change its encryption key
+
+**Options**
+
+- `--id <id>`: the ID of the Agent Insight Store (required)
+- `--enablement-status <enablement-status>`: turn Insight generation on or off (ENABLED | DISABLED); DISABLED deletes the Store's Insights
+- `--encryption-mode <encryption-mode>`: the key that encrypts Insights (AWS\_OWNED\_KMS\_KEY | CUSTOMER\_MANAGED\_KMS)
+- `--kms-key-arn <kms-key-arn>`: the customer managed KMS key ARN (with --encryption-mode CUSTOMER\_MANAGED\_KMS)
 
 ### `agentcore payment`
 

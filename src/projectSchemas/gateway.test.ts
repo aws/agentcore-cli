@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   AgentCoreGatewaySchema,
   AgentCoreGatewayTargetSchema,
+  TARGET_TYPE_AUTH_CONFIG,
   ToolComputeConfigSchema,
 } from "./gateway";
 const toolDefinition = {
@@ -351,33 +352,22 @@ describe("gateway custom validation", () => {
   ])("accepts a passthrough target with %s", (_case, fields) => {
     expect(targetIssues({ ...githubPassthrough, ...fields })).toBeUndefined();
   });
-  it.each([
-    [
-      "GATEWAY_IAM_ROLE with no service",
-      { type: "GATEWAY_IAM_ROLE" },
-      ["outboundAuth", "service"],
-      "GATEWAY_IAM_ROLE outbound auth on passthrough targets requires a service name.",
-    ],
-    [
-      "API_KEY with no credentialName",
-      { type: "API_KEY" },
-      ["outboundAuth", "credentialName"],
-      "API_KEY outbound auth requires a credentialName.",
-    ],
-    [
-      "OAUTH with no credentialName",
-      { type: "OAUTH" },
-      ["outboundAuth", "credentialName"],
-      "OAUTH outbound auth requires a credentialName.",
-    ],
-    [
-      "NONE with a service",
-      { type: "NONE", service: "bedrock" },
-      ["outboundAuth"],
-      "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
-    ],
-  ])("still rejects a passthrough target with %s", (_case, outboundAuth, path, message) => {
-    expect(targetIssues({ ...githubPassthrough, outboundAuth })).toEqual([{ path, message }]);
+  it("still rejects a passthrough target with NONE and a service", () => {
+    expect(
+      targetIssues({ ...githubPassthrough, outboundAuth: { type: "NONE", service: "bedrock" } }),
+    ).toEqual([
+      {
+        path: ["outboundAuth"],
+        message: "service and region are only valid with GATEWAY_IAM_ROLE outbound auth.",
+      },
+    ]);
+  });
+  it("lists NONE for every target type that takes optional outbound auth", () => {
+    const missing = Object.entries(TARGET_TYPE_AUTH_CONFIG)
+      .filter(([, config]) => !config.authRequired && config.validAuthTypes.length > 0)
+      .filter(([, config]) => !config.validAuthTypes.includes("NONE"))
+      .map(([targetType]) => targetType);
+    expect(missing).toEqual([]);
   });
   it("rejects API key placement fields with non-API_KEY outbound auth", () => {
     expect(
@@ -449,5 +439,27 @@ describe("gateway custom validation", () => {
     });
     expect(imported.success).toBe(false);
     expect(imported.error?.issues[0]?.path).toEqual(["additionalPolicies"]);
+  });
+});
+
+describe("gateway application logs and traces", () => {
+  const gateway = { name: "gateway", targets: [] };
+  // FsReadWriteJson writes the parsed spec with JSON.stringify, so this is what agentcore.json keeps.
+  const roundTrip = (input: object) =>
+    JSON.parse(JSON.stringify(AgentCoreGatewaySchema.parse(input))) as Record<string, unknown>;
+
+  it.each([true, false])("keeps enableApplicationLogs and enableTraces set to %p", (value) => {
+    const written = roundTrip({ ...gateway, enableApplicationLogs: value, enableTraces: value });
+
+    expect(written.enableApplicationLogs).toBe(value);
+    expect(written.enableTraces).toBe(value);
+    expect(roundTrip(written)).toEqual(written);
+  });
+
+  it("writes neither field back when the gateway does not set it", () => {
+    const written = roundTrip(gateway);
+
+    expect("enableApplicationLogs" in written).toBe(false);
+    expect("enableTraces" in written).toBe(false);
   });
 });

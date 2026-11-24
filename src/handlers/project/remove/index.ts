@@ -8,13 +8,7 @@ import { JsonKey } from "../../keys";
 import { renderResult } from "../../utils";
 import type { ProjectManager, RemoveResourceInput } from "../types";
 import { projectMutationResource, projectReference, type ProjectMutationResult } from "../output";
-import { isBoxExtensionEntry } from "../../../projectSchemas/project";
-import {
-  APP_CODE_RETAINED_NOTICE,
-  BOX_GATEWAY_STAYS_NOTICE,
-  SECURE_VPC_REMOVED_NOTICE,
-  shouldShowAppCodeNotice,
-} from "./notice";
+import { APP_CODE_RETAINED_NOTICE, boundGatewayLines, shouldShowAppCodeNotice } from "./notice";
 
 type RemoveProjectResourceConfig = {
   projectManager: ProjectManager;
@@ -112,9 +106,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           () => {
             config.io.stderr.write("removed all resources from project\n");
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
-            if (project.spec.secureVpc === "ENABLED") {
-              config.io.stderr.write(`${SECURE_VPC_REMOVED_NOTICE}\n`);
-            }
           },
         );
         return;
@@ -166,11 +157,6 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
 
       const result = await config.projectManager.removeResource(project, input);
       reportEnvCleanup(config.io, result.removedEnvKeys);
-      // On stderr in both modes, like the .env.local lines: a --json caller still needs to know
-      // that the gateway itself is not deleted.
-      if (resource === "gateway" && isBoxExtensionEntry(project.spec, { name })) {
-        config.io.stderr.write(`${BOX_GATEWAY_STAYS_NOTICE}\n`);
-      }
       const showAppCodeNotice = shouldShowAppCodeNotice(resource);
       renderResult<ProjectMutationResult>(
         ctx,
@@ -179,9 +165,13 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
           project: projectReference(result.project),
           resource: projectMutationResource(resource, name, result.removedResource),
           removedEnvironmentKeys: result.removedEnvKeys,
+          ...(resource === "runtime" && { removedGateways: result.removedGateways }),
         },
         () => {
           config.io.stderr.write(`removed ${resource} with name '${name}' from project\n`);
+          for (const line of boundGatewayLines(name, result.removedGateways)) {
+            config.io.stderr.write(`${line}\n`);
+          }
           if (showAppCodeNotice) {
             config.io.stderr.write(`${APP_CODE_RETAINED_NOTICE}\n`);
           }

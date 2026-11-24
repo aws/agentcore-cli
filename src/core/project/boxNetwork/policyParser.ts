@@ -1,6 +1,6 @@
 import { parsePolicy, type SourceSpan, type Statement } from "./dogwood";
-import type { BoxNetworkFailure } from "./network";
 import type { ParsedProfile } from "./profileParser";
+import type { BoxNetworkFailure } from "./types";
 
 /** Box's resolved policy, beside the profile it belongs to. */
 export interface ParsedPolicy {

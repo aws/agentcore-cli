@@ -3,18 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack } from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
-import {
-  AWS_CLI_RELEASE,
-  AWS_CLI_SIGNING_KEY,
-  keyringBase64,
-  stageBoxContainers,
-} from "./boxContainer";
-import { BOX_RELEASE, type BoxRelease } from "./boxRelease";
+import { stageBoxContainers } from "./boxContainer";
+import { BOX_RELEASE } from "./boxRelease";
 
 /** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
 const PACK_PATH = join("resources", "packs", "agentcore", "pack.toml");
@@ -50,10 +45,13 @@ async function project(dockerfile: string): Promise<Project> {
           codeLocation: "app/agent",
           dockerfile: "Dockerfile",
           modelProvider: "Bedrock",
+          // create writes box.version only for the box container template, whose image copies box.
+          ...(dockerfile.includes(".box-dist") && { box: { version: "1.0.0" } }),
         },
       ],
       memories: [],
-      agentCoreGateways: [getBoxGatewayBedrockEntry("agent")],
+      projectType: "box",
+      agentCoreGateways: [boxGatewaySpec("agent")],
     },
   } as unknown as Project;
 }
@@ -62,25 +60,13 @@ const BOX_DOCKERFILE = "FROM scratch\nCOPY .box-dist/profile.toml /opt/box/\n";
 /** What build and deploy stage beside the Dockerfile. */
 const STAGED = ["box-release.env", "profile.toml"];
 
-/** The release getter build and deploy pass, which records the version each runtime asks for. */
-function releaseOf() {
-  const versions: (string | undefined)[] = [];
-  const releaseFor = async (version: string | undefined): Promise<BoxRelease> => {
-    versions.push(version);
-    return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
-  };
-  return { releaseFor, versions };
-}
-
 describe("stageBoxContainers", () => {
-  test("stages the box release of the runtime's box.version, and the Runtime profile, into the build context", async () => {
+  test("stages the pinned box release, whatever box.version names, and the Runtime profile, into the build context", async () => {
     const demo = await project(BOX_DOCKERFILE);
     demo.spec.runtimes[0]!.box = { version: "2.0.0" };
-    const { releaseFor, versions } = releaseOf();
 
-    expect(await stageBoxContainers(demo, [model([])], releaseFor)).toEqual(["agent"]);
+    expect(await stageBoxContainers(demo, [model([])])).toEqual(["agent"]);
 
-    expect(versions).toEqual(["2.0.0"]);
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     // The Runtime profile is the one build derived from the local profile.
     const { runtimeProfile, runtimeProfileHeader } = model([]);
@@ -88,14 +74,17 @@ describe("stageBoxContainers", () => {
       serializeRuntimeProfile(runtimeProfile!, runtimeProfileHeader),
     );
     expect(await readFile(join(dist, "box-release.env"), "utf8")).toBe(
-      `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=2.0.0\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
+      `BOX_REPO=${BOX_RELEASE.repo}\nBOX_VERSION=${BOX_RELEASE.version}\nBOX_ASSET=${BOX_RELEASE.linux.asset}\n` +
         `BOX_SHA256=${BOX_RELEASE.linux.sha256}\n`,
     );
     // The container also stages the @box/agentcore pack, beside box's own packs in the image.
-    expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(renderAgentCorePack(demo.spec));
+    expect(await readFile(join(dist, PACK_PATH), "utf8")).toBe(
+      renderAgentCorePack(demo.spec, demo.spec.runtimes[0]!),
+    );
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
-    // The runtime's .box/agent/aws/ holds what the profile writer stages in the build context.
+    // The runtime's .box/agent/aws/ holds a copy of what the profile writer stages, and no box.
     const aws = join(demo.rootPath, ".box", "agent", "aws");
+    expect(await Bun.file(join(aws, "box-release.env")).exists()).toBe(false);
     for (const file of ["profile.toml", PACK_PATH]) {
       expect(await readFile(join(aws, file), "utf8")).toBe(
         await readFile(join(dist, file), "utf8"),
@@ -110,17 +99,22 @@ describe("stageBoxContainers", () => {
     await writeFile(join(dist, "box"), "old");
     await writeFile(join(dist, "stale.dw"), "old");
 
-    await stageBoxContainers(demo, [model([])], releaseOf().releaseFor);
+    await stageBoxContainers(demo, [model([])]);
 
     expect((await readdir(dist)).sort()).toEqual([...STAGED, "resources"].sort());
   });
 
-  test("stages nothing for an image that does not copy .box-dist/", async () => {
+  test("stages nothing for a user's image that copies .box-dist/ but has no box.version", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+    delete demo.spec.runtimes[0]!.box;
+
+    expect(await stageBoxContainers(demo, [model([])])).toEqual([]);
+  });
+
+  test("stages nothing for a runtime with no box.version", async () => {
     const demo = await project("FROM scratch\n");
 
-    const { releaseFor, versions } = releaseOf();
-    expect(await stageBoxContainers(demo, [model([])], releaseFor)).toEqual([]);
-    expect(versions).toEqual([]);
+    expect(await stageBoxContainers(demo, [model([])])).toEqual([]);
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 
@@ -129,81 +123,11 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
-    await stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor);
+    await stageBoxContainers(demo, [model(["policy.dw"])]);
 
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED, "resources"].sort());
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
-  });
-
-  test("names the AWS CLI for the image only when the Runtime profile reads a key from Secrets Manager", async () => {
-    const demo = await project(TEMPLATE_DOCKERFILE);
-    const env = () =>
-      readFile(join(demo.rootPath, "app", "agent", ".box-dist", "box-release.env"), "utf8");
-    const langsmith = {
-      name: "langsmith",
-      kind: "langsmith",
-      keys: [],
-      secret: { variable: "LANGSMITH_KEY", keys: [] },
-    } as const;
-    const open = {
-      name: "open",
-      kind: "otlp",
-      keys: [["destination", "https://o.example"]],
-    } as const;
-
-    await stageBoxContainers(
-      demo,
-      [{ ...model([]), thirdPartyTelemetry: [langsmith] }],
-      releaseOf().releaseFor,
-    );
-    expect(await env()).toEndWith(
-      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n` +
-        `AWS_CLI_PGP_FINGERPRINT=${AWS_CLI_SIGNING_KEY.fingerprint}\n` +
-        `AWS_CLI_PGP_KEYRING=${keyringBase64(AWS_CLI_SIGNING_KEY.armored)}\n`,
-    );
-
-    for (const networks of [
-      [model([])],
-      [{ ...model([]), thirdPartyTelemetry: [open] }],
-    ] as BoxNetwork[][]) {
-      await stageBoxContainers(demo, networks, releaseOf().releaseFor);
-      expect(await env()).not.toContain("AWS_CLI");
-    }
-  });
-
-  test("the image installs the AWS CLI it is told to, checks its archive, and keeps it out of /app", () => {
-    // Read from box-release.env, which the CLI writes only with the switch on.
-    expect(TEMPLATE_DOCKERFILE).toContain('if [ -n "${AWS_CLI_URL:-}" ]; then');
-    expect(TEMPLATE_DOCKERFILE).toContain(
-      'echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c -',
-    );
-    expect(TEMPLATE_DOCKERFILE).toContain(
-      "--install-dir /usr/local/aws-cli --bin-dir /usr/local/bin",
-    );
-    // AWS's signature must be valid, and made by the key the CLI names, before the archive unzips.
-    const verify = TEMPLATE_DOCKERFILE.indexOf(
-      "gpgv --keyring /tmp/aws-cli.gpg --status-fd 1 /tmp/awscli.zip.sig /tmp/awscli.zip",
-    );
-    expect(verify).toBeGreaterThan(-1);
-    expect(TEMPLATE_DOCKERFILE).toContain('curl -fsSL -o /tmp/awscli.zip.sig "${AWS_CLI_URL}.sig"');
-    expect(TEMPLATE_DOCKERFILE).toContain(
-      'grep -q "^\\[GNUPG:\\] VALIDSIG ${AWS_CLI_PGP_FINGERPRINT} "',
-    );
-    expect(verify).toBeLessThan(TEMPLATE_DOCKERFILE.indexOf("unzip -q /tmp/awscli.zip"));
-    expect(AWS_CLI_RELEASE.url).toBe(
-      `https://awscli.amazonaws.com/awscli-exe-linux-aarch64-${AWS_CLI_RELEASE.version}.zip`,
-    );
-  });
-
-  test("gives the image AWS's CLI signing key as one keyring line", () => {
-    const keyring = Buffer.from(keyringBase64(AWS_CLI_SIGNING_KEY.armored), "base64");
-    // An OpenPGP public key packet (old format, two-byte length), version 4, of AWS CLI Team.
-    expect([keyring[0], keyring[3]]).toEqual([0x99, 4]);
-    expect(keyring.toString("latin1")).toContain("AWS CLI Team <aws-cli@amazon.com>");
-    expect(keyringBase64(AWS_CLI_SIGNING_KEY.armored)).toMatch(/^[A-Za-z0-9+/]+=*$/);
-    expect(AWS_CLI_SIGNING_KEY.fingerprint).toMatch(/^[0-9A-F]{40}$/);
-    expect(AWS_CLI_SIGNING_KEY.armored).toStartWith("-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n");
   });
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {
@@ -211,9 +135,9 @@ describe("stageBoxContainers", () => {
     await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
     await writeFile(join(demo.rootPath, ".box", "agent", "local", "policy.dw"), "// rules\n");
 
-    await expect(
-      stageBoxContainers(demo, [model(["policy.dw"])], releaseOf().releaseFor),
-    ).rejects.toThrow("does not copy .box-dist/ whole into the image");
+    await expect(stageBoxContainers(demo, [model(["policy.dw"])])).rejects.toThrow(
+      "does not copy .box-dist/ whole into the image",
+    );
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 });
@@ -232,10 +156,10 @@ const TEMPLATE_DOCKERFILE = readFileSync(
 function model(policyFiles: string[]): BoxNetwork {
   return {
     runtime: "agent",
-    gateway: "agent-box",
+    gateway: "agent-box-egress",
     region: "us-west-2",
     hosts: [],
-    credentials: [],
+    envRoutes: [],
     policyFiles,
     runtimeProfile: {
       packs: ["@box/base", "@box/agentcore"],

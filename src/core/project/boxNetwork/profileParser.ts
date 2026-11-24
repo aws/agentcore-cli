@@ -1,21 +1,14 @@
 /**
  * Reads the network inputs of a box profile from Box's own resolution of it: the `[egress]` and
  * `[mcp]` tables of the `box.toml` that `box profile show --format json --full` prints, and its
- * open routes. The profile's own `policies` name the policy files that build stages beside the
- * AgentCore Runtime profile, and its own text places each entry, `packs`, and `policies` for a
- * message.
+ * open routes. The profile's own `policies` name its policy files, and its own text places each
+ * entry, `packs`, and `policies` for a message.
  */
 import { posix } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
-import {
-  cloudWatchTelemetry,
-  thirdPartyTelemetry,
-  type LeftOutTelemetry,
-  type ProfileCloudWatchTelemetry,
-  type ThirdPartyTelemetry,
-} from "./telemetry";
 import type { TomlTable } from "../runtimeProfile/types";
+import { cloudWatchTelemetry, type ProfileCloudWatchTelemetry } from "./telemetry";
 
 /** Where the profile's own text sets a key, as `<profile path>:line:column`. */
 export interface ProfilePlaces {
@@ -35,10 +28,6 @@ export interface ParsedProfile {
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of `[telemetry]` as Box resolves it; absent means none. */
   readonly telemetry?: readonly ProfileCloudWatchTelemetry[];
-  /** The third-party targets of `[telemetry]` as Box resolves it; absent means none. */
-  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
-  /** The third-party targets that the AgentCore Runtime profile leaves out; absent means none. */
-  readonly leftOutTelemetry?: readonly LeftOutTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
   /**
@@ -80,7 +69,6 @@ export function parseResolvedProfile(
   }
   const egress: Record<string, unknown> = { ...(boxToml.egress as object | undefined) };
   const telemetry = cloudWatchTelemetry(boxToml);
-  const thirdParty = thirdPartyTelemetry(boxToml);
   for (const { route, destinations } of openRoutes) {
     if (!Object.hasOwn(egress, route)) egress[route] = { destinations };
   }
@@ -91,8 +79,6 @@ export function parseResolvedProfile(
       mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
       policyFiles,
       ...(telemetry.length > 0 && { telemetry }),
-      ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
-      ...(thirdParty.leftOut.length > 0 && { leftOutTelemetry: thirdParty.leftOut }),
     },
     failures: [],
   };
@@ -100,8 +86,8 @@ export function parseResolvedProfile(
 
 /**
  * The policy files that the box profile `text`, at `profilePath` from the project root, names
- * under `policies`, as Box reads them: files inside the profile's folder, each named once.
- * `agentcore dev` reads them with no box, so this refuses the `policy` key, as box does.
+ * under `policies`, as Box reads them: files inside the profile's folder, each named once. It
+ * refuses the `policy` key, as box does.
  */
 export function profilePolicyFiles(
   text: string,

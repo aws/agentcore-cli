@@ -9,6 +9,8 @@ import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project
 import type { ProcessStreamer, StreamProcessOptions } from "../../io";
 import { MissingToolError } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { renderBoxProfile } from "../project/templates/boxProfile";
+import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 import { BoxDevRunner } from "./box";
 
@@ -39,7 +41,8 @@ async function profile(projectRoot: string, name: string): Promise<void> {
   const local = join(projectRoot, ".box", name, "local");
   await mkdir(local, { recursive: true });
   await writeFile(join(local, "profile.toml"), PROFILE.replace("app/agent", `app/${name}`));
-  await mkdir(join(projectRoot, "app", name, ".venv"), { recursive: true });
+  await mkdir(join(projectRoot, "app", name, ".venv", "bin"), { recursive: true });
+  await writeFile(join(projectRoot, "app", name, ".venv", "bin", "python"), "");
 }
 
 /** A project named `Demo` that holds the agent's box profile in .box/agent/local when `profiled`. */
@@ -55,7 +58,8 @@ async function scene(
     const local = join(projectRoot, ".box", "agent", "local");
     await mkdir(local, { recursive: true });
     await writeFile(join(local, "profile.toml"), options.profile ?? PROFILE);
-    await mkdir(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
+    await mkdir(join(projectRoot, "app", "agent", ".venv", "bin"), { recursive: true });
+    await writeFile(join(projectRoot, "app", "agent", ".venv", "bin", "python"), "");
   }
 
   const calls: { command: string[]; options: StreamProcessOptions }[] = [];
@@ -89,6 +93,7 @@ function input(
   protocol?: ProjectRuntime["protocol"],
   entrypoint = "main.py",
   boxProject = true,
+  box = true,
 ): DevServerInput {
   return {
     runtime: {
@@ -97,6 +102,8 @@ function input(
       codeLocation: "app/agent",
       protocol,
       entrypoint,
+      // create writes box.version only for a box template.
+      ...(box && { box: { version: "1.0.0" } }),
     } as ProjectRuntime,
     projectRoot,
     boxProject,
@@ -134,27 +141,29 @@ describe("BoxDevRunner", () => {
   test("needs no box for a project without a box profile", async () => {
     const { projectRoot, checked, fallbackRuns, runner } = await scene(false, false);
 
-    await collect(runner.run(input(projectRoot)));
+    await collect(
+      runner.run(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false)),
+    );
 
     expect(checked).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
   });
 
-  test("runs the project's box profile from the project folder", async () => {
+  test("runs the agent's box profile from the runtime's code folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 
     const events = await collect(runner.run(input(projectRoot)));
 
     expect(calls.map(({ command }) => command)).toEqual([
-      ["box", "run", ".box/agent/local/profile.toml", "--no-banner"],
+      ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
     ]);
-    expect(calls[0]!.options.cwd).toBe(projectRoot);
+    expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
     expect(fallbackRuns).toEqual([]);
     expect(events).toEqual([
       TRACES_NOTICE,
       {
         type: "status",
-        message: "Starting the agent in a box (box run .box/agent/local/profile.toml)",
+        message: "Starting the agent in a box (box run ../../.box/agent/local/profile.toml)",
       },
       { type: "stdout", line: "Uvicorn running" },
     ]);
@@ -168,10 +177,35 @@ describe("BoxDevRunner", () => {
     await collect(runner.run(input(projectRoot)));
 
     expect(calls.map(({ command }) => command[2])).toEqual([
-      ".box/second/local/profile.toml",
-      ".box/agent/local/profile.toml",
+      "../../.box/second/local/profile.toml",
+      "../../.box/agent/local/profile.toml",
+    ]);
+    expect(calls.map(({ options }) => options.cwd)).toEqual([
+      join(projectRoot, "app", "second"),
+      join(projectRoot, "app", "agent"),
     ]);
     expect(fallbackRuns).toEqual([]);
+  });
+
+  test("starts box in the runtime's folder for a profile create writes, whatever it says", async () => {
+    // So the agent's workspace, and the project grant, are app/agent and nothing else of the
+    // project: not agentcore/.env.local, which holds the model's key. The folder comes from
+    // agentcore.json, so a profile without its header comment starts there too.
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+      runtimeName: "agent",
+    });
+    const noComments = renderBoxProfile("Demo", runtime, "us-west-2")!
+      .split("\n")
+      .filter((line) => !line.startsWith("#"))
+      .join("\n");
+    const { projectRoot, calls, runner } = await scene(true, true, { profile: noComments });
+
+    await collect(runner.run(input(projectRoot)));
+
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
+    ]);
+    expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
   });
 
   test("hands box run the .env.local values, so it can attach the API key, and not dev's OTEL ones", async () => {
@@ -214,15 +248,26 @@ describe("BoxDevRunner", () => {
       );
     });
 
-    test("prefers the shell's value to .env.local's", async () => {
+    test("prefers the shell's value to .env.local's, and says which, with no value", async () => {
+      // A wide-scope GITHUB_TOKEN in a shell profile would otherwise silently replace a narrow
+      // project token in .env.local.
       const { projectRoot, calls, runner } = await scene(true, true, {
         profile: GITHUB_PROFILE,
         processEnv: { GITHUB_TOKEN: "ghp_shell" },
       });
 
-      await collect(runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }));
+      const events = await collect(
+        runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }),
+      );
 
       expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_shell");
+      expect(events).toContainEqual({
+        type: "status",
+        message:
+          "GITHUB_TOKEN, which [egress.github] of the box profile reads, is set in this shell and " +
+          `in ${ENV_LOCAL_RELATIVE_PATH} to different values; box uses the shell's`,
+      });
+      expect(JSON.stringify(events)).not.toMatch(/ghp_shell|ghp_file/);
     });
 
     test("uses .env.local's value when the shell has none", async () => {
@@ -234,6 +279,22 @@ describe("BoxDevRunner", () => {
       await collect(runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }));
 
       expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_file");
+    });
+
+    test("uses .env.local's value, with no warning, when the shell's is blank", async () => {
+      // A blank shell value, such as an unset CI secret, hid the .env.local one from the check
+      // but not from box run, so dev warned that box would not start, and box started.
+      const { projectRoot, calls, runner } = await scene(true, true, {
+        profile: GITHUB_PROFILE,
+        processEnv: { GITHUB_TOKEN: "" },
+      });
+
+      const events = await collect(
+        runner.run({ ...input(projectRoot), env: { GITHUB_TOKEN: "ghp_file" } }),
+      );
+
+      expect(calls[0]!.options.env!.GITHUB_TOKEN).toBe("ghp_file");
+      expect(JSON.stringify(events)).not.toContain("GITHUB_TOKEN for [egress.github]");
     });
 
     test("warns when neither has it, before box run reports it", async () => {
@@ -249,7 +310,8 @@ describe("BoxDevRunner", () => {
         message:
           "the box profile .box/agent/local/profile.toml reads GITHUB_TOKEN for [egress.github], " +
           "but it is not set, and box does not start without it. Export it in this shell " +
-          `(export GITHUB_TOKEN=...) or put it in ${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
+          "(export GITHUB_TOKEN=...) or put it in " +
+          `${ENV_LOCAL_RELATIVE_PATH}, then restart dev.`,
       });
       // box run still starts, so its own error follows the warning.
       expect(calls).toHaveLength(1);
@@ -259,14 +321,16 @@ describe("BoxDevRunner", () => {
   test("runs the agent the usual way when the project has no box profile", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
 
-    const events = await collect(runner.run(input(projectRoot)));
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false)),
+    );
 
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 
-  test("refuses a runtime that starts box, when the project has no box profile", async () => {
+  test("refuses a box runtime when the project has no box profile", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
 
     const error = await collect(runner.run(input(projectRoot, 8080, "HTTP", "start.py"))).catch(
@@ -275,7 +339,7 @@ describe("BoxDevRunner", () => {
 
     expect(error).toBeInstanceOf(ResourceNotFoundError);
     expect((error as Error).message).toContain(
-      'runtime "agent" runs its agent in a box (entrypoint start.py)',
+      'runtime "agent" runs its agent in a box (it has box.version in agentcore.json)',
     );
     expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(0);
@@ -285,11 +349,44 @@ describe("BoxDevRunner", () => {
     const { projectRoot, calls, fallbackRuns, runner, checked } = await scene(true);
 
     const events = await collect(
-      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false)),
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false, false)),
     );
 
     expect(calls).toEqual([]);
     expect(checked).toEqual([]);
+    expect(fallbackRuns).toHaveLength(1);
+    // The profile was written for a Box project, so dev says why it does not use it.
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: 'Running without a box: agentcore.json has no "projectType": "box"',
+      },
+      { type: "stdout", line: "fallback" },
+    ]);
+  });
+
+  test("says nothing about box outside a Box project with no box profile", async () => {
+    const { projectRoot, runner } = await scene(false);
+
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "main.py", /* boxProject */ false, false)),
+    );
+
+    expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
+  });
+
+  test.each([
+    ["outside a Box project", false],
+    ["in a Box project", true],
+  ])("runs a user's own start.py with no box.version the usual way %s", async (_, boxProject) => {
+    const { projectRoot, calls, fallbackRuns, runner } = await scene(false);
+
+    const events = await collect(
+      runner.run(input(projectRoot, 8080, "HTTP", "start.py", boxProject, /* box */ false)),
+    );
+
+    // Only box.version in a Box project makes a runtime boxed, not its entry point.
+    expect(calls).toEqual([]);
     expect(fallbackRuns).toHaveLength(1);
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
@@ -303,7 +400,7 @@ describe("BoxDevRunner", () => {
 
     expect(error).toBeInstanceOf(ProjectStateError);
     expect((error as Error).message).toBe(
-      'runtime "agent" runs its agent in a box (start.py), but agentcore.json has no ' +
+      'runtime "agent" runs its agent in a box (it has box.version), but agentcore.json has no ' +
         '"projectType": "box". Add "projectType": "box" back to agentcore.json, then retry.',
     );
     expect(calls).toEqual([]);
@@ -321,11 +418,9 @@ describe("BoxDevRunner", () => {
   test("runs a runtime the usual way when it has no box profile of its own", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
     const second = input(projectRoot);
-    second.runtime = {
-      ...second.runtime,
-      name: "second",
-      codeLocation: "app/second",
-    } as ProjectRuntime;
+    // The second runtime was added without a box template, so it has no box.version.
+    const { box: _box, ...plain } = second.runtime;
+    second.runtime = { ...plain, name: "second", codeLocation: "app/second" } as ProjectRuntime;
 
     const events = await collect(runner.run(second));
 
@@ -335,10 +430,27 @@ describe("BoxDevRunner", () => {
     expect(events).toEqual([{ type: "stdout", line: "fallback" }]);
   });
 
+  test("says why it runs a runtime with its own box profile but no box.version the usual way", async () => {
+    const { projectRoot, fallbackRuns, runner } = await scene(false);
+    await profile(projectRoot, "second");
+    const second = secondOf(input(projectRoot, 8080, undefined, "main.py", true, /* box */ false));
+
+    const events = await collect(runner.run(second));
+
+    expect(fallbackRuns).toHaveLength(1);
+    expect(events).toEqual([
+      {
+        type: "status",
+        message: 'Running without a box: runtime "second" has no box.version in agentcore.json',
+      },
+      { type: "stdout", line: "fallback" },
+    ]);
+  });
+
   test("refuses a box runtime that has no box profile of its own, though another runtime has one", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 
-    const run = collect(runner.run(secondOf(input(projectRoot, 8080, "HTTP", "start.py"))));
+    const run = collect(runner.run(secondOf(input(projectRoot))));
 
     await expect(run).rejects.toBeInstanceOf(ResourceNotFoundError);
     await expect(run).rejects.toThrow(
@@ -348,9 +460,13 @@ describe("BoxDevRunner", () => {
     expect(fallbackRuns).toEqual([]);
   });
 
-  test("tells the user to run uv sync when the runtime has no .venv", async () => {
+  test.each([
+    ["has no .venv", true],
+    ["has the empty .venv that create --skip-install leaves", false],
+  ])("tells the user to run uv sync when the runtime %s", async (_, removeVenv) => {
     const { projectRoot, calls, runner } = await scene(true);
-    await rm(join(projectRoot, "app", "agent", ".venv"), { recursive: true });
+    const venv = join(projectRoot, "app", "agent", ".venv");
+    await rm(removeVenv ? venv : join(venv, "bin"), { recursive: true });
 
     const run = collect(runner.run(input(projectRoot)));
 

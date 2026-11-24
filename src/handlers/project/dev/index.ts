@@ -1,11 +1,10 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import z from "zod";
 import { createInspectorHandler } from "../../../core/dev/inspector/server";
 import type { InspectorDeps } from "../../../core/dev/inspector/types";
 import { rewriteOtelEndpointForContainer } from "../../../core/dev/otel/collector";
 import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev/port";
-import { boxLocalProfilePath, boxWorkloadPort } from "../../../core/project/templates/boxProfile";
+import { boxWorkloadPort, runsInBox } from "../../../core/project/templates/boxProfile";
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
@@ -34,6 +33,7 @@ import type { Project, ProjectManager } from "../types";
 import { BMA_TEMPLATE_NAME, isBmaRuntime } from "../bma";
 import type { DevEnvironmentLoader } from "./environment";
 import type { DevEvent, DevRunner, DevTraceCollector, DevTraceCollectorStarter } from "./types";
+import { isContainerBuild } from "../../../projectSchemas/constants";
 
 /** The Inspector UI binds 8081 or, when that is taken, the next free port. */
 const UI_DEFAULT_PORT = 8081;
@@ -69,7 +69,7 @@ function otelEnvForRuntime(
   runtime: ProjectRuntime,
 ): Record<string, string> {
   const env = { ...collector.envVars, OTEL_SERVICE_NAME: runtime.name };
-  return runtime.build === "Container" ? rewriteOtelEndpointForContainer(env) : env;
+  return isContainerBuild(runtime) ? rewriteOtelEndpointForContainer(env) : env;
 }
 
 function supportsLocalDev(runtime: ProjectRuntime): boolean {
@@ -474,8 +474,8 @@ async function runRuntimeDev({
         const boxPorts = new Set(
           runtimes
             .filter(
-              ({ build, name }) =>
-                build === "CodeZip" && existsSync(boxLocalProfilePath(project.rootPath, name)),
+              (runtime) =>
+                runtime.build === "CodeZip" && runsInBox(isBoxProject(project.spec), runtime),
             )
             .map(({ protocol }) => boxWorkloadPort(protocol)),
         );
@@ -585,7 +585,7 @@ async function startRuntimeTraceCollector({
   const collector = await config.startTraceCollector({
     tracesDirectory,
     // A container reaches the collector over the host bridge, which a loopback bind refuses.
-    host: runtimes.some((runtime) => runtime.build === "Container") ? "0.0.0.0" : "127.0.0.1",
+    host: runtimes.some((runtime) => isContainerBuild(runtime)) ? "0.0.0.0" : "127.0.0.1",
     onError: (error) => {
       if (tracePersistErrorReported) return;
       tracePersistErrorReported = true;
@@ -644,7 +644,7 @@ async function runWithoutUi({
   const env = await options.environment(runtime);
   signal.throwIfAborted();
 
-  const runner = config.runners[runtime.build];
+  const runner = config.runners[isContainerBuild(runtime) ? "Container" : "CodeZip"];
   for await (const event of runner.run({
     runtime,
     projectRoot: project.rootPath,

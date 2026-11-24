@@ -7,20 +7,26 @@ import {
   TestGlobalConfigAccessor,
   testIO,
 } from "../../../testing";
-import type { DeployResult, ProjectEvent } from "../types";
+import type { BuildProjectInput, DeployResult, ProjectEvent } from "../types";
 import type { ProjectBackend } from "../../../core/project";
+import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { applyOverrides } from "../../../globalConfig/config";
 
 type TestBuildOptions = {
   events?: ProjectEvent[];
   /** Thrown by the fake backend after its events, to exercise failure paths. */
   failure?: Error;
+  /** Seeds the global config's disableDependencyManagement flag (defaults to off). */
+  disableDependencyManagement?: boolean;
 };
 
 /** Stubs the backend so the real FsProjectManager and withProject stay in the path. */
 function testBuildCommand(options: TestBuildOptions = {}) {
   const io = testIO();
+  const calls: (BuildProjectInput | undefined)[] = [];
   const backend: ProjectBackend = {
-    async *build() {
+    async *build(_project, input) {
+      calls.push(input);
       yield* options.events ?? [];
       if (options.failure) throw options.failure;
     },
@@ -37,12 +43,18 @@ function testBuildCommand(options: TestBuildOptions = {}) {
   const core = new TestCoreClient({ backends: { CDK: backend } });
   const root = createRootHandler(core, {
     io: io.io,
-    globalConfigAccessor: new TestGlobalConfigAccessor(),
+    globalConfigAccessor: new TestGlobalConfigAccessor({
+      initialConfigData: applyOverrides(DEFAULT_GLOBAL_CONFIG, {
+        disableDependencyManagement: options.disableDependencyManagement,
+      }),
+    }),
     logger: createSilentLogger(),
   });
 
   return {
     io,
+    core,
+    calls,
     run: (args: string[] = []) => root.route(["node", "agentcore", "build", ...args]),
   };
 }
@@ -57,6 +69,18 @@ async function inProject(): Promise<void> {
 }
 
 describe("project build handler", () => {
+  test("passes the global config's disableDependencyManagement flag into the build", async () => {
+    const managed = testBuildCommand();
+    await inProject();
+    await managed.run();
+    expect(managed.calls[0]?.disableDependencyManagement).toBe(false);
+
+    const optedOut = testBuildCommand({ disableDependencyManagement: true });
+    await inProject();
+    await optedOut.run();
+    expect(optedOut.calls[0]?.disableDependencyManagement).toBe(true);
+  });
+
   test("writes step lines and the success line to stderr, nothing to stdout", async () => {
     const subject = testBuildCommand({
       events: [
@@ -73,6 +97,21 @@ describe("project build handler", () => {
     // Output lines belong to the debug log outside a TTY, not the plain stream.
     expect(subject.io.stderr()).not.toContain("synth chatter");
     expect(subject.io.stdout()).toBe("");
+  });
+
+  test("builds for the region --region names", async () => {
+    const subject = testBuildCommand();
+    const build = subject.core.projectManager.build.bind(subject.core.projectManager);
+    const regions: (string | undefined)[] = [];
+    subject.core.projectManager.build = (project, options) => {
+      regions.push(options?.region);
+      return build(project, options);
+    };
+    await inProject();
+
+    await subject.run(["--region", "eu-west-1"]);
+
+    expect(regions).toEqual(["eu-west-1"]);
   });
 
   test("renders the success message as JSON with --json", async () => {

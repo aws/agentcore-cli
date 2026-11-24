@@ -7,14 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError } from "../../../errors/errors";
 import { type ProcessRunner, runProcess } from "../../../io/exec";
-import { gte } from "semver";
 import {
   BOX_INSTALL_HINT,
-  BOX_MINIMUM_VERSION,
   BOX_RELEASE,
   BOX_RELEASE_PAGE,
   type BoxRelease,
-  boxReleaseFor,
+  publishInstall,
   resolveBoxLinuxBuild,
 } from "./boxRelease";
 
@@ -33,7 +31,7 @@ async function temp(prefix: string): Promise<string> {
 }
 
 const BINARIES = ["box", "strands-box-sock-alias", "strands-box-contain-trampoline"];
-const VERSION = "9.9.9-linux-preview.1";
+const VERSION = BOX_RELEASE.version;
 
 /** A tarball of `files` (relative path to content), and its SHA-256. */
 async function tarball(name: string, files: Record<string, string>) {
@@ -58,13 +56,13 @@ async function fakeRelease(boxFiles?: Record<string, string>) {
     "resources/config.toml": "",
     "release.json": JSON.stringify({ box_version: VERSION }),
   };
-  const box = await tarball(`box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
+  const box = await tarball(`box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`, files);
   const release: BoxRelease = {
-    repo: "owner/box-releases",
+    repo: BOX_RELEASE.repo,
     version: VERSION,
     linux: {
       target: "aarch64-unknown-linux-gnu",
-      asset: `box-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
+      asset: `box-cli-v${VERSION}-aarch64-unknown-linux-gnu.tar.gz`,
       sha256: box.sha256,
     },
   };
@@ -109,7 +107,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     expect(
       commands.filter((command) => command[0] === "curl").map((command) => command.at(-1)),
     ).toEqual([
-      `https://github.com/owner/box-releases/releases/download/v${VERSION}/${release.linux.asset}`,
+      `https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/${release.linux.asset}`,
     ]);
   });
 
@@ -141,6 +139,20 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     expect(await readFile(join(root, "strands-box-contain-trampoline"), "utf8")).toBe(
       "#!strands-box-contain-trampoline\n",
     );
+  });
+
+  test("replaces the incomplete folder an interrupted install left", async () => {
+    const home = await temp("box-home-");
+    const root = join(home, ".agentcore", "box", `${VERSION}-aarch64-unknown-linux-gnu`);
+    await mkdir(root, { recursive: true });
+    await writeFile(join(root, "box"), "partial");
+    const { release, runner } = await fakeRelease();
+
+    const build = await resolveBoxLinuxBuild({}, { runner, home, release });
+
+    expect(build.binaries).toBe(root);
+    expect(await readFile(join(root, "box"), "utf8")).toBe("#!box\n");
+    expect(existsSync(join(root, "release.json"))).toBe(true);
   });
 
   test("reuses an installed release without downloading again", async () => {
@@ -175,7 +187,7 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     );
 
     await expect(resolveBoxLinuxBuild({}, { runner, home, release })).rejects.toThrow(
-      /has no release\.json for box 9\.9\.9-linux-preview\.1, or no box packs/,
+      `has no release.json for box ${VERSION}, or no box packs`,
     );
   });
 
@@ -189,85 +201,83 @@ describe("resolveBoxLinuxBuild from the box release", () => {
     const result = resolveBoxLinuxBuild({}, { runner, home, release });
 
     await expect(result).rejects.toThrow(
-      /downloaded from https:\/\/github\.com\/owner\/box-releases\/releases\/download\/v9\.9\.9-linux-preview\.1\/box-v/,
+      `downloaded from https://github.com/${BOX_RELEASE.repo}/releases/download/v${VERSION}/box-cli-v`,
     );
     await expect(result).rejects.toThrow(/HTTP 404: Not Found/);
   });
 });
 
-describe("boxReleaseFor a runtime's box.version", () => {
-  /** A runner whose curl serves SHA256SUMS.txt with `text`, and records each URL. */
-  function sumsServer(text: string) {
-    const urls: string[] = [];
-    const runner: ProcessRunner = async (command) => {
-      urls.push(command.at(-1)!);
-      await writeFile(command[command.indexOf("-o") + 1]!, text);
-    };
-    return { runner, urls };
+describe("publishInstall", () => {
+  /** A payload and a cache folder `root` beside it, each holding `file` with its folder's text. */
+  async function folders(rootText?: string) {
+    const parent = await temp("box-publish-");
+    const payload = join(parent, "payload");
+    const root = join(parent, "root");
+    await mkdir(payload);
+    await writeFile(join(payload, "box"), "mine");
+    if (rootText !== undefined) {
+      await mkdir(root);
+      await writeFile(join(root, "box"), rootText);
+    }
+    return { payload, root };
   }
 
-  test("is the pinned release, with no download, for no version or a pinned one", async () => {
-    const { runner, urls } = sumsServer("");
+  test("keeps the install another process renamed in after the first check, before the rename", async () => {
+    // `root` is complete only by the time the rename fails: the other process won in between.
+    const { payload, root } = await folders("theirs");
+    let checks = 0;
 
-    expect(await boxReleaseFor(undefined, {}, { runner })).toBe(BOX_RELEASE);
-    expect(await boxReleaseFor(BOX_RELEASE.version, {}, { runner })).toBe(BOX_RELEASE);
-    expect(urls).toEqual([]);
+    publishInstall(payload, root, () => checks++ > 0);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("theirs");
+    expect(checks).toBe(2);
   });
 
-  test("takes another version's checksums from its release's SHA256SUMS.txt", async () => {
-    const home = await temp("box-home-");
-    const linux = "a".repeat(64);
-    const mac = "c".repeat(64);
-    const { runner, urls } = sumsServer(
-      `${linux}  box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz\n` +
-        `${mac}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`,
-    );
+  test("replaces an incomplete folder an interrupted install left", async () => {
+    const { payload, root } = await folders("partial");
 
-    const release = await boxReleaseFor("2.0.0", {}, { runner, home });
+    publishInstall(payload, root, () => false);
 
-    expect(urls).toEqual([
-      `https://github.com/${BOX_RELEASE.repo}/releases/download/v2.0.0/SHA256SUMS.txt`,
-    ]);
-    expect(release.version).toBe("2.0.0");
-    expect(release.linux).toEqual({
-      target: "aarch64-unknown-linux-gnu",
-      asset: "box-v2.0.0-aarch64-unknown-linux-gnu.tar.gz",
-      sha256: linux,
-    });
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
+    expect(existsSync(payload)).toBe(false);
   });
 
-  test("refuses a version whose release lists no Linux box", async () => {
-    const home = await temp("box-home-");
-    const { runner } = sumsServer(`${"c".repeat(64)}  box-v2.0.0-aarch64-apple-darwin.tar.gz\n`);
+  test("renames the payload in when no install is there", async () => {
+    const { payload, root } = await folders();
 
-    await expect(boxReleaseFor("2.0.0", {}, { runner, home })).rejects.toThrow(
-      /box 2\.0\.0, which agentcore\.json names under box\.version, has no box-v2\.0\.0-aarch64-unknown-linux-gnu\.tar\.gz/,
-    );
+    publishInstall(payload, root, () => false);
+
+    expect(await readFile(join(root, "box"), "utf8")).toBe("mine");
   });
 });
 
 describe("the pinned releases", () => {
-  test("box is at least the first release that reads the profiles the CLI writes", () => {
-    expect(BOX_MINIMUM_VERSION).toBe("0.1.11-linux-preview.7");
-    expect(gte(BOX_RELEASE.version, BOX_MINIMUM_VERSION)).toBe(true);
+  test("pins one box: the asset of its own version, its SHA-256, and its release page", () => {
     expect(BOX_RELEASE.linux.asset).toBe(
-      `box-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
+      `box-cli-v${BOX_RELEASE.version}-aarch64-unknown-linux-gnu.tar.gz`,
     );
     expect(BOX_RELEASE.linux.sha256).toMatch(/^[0-9a-f]{64}$/);
+    // The e2e workflow installs the macOS build on its macOS runner, from this pin, of its own
+    // release when it names one.
+    expect(BOX_RELEASE.darwin?.asset).toBe(
+      `box-cli-v${BOX_RELEASE.darwin?.version ?? BOX_RELEASE.version}-aarch64-apple-darwin.tar.gz`,
+    );
+    expect(BOX_RELEASE.darwin?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(BOX_RELEASE_PAGE).toBe(
-      `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}`,
+      `https://github.com/strands-agents/box/releases/tag/v${BOX_RELEASE.version}`,
     );
   });
 
-  test("the install hint names the pinned release, and the first release for a machine it has no build for", () => {
-    // 0.1.11-linux-preview.7 is the first release that reads the profiles the CLI writes.
+  test("the install hint names the box-cli archive of the pinned release, and the macOS release", () => {
+    // The macOS build of 0.3.0 does not run, so macOS gets the darwin pin's release.
     expect(BOX_INSTALL_HINT).toBe(
-      "Install box: download the build for your machine from " +
-        `https://github.com/mquang-amazon/box-releases/releases/tag/v${BOX_RELEASE.version}, unpack it ` +
-        "into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. When that " +
-        "release has no build for your machine, use box 0.1.11-linux-preview.7 " +
-        "(https://github.com/mquang-amazon/box-releases/releases/tag/v0.1.11-linux-preview.7) or a " +
-        "later release that has one.",
+      "Install box: download box-cli-v0.3.0-<target>.tar.gz for your machine from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0 (not a box-v0.3.0-* archive, " +
+        "which has no packs), unpack it into a folder (tar -xzf <archive> -C <folder>), and add " +
+        "that folder to your PATH. On macOS, use " +
+        "box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS " +
+        "build of 0.3.0 does not run.",
     );
   });
 });

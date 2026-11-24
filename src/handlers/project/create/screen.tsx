@@ -10,12 +10,13 @@ import {
   PRIVATE_VPC_COST,
   PRIVATE_VPC_NOTE,
   type CreateProjectInput,
-  type Isolation,
+  type ContainmentLevel,
 } from "../types";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
+  isBoxTemplate,
   resolveRuntimeTemplateShortcut,
   type TemplateName,
 } from "../shortcuts";
@@ -55,7 +56,11 @@ import {
 } from "../../../components/wizard";
 import { darkTheme } from "../../../components/ui/_core.js";
 import { TuiExitMessageKey } from "../../../tui/exitMessage";
-import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import {
+  boxRegionWarning,
+  stripCreateRegionUnavailableDefaults,
+  validateCreateRegionSupport,
+} from "./region";
 
 const theme = darkTheme;
 
@@ -73,7 +78,7 @@ interface CreateProjectFormValues {
   // The code-based model step's answer; only read for templates that take a
   // model-provider override (see templateTakesModelProvider).
   runtimeModel: RuntimeModelValues;
-  isolation: Isolation;
+  containment: ContainmentLevel;
 }
 
 function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
@@ -83,7 +88,7 @@ function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
     model: emptyHarnessModel(),
     template: DEFAULT_TEMPLATE,
     runtimeModel: emptyRuntimeModel(region),
-    isolation: "sandboxed",
+    containment: "sandboxed",
   };
 }
 
@@ -112,7 +117,7 @@ const PROJECT_KIND_CHOICES: Choice<ProjectKind>[] = [
 
 const DEFAULT_TEMPLATE: TemplateName = "agent-python-strands";
 
-const ISOLATION_CHOICES: Choice<Isolation>[] = [
+const CONTAINMENT_CHOICES: Choice<ContainmentLevel>[] = [
   {
     value: "sandboxed",
     label: "sandboxed",
@@ -159,10 +164,10 @@ export function buildCreateInput(
       ...(apiKey !== undefined && { harnessApiKey: apiKey }),
     };
   }
-  const isolation = isBoxTemplate(values.template) &&
-    values.isolation === "private-vpc" && { isolation: values.isolation };
+  const containment = isBoxTemplate(values.template) &&
+    values.containment === "private-vpc" && { containment: values.containment };
   if (values.template === EMPTY_TEMPLATE_NAME) {
-    return { name: values.name, skipInstall: false, skipGit: false, ...isolation };
+    return { name: values.name, skipInstall: false, skipGit: false, ...containment };
   }
   const model = templateTakesModelProvider(values.template)
     ? toRuntimeModelOverrides(values.runtimeModel)
@@ -171,7 +176,7 @@ export function buildCreateInput(
     name: values.name,
     skipInstall: false,
     skipGit: false,
-    ...isolation,
+    ...containment,
     scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(values.template, {
       runtimeName: DEFAULT_CREATE_RUNTIME_NAME,
       ...(model && {
@@ -182,12 +187,6 @@ export function buildCreateInput(
       }),
     }),
   };
-}
-
-// isBoxTemplate says whether the template runs its agent in Strands Box, the only case where
-// isolation applies.
-function isBoxTemplate(template: CreateProjectFormValues["template"]): boolean {
-  return template !== EMPTY_TEMPLATE_NAME && RUNTIME_TEMPLATE_SHORTCUTS[template].box;
 }
 
 // summaryOf renders the review table: what will be created, and where.
@@ -208,7 +207,7 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     template: values.template,
     ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
     ...(isBoxTemplate(values.template) && {
-      isolation: values.isolation === "private-vpc" ? "private VPC" : "sandboxed",
+      containment: values.containment === "private-vpc" ? "private VPC" : "sandboxed",
     }),
     directory: `./${values.name}`,
   };
@@ -259,6 +258,8 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
         validateCreateRegionSupport(input, resolvedRegion);
         const stripped = stripCreateRegionUnavailableDefaults(input, resolvedRegion);
         if (stripped !== undefined) yield { type: "step" as const, message: stripped };
+        const boxWarning = boxRegionWarning(input, resolvedRegion);
+        if (boxWarning !== undefined) yield { type: "warning" as const, message: boxWarning };
         return yield* core.projectManager.create({ ...input, region: resolvedRegion });
       }}
       runningLabel={`creating ${values.name}…`}
@@ -278,7 +279,9 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
           ? emptyProjectCreatedMessage(values.name, china).trimEnd()
           : `next step:\n  cd ${values.name}/ && agentcore`;
         ctx.value(TuiExitMessageKey)?.(
-          values.isolation === "private-vpc" ? `${message}\n${PRIVATE_VPC_NOTE}` : message,
+          isBoxTemplate(values.template) && values.containment === "private-vpc"
+            ? `${message}\n${PRIVATE_VPC_NOTE}`
+            : message,
         );
         exit();
       }}
@@ -339,11 +342,11 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       )}
 
       {values.kind === "agent" && isBoxTemplate(values.template) && (
-        <Step stepKey="isolation" prompt="how isolated should the agent be?">
-          <ChoiceField<Isolation>
-            choices={ISOLATION_CHOICES}
-            value={values.isolation}
-            onChange={(isolation) => patch({ isolation })}
+        <Step stepKey="containment" prompt="how contained should the agent be?">
+          <ChoiceField<ContainmentLevel>
+            choices={CONTAINMENT_CHOICES}
+            value={values.containment}
+            onChange={(containment) => patch({ containment })}
           />
         </Step>
       )}

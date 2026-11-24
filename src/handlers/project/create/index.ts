@@ -7,11 +7,13 @@ import { runWithProgress } from "../../../tui/progress";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   formatTemplateParameterHelp,
+  isBoxTemplate,
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
-  ISOLATION_LEVELS,
+  CONTAINMENT_LEVELS,
   PRIVATE_VPC_NOTE,
   type CreateProjectInput,
   type ModelProvider,
@@ -30,7 +32,11 @@ import { InputValidationError, RegionUnsupportedFeatureError } from "../../../er
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
-import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import {
+  boxRegionWarning,
+  stripCreateRegionUnavailableDefaults,
+  validateCreateRegionSupport,
+} from "./region";
 import { chinaModelProviderRestriction } from "../../../core/project/manager";
 import { isChinaRegion } from "../../../core/partition";
 import { harnessApiKeyCredentialName } from "../../../core/project/templates/harness";
@@ -112,9 +118,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
-        "isolation",
-        "how isolated a box template's agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
-        z.enum(ISOLATION_LEVELS).default("sandboxed"),
+        "containment",
+        "how contained the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(CONTAINMENT_LEVELS).default("sandboxed"),
       ),
       flag(
         "skip-install",
@@ -137,7 +143,7 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
-        isolation: flags["isolation"],
+        containment: flags["containment"],
         region,
       };
 
@@ -151,12 +157,9 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
               }),
             };
 
-      // A private VPC has no internet path, so only an agent whose calls go through its Box gateway
-      // works in one.
-      if (flags["isolation"] === "private-vpc" && !createInput.scaffoldRuntimeInput?.box) {
+      if (flags["containment"] === "private-vpc" && !isBoxTemplate(template)) {
         throw new InputValidationError(
-          "--isolation private-vpc needs a box template, one whose name has -box in it, such as " +
-            "agent-python-strands-box.",
+          `--containment private-vpc needs a box template: ${RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter(isBoxTemplate).join(", ")}.`,
         );
       }
 
@@ -179,6 +182,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
       const stripped = stripCreateRegionUnavailableDefaults(createInput, region);
       if (stripped !== undefined) config.io.stderr.write(`${stripped}\n`);
+      const boxWarning = boxRegionWarning(createInput, region);
+      if (boxWarning !== undefined) config.io.stderr.write(`Warning: ${boxWarning}\n`);
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
@@ -202,7 +207,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
               `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
             );
           }
-          if (flags["isolation"] === "private-vpc") config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
+          if (flags["containment"] === "private-vpc")
+            config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
         },
       );
     },

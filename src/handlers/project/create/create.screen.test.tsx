@@ -31,6 +31,7 @@ import { modelProviderOverridableCnMessage } from "../../../core/project/manager
 /** Moves the template list's cursor from its first entry down to `name`. */
 async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
   const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  expect(index).toBeGreaterThan(-1);
   for (let i = 0; i < index; i++) await r.press("down");
 }
 
@@ -1037,7 +1038,7 @@ describe("project create wizard", () => {
     r.unmount();
   });
 
-  test("template flow: a box template asks for isolation, and private VPC reaches the spec", async () => {
+  test("template flow: a box template asks for containment, and private VPC reaches the spec", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
     const core = new TestCoreClient();
@@ -1051,16 +1052,15 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await selectTemplate(r, "agent-python-strands-box");
+    await r.press("down"); // agent-python-strands-box
     await waitForText(r.lastFrame, "● agent-python-strands-box ");
     await r.press("return");
-    // The model step, as for agent-python-strands: keep Bedrock and its model id.
     await waitForText(r.lastFrame, "choose a model provider");
-    await r.press("return");
-    await waitForText(r.lastFrame, STRANDS_BEDROCK_MODEL_ID);
-    await r.press("return");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
 
-    await waitForText(r.lastFrame, "how isolated should the agent be?");
+    await waitForText(r.lastFrame, "how contained should the agent be?");
     expect(r.lastFrame()).toContain("● sandboxed");
     await r.press("down");
     await waitForText(r.lastFrame, "● private VPC");
@@ -1070,10 +1070,47 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./VpcApp", 5000);
 
-    expect(inputs[0]?.isolation).toBe("private-vpc");
+    expect(inputs[0]?.containment).toBe("private-vpc");
     const spec = await Bun.file(join(directory, "VpcApp", "agentcore", "agentcore.json")).json();
-    expect(spec.secureVpc).toBe("ENABLED");
-    expect(spec.network).toEqual({ mode: "CONTAINED" });
+    expect(spec.runtimes[0].containment).toBe("PRIVATE_VPC");
+    expect(spec.runtimes[0].network).toEqual({ mode: "CONTAINED" });
+    r.unmount();
+  }, 10000);
+
+  test("template flow: a box template in a region without Runtime V2 warns and still creates", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "us-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("SfoApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+    await waitForText(r.lastFrame, "how contained should the agent be?");
+    await r.press("return"); // sandboxed
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./SfoApp", 5000);
+
+    expect(flatFrame(r.lastFrame)).toContain(
+      "Box runs on AgentCore Runtime V2, which is not available in us-west-1",
+    );
+    expect(existsSync(join(directory, "SfoApp", "agentcore", "agentcore.json"))).toBe(true);
     r.unmount();
   }, 10000);
 

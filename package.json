@@ -1,6 +1,6 @@
 {
   "name": "@aws/agentcore",
-  "version": "1.0.2",
+  "version": "1.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/aws/agentcore-cli.git"
@@ -31,6 +31,7 @@
     "compile:windows-arm64": "bun scripts/build.ts compile bun-windows-arm64",
     "start": "bun run src/index.ts",
     "test": "bun test",
+    "test:package": "bun scripts/test-package-install.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --fix",
@@ -61,23 +62,20 @@
     "oxlint": "^1.73.0",
     "prettier": "^3.8.4",
     "secretlint": "^12.2.0",
+    "typescript": "^5",
     "vitest": "^4.1.12"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   },
   "dependencies": {
     "@aws-cdk/cloudformation-diff": "2.187.4",
     "@aws-cdk/toolkit-lib": "1.38.2",
     "@aws-sdk/client-application-signals": "^3.1092.0",
     "@aws-sdk/client-bedrock-agent": "^3.1092.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.1153.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1143.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.1171.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1171.0",
     "@aws-sdk/client-cloudformation": "^3.1092.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1092.0",
     "@aws-sdk/client-iam": "^3.1080.0",
     "@aws-sdk/client-s3": "^3.1121.0",
-    "@aws-sdk/client-secrets-manager": "^3.1121.0",
     "@aws-sdk/client-sts": "^3.1092.0",
     "@aws-sdk/client-xray": "^3.1092.0",
     "@aws-sdk/util-endpoints": "^3.996.44",

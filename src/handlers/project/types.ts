@@ -14,12 +14,12 @@ import type {
 } from "./add/runtime/types";
 import type { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { AgentNameSchema, BuildTypeSchema } from "../../projectSchemas/runtime";
-import { ProtocolModeSchema, RuntimeVersionSchema } from "../../projectSchemas/constants";
 import {
-  AgentCoreGatewaySchema,
-  type AgentCoreGateway,
-  type AgentCoreGatewayTarget,
-} from "../../projectSchemas/gateway";
+  isContainerBuild,
+  ProtocolModeSchema,
+  RuntimeVersionSchema,
+} from "../../projectSchemas/constants";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
 import type { AwsDeploymentTarget } from "../../projectSchemas/aws-targets";
 import type { ProgressEvent } from "../../tui/progress";
@@ -27,17 +27,17 @@ import type { AwsCredentialProvider } from "../../core/types";
 import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
-export const ISOLATION_LEVELS = ["sandboxed", "private-vpc"] as const;
-export type Isolation = (typeof ISOLATION_LEVELS)[number];
+export const CONTAINMENT_LEVELS = ["sandboxed", "private-vpc"] as const;
+export type ContainmentLevel = (typeof CONTAINMENT_LEVELS)[number];
 export const PRIVATE_VPC_COST =
-  "about $58 to $75/month while deployed · uses 1 of the account's VPCs (default 5 per region)";
-export const PRIVATE_VPC_NOTE = `isolation: private VPC with no internet path · ${PRIVATE_VPC_COST}`;
+  "about $58/month while deployed for CodeZip, $88 for a container, more with 3 AZs · the VPC is kept after the stack is deleted and counts toward the account's VPC quota until you delete it";
+export const PRIVATE_VPC_NOTE = `containment: private VPC with no internet path · ${PRIVATE_VPC_COST}`;
 
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
-  /** `private-vpc` writes `"secureVpc": "ENABLED"`. Missing means `sandboxed`. */
-  isolation?: Isolation;
+  /** `private-vpc` writes `"containment": "PRIVATE_VPC"` on the runtime. Missing means `sandboxed`. */
+  containment?: ContainmentLevel;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
@@ -98,13 +98,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
-    /** Runs the agent in Strands Box: set by the box templates only. */
-    box: z.boolean().optional(),
-    /**
-     * The entry for this runtime's Box gateway, `<runtime>-box`, with no targets; build adds the
-     * Bedrock model target. Absent when the agent calls no Bedrock model.
-     */
-    boxGatewayEntry: AgentCoreGatewaySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. Not persisted: `runtime.box` names the box release. */
+    boxTemplate: z.boolean().optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),
@@ -166,7 +161,7 @@ export const ScaffoldRuntimeInputSchema = z
         path: ["runtimeVersion"],
       });
     }
-    if (build === "Container" && runtimeVersion !== undefined) {
+    if (isContainerBuild({ build }) && runtimeVersion !== undefined) {
       ctx.addIssue({
         code: "custom",
         message: "runtimeVersion is not supported for Container builds",
@@ -232,17 +227,12 @@ export type TeardownConfirmationHandler = (
   request: TeardownConfirmationRequest,
 ) => Promise<boolean>;
 
-/** A deploy that would delete the Box gateways, because agentcore.json lost its "projectType": "box". */
-export type BoxGatewayDeletionRequest = {
-  projectName: string;
-  targetName: string;
-  /** The AWS names of the Box gateways that the last deploy to the target recorded. */
-  gatewayNames: string[];
+export type BuildProjectInput = {
+  /** Leaves agentcore/cdk/package.json alone instead of syncing it to the CLI's pins (global config). */
+  disableDependencyManagement?: boolean;
 };
 
-export type BoxGatewayDeletionHandler = (request: BoxGatewayDeletionRequest) => Promise<boolean>;
-
-export type DeployProjectInput = {
+export type DeployProjectInput = BuildProjectInput & {
   /** Name of the aws-targets.json entry to deploy. */
   target: string;
   /**
@@ -253,16 +243,36 @@ export type DeployProjectInput = {
   region: string;
   /** Requests approval after the backend discovers that this deploy is a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
-  /**
-   * Requests approval for a deploy that would delete the Box gateway. Absent means declined:
-   * the deploy then fails with the "re-run with --yes" error.
-   */
-  confirmBoxGatewayDeletion?: BoxGatewayDeletionHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (from global config). */
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
   skipBootstrap?: boolean;
+  /**
+   * Called once, before anything is deployed, with the build mode every runtime
+   * and harness deploys with: after Dockerfile auto-detection, read from
+   * agentcore.json and each harness.yaml.
+   */
+  onWorkloadBuilds?: (builds: WorkloadBuilds) => void;
 };
+
+/** How a workload's code reaches AgentCore, as @aws/agentcore-cdk records it. */
+export type WorkloadBuildMode =
+  "CodeZip" | "Container" | "ContainerLocal" | "ContainerUri" | "Managed";
+/** A workload's key: `runtime/<name>` or `harness/<name>`, matching @aws/agentcore-cdk. */
+export type WorkloadKey = `runtime/${string}` | `harness/${string}`;
+/** Build mode of every runtime and harness in a project. */
+export type WorkloadBuilds = Record<WorkloadKey, WorkloadBuildMode>;
+/** Where a ContainerLocal workload is built from, as agentcore.json or harness.yaml sets it. */
+export type LocalWorkloadSource = {
+  /** Project-relative build context: buildContextPath, else the workload's directory. */
+  context: string;
+  /** The Dockerfile, relative to the build context. */
+  dockerfile: string;
+  /** The bring-your-own execution role, when one is set. */
+  executionRoleArn?: string;
+};
+/** Each ContainerLocal workload's build source, by workload key. */
+export type LocalWorkloadSources = Map<WorkloadKey, LocalWorkloadSource>;
 
 export type DeployResult = {
   /**
@@ -576,9 +586,14 @@ export type RemoveResourcesResult = {
   removedEnvKeys: string[];
 };
 
+/** A gateway removed together with another resource, as a gateway bound to a removed runtime. */
+export type RemovedGateway = { name: string; targetCount: number };
+
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
+  /** Gateways bound to a removed runtime (each Box gateway is), removed with their targets. */
+  removedGateways: RemovedGateway[];
 };
 
 /**
@@ -588,8 +603,15 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
-  build(project: Project): AsyncGenerator<ProjectEvent, void>;
+  /**
+   * Compile the project's CDK app and synthesize its CloudFormation templates. `region` is the
+   * region build builds for, which the Box gateway's targets and Runtime profiles take; without
+   * it, build resolves the region as `--region` does with no flag.
+   */
+  build(
+    project: Project,
+    input?: BuildProjectInput & { region?: string },
+  ): AsyncGenerator<ProjectEvent, void>;
 
   /**
    * Re-derives runtime build settings (build, dockerfile, runtimeVersion,
@@ -620,12 +642,6 @@ export interface ProjectManager {
     project: Project,
     input: ResolveTargetInput,
   ): Promise<AwsDeploymentTarget | undefined>;
-
-  /**
-   * The AWS names of the Box gateways that the last deploy to the target recorded, or an empty
-   * list when it recorded none. Read-only, for the deploy handler's up-front confirmation.
-   */
-  recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]>;
 
   /** Locate an existing AgentCore project. Returns undefined if no project can be found. */
   resolve(input: ResolveProjectInput): Promise<Project | undefined>;

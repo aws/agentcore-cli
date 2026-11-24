@@ -18,7 +18,7 @@ function hostsOf(egress: Record<string, unknown>): BoxNetworkHost[] {
   const network = buildBoxNetwork(parsed, [], {
     spec,
     runtime,
-    gateway: "agent-box",
+    gateway: "agent-box-egress",
     region: "us-west-2",
     targets: [],
     grantedActions: [],
@@ -45,7 +45,7 @@ function projectWith(nodes: BoxNetworkHost[]) {
       ),
       agentCoreGateways: [
         {
-          name: "agent-box",
+          name: "agent-box-egress",
           protocolType: "None",
           authorizerType: "AWS_IAM",
           enableSemanticSearch: true,
@@ -58,7 +58,7 @@ function projectWith(nodes: BoxNetworkHost[]) {
 }
 
 const SIGNED_AND_KEYED = {
-  bedrock: {
+  models: {
     destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
     secret: { ref: "aws://agentcore-runtime" },
   },
@@ -74,7 +74,7 @@ describe("gatewayTargetFor", () => {
     expect(ProjectSpecSchema.safeParse(spec).error?.issues ?? []).toEqual([]);
     expect(targets).toEqual([
       {
-        name: "egress-bedrock",
+        name: "egress-models",
         targetType: "passthrough",
         passthrough: {
           endpoint: "https://bedrock-runtime.us-west-2.amazonaws.com",

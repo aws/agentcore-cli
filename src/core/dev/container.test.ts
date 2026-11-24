@@ -75,6 +75,7 @@ function harness(
     awsDirectory?: string;
     processEnv?: NodeJS.ProcessEnv;
     resolveAwsCredentials?: ResolveAwsCredentials;
+    platform?: NodeJS.Platform;
   } = {},
 ) {
   const calls: ProcessCall[] = [];
@@ -87,9 +88,11 @@ function harness(
       const [contents, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
       call.envFile = { path, contents, mode: metadata.mode & 0o777 };
     }
-    const awsFlag = command.findIndex((part) => part.endsWith(":/aws-config/credentials:ro"));
+    const awsMount = ":/aws-config/credentials:ro";
+    const awsFlag = command.findIndex((part) => part.endsWith(awsMount));
     if (awsFlag >= 0) {
-      const path = command[awsFlag]!.split(":")[0]!;
+      // A Windows host path has its own colon (C:\...), so the host path ends at the mount.
+      const path = command[awsFlag]!.slice(0, -awsMount.length);
       const [contents, file, folder] = await Promise.all([
         readFile(path, "utf8"),
         stat(path),
@@ -105,10 +108,8 @@ function harness(
 
     if (config.stream) yield* config.stream(command, options);
   };
-  const boxVersions: (string | undefined)[] = [];
   return {
     calls,
-    boxVersions,
     runner: new ContainerDevRunner({
       streamProcess: fakeStreamProcess,
       toolAvailable:
@@ -117,16 +118,13 @@ function harness(
           return tool === "docker";
         }),
       awsDirectory: config.awsDirectory ?? join(tmpdir(), "agentcore-container-no-aws"),
-      releaseFor: async (version) => {
-        boxVersions.push(version);
-        return { ...BOX_RELEASE, version: version ?? BOX_RELEASE.version };
-      },
       processEnv: config.processEnv ?? {
         AWS_ACCESS_KEY_ID: "test-access-key",
         AWS_SECRET_ACCESS_KEY: "test-secret-key",
       },
       // Never the real chain in a test: none unless the test gives some.
       resolveAwsCredentials: config.resolveAwsCredentials ?? (async () => undefined),
+      ...(config.platform && { platform: config.platform }),
     }),
   };
 }
@@ -177,6 +175,17 @@ function commandCall(calls: ProcessCall[], operation: "build" | "run" | "stop"):
 }
 
 describe("ContainerDevRunner", () => {
+  test("uses an absolute buildContextPath inside the project without prefixing it again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "agentcore-container-"));
+    tempDirectories.push(root);
+    await mkdir(join(root, "ctx"), { recursive: true });
+    await writeFile(join(root, "ctx", "Dockerfile"), "FROM scratch\n");
+    const { calls, runner } = harness();
+
+    await collect(runner.run(input(root, runtime({ buildContextPath: join(root, "ctx") }))));
+
+    expect(commandCall(calls, "build").options.cwd).toBe(join(root, "ctx"));
+  });
   test("builds with a widened context and redacts build arg values from errors", async () => {
     const projectRuntime = runtime({
       buildContextPath: ".",
@@ -810,9 +819,11 @@ describe("ContainerDevRunner", () => {
         /** The text of `.box/Hello_World/local/profile.toml`. */
         profileText?: string;
         dockerfile?: string;
+        /** Whether the runtime has box.version, which create writes only for a box template. */
+        box?: boolean;
       } = {},
     ) {
-      const projectRuntime = runtime();
+      const projectRuntime = runtime(options.box === false ? {} : { box: { version: "1.0.0" } });
       const root = await projectRoot(projectRuntime);
       const context = join(root, projectRuntime.codeLocation);
       await writeFile(join(context, "Dockerfile"), options.dockerfile ?? BOX_DOCKERFILE);
@@ -831,9 +842,22 @@ describe("ContainerDevRunner", () => {
       AWS_SECRET_ACCESS_KEY: "test-secret-key",
     };
 
-    test("does not box an image whose Dockerfile only mentions .box-dist/ in a comment", async () => {
+    test("says where it staged box", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message: `Staged box for the image in ${join(context, ".box-dist")}`,
+      });
+    });
+
+    test("runs a runtime with no box.version without box, whatever its Dockerfile says", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n# TODO: COPY .box-dist/ later\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -866,7 +890,7 @@ describe("ContainerDevRunner", () => {
         type: "status",
         message: `Staged box for the image in ${join(context, ".box-dist")}`,
       });
-      // Without build secrets the build is unchanged.
+      // The Dockerfile copies .box-dist/, so the build takes no extra build context.
       expect(commandCall(calls, "build").command).toEqual([
         "docker",
         "build",
@@ -966,7 +990,7 @@ describe("ContainerDevRunner", () => {
 
       expect(error).toBeInstanceOf(ProjectStateError);
       expect((error as Error).message).toContain(
-        'runs its agent in a box (its Dockerfile installs box), but agentcore.json has no "projectType": "box"',
+        'runs its agent in a box (it has box.version), but agentcore.json has no "projectType": "box"',
       );
       expect(calls.map(({ command }) => command[1])).not.toContain("build");
       expect(calls.map(({ command }) => command[1])).not.toContain("run");
@@ -994,6 +1018,22 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
     });
 
+    test("hands box in the container the shell's env:// key over .env.local's", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, GITHUB_TOKEN: "ghp_shell" },
+      });
+      // input.env is what dev read from agentcore/.env.local.
+      const fromFile = input(root, projectRuntime);
+
+      await collect(runner.run({ ...fromFile, env: { GITHUB_TOKEN: "ghp_file" } }));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_shell");
+    });
+
     test("warns when the profile's env:// key is not set, before the container's box reports it", async () => {
       const { projectRuntime, root } = await boxedScene({
         profileText:
@@ -1012,18 +1052,54 @@ describe("ContainerDevRunner", () => {
       expect(commandCall(calls, "run")).toBeDefined();
     });
 
-    test("stages box of the runtime's box.version", async () => {
-      const { projectRuntime, root } = await boxedScene();
-      const { boxVersions, runner } = harness({ processEnv: credentials });
+    test("warns before the image build, as the lookup needs only the profile and the env", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { runner } = harness({ processEnv: credentials });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+      const messages = events.map((event) => ("message" in event ? event.message : ""));
+
+      const warning = messages.findIndex((message) => message.includes("reads GITHUB_TOKEN"));
+      const build = messages.findIndex((message) => message.startsWith("Building image with"));
+      expect(warning).toBeGreaterThanOrEqual(0);
+      expect(warning).toBeLessThan(build);
+    });
+
+    test("hands the container a Windows shell's variable in another case, under its name", async () => {
+      // process.env is case-insensitive on Windows, so an exported Github_Token sets GITHUB_TOKEN.
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[egress.github]\ndestinations = ["api.github.com"]\nsecret.ref = "env://GITHUB_TOKEN"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, Github_Token: "ghp_win" },
+        platform: "win32",
+      });
+
+      const events = await collect(runner.run(input(root, projectRuntime)));
+
+      expect(parseEnv(commandCall(calls, "run").envFile!.contents).GITHUB_TOKEN).toBe("ghp_win");
+      expect(JSON.stringify(events)).not.toContain("reads GITHUB_TOKEN for [egress.github]");
+    });
+
+    test("stages the pinned box, whatever box.version the runtime names", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, { ...projectRuntime, box: { version: "2.0.0" } })));
 
-      expect(boxVersions).toEqual(["2.0.0"]);
+      const env = await readFile(join(context, ".box-dist", "box-release.env"), "utf8");
+      expect(env).toContain(BOX_RELEASE.version);
+      expect(env).not.toContain("2.0.0");
     });
 
-    test("runs an image that does not copy .box-dist/ without box's flags, even with a profile", async () => {
+    test("runs a runtime with no box.version without box's flags, even with a box profile", async () => {
       const { projectRuntime, root, context } = await boxedScene({
         dockerfile: "FROM scratch\n",
+        box: false,
       });
       const { calls, runner } = harness({ processEnv: credentials });
 
@@ -1034,6 +1110,24 @@ describe("ContainerDevRunner", () => {
       expect(
         events.some((event) => event.type === "status" && event.message.startsWith("Staged box")),
       ).toBe(false);
+    });
+
+    test("stages each policy file the profile names beside it in .box-dist/", async () => {
+      const { projectRuntime, root, context } = await boxedScene({
+        profileText: 'policies = ["policy.dw", "rules/extra.dw"]\n',
+      });
+      const local = join(root, ".box", projectRuntime.name, "local");
+      await mkdir(join(local, "rules"));
+      await writeFile(join(local, "policy.dw"), "// rules\n");
+      await writeFile(join(local, "rules", "extra.dw"), "// extra\n");
+      const { runner } = harness({ processEnv: credentials });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "policy.dw"), "utf8")).toBe("// rules\n");
+      expect(await readFile(join(context, ".box-dist", "rules", "extra.dw"), "utf8")).toBe(
+        "// extra\n",
+      );
     });
 
     test.each([
@@ -1066,7 +1160,7 @@ describe("ContainerDevRunner", () => {
 
       expect(error).toBeInstanceOf(ProjectStateError);
       expect((error as Error).message).toBe(
-        `Dev stopped: 1 problem in the Box profile. Nothing was changed.\n${line}`,
+        `Dev stopped: 1 problem in the Box profile. Dev wrote nothing from the Box profile.\n${line}`,
       );
       expect(existsSync(join(context, ".box-dist"))).toBe(false);
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
@@ -1096,9 +1190,9 @@ describe("ContainerDevRunner", () => {
         contents:
           "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret-example\n" +
           "aws_session_token = token-example\n",
-        // Readable by the container's user; the folder keeps other host users out.
-        mode: 0o644,
-        folderMode: 0o700,
+        // Readable by the container's user; the folder keeps other host users out. Windows has no
+        // mode bits.
+        ...(process.platform !== "win32" && { mode: 0o644, folderMode: 0o700 }),
       });
       const env = parseEnv(run.envFile!.contents);
       expect(env).toMatchObject({
@@ -1149,7 +1243,10 @@ describe("ContainerDevRunner", () => {
     });
 
     test("leaves an image without box on ~/.aws, without resolving credentials", async () => {
-      const { projectRuntime, root } = await boxedScene({ dockerfile: "FROM scratch\n" });
+      const { projectRuntime, root } = await boxedScene({
+        dockerfile: "FROM scratch\n",
+        box: false,
+      });
       const awsDirectory = join(root, ".aws");
       await mkdir(awsDirectory);
       let resolved = 0;
@@ -1177,7 +1274,7 @@ describe("ContainerDevRunner", () => {
       );
 
       expect(error).toBeInstanceOf(ResourceNotFoundError);
-      expect((error as Error).message).toContain("its Dockerfile copies .box-dist/");
+      expect((error as Error).message).toContain("it has box.version in agentcore.json");
       expect(calls.filter(({ command }) => command[1] === "build")).toEqual([]);
     });
   });

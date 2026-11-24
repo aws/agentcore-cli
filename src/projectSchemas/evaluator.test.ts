@@ -11,11 +11,87 @@ import {
 } from "./evaluator";
 const numerical = [{ value: 1, label: "bad", definition: "Bad response" }];
 const categorical = [{ label: "pass", definition: "Passes" }];
+const dimension = (dimensionRatingScale: object, dimensionName = "Accuracy") => ({
+  dimensionName,
+  dimensionInstruction: "Is the answer correct?",
+  dimensionRatingScale,
+});
 describe("evaluator custom validation", () => {
   it("requires exactly one rating scale representation", () => {
     expect(RatingScaleSchema.safeParse({ numerical }).success).toBe(true);
     expect(RatingScaleSchema.safeParse({ numerical, categorical }).success).toBe(false);
     expect(RatingScaleSchema.safeParse({}).success).toBe(false);
+  });
+  it("accepts a multiDimensional scale and rejects it alongside another representation", () => {
+    const multiDimensional = [dimension({ numerical }), dimension({ categorical }, "Tone")];
+    expect(RatingScaleSchema.safeParse({ multiDimensional }).success).toBe(true);
+    expect(RatingScaleSchema.safeParse({ numerical, multiDimensional }).success).toBe(false);
+    expect(RatingScaleSchema.safeParse({ multiDimensional: [] }).success).toBe(false);
+    expect(
+      RatingScaleSchema.safeParse({ multiDimensional: [dimension({ numerical, categorical })] })
+        .success,
+    ).toBe(false);
+    const neither = RatingScaleSchema.safeParse({ multiDimensional: [dimension({})] });
+    expect(neither.error?.issues[0]?.message).toBe(
+      "Dimension rating scale must have exactly one of numerical or categorical",
+    );
+  });
+  it("enforces the service's dimension limits", () => {
+    const named = (dimensionName: string) => dimension({ categorical }, dimensionName);
+    const rejects = (multiDimensional: object[]) =>
+      expect(RatingScaleSchema.safeParse({ multiDimensional }).success).toBe(false);
+    rejects([named("1st")]);
+    rejects([named("Tone"), named("Tone")]);
+    rejects(Array.from({ length: 51 }, (_, i) => named(`D${i}`)));
+    rejects([{ ...named("Tone"), dimensionInstruction: "x".repeat(4001) }]);
+    rejects([{ ...named("Tone"), dimensionInstruction: "   " }]);
+    const blank = RatingScaleSchema.safeParse({
+      multiDimensional: [dimension({ categorical: [{ label: "pass", definition: " " }] })],
+    });
+    expect(blank.error?.issues[0]?.message).toBe("Dimension rating definition must not be blank");
+    rejects([dimension({ numerical: [{ value: 1, label: " ", definition: "Bad" }] })]);
+  });
+  it("accepts non-negative decimal values in a dimension and rejects negatives and empty lists", () => {
+    const values = (...vs: number[]) =>
+      vs.map((value) => ({ value, label: `L${value}`, definition: "d" }));
+    expect(
+      RatingScaleSchema.safeParse({
+        multiDimensional: [dimension({ numerical: values(1, 0.5, 0) })],
+      }).success,
+    ).toBe(true);
+    const rejects = (dimensionRatingScale: object) =>
+      expect(
+        RatingScaleSchema.safeParse({ multiDimensional: [dimension(dimensionRatingScale)] })
+          .success,
+      ).toBe(false);
+    rejects({ numerical: values(-1) });
+    rejects({ numerical: [] });
+    rejects({ categorical: [] });
+  });
+  it("rejects unknown keys inside a dimension", () => {
+    const issue = (multiDimensional: object[]) =>
+      RatingScaleSchema.safeParse({ multiDimensional }).error?.issues[0];
+    expect(issue([{ ...dimension({ categorical }), weight: 2 }])?.code).toBe("unrecognized_keys");
+    expect(issue([dimension({ multiDimensional: [dimension({ categorical })] })])?.code).toBe(
+      "unrecognized_keys",
+    );
+    expect(issue([dimension({ categorical: [{ ...categorical[0], score: 1 }] })])?.code).toBe(
+      "unrecognized_keys",
+    );
+    expect(issue([dimension({ numerical: [{ ...numerical[0], weight: 1 }] })])?.code).toBe(
+      "unrecognized_keys",
+    );
+  });
+  it("leaves single-scale rules unchanged", () => {
+    expect(
+      RatingScaleSchema.safeParse({ numerical: [{ ...numerical[0], weight: 1 }] }).success,
+    ).toBe(true);
+    expect(
+      RatingScaleSchema.safeParse({ numerical: [{ ...numerical[0], value: 0.5 }] }).success,
+    ).toBe(false);
+    expect(
+      RatingScaleSchema.safeParse({ categorical: [{ label: "pass", definition: " " }] }).success,
+    ).toBe(true);
   });
   it("requires exactly one code-based implementation", () => {
     const managed = { codeLocation: "./evaluator" };

@@ -5,8 +5,7 @@ import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { cloudWatchTelemetry, withDeployRegion } from "../../boxNetwork";
 import { profileKeyPlaces, runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
-import type { ThirdPartyTelemetry } from "../../boxNetwork";
-import type { RuntimeProfileContext, RuntimeProfileProblem, TomlTable } from "../types";
+import type { RuntimeProfileProblem, TomlTable } from "../types";
 import { apply } from "./refusals";
 
 const CODEZIP = {
@@ -21,10 +20,13 @@ const CODEZIP = {
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
 const PROFILE = ".box/agent/local/profile.toml";
 
-/** The context of the local profile `text`, with the CloudWatch targets that box takes from it. */
+/**
+ * The context of the local profile `text`, with the CloudWatch targets that box takes from it. dev
+ * starts box in the code folder, `${{ workspace }}`.
+ */
 const contextOf = (text: string, runtime: ProjectRuntime = CODEZIP) =>
   runtimeProfileContext({
-    spec: { name: "demo", runtimes: [runtime] } as unknown as ProjectSpec,
+    spec: { name: "demo", runtimes: [runtime], memories: [] } as unknown as ProjectSpec,
     runtime,
     profileFile: PROFILE,
     region: "us-west-2",
@@ -45,7 +47,7 @@ const toml = (...lines: string[]) => lines.join("\n");
 const lineOf = (text: string, start: string) =>
   `${PROFILE}:${text.split("\n").findIndex((line) => line.startsWith(start)) + 1}:1`;
 
-const APP = "${{ workspace }}/app/agent";
+const APP = "${{ workspace }}";
 
 /** A local profile that can go to a CodeZip Runtime: each path moves, and each program is there. */
 const WORKS = toml(
@@ -96,14 +98,6 @@ describe("the refusals rule", () => {
 
   test.each([
     [
-      "a path of the project outside the code folder",
-      ["mcp", "notes", "command"],
-      `command = ["${APP}/.venv/bin/python3.15", "\${{ workspace }}/tools/notes.py"]`,
-      '[mcp.notes] command names "${{ workspace }}/tools/notes.py", which is not in app/agent/. ' +
-        "The zip of a CodeZip deploy contains only that folder. Move the file into app/agent/, " +
-        "or remove the path.",
-    ],
-    [
       "a path of the home folder",
       ["mcp", "notes", "env", "NOTES_DIR"],
       'env = { NOTES_DIR = "${{ home }}/notes" }',
@@ -129,8 +123,8 @@ describe("the refusals rule", () => {
     [
       "a folder of the project whose name starts as the code folder's does",
       ["mcp", "notes", "command"],
-      'command = ["${{ workspace }}/app/agent-tools/notes-server"]',
-      '[mcp.notes] command names "${{ workspace }}/app/agent-tools/notes-server", which is not in ' +
+      'command = ["${{ workspace }}-tools/notes-server"]',
+      '[mcp.notes] command names "${{ workspace }}-tools/notes-server", which is not in ' +
         "app/agent/. The zip of a CodeZip deploy contains only that folder. Move the file into " +
         "app/agent/, or remove the path.",
     ],
@@ -356,9 +350,9 @@ describe("the refusals rule", () => {
   });
 
   test.each([
-    ["mcp", 'type = "stdio"\ncommand = ["${{ workspace }}/app/agent/notes-server"]'],
-    ["tool", 'command = ["${{ workspace }}/app/agent/notes-server"]'],
-    ["agent", 'command = ["${{ workspace }}/app/agent/notes-server"]'],
+    ["mcp", 'type = "stdio"\ncommand = ["${{ workspace }}/notes-server"]'],
+    ["tool", 'command = ["${{ workspace }}/notes-server"]'],
+    ["agent", 'command = ["${{ workspace }}/notes-server"]'],
   ])(
     "stops for contain_egress = false in [%s], for CodeZip and a container (RUNTIME_EGRESS_NOT_CONTAINED)",
     (group, body) => {
@@ -409,10 +403,7 @@ describe("the refusals rule", () => {
           reason:
             '[telemetry.collector] kind is "otlp". At this time, a box on AgentCore Runtime can ' +
             'send telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". ' +
-            "Remove [telemetry.collector], or change its kind to one of these. With a box build " +
-            "that has the @box/aws-secrets-manager plugin, you can set " +
-            "AGENTCORE_BOX_SECRETS_MANAGER=1 instead: then build carries the target, and deploy " +
-            "moves its key to AWS Secrets Manager.",
+            "Remove [telemetry.collector], or change its kind to one of these.",
           place: `${PROFILE}:7:1`,
         },
         {
@@ -427,59 +418,6 @@ describe("the refusals rule", () => {
       ]);
     },
   );
-
-  describe("a third-party [telemetry] target, which goes to AgentCore Runtime only through AWS Secrets Manager", () => {
-    const text = toml(
-      "[telemetry.langfuse]",
-      'kind = "langfuse"',
-      'destination = "https://cloud.langfuse.com"',
-      'secret.ref = "env://LANGFUSE_KEY"',
-    );
-    const carried: ThirdPartyTelemetry = {
-      name: "langfuse",
-      kind: "langfuse",
-      keys: [["destination", "https://cloud.langfuse.com"]],
-      secret: { variable: "LANGFUSE_KEY", keys: [] },
-    };
-    const problems = (context: Partial<RuntimeProfileContext>) =>
-      apply(parse(text) as TomlTable, { ...contextOf(text, CONTAINER), ...context }).problems;
-
-    test("stops for no target that the Box network model carries", () => {
-      expect(problems({ thirdPartyTelemetry: [carried], secretsManager: true })).toEqual([]);
-    });
-
-    test("names AGENTCORE_BOX_SECRETS_MANAGER when it is off", () => {
-      expect(problems({ secretsManager: false })).toEqual([
-        {
-          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
-          key: ["telemetry", "langfuse", "kind"],
-          reason:
-            '[telemetry.langfuse] kind is "langfuse". At this time, a box on AgentCore Runtime ' +
-            'can send telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". ' +
-            "Remove [telemetry.langfuse], or change its kind to one of these. With a box build " +
-            "that has the @box/aws-secrets-manager plugin, you can set " +
-            "AGENTCORE_BOX_SECRETS_MANAGER=1 instead: then build carries the target, and deploy " +
-            "moves its key to AWS Secrets Manager.",
-          place: `${PROFILE}:2:1`,
-        },
-      ]);
-    });
-
-    test("names the warning of the Box network model when the switch is on and the model leaves the target out", () => {
-      expect(problems({ thirdPartyTelemetry: [], secretsManager: true })).toEqual([
-        {
-          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
-          key: ["telemetry", "langfuse", "kind"],
-          reason:
-            '[telemetry.langfuse] kind is "langfuse", and build cannot carry this target to ' +
-            "AgentCore Runtime: the warning for [telemetry.langfuse] gives the reason. Correct " +
-            'that, remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
-            '"cloudwatch_traces".',
-          place: `${PROFILE}:2:1`,
-        },
-      ]);
-    });
-  });
 
   test("reads no path of [egress], of an HTTP [mcp], or of [telemetry]: other rules write them", () => {
     const text = toml(

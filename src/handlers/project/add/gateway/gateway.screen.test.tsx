@@ -8,7 +8,7 @@ import {
   waitForFlatText,
   waitForText,
 } from "../../../../testing";
-import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
+import { createGatewayProjectTestHarness } from "../gateway-test-support";
 
 const { cleanup, inProject, projectSpec } = createGatewayProjectTestHarness("add-gateway-wizard");
 
@@ -41,7 +41,6 @@ describe("project add gateway wizard", () => {
 
     await waitForText(screen.lastFrame, "added Gateway 'tools' to 'TestProject'");
     expect((await projectSpec(projectRoot)).agentCoreGateways).toEqual([
-      DEFAULT_BOX_GATEWAY,
       {
         name: "tools",
         protocolType: "None",
@@ -96,7 +95,7 @@ describe("project add gateway wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added Gateway 'search'");
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1]).toMatchObject({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0]).toMatchObject({
       protocolType: "MCP",
       enableSemanticSearch: true,
     });
@@ -138,7 +137,7 @@ describe("project add gateway wizard", () => {
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "added Gateway 'secure'");
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1]).toMatchObject({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0]).toMatchObject({
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
         customJwtAuthorizer: {

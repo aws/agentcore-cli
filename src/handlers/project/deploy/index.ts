@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import z from "zod";
 import { enclosingProjectRoot, isV0Project } from "../../../core/project/fsUtils";
+import { declaresNothingDeployable } from "../../../core/project/spec";
 import { runV0Deploy, type V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { assertNoPendingMigration } from "../../../core/project/migrate/journal";
 import {
@@ -11,11 +12,6 @@ import {
 } from "../../../errors";
 import type { AppIO } from "../../../io";
 import { DEFAULT_TARGET_NAME } from "../../../projectSchemas/aws-targets";
-import {
-  declaresNoResources,
-  describeBoxGateways,
-  dropsBoxGateways,
-} from "../../../projectSchemas/project";
 import {
   CommandRunMetricEventKey,
   createHandler,
@@ -30,11 +26,12 @@ import { runWithProgress } from "../../../tui/progress";
 import { JsonKey, RegionExplicitKey, RegionKey } from "../../keys";
 import { renderJsonError } from "../../utils";
 import type {
-  BoxGatewayDeletionHandler,
   DeployResult,
   Project,
   ProjectManager,
   TeardownConfirmationHandler,
+  WorkloadBuildMode,
+  WorkloadBuilds,
 } from "../types";
 
 export type DeployProjectHandlerConfig = {
@@ -87,8 +84,7 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       ),
       flag(
         "yes",
-        "confirm removing the target's stack when the project declares nothing to deploy, " +
-          'or the Box gateways when agentcore.json has lost its "projectType": "box"',
+        "confirm removing the target's stack when the project declares nothing to deploy",
         z.boolean().default(false),
       ),
       flag(
@@ -135,22 +131,15 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
         canPrompt === true,
       );
 
-      const confirmBoxGatewayDeletion = await resolveBoxGatewayDecision(
-        config,
-        project,
-        flags.target,
-        flags.yes,
-        canPrompt === true,
-      );
-
       const globalConfig = await ctx.require(GlobalConfigAccessorKey).get();
       const deployment = config.projectManager.deploy(project, {
         target: flags.target,
         region: ctx.require(RegionKey),
         confirmTeardown,
-        confirmBoxGatewayDeletion,
         transactionSearch: globalConfig.transactionSearch,
+        disableDependencyManagement: globalConfig.disableDependencyManagement,
         skipBootstrap: flags["skip-bootstrap"],
+        onWorkloadBuilds: (builds) => recordBuildTypeCounts(ctx, builds),
       });
       // Progress goes to stderr, keeping stdout for machine output. --json
       // forces the plain path so no ANSI reaches a scripted caller's stderr.
@@ -174,6 +163,24 @@ export const createDeployProjectHandler = (config: DeployProjectHandlerConfig) =
       if (!result.tornDown) config.io.stderr.write(`next step:\n  ${DEPLOY_NEXT_STEP}\n`);
     },
   });
+
+/**
+ * Records how many runtimes and harnesses deploy with each build type. Deploy
+ * reports the effective build modes, after Dockerfile auto-detection, through
+ * DeployProjectInput.onWorkloadBuilds; pass this as that callback.
+ */
+export function recordBuildTypeCounts(ctx: Context, builds: WorkloadBuilds): void {
+  const entries = Object.entries(builds);
+  const count = (kind: "runtime" | "harness", build: WorkloadBuildMode) =>
+    entries.filter(([key, value]) => key.startsWith(`${kind}/`) && value === build).length;
+  ctx.value(CommandRunMetricEventKey)?.setAttributes({
+    project_runtime_codezip_count: count("runtime", "CodeZip"),
+    project_runtime_container_count: count("runtime", "Container"),
+    project_runtime_container_local_count: count("runtime", "ContainerLocal"),
+    project_harness_container_count: count("harness", "Container"),
+    project_harness_container_local_count: count("harness", "ContainerLocal"),
+  });
+}
 
 export function recordProjectResourceCounts(ctx: Context, project: Project): void {
   const { spec } = project;
@@ -290,19 +297,6 @@ async function delegateV0Deploy(
 }
 
 /**
- * True when the spec declares none of the resources `removeAllResources`
- * clears, i.e. what an emptied project looks like. This is the up-front proxy
- * for the backend's post-synth zero-resource count; the two can disagree when a
- * declared resource synthesizes no CloudFormation resource (or a hand-edited
- * CDK app adds one), so the backend's count stays authoritative and this only
- * decides whether to ask the user before starting.
- */
-export function declaresNothingDeployable(project: Project): boolean {
-  // A Box project makes a Box gateway for each runtime only, so with no runtimes it is empty too.
-  return declaresNoResources(project.spec);
-}
-
-/**
  * Resolves the teardown question before the deploy generator starts. The
  * returned handler never blocks on input: it is a pre-answered decision the
  * backend consults if synthesis confirms the deploy would remove the stack.
@@ -322,7 +316,7 @@ async function resolveTeardownDecision(
     // fails with "no stack ... to remove" before consulting the decision.
     const target = await config.projectManager.resolveTarget(project, { target: targetName });
     if (target) {
-      if (!(await promptForConfirmation(config.io, teardownQuestion(project.name, target)))) {
+      if (!(await promptForTeardown(config.io, project.name, target))) {
         throw new UserCancellationError();
       }
       return async () => true;
@@ -335,42 +329,11 @@ async function resolveTeardownDecision(
   return async () => false;
 }
 
-/** The question deploy asks before it deletes the Box gateways. */
-export function boxGatewayDeletionQuestion(gatewayNames: string[]): string {
-  return (
-    `agentcore.json has no "projectType": "box", so this deploy will delete ` +
-    `${describeBoxGateways(gatewayNames)}. Continue?`
-  );
-}
-
-/**
- * Resolves the Box gateway question before the deploy generator starts, the same way as the
- * teardown question: --yes confirms, an interactive session asks, and anything else declines,
- * so the backend reports the "re-run with --yes" error.
- */
-async function resolveBoxGatewayDecision(
-  config: DeployProjectHandlerConfig,
-  project: Project,
-  targetName: string,
-  confirmed: boolean,
-  canPrompt: boolean,
-): Promise<BoxGatewayDeletionHandler> {
-  if (confirmed) return async () => true;
-  if (canPrompt && dropsBoxGateways(project.spec)) {
-    const gatewayNames = await config.projectManager.recordedBoxGateways(project, {
-      target: targetName,
-    });
-    if (gatewayNames.length > 0) {
-      if (!(await promptForConfirmation(config.io, boxGatewayDeletionQuestion(gatewayNames)))) {
-        throw new UserCancellationError();
-      }
-      return async () => true;
-    }
-  }
-  return async () => false;
-}
-
-async function promptForConfirmation(io: AppIO, question: string): Promise<boolean> {
+async function promptForTeardown(
+  io: AppIO,
+  projectName: string,
+  target: { name: string; account: string; region: string },
+): Promise<boolean> {
   const readline = createInterface({ input: io.stdin, output: io.stderr });
   try {
     const cancelled = new Promise<never>((_resolve, reject) => {
@@ -378,7 +341,10 @@ async function promptForConfirmation(io: AppIO, question: string): Promise<boole
       readline.once("SIGINT", cancel);
       readline.once("close", cancel);
     });
-    const answer = await Promise.race([readline.question(`${question} (y/N) `), cancelled]);
+    const answer = await Promise.race([
+      readline.question(`${teardownQuestion(projectName, target)} (y/N) `),
+      cancelled,
+    ]);
     return /^(?:y|yes)$/i.test(answer.trim());
   } finally {
     readline.close();

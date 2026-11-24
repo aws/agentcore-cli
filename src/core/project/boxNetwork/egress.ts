@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { CredentialNameSchema } from "../../../projectSchemas/credential";
+import { BOX_EGRESS_TARGET_PREFIX } from "../../../projectSchemas/project";
 import type { BoxEgressAuth } from "./network";
 import type { FailureCode } from "./types";
 
 /** One `[egress.<name>]` `secret` table, as Box reads it. */
-const BoxEgressSecretSchema = z
+export const BoxEgressSecretSchema = z
   .object({
     ref: z.string().min(1),
     header: z.string().min(1).optional(),
@@ -133,6 +133,12 @@ const AWS_ENDPOINTS = [
     api: "lambda-url",
     service: "lambda",
   },
+  {
+    pattern:
+      /^[a-z0-9][a-z0-9-]*\.gateway\.bedrock-agentcore\.([a-z0-9-]+)\.amazonaws\.com(?:\.cn)?$/,
+    api: "gateway",
+    service: "bedrock-agentcore",
+  },
 ] as const;
 
 /** The API of an AWS endpoint that the gateway signs for. */
@@ -155,11 +161,7 @@ export function signingService(host: string): { service: string; region: string 
   return endpoint && { service: endpoint.service, region: endpoint.region };
 }
 
-/**
- * The start of the name of each target that build adds to a Box gateway. Build manages every
- * target whose name has it, and no other.
- */
-export const BOX_EGRESS_TARGET_PREFIX = "egress-";
+export { BOX_EGRESS_TARGET_PREFIX };
 
 /**
  * The gateway target name build gives `name`: {@link BOX_EGRESS_TARGET_PREFIX}, then the letters
@@ -180,19 +182,29 @@ export type OutboundAuthResult =
   | { readonly ok: false; readonly code: FailureCode; readonly reason: string };
 
 /**
- * The gateway's outbound auth for the secret of `[egress.<entry>]`: `aws://` signs with the
+ * The gateway's outbound auth for the secret of an `[egress]` entry: `aws://` signs with the
  * gateway's role for the host's service, `env://` sends the API key of the credential
  * `credentialFor` names, and no secret sends nothing. A failure's reason follows the entry's name.
  */
 export function outboundAuthFor(
   secret: BoxEgressSecret | undefined,
   host: string,
-  entry: string,
-  credentialFor: (variable: string) => string | undefined,
+  credentialFor: (variable: string) => string,
 ): OutboundAuthResult {
   if (!secret) return { ok: true, auth: { kind: "none" } };
   const [scheme, value = ""] = secret.ref.split("://", 2);
   if (scheme === "aws") {
+    if (awsEndpoint(host)?.api === "gateway") {
+      return {
+        ok: false,
+        code: "UNSIGNABLE_HOST",
+        reason:
+          `signs requests to ${host}, the host of an AgentCore gateway, with ${secret.ref}. ` +
+          "Build signs only for the gateways of this project, and it adds the route to each of " +
+          "them on AgentCore Runtime itself, as [mcp.<gateway name>], with the host that the " +
+          "deploy gives the gateway. Remove this entry. To call a gateway, add it to this project.",
+      };
+    }
     const signing = signingService(host);
     if (!signing) {
       return {
@@ -216,19 +228,6 @@ export function outboundAuthFor(
           'in a header. Set `placement` to "header", if the host takes the key in a header.',
       };
     }
-    const credentialName = credentialFor(value);
-    if (credentialName === undefined) {
-      return {
-        ok: false,
-        code: "API_KEY_CREDENTIAL_MISSING",
-        reason: CredentialNameSchema.safeParse(entry).success
-          ? `needs an API key credential named '${entry}' for ${secret.ref}, and agentcore.json ` +
-            "has a credential of another type with that name. Rename the entry, or that credential."
-          : `needs an API key credential named after it for ${secret.ref}, and ` +
-            `${JSON.stringify(entry)} is not a valid credential name (3 to 128 letters, digits, ` +
-            '"-", or "_"). Rename the entry.',
-      };
-    }
     const header = secret.header ?? "Authorization";
     // Box's prefix is the literal text before the key ("Bearer "); the gateway's is the word.
     const boxPrefix = secret.prefix ?? (header.toLowerCase() === "authorization" ? "Bearer " : "");
@@ -237,7 +236,7 @@ export function outboundAuthFor(
       ok: true,
       auth: {
         kind: "apiKey",
-        credentialName,
+        credentialName: credentialFor(value),
         variable: value,
         header,
         ...(prefix.length > 0 && { prefix }),

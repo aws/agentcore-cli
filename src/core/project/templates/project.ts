@@ -8,9 +8,16 @@ import type {
 import { InputValidationError } from "../../../errors/errors";
 import { getRuntimeTemplateResolver } from "./runtime";
 import { BOX_RELEASE } from "../backends/boxRelease";
-import { BOX_CODEZIP_ENTRYPOINT, isBoxedContainer, startsInBoxOnCodeZip } from "./boxProfile";
+import {
+  BOX_CODEZIP_ENTRYPOINT,
+  hasBoxProfile,
+  isBoxedContainer,
+  startsInBoxOnCodeZip,
+} from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
-import type { Template, TemplateRenderer } from "./types";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
+import { BOX_PLATFORM_VERSION } from "../../../projectSchemas/runtime";
+import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
 type CreateProjectConfig = {
@@ -20,7 +27,7 @@ type CreateProjectConfig = {
 /** Scaffold a project from scratch, with optional support for rendering a runtime with the project. **/
 export async function createProjectTree(
   config: CreateProjectConfig,
-  input: { projectName: string; secureVpc?: boolean },
+  input: { projectName: string; privateVpc?: boolean },
   options?: { runtime?: ScaffoldRuntimeInput; importBedrockAgent?: ImportBedrockAgentInput },
 ): Promise<{ tree: FsTreeNode; envEntries: EnvLocalEntry[] }> {
   const templates: Template[] = [];
@@ -38,34 +45,43 @@ export async function createProjectTree(
     const template = await resolver.resolve(runtimeConfig);
     if (startsInBoxOnCodeZip(options.runtime)) withBoxStartScript(config, template);
     if (isBoxedContainer(options.runtime)) withBoxContainerBoxVersion(template);
-    templates.push(template);
+    if (input.privateVpc && hasBoxProfile(options.runtime)) {
+      for (const runtime of template.spec.runtimes ?? []) {
+        runtime.containment = "PRIVATE_VPC";
+        runtime.network = { mode: "CONTAINED" };
+      }
+    }
+    // Box runs only on AgentCore Runtime V2, so a box runtime pins it.
+    if (hasBoxProfile(options.runtime)) {
+      for (const runtime of template.spec.runtimes ?? [])
+        runtime.platformVersion = BOX_PLATFORM_VERSION;
+    }
+    // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
+    // only it makes a Box project.
+    templates.push(
+      hasBoxProfile(options.runtime)
+        ? { ...template, spec: { ...template.spec, projectType: "box" } }
+        : template,
+    );
   }
 
   const envEntries = templates.flatMap((template) => template.envEntries ?? []);
+  const boxProject = options?.runtime !== undefined && hasBoxProfile(options.runtime);
 
   const tree = FsTreeNode.createDirectory(".", [
-    FsTreeNode.createFile(".gitignore", () =>
-      config.assetSource.read("templates/shared/gitignore.template"),
-    ),
+    FsTreeNode.createFile(".gitignore", async () => {
+      const shared = await config.assetSource.read("templates/shared/gitignore.template");
+      return boxProject ? `${shared}${BOX_GITIGNORE}` : shared;
+    }),
     FsTreeNode.createDirectory("agentcore", [
       await FsTreeNode.fromAssetSource({ assetSource: config.assetSource }, { assetDir: "cdk" }),
       FsTreeNode.createFile("agentcore.json", async () =>
-        json({
-          name: input.projectName,
-          version: 2,
-          managedBy: "CDK",
-          // A project created from a box template is a Box project; no other command adds this field.
-          ...(options?.runtime?.box && { projectType: "box" }),
-          ...(input.secureVpc && { secureVpc: "ENABLED", network: { mode: "CONTAINED" } }),
-          ...mergeSpecEntries([
-            ...templates.map(({ spec }) => spec),
-            // The runtime's Box gateway entry, with no targets; build adds the model target. It
-            // sits in agentCoreGateways, not in the template's runtime files.
-            ...(options?.runtime?.boxGatewayEntry
-              ? [{ agentCoreGateways: [options.runtime.boxGatewayEntry] }]
-              : []),
-          ]),
-        }),
+        json(
+          newProjectSpec(
+            input.projectName,
+            templates.map(({ spec }) => spec),
+          ),
+        ),
       ),
       FsTreeNode.createFile("aws-targets.json", async () => json([])),
       FsTreeNode.createFile(".env.local", () =>
@@ -82,18 +98,25 @@ export async function createProjectTree(
 }
 
 /**
- * Starts the runtime's agent in a box on a CodeZip deploy: start.py, the
- * entry point, runs start.sh, which runs `box run` with what deploy stages.
- * Create alone writes them, because only create writes the box profiles.
+ * The files a CodeZip box runtime's folder needs, which create and add runtime write:
+ * - start.py, the Runtime's entry point: it sets HOME and a writable workspace, exports the Python
+ *   and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
+ * - an empty `.venv`. The box profile keeps the venv out of the write grant with an optional
+ *   deny_write, which box drops while `.venv` is missing, and box then refuses the profile, as the
+ *   venv's Python would be writable. `uv sync` fills the empty folder.
  */
-function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
-  // start.py is the Runtime's entry point: it sets HOME and a writable workspace, exports the
-  // Python and code paths the @box/agentcore-codezip pack reads, then execs `box run`. No start.sh.
-  template.tree.children.push(
+export function boxCodeZipFiles(assetSource: AssetSource): FsTreeNode[] {
+  return [
     FsTreeNode.createFile(BOX_CODEZIP_ENTRYPOINT, () =>
-      config.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
+      assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`),
     ),
-  );
+    FsTreeNode.createDirectory(".venv", []),
+  ];
+}
+
+/** Starts the runtime's agent in a box on a CodeZip deploy, with {@link boxCodeZipFiles}. */
+function withBoxStartScript(config: CreateProjectConfig, template: Template): void {
+  template.tree.children.push(...boxCodeZipFiles(config.assetSource));
   for (const runtime of template.spec.runtimes ?? []) {
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     // The box release build and deploy ship; change it to move to another release. dev runs the
@@ -113,3 +136,33 @@ function withBoxContainerBoxVersion(template: Template): void {
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/**
+ * The lines a Box project adds to its .gitignore, for every runtime it has or gets later: the
+ * Runtime profile build renders into `.box/<agent>/aws/`, and the box release build and dev stage
+ * into `.box-dist/` and `.box-dev/`. `.box/<agent>/local/` is the user's, and is committed.
+ */
+const BOX_GITIGNORE =
+  "\n# Box (written by agentcore build, deploy and dev; .box/<agent>/local is committed)\n" +
+  ".box/*/aws/\n" +
+  ".box-dist/\n" +
+  ".box-dev/\n";
+
+/**
+ * The agentcore.json of a new project, from the spec entries of its templates. Only a Box template
+ * (one with `projectType: "box"`) makes a Box project: it gets `projectType` and one Box gateway
+ * for each runtime. No other command adds `projectType`.
+ */
+export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
+  const { projectType, ...merged } = mergeSpecEntries(entries);
+  const boxGateways =
+    projectType === "box" ? (merged.runtimes ?? []).map(({ name }) => boxGatewaySpec(name)) : [];
+  return {
+    name: projectName,
+    version: 2,
+    managedBy: "CDK",
+    ...(projectType && { projectType }),
+    ...merged,
+    ...(boxGateways.length > 0 && { agentCoreGateways: boxGateways }),
+  };
+}

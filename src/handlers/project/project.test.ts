@@ -1,6 +1,6 @@
 import { afterEach, test, expect, describe } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRootHandler } from "../index";
 import {
@@ -147,7 +147,6 @@ describe("project create", () => {
     ["agent-python-langchain-box", { version: BOX_RELEASE.version }],
     ["a2a-python-strands-box", { version: BOX_RELEASE.version }],
     ["agui-python-strands-box", { version: BOX_RELEASE.version }],
-    ["mcp-python-fastmcp-box", { version: BOX_RELEASE.version }],
     ["agent-python-strands", undefined],
     ["agent-python-minimal", undefined],
     ["agent-python-langchain", undefined],
@@ -172,71 +171,74 @@ describe("project create", () => {
     expect(spec.runtimes[0].box).toEqual(box);
   });
 
-  test.each([
-    ["agent-python-strands-box", []],
-    ["agent-python-strands-box-container", []],
-  ] as const)(
-    "create --template %s writes the agent-box entry targets %j to agentcore.json",
-    async (template, targetNames) => {
+  test.each(["us-west-1", "ap-south-2", "us-gov-west-1"])(
+    "create of a box template in %s warns that it cannot deploy there, and still creates it",
+    async (region) => {
       const { path: directory, cleanup } = await inTempDirectory();
       cleanups.push(cleanup);
-      await run([
+      const { io } = await run([
         "create",
         "--name",
         "BoxApp",
         "--template",
-        template,
+        "agent-python-strands-box",
+        "--region",
+        region,
         "--skip-install",
         "--skip-git",
       ]);
 
-      const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
-      // A box template makes a Box project; the CDK library makes each runtime's Box gateway.
-      expect(spec.projectType).toBe("box");
-      expect(spec.agentCoreGateways).toHaveLength(1);
-      expect(spec.agentCoreGateways[0]).toMatchObject({
-        name: "agent-box",
-        protocolType: "None",
-        authorizerType: "AWS_IAM",
-      });
-      expect(
-        spec.agentCoreGateways[0].targets.map((target: { name: string }) => target.name),
-      ).toEqual(targetNames);
+      expect(io.stderr()).toContain(
+        `Warning: Box runs on AgentCore Runtime V2, which is not available in ${region}, so this ` +
+          "project cannot be deployed there.",
+      );
+      expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
     },
   );
 
   test.each([
-    "agent-python-strands",
-    "agent-python-minimal",
-    "mcp-python-fastmcp",
-    "empty",
-  ] as const)("create --template %s makes no Box project", async (template) => {
+    ["a box template in us-west-2", "agent-python-strands-box", "us-west-2"],
+    ["a template that is not a box template in us-west-1", "agent-python-strands", "us-west-1"],
+  ])("create of %s gives no Runtime V2 warning", async (_name, template, region) => {
     const { path: directory, cleanup } = await inTempDirectory();
     cleanups.push(cleanup);
-    await run(["create", "--name", "App", "--template", template, "--skip-install", "--skip-git"]);
+    const { io } = await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--region",
+      region,
+      "--skip-install",
+      "--skip-git",
+    ]);
 
-    const projectRoot = join(directory, "App");
-    const spec = await Bun.file(join(projectRoot, "agentcore", "agentcore.json")).json();
-    expect(spec.projectType).toBeUndefined();
-    expect(spec.agentCoreGateways ?? []).toEqual([]);
-    expect(existsSync(join(projectRoot, ".box", "profile.toml"))).toBe(false);
+    expect(io.stderr()).not.toContain("AgentCore Runtime V2");
+    expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
   });
 
-  test("refuses --isolation private-vpc without a box template", async () => {
-    await expect(
-      run([
-        "create",
-        "--name",
-        "App",
-        "--template",
-        "agent-python-strands",
-        "--isolation",
-        "private-vpc",
-        "--skip-install",
-        "--skip-git",
-      ]),
-    ).rejects.toThrow("--isolation private-vpc needs a box template");
-  });
+  test.each(["agent-python-strands", "empty"])(
+    "create --template %s --containment private-vpc is refused and writes nothing",
+    async (template) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await expect(
+        run([
+          "create",
+          "--name",
+          "VpcApp",
+          "--template",
+          template,
+          "--containment",
+          "private-vpc",
+          "--skip-install",
+          "--skip-git",
+        ]),
+      ).rejects.toThrow("--containment private-vpc needs a box template");
+      expect(existsSync(join(directory, "VpcApp"))).toBe(false);
+    },
+  );
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>
@@ -1189,8 +1191,15 @@ describe("project build", () => {
   async function inBuildableProject(): Promise<string> {
     const { projectRoot, cleanup } = await initProject({ name: "MyAgent" });
     cleanups.push(cleanup);
-    // create --skip-install leaves no node_modules, which build requires.
-    await mkdir(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
+    // create --skip-install installs nothing, and build installs a missing library.
+    const cdkDirectory = join(projectRoot, "agentcore", "cdk");
+    const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+    const { dependencies } = JSON.parse(await readFile(join(cdkDirectory, "package.json"), "utf8"));
+    await mkdir(library, { recursive: true });
+    await writeFile(
+      join(library, "package.json"),
+      JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+    );
     return projectRoot;
   }
 
@@ -1234,11 +1243,16 @@ describe("project build", () => {
     await expect(run(["build"])).rejects.toThrow(/No AgentCore project found/);
   });
 
-  test("fails when the CDK dependencies have not been installed", async () => {
+  test("installs the CDK dependencies when they have not been installed", async () => {
     const projectRoot = await inBuildableProject();
     await rm(join(projectRoot, "agentcore", "cdk", "node_modules"), { recursive: true });
 
-    await expect(run(["build"])).rejects.toThrow(/npm install/);
+    const { core } = await run(["build"]);
+
+    expect(core.projectCommands[0]).toEqual({
+      command: ["npm", "install", "--no-audit", "--no-fund"],
+      cwd: join(projectRoot, "agentcore", "cdk"),
+    });
   });
 });
 

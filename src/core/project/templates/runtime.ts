@@ -2,7 +2,6 @@ import { FsTreeNode } from "./fsTree";
 import type { AssetSource } from "../source";
 import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtime/types";
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
-import { isBoxedContainer } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
 import type {
@@ -19,6 +18,7 @@ import { InputValidationError } from "../../../errors";
 import { toPythonPackageName } from "../fsUtils";
 import { templateUsesModel } from "../../../handlers/project/templateProfile";
 import { resolveRuntimeTemplateProfile } from "../../../handlers/project/runtimeTemplateProfile";
+import { isContainerBuild } from "../../../projectSchemas/constants";
 
 /** A model provider's render context, spec entries, and .env.local secrets for a scaffolded runtime. */
 type ModelProviderTemplateConfig = {
@@ -123,7 +123,7 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(scaffoldRuntimeInput.runtimeVersion && {
       runtimeVersion: scaffoldRuntimeInput.runtimeVersion,
     }),
-    ...(scaffoldRuntimeInput.build === "Container" && {
+    ...(isContainerBuild({ build: scaffoldRuntimeInput.build }) && {
       dockerfile: runtimeProfile?.dockerfile ?? "Dockerfile",
     }),
     ...(infra.description && { description: infra.description }),
@@ -132,8 +132,6 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(scaffoldRuntimeInput.framework === "bma" && {
       bedrockManagedAgents: true,
     }),
-    // The boxed container's image does not run opentelemetry-instrument, so say so in agentcore.json.
-    ...(isBoxedContainer(scaffoldRuntimeInput) && { instrumentation: { enableOtel: false } }),
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
@@ -260,7 +258,11 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) =>
-          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
+          templateRenderer.render(raw, {
+            name: toPythonPackageName(input.name),
+            // The README says whether traces are collected, which they are not in a box.
+            box: input.scaffoldRuntimeInput.boxTemplate === true,
+          }),
       },
     );
     return {
@@ -286,27 +288,34 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
     };
-    const isContainer = input.scaffoldRuntimeInput.build === "Container";
+    const isContainer = isContainerBuild({ build: input.scaffoldRuntimeInput.build });
+    const options = {
+      rootDirName: input.name,
+      transformContent: (raw: string) => templateRenderer.render(raw, context),
+      filter: (name: string) => {
+        // The memory module is always included: main.py imports it
+        // unconditionally and it degrades to no memory when its env var is
+        // absent (the China scaffold omits the memory resource).
+        if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+        return true;
+      },
+    };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
-      {
-        // The box templates have their own folder: its Dockerfile runs the agent with `box run`.
-        assetDir: input.scaffoldRuntimeInput.box
-          ? "templates/agent-python-strands-box"
-          : "templates/agent-python-strands",
-      },
-      {
-        rootDirName: input.name,
-        transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name) => {
-          // The memory module is always included: main.py imports it
-          // unconditionally and it degrades to no memory when its env var is
-          // absent (the China scaffold omits the memory resource).
-          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
-          return true;
-        },
-      },
+      { assetDir: "templates/agent-python-strands" },
+      options,
     );
+    if (input.scaffoldRuntimeInput.boxTemplate) {
+      // A box template is the Strands template with the files of agent-python-strands-box in
+      // place of its own: a Dockerfile that runs the agent with `box run`, and a .gitignore that
+      // keeps the staged box out of git.
+      const box = await FsTreeNode.fromAssetSource(
+        { assetSource },
+        { assetDir: "templates/agent-python-strands-box" },
+        options,
+      );
+      tree.replaceChildren(box.children);
+    }
     return {
       tree,
       spec: mergeSpecEntries([

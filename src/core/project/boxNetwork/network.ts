@@ -1,19 +1,16 @@
 /**
  * The Box network model of one box runtime: the box profile parsed and evaluated once, with each
- * host's outbound auth and gateway target, the credentials it needs, the policy files to stage,
- * and every warning and failure. Build, deploy, and staging write from it.
+ * host's outbound auth and gateway target, the `env://` routes its targets need a credential for,
+ * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
+ * it.
  */
-import { boxGatewayAgentCoreHost } from "../../../handlers/project/shortcuts";
-import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
-import {
-  credentialEnvironmentVariableNames,
-  credentialEnvVarName,
-} from "../../../projectSchemas/credential";
+import { boxGatewayBedrockHost } from "../../../handlers/project/shortcuts";
+import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
-import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "../boxMemory";
-import { boxEgressCredentialName, boxEgressCredentials } from "../boxProfileCredentials";
-import { BOX_SECRETS_MANAGER_ENV, boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
+import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
+import { boxEgressCredentialName } from "../boxProfileCredentials";
+import type { BoxEnvRoute } from "../boxProfileEgress";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
@@ -26,15 +23,24 @@ import {
 } from "./egress";
 import { describeEntry, describeRule, ruleOrigin } from "./places";
 import { placeOf, type ParsedPolicy } from "./policyParser";
-import type { ParsedProfile } from "./profileParser";
-import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import { runtimeProfileContext } from "../runtimeProfile/context";
 import { deriveRuntimeProfile } from "../runtimeProfile/derive";
-import { runtimeProfileHeader } from "../runtimeProfile/rules/additions";
+import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
+import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
+import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
+import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
-import { MAX_GATEWAY_TARGETS, hostKey, type ConversionFailure, type FailureCode } from "./types";
+import {
+  MAX_GATEWAY_TARGETS,
+  hostKey,
+  type BoxNetworkFailure,
+  type ConversionFailure,
+  type FailureCode,
+} from "./types";
 import type { SourceSpan } from "./dogwood";
+
+export type { BoxNetworkFailure } from "./types";
 
 /** Where a failure of a target in agentcore.json is. */
 const PROJECT_SPEC_PLACE = "agentcore/agentcore.json";
@@ -56,7 +62,7 @@ export type BoxEgressAuth =
  * What names a host: an `[egress]` entry with its destinations there, an HTTP `[mcp]` server, or a
  * permit.
  */
-export type BoxNetworkSource =
+export type BoxHostSource =
   | {
       readonly kind: "entry";
       readonly egressEntry: string;
@@ -78,11 +84,14 @@ export interface BoxNetworkHost {
   readonly port?: number;
   /** `host`, or `host:port` for a port other than 443. */
   readonly authority: string;
-  readonly sources: readonly BoxNetworkSource[];
+  readonly sources: readonly BoxHostSource[];
   readonly outboundAuth: BoxEgressAuth;
   /** Whether Box allows at least one request to the host. */
   readonly reachable: boolean;
-  /** The gateway target that serves a reachable host. */
+  /**
+   * The gateway target of a reachable host, also of one whose API key has no credential in
+   * agentcore.json, which the gateway targets writer then skips.
+   */
   readonly target?: string;
   /** How many of the sample requests the analysis evaluated Box allows. */
   readonly allowed: number;
@@ -93,54 +102,40 @@ export interface BoxNetworkHost {
   readonly enforcedByBox: readonly string[];
 }
 
-/** An API key credential that an `env://` entry needs, and the variable that holds its key. */
-export interface BoxEgressCredential {
-  readonly name: string;
-  readonly variable: string;
-}
-
-/** Why the model cannot be written, and where. */
-export interface BoxNetworkFailure {
-  readonly code: FailureCode;
-  readonly ruleId?: string;
-  readonly egressEntry?: string;
-  readonly mcpEntry?: string;
-  readonly target?: string;
-  /** The problem and how to fix it, in whole sentences that name its rule, entry, or target. */
-  readonly reason: string;
-  /**
-   * The user's own file, as `file:line:column` or the file alone: a rule Box adds is at the part
-   * of the profile that makes Box add it.
-   */
-  readonly place?: string;
-}
-
 /** The Box network model of one box runtime. */
 export interface BoxNetwork {
   readonly runtime: string;
   /** The runtime's Box gateway, as agentcore.json names it. */
   readonly gateway: string;
-  /** The region build builds for: of the Box gateway, its `bedrock` and `agentcore` targets. */
+  /** The region build builds for: of the Box gateway and its `bedrock` target. */
   readonly region: string;
   /**
    * The `[egress]` entries' hosts in profile order, then the HTTP `[mcp]` servers' hosts, then the
    * hosts only the permits name.
    */
   readonly hosts: readonly BoxNetworkHost[];
-  readonly credentials: readonly BoxEgressCredential[];
-  /** The policy files, relative to the agent's local box folder, to copy beside the AgentCore Runtime profile. */
-  readonly policyFiles: readonly string[];
-  /** The CloudWatch targets of the profile's `[telemetry]`; absent means none. */
-  readonly telemetry?: readonly CloudWatchTelemetry[];
+  /** The `env://` route of each target that sends an API key, for the credentials writer. */
+  readonly envRoutes: readonly BoxEnvRoute[];
   /**
-   * The third-party targets of the profile's `[telemetry]` that the AgentCore Runtime profile
-   * carries; absent means none.
+   * The gateways of the project that the agent calls through the Box gateway, each with its
+   * target; absent means none.
    */
-  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  readonly projectGateways?: readonly BoxProjectGateway[];
+  /**
+   * The policy files, relative to the agent's local box folder, to copy beside the AgentCore
+   * Runtime profile.
+   */
+  readonly policyFiles: readonly string[];
+  /**
+   * The CloudWatch targets of the profile's `[telemetry]`, then the default X-Ray target of
+   * {@link runtimeProfile} (`DEFAULT_TRACES_TARGET`); absent means none.
+   */
+  readonly telemetry?: readonly CloudWatchTelemetry[];
   /**
    * The AgentCore Runtime profile that build derives from the local profile (`deriveRuntimeProfile`
    * in runtimeProfile/derive.ts), which the runtime profile writer stages; absent when build has no
-   * profile text.
+   * profile text. It can name a route that the staged file does not have: the writer removes each
+   * route to a target that build does not write (withoutUnsentRoutes in boxNetworkWriters.ts).
    */
   readonly runtimeProfile?: TomlTable;
   /** The comment lines above {@link runtimeProfile} in the staged file. */
@@ -163,22 +158,23 @@ export interface BoxNetworkProject {
   /** The region build builds for. */
   readonly region: string;
   /**
-   * The region of the deploy target, which build sets on each CloudWatch target that names no
-   * region; absent means `region`.
-   */
-  readonly deployRegion?: string;
-  /**
-   * The gateway's targets, with the `bedrock` and `agentcore` targets that build adds for the
-   * runtime's model and Memory calls (`addBoxGatewayTargets`).
+   * The gateway's targets, with the `bedrock` target that build adds for the runtime's model calls
+   * (`addBoxGatewayTargets`).
    */
   readonly targets: readonly AgentCoreGatewayTarget[];
   /** The IAM actions that the gateway's `additionalPolicies` files grant, except build's own. */
   readonly grantedActions: readonly string[];
   /**
-   * Whether the AgentCore Runtime profile reads third-party telemetry keys from AWS Secrets
-   * Manager ({@link BOX_SECRETS_MANAGER_ENV}). Off, it carries no third-party target, as before.
+   * What the check of the @aws/agentcore-cdk of the project gives for a target with
+   * `passthrough.gateway` (`cdkAcceptsPassthroughGateway`). Absent means no check, and no gateway
+   * of the project gets a target.
    */
-  readonly secretsManager?: boolean;
+  readonly projectGatewayCheck?: PassthroughGatewayCheck;
+}
+
+/** The Box gateway of `runtime`: the gateway bound to it. */
+export function boxGatewayOf(spec: ProjectSpec, runtime: string): AgentCoreGateway | undefined {
+  return spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === runtime);
 }
 
 /**
@@ -212,21 +208,16 @@ export function buildBoxNetwork(
     return { ...rest, reason: `${where.subject} ${reason}`, place: where.place };
   };
   const failures: BoxNetworkFailure[] = [...parseFailures, ...map.failures.map(located)];
-  const targets = hostTargets(map.hosts, project, located, parsed.profile.path);
-  failures.push(...targets.failures);
-  const credentials = boxEgressCredentials(
-    parsed.profile.egress,
-    project.spec.credentials,
-    parsed.profile.mcp,
+  const reached = projectGatewaysOf(
+    project.spec,
+    project.runtime,
+    project.projectGatewayCheck ?? { accepts: false, reason: "refuses" },
   );
-  const thirdParty = runtimeTelemetry(parsed.profile, project, credentials.needed);
+  const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
+  failures.push(...targets.failures);
   const telemetry =
     parsed.profile.telemetry &&
-    withDeployRegion(
-      parsed.profile.telemetry,
-      project.deployRegion ?? project.region,
-      parsed.profile.path,
-    );
+    withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
   const source = parsed.profile.source;
   const context =
     source &&
@@ -237,24 +228,28 @@ export function buildBoxNetwork(
       region: project.region,
       gateway: { name: project.gateway, targets: project.targets },
       hosts: targets.hosts,
+      projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
-      thirdPartyTelemetry: thirdParty.targets,
-      secretsManager: project.secretsManager ?? false,
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
   failures.push(
     ...(derived?.problems ?? []).map(({ code, reason, place }) => ({ code, reason, place })),
   );
+  const defaultTraces = derived ? defaultTracesTelemetry(derived.profile, project.region) : [];
+  const sent =
+    telemetry || defaultTraces.length > 0
+      ? [...(telemetry?.telemetry ?? []), ...defaultTraces]
+      : undefined;
   return {
     runtime: project.runtime.name,
     gateway: project.gateway,
     region: project.region,
     hosts: targets.hosts,
-    credentials: credentials.needed,
+    envRoutes: envRoutesOf(targets.hosts),
+    projectGateways: reached.gateways,
     policyFiles: parsed.profile.policyFiles,
-    ...(telemetry && { telemetry: telemetry.telemetry }),
-    ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
+    ...(sent && { telemetry: sent }),
     ...(derived &&
       context && {
         runtimeProfile: derived.profile,
@@ -262,8 +257,6 @@ export function buildBoxNetwork(
       }),
     grantedActions: project.grantedActions,
     warnings: [
-      ...credentials.skipped,
-      ...thirdParty.warnings,
       ...hostWarnings(targets.hosts),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);
@@ -273,6 +266,7 @@ export function buildBoxNetwork(
         );
       }),
       ...(telemetry?.warnings ?? []),
+      ...reached.warnings,
       ...(derived?.warnings ?? []),
     ],
     failures,
@@ -280,69 +274,19 @@ export function buildBoxNetwork(
 }
 
 /**
- * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
- * each one it leaves out. With {@link BoxNetworkProject.secretsManager} off it carries none, and
- * warns for each target with a key. A CodeZip runtime carries no target with a key, because its
- * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
- * the variable deploy reads its key from is a variable that a credential reads, or that another
- * target of the profile reads, so deploy never sends one key to the wrong destination.
+ * The `env://` route of each host whose target sends an API key, once for each route. An HTTP MCP
+ * server's route has the server's name.
  */
-function runtimeTelemetry(
-  profile: ParsedProfile,
-  project: BoxNetworkProject,
-  credentials: readonly BoxEgressCredential[],
-): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
-  const leftOut = (name: string, reason: string) =>
-    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
-  const keyed = (profile.thirdPartyTelemetry ?? []).filter(({ secret }) => secret !== undefined);
-  if (!project.secretsManager) {
-    return {
-      targets: [],
-      warnings: keyed.map(({ name }) =>
-        leftOut(
-          name,
-          "on AgentCore Runtime, Box reads its key from AWS Secrets Manager, and no Box release " +
-            `for Linux can do that yet. To try a box build that can, set ${BOX_SECRETS_MANAGER_ENV}=1`,
-        ),
-      ),
-    };
+function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
+  const routes: BoxEnvRoute[] = [];
+  for (const { target, outboundAuth, sources } of hosts) {
+    const entry = sources.find((source): source is EntrySource => source.kind !== "rule");
+    if (target === undefined || outboundAuth.kind !== "apiKey" || !entry) continue;
+    const route = entry.kind === "entry" ? entry.egressEntry : entry.mcpEntry;
+    if (routes.some((other) => other.route === route)) continue;
+    routes.push({ route, variable: outboundAuth.variable });
   }
-  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
-    leftOut(name, reason),
-  );
-  const taken = new Set([
-    ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
-    ...credentials.map(({ name }) => credentialEnvVarName(name)),
-  ]);
-  const targets: ThirdPartyTelemetry[] = [];
-  for (const target of profile.thirdPartyTelemetry ?? []) {
-    if (target.secret !== undefined && project.runtime.build === "CodeZip") {
-      warnings.push(
-        leftOut(
-          target.name,
-          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
-            "does not have. Use a container runtime",
-        ),
-      );
-      continue;
-    }
-    if (target.secret !== undefined) {
-      const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
-      if (taken.has(variable)) {
-        warnings.push(
-          leftOut(
-            target.name,
-            `deploy reads its key from ${variable}, and a credential or another target reads ` +
-              "that variable too. Rename the target",
-          ),
-        );
-        continue;
-      }
-      taken.add(variable);
-    }
-    targets.push(target);
-  }
-  return { targets, warnings };
+  return routes;
 }
 
 /** Whether build manages `target`: it adds, changes, and removes each target with the prefix. */
@@ -352,7 +296,7 @@ export function isManagedTarget(target: Pick<AgentCoreGatewayTarget, "name">): b
 
 /** The host map key of a passthrough target's endpoint, or `undefined` for another target. */
 function endpointKey(target: AgentCoreGatewayTarget): string | undefined {
-  const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+  const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
   return at ? hostKey(at.host, at.port) : undefined;
 }
 
@@ -401,6 +345,7 @@ function duplicateRule(
 function hostTargets(
   mapped: readonly MappedHost[],
   project: BoxNetworkProject,
+  gateways: readonly BoxProjectGateway[],
   located: (failure: ConversionFailure) => BoxNetworkFailure,
   profilePath: string,
 ): { hosts: BoxNetworkHost[]; failures: BoxNetworkFailure[] } {
@@ -442,7 +387,7 @@ function hostTargets(
     let auth: BoxEgressAuth = { kind: "none" };
     const entry = host.entry;
     if (entry) {
-      const result = outboundAuthFor(entry.secret, host.host, entry.name, (variable) =>
+      const result = outboundAuthFor(entry.secret, host.host, (variable) =>
         boxEgressCredentialName(project.spec.credentials, entry.name, variable),
       );
       if (result.ok) auth = result.auth;
@@ -524,9 +469,40 @@ function hostTargets(
   for (const target of existing) {
     if (!isManagedTarget(target)) owners.set(target.name, `the gateway target '${target.name}'`);
   }
+  const gatewayOf = new Map<string, string>();
+  for (const gateway of gateways) {
+    const other = gatewayOf.get(gateway.target);
+    if (other !== undefined) {
+      failures.push({
+        code: "TARGET_NAME_COLLISION",
+        target: gateway.target,
+        reason:
+          `The gateways '${other}' and '${gateway.name}' of this project would both get the ` +
+          `gateway target '${gateway.target}'. Rename one of the gateways.`,
+        place: PROJECT_SPEC_PLACE,
+      });
+      continue;
+    }
+    gatewayOf.set(gateway.target, gateway.name);
+    owners.set(gateway.target, `the target that build adds for the gateway '${gateway.name}'`);
+  }
   const describeHost = (host: MappedHost) =>
     host.entry ? `${entryLabel(host.entry)} for ${host.authority}` : `the host ${host.authority}`;
-  for (const index of reused) owners.set(hosts[index]!.target!, describeHost(mapped[index]!));
+  for (const index of reused) {
+    const name = hosts[index]!.target!;
+    const gateway = gatewayOf.get(name);
+    if (gateway !== undefined) {
+      // The host keeps its target, so the gateway cannot have that name.
+      failAt(
+        mapped[index]!,
+        "TARGET_NAME_COLLISION",
+        `takes the gateway target '${name}' for ${hosts[index]!.authority}, and the target that ` +
+          `build adds for the gateway '${gateway}' has that name. Rename the entry or the gateway.`,
+      );
+      continue;
+    }
+    owners.set(name, describeHost(mapped[index]!));
+  }
   mapped.forEach((host, index) => {
     const name = hosts[index]!.target;
     if (name === undefined || reused.has(index)) return;
@@ -548,13 +524,19 @@ function hostTargets(
 
   const served = hosts.filter((host) => host.target !== undefined).length;
   const kept = existing.filter((target) => !isManagedTarget(target) && !claimed.has(target.name));
-  if (served + kept.length > MAX_GATEWAY_TARGETS) {
+  const needed = served + gateways.length + kept.length;
+  if (needed > MAX_GATEWAY_TARGETS) {
+    const builds =
+      gateways.length === 0
+        ? `${served} for the hosts of the Box profile and`
+        : `${served} for the hosts of the Box profile, ${gateways.length} for the gateways of ` +
+          "the project, and";
     failures.push({
       code: "TOO_MANY_TARGETS",
       reason:
-        `The gateway '${project.gateway}' needs ${served + kept.length} targets, ${served} for ` +
-        `the hosts of the Box profile and ${kept.length} of your own, and a gateway can have at ` +
-        `most ${MAX_GATEWAY_TARGETS}. Remove hosts from the profile, or targets from the gateway.`,
+        `The gateway '${project.gateway}' needs ${needed} targets, ${builds} ${kept.length} of ` +
+        `your own, and a gateway can have at most ${MAX_GATEWAY_TARGETS}. Remove hosts from the ` +
+        "profile, or targets from the gateway.",
       place: profilePath,
     });
   }
@@ -562,7 +544,7 @@ function hostTargets(
 }
 
 /** The source of the entry that names a host. */
-function entrySource(entry: NonNullable<MappedHost["entry"]>): BoxNetworkSource {
+function entrySource(entry: NonNullable<MappedHost["entry"]>): BoxHostSource {
   if (entry.table === "egress") {
     return { kind: "entry", egressEntry: entry.name, destinations: entry.destinations };
   }
@@ -588,12 +570,18 @@ function unmanagedShape(target: AgentCoreGatewayTarget): string | undefined {
   const { endpoint, protocolType, stickinessConfiguration } = target.passthrough;
   if (protocolType !== "CUSTOM") return `has protocolType ${protocolType}`;
   if (stickinessConfiguration) return "has a stickinessConfiguration";
-  if (!/^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(endpoint)) return `has the endpoint ${endpoint}`;
+  // A target that names a gateway of the project has no endpoint.
+  if (endpoint !== undefined && !/^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(endpoint)) {
+    return `has the endpoint ${endpoint}`;
+  }
   const auth = target.outboundAuth;
   const fields = auth ? Object.keys(auth).sort().join(",") : "";
   const shapes: Record<string, string[]> = {
     NONE: ["type"],
-    GATEWAY_IAM_ROLE: ["region,service,type"],
+    // A target to a gateway of the project signs in the region of the stack, so it has no region.
+    GATEWAY_IAM_ROLE: [
+      target.passthrough.gateway === undefined ? "region,service,type" : "service,type",
+    ],
     API_KEY: [
       "credentialName,location,parameterName,type",
       "credentialName,location,parameterName,prefix,type",
@@ -614,7 +602,7 @@ function targetConflict(
   auth: BoxEgressAuth,
   profilePath: string,
 ): string | undefined {
-  const endpoint = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+  const endpoint = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
   const named = `The gateway target '${target.name}' for ${host.authority}`;
   if (target.passthrough?.protocolType !== "CUSTOM") {
     return (
@@ -675,7 +663,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
   return warnings;
 }
 
-type EntrySource = Exclude<BoxNetworkSource, { kind: "rule" }>;
+type EntrySource = Exclude<BoxHostSource, { kind: "rule" }>;
 
 /** The entry of a source as a message names it: `[egress.github]` or `[mcp.docs]`. */
 function sourceLabel(source: EntrySource): string {
@@ -685,48 +673,49 @@ function sourceLabel(source: EntrySource): string {
 /**
  * A warning for each target of the network's Box gateway in `spec`, as build writes it, that the
  * gateway signs with its own role for an endpoint that no policy of that role allows. The Bedrock
- * policy file that build writes allows the Bedrock runtime host, and the Memory policy file the
- * Memory host; a gateway that imports its role is the user's to grant.
+ * policy file that build writes allows the Bedrock runtime host of the build region; a gateway that
+ * imports its role is the user's to grant.
  */
 export function boxGatewayIamWarnings(
   spec: ProjectSpec,
-  network: Pick<BoxNetwork, "gateway" | "grantedActions" | "region">,
+  network: Pick<BoxNetwork, "runtime" | "gateway" | "grantedActions" | "region">,
 ): string[] {
-  const gateway = spec.agentCoreGateways.find(({ name }) => name === network.gateway);
+  const gateway = boxGatewayOf(spec, network.runtime);
   if (!gateway || gateway.executionRoleArn) return [];
-  // Build writes these two files, so each one counts when it is listed, not by its actions.
+  // Build writes this file, so it counts when it is listed, not by its actions.
   const listed = gateway.additionalPolicies ?? [];
-  const memoryListed = listed.includes(BOX_MEMORY_POLICY_FILE);
   const bedrockListed = listed.includes(BOX_BEDROCK_POLICY_FILE);
   const granted = network.grantedActions;
   const grantsService = (service: string) =>
     granted.some((action) => action === "*" || action.toLowerCase().startsWith(`${service}:`));
   /** Whether the role has a permission for `service`, whatever its endpoint. */
   const holds = (service: string) =>
-    (service === "bedrock" && bedrockListed) ||
-    (service === "bedrock-agentcore" && memoryListed) ||
-    grantsService(service);
+    (service === "bedrock" && bedrockListed) || grantsService(service);
   const grants = (action: string) => granted.some((pattern) => actionMatches(pattern, action));
   const allows = (api: AwsEndpointApi, host: string): boolean => {
     switch (api) {
       case "bedrock-runtime":
-        return bedrockListed || grants("bedrock:InvokeModel");
+        return (
+          (bedrockListed && host === boxGatewayBedrockHost(network.region)) ||
+          grants("bedrock:InvokeModel")
+        );
       case "bedrock-control":
         return granted.some(grantsBedrockControlPlane);
       case "bedrock-agentcore":
-        return (
-          (memoryListed && host === boxGatewayAgentCoreHost(network.region)) ||
-          grantsService("bedrock-agentcore")
-        );
+        return grantsService("bedrock-agentcore");
       case "lambda-url":
         return grants("lambda:InvokeFunctionUrl");
+      case "gateway":
+        return grants("bedrock-agentcore:InvokeGateway");
     }
   };
   const warnings: string[] = [];
   for (const target of gateway.targets) {
     const auth = target.outboundAuth;
     if (auth?.type !== "GATEWAY_IAM_ROLE" || !auth.service) continue;
-    const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+    // The CDK library grants the role InvokeGateway on the gateway that the target names.
+    if (target.passthrough?.gateway !== undefined) continue;
+    const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
     const endpoint = at && awsEndpoint(at.host);
     const host = at && hostKey(at.host, at.port);
     if (endpoint && host ? allows(endpoint.api, host) : holds(auth.service)) continue;

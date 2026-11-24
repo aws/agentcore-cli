@@ -1,19 +1,23 @@
 import { join, posix } from "node:path";
-import { BOX_GATEWAY_BEDROCK_REGION, callsBedrockModel } from "../../../handlers/project/shortcuts";
+import { callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { memoryEnvVarName } from "../../../projectSchemas/memory";
-import type { ProjectSpec } from "../../../projectSchemas/project";
-import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
+import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project";
+import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
 import { modelProviderCredentialName } from "./runtime";
+import { projectGatewayInputs, type BoxProjectGateway } from "../boxNetwork/projectGateways";
 
 /** Where a box template's venv gets its uv-managed Python, relative to the home folder. */
 const UV_PYTHON_HOME_DIR = ".local/share/uv/python";
 
 /** That folder as a boxy path. */
 const UV_PYTHON_INSTALL_DIR = "${{ home }}/" + UV_PYTHON_HOME_DIR;
+
+/** The system libraries of the Linux arm64 image, such as libssl. */
+const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
 
 /**
  * The environment `uv sync` builds a box template's venv with: a uv-managed Python, installed in
@@ -24,60 +28,20 @@ export function boxUvSyncEnv(home: string): Record<string, string> {
   return { UV_MANAGED_PYTHON: "1", UV_PYTHON_INSTALL_DIR: join(home, UV_PYTHON_HOME_DIR) };
 }
 
-/** The system libraries of the Linux arm64 image, such as libssl. */
-const LINUX_LIBRARIES = "/usr/lib/aarch64-linux-gnu";
-
 /**
  * The entry point of a runtime that runs its agent in a box on a CodeZip
- * deploy: start.py runs start.sh, which starts `box run`. Create writes both.
+ * deploy: start.py starts `box run`. Create writes it.
  */
 export const BOX_CODEZIP_ENTRYPOINT = "start.py";
 
 /** The folder deploy stages box into, inside the runtime's code folder, so it ships in the zip. */
 export const BOX_CODEZIP_DIST = ".box-dist";
 
-/**
- * The env vars the Runtime profile reads through its generated packs, so no start script fills the
- * profile in. The Runtime sets the gateway URL; start.py exports the CodeZip Python and code paths,
- * which only the microVM knows.
- */
+/** The Runtime sets the gateway URL; start.py exports the CodeZip paths only the microVM knows. */
 const BOX_GATEWAY_URL_ENV = "AGENTCORE_GATEWAY_BOX_URL";
 const BOX_PYTHON_ENV = "BOX_PYTHON";
-const BOX_PYTHON_PREFIX_ENV = "BOX_PYTHON_PREFIX";
+const BOX_PYTHON_STDLIB_ENV = "BOX_PYTHON_STDLIB";
 const BOX_CODE_ENV = "BOX_CODE";
-
-/** The pack of box that each box profile imports. */
-const BOX_BASE_PACK = "@box/base";
-
-/** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
-export const BOX_BEDROCK_PACK = "@box/bedrock";
-
-/** The generated pack both Runtime profiles import for the deployed resources: {@link renderAgentCorePack}. */
-export const AGENTCORE_PACK_NAME = "@box/agentcore";
-export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
-
-/** The generated pack the CodeZip Runtime profile adds for the Runtime Python and code: {@link renderAgentCoreCodeZipPack}. */
-export const AGENTCORE_CODEZIP_PACK_NAME = "@box/agentcore-codezip";
-export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
-
-/**
- * Bounds the `gateway.url` input: an `https` host under `amazonaws.com`. box requires a `pattern` or
- * `values` on an input that reaches a backend `url`, so a value from the environment names only the
- * host the profile expects. `[.]` matches a literal dot (a TOML basic string rejects `\.`).
- */
-const GATEWAY_URL_PATTERN = "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com";
-
-/**
- * Bounds the `aws.region` input, as @box/bedrock bounds `bedrock.region`: box requires a `pattern` or
- * `values` on an input that reaches a backend's `auth.aws.region`.
- */
-const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
-
-/**
- * Bounds an input that reaches the agent `command` (the Python path and the code dir): an absolute
- * path of safe characters, so a value from the environment cannot inject other arguments.
- */
-const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
 
 /**
  * The variable in which AgentCore Runtime names the runtime's own log group and log stream, as
@@ -85,11 +49,72 @@ const ABSOLUTE_PATH_PATTERN = "/[A-Za-z0-9_.+/-]+";
  */
 export const RUNTIME_LOGS_HEADERS_ENV = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
 
+/** The pack of box that each box profile imports. */
+const BOX_BASE_PACK = "@box/base";
+
+/** The pack of box that routes the Bedrock model calls, with its `[options] bedrock.region`. */
+export const BOX_BEDROCK_PACK = "@box/bedrock";
+
 /**
- * The tools of @box/base that get the project's write grant: box gives each one its own grant, so
- * each lists the agent's `deny_write` folders as well.
+ * The route of {@link BOX_BEDROCK_PACK} that signs each Bedrock call with the AWS credentials,
+ * `aws://`, for its `bedrock.sign-in` input `aws`, the default. The local profile uses it.
  */
-const BOX_BASE_PROJECT_WRITE_TOOLS = ["uname"];
+export const BOX_BEDROCK_ROUTE = "bedrock";
+
+/**
+ * The route of {@link BOX_BEDROCK_PACK} for its `bedrock.sign-in` input `api-key`, whose secret is
+ * `env://AWS_BEARER_TOKEN_BEDROCK`. The Runtime profile uses it: there each Bedrock call goes
+ * through a Box gateway backend, and box takes only an `env://` secret beside a backend. Box gives
+ * the agent a stand-in for it and strips it, and the gateway signs the call with its own role.
+ */
+export const BOX_BEDROCK_API_KEY_ROUTE = "bedrock-api-key";
+
+/** The `bedrock.sign-in` of the Runtime profile, which selects {@link BOX_BEDROCK_API_KEY_ROUTE}. */
+export const BOX_BEDROCK_RUNTIME_SIGN_IN = "api-key";
+
+/** {@link renderAgentCorePack}. */
+export const AGENTCORE_PACK_NAME = "@box/agentcore";
+export const AGENTCORE_PACK_PATH = "resources/packs/agentcore/pack.toml";
+
+/** {@link renderAgentCoreCodeZipPack}. */
+export const AGENTCORE_CODEZIP_PACK_NAME = "@box/agentcore-codezip";
+export const AGENTCORE_CODEZIP_PACK_PATH = "resources/packs/agentcore-codezip/pack.toml";
+
+/**
+ * box requires a `pattern` on an input that reaches a backend `url`. The CDK sets the gateway URL
+ * with a `/mcp` path, so a path is allowed after the host. `[.]` is a literal dot, because a TOML
+ * basic string rejects `\.`.
+ */
+const GATEWAY_URL_PATTERN =
+  "https://[a-z0-9][-a-z0-9.]*[.]amazonaws[.]com(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*";
+
+/**
+ * The host of a gateway of the project, which the CDK library sets in `<prefix>_HOST`, and that
+ * gateway's URL in `<prefix>_URL`, with `/mcp` for an MCP gateway, in the `aws` and `aws-cn`
+ * partitions. Each input that reaches a route's destinations needs a pattern.
+ */
+const PROJECT_GATEWAY_HOST_PATTERN =
+  "[a-z0-9][-a-z0-9]*[.]gateway[.]bedrock-agentcore[.][a-z0-9-]+[.]amazonaws[.]com([.]cn)?";
+const PROJECT_GATEWAY_URL_PATTERN = `https://${PROJECT_GATEWAY_HOST_PATTERN}(/mcp)?`;
+
+/** As @box/bedrock bounds `bedrock.region`. */
+const AWS_REGION_PATTERN = "[a-z]{2}(-[a-z]+)?-(central|north|south|east|west)+-[0-9]+";
+
+/**
+ * For the inputs that reach the agent `command` or a filesystem grant: no extra arguments, and no
+ * `.` or `..` segment, empty value or `/`, which would widen a grant to `/`.
+ */
+const ABSOLUTE_PATH_PATTERN = "(/[.]{0,2}[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)+";
+
+/**
+ * The tools of @box/base that get the project's write grant: box gives each one its own grant,
+ * so each lists the agent's `deny_write` folders as well. Taken from @box/base in the box release
+ * that `boxRelease.json` pins (0.3.0, and 0.3.0-preview.1 for macOS), which has no tools: it
+ * dropped `uname`, and refuses a
+ * `[tool.uname]` table with no `command`. When the pin moves, check the tools of @box/base: box
+ * refuses a CodeZip box profile if a tool it misses gets the project write grant.
+ */
+const BOX_BASE_PROJECT_WRITE_TOOLS: readonly string[] = [];
 
 type Protocol = NonNullable<ScaffoldRuntimeInput["protocol"]>;
 
@@ -147,6 +172,60 @@ function boxLocalProfileName(projectName: string, agentName: string): string {
   return `${projectName}-${agentName}`;
 }
 
+/**
+ * The policy file that each box profile `agentcore create` or `agentcore add runtime` writes lists
+ * under `policies`, beside the profile. While the profile lists it, build copies it beside the
+ * AgentCore Runtime profile, so its forbids hold there too. It has a name of its own, so
+ * `policy.dw`, the name Box gives the policy a user edits, stays free for the user.
+ */
+export const AWS_METADATA_POLICY_FILE = "aws-metadata-block.dw";
+
+/** The `@id`s of the rules of {@link AWS_METADATA_POLICY_FILE}. */
+export const AWS_METADATA_RULE_IDS: ReadonlySet<string> = new Set([
+  "aws_metadata_addresses",
+  "aws_metadata_hosts",
+]);
+
+/** An agent's {@link AWS_METADATA_POLICY_FILE} at `projectRoot`, beside its local box profile. */
+export function boxLocalMetadataPolicyPath(projectRoot: string, agentName: string): string {
+  return join(projectRoot, boxLocalDir(agentName), AWS_METADATA_POLICY_FILE);
+}
+
+/**
+ * The text of {@link AWS_METADATA_POLICY_FILE}: forbids on a connection to the AWS instance metadata
+ * service (IMDS on EC2, MMDS on AgentCore Runtime), which serves the role's credentials. A forbid
+ * wins over every permit, so these hold even when a route or a rule the user adds permits the host.
+ * Build copies the file into the AgentCore Runtime profile, so Box refuses these connections there
+ * too, and a route to one of these hosts gets no gateway target.
+ */
+export function renderAwsMetadataPolicy(): string {
+  return `// Written by \`agentcore create\` or \`agentcore add runtime\`, which replace this file each time
+// they write the box profile beside it. The profile lists it under \`policies\`, and build copies
+// it beside the AgentCore Runtime profile. Put rules of your own in another file beside the
+// profile, such as policy.dw, and add it to \`policies\`.
+
+// The agent cannot connect to the AWS instance metadata service, which serves the role's
+// credentials: 169.254.169.254 and fd00:ec2::254 (IMDS on EC2, MMDS on AgentCore Runtime), and the
+// names instance-data and instance-data.ec2.internal. Box's gateway, outside the box, signs the
+// agent's AWS calls, so the agent needs no credentials of its own. Other link-local addresses and
+// the metadata services of other clouds are not forbidden here.
+@id("aws_metadata_addresses")
+forbid (principal, action == Box::Action::"net:connect", resource)
+when {
+  (context.input has ip4 && context.input.ip4 == "169.254.169.254") ||
+  (context.input has ip6 && context.input.ip6 == "fd00:ec2::254")
+};
+
+@id("aws_metadata_hosts")
+forbid (principal, action == Box::Action::"net:connect", resource)
+when {
+  context.input.host == "169.254.169.254" ||
+  context.input.host == "instance-data" ||
+  context.input.host == "instance-data.ec2.internal"
+};
+`;
+}
+
 /** An agent's local box profile at `projectRoot`. */
 export function boxLocalProfilePath(projectRoot: string, agentName: string): string {
   return join(projectRoot, boxLocalProfileFile(agentName));
@@ -160,17 +239,40 @@ export function hasBoxProfile(runtime: ScaffoldRuntimeInput): boolean {
   return startsInBoxOnCodeZip(runtime) || isBoxedContainer(runtime);
 }
 
+/**
+ * The code folder of a CodeZip box template in its local profile: `agentcore dev` starts box in
+ * the folder of the runtime, so the profile names it as `${{ workspace }}`.
+ */
+const CODEZIP_START_FOLDER = "${{ workspace }}";
+
+/** The URL an A2A agent card advertises on the Runtime, from an input of @box/agentcore. */
+const RUNTIME_URL = "${{ inputs.runtime.url }}";
+
+/**
+ * The folder, from the project root, that box starts a run or a resolution of `runtime`'s local
+ * profile in: the runtime's own code folder for a CodeZip runtime, from agentcore.json, so the
+ * agent's grants reach no further than it, whatever the profile says. The project root ("") for a
+ * container runtime, whose profile describes the image's /app.
+ */
+export function boxStartFolder(runtime: {
+  readonly build: string;
+  readonly codeLocation: string;
+}): string {
+  if (runtime.build !== "CodeZip") return "";
+  return runtime.codeLocation.replace(/^\.\/+/, "").replace(/\/+$/, "");
+}
+
 /** The Strands box container template, whose image starts `box run` in /app. */
 export function isBoxedContainer(runtime: ScaffoldRuntimeInput): boolean {
   return (
-    runtime.box === true &&
+    runtime.boxTemplate === true &&
     runtime.build === "Container" &&
     runtime.language === "Python" &&
     runtime.framework === "strands"
   );
 }
 
-/** The frameworks whose Python CodeZip templates run their agent in a box on AgentCore Runtime. */
+/** The frameworks whose Python CodeZip agent the box profile can serve. */
 const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = new Set([
   "strands",
   "langchain",
@@ -178,22 +280,56 @@ const CODEZIP_BOX_FRAMEWORKS: ReadonlySet<ScaffoldRuntimeInput["framework"]> = n
 ]);
 
 /**
- * Whether create writes the box start scripts, so a CodeZip deploy runs the agent in a box: a
- * Python CodeZip box template. start.sh serves the protocol's port, which the profile's ingress
- * names.
+ * Whether create writes the box start script, start.py, so a CodeZip deploy runs the agent in a
+ * box: a Python CodeZip box template. The box serves the protocol's port, which the profile's
+ * ingress names.
  */
 export function startsInBoxOnCodeZip(runtime: ScaffoldRuntimeInput): boolean {
   return (
-    runtime.box === true &&
+    runtime.boxTemplate === true &&
     runtime.build === "CodeZip" &&
     runtime.language === "Python" &&
     CODEZIP_BOX_FRAMEWORKS.has(runtime.framework)
   );
 }
 
-/** Whether a runtime's entry point is the box start script that create writes. */
-export function runsBoxStartScript(entrypoint: string): boolean {
-  return entrypoint.split(":")[0] === BOX_CODEZIP_ENTRYPOINT;
+/**
+ * Whether a runtime runs its agent in a box: in a Box project (`boxProject`, which is
+ * `"projectType": "box"`), a runtime with `box.version`, which `agentcore create` writes only for
+ * a box template. Build, deploy and dev decide this here and nowhere else. The entry point and the
+ * Dockerfile say only how box starts, so a user's own `start.py` or Dockerfile never makes a
+ * runtime boxed.
+ */
+export function runsInBox(boxProject: boolean, runtime: Pick<ProjectRuntime, "box">): boolean {
+  return boxProject && runtime.box !== undefined;
+}
+
+/**
+ * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
+ * of the runtime set it to `true`, the Runtime profile gets no default log target, and the agent
+ * gets no OTEL ({@link otelOn}).
+ */
+export const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
+
+/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
+export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
+  return (runtime.envVars ?? []).some(
+    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
+  );
+}
+
+/**
+ * Whether the agent of `runtime` sends OTEL on AgentCore Runtime: `instrumentation.enableOtel`,
+ * which is `true` when absent, and the envVars do not turn observability off. It decides the
+ * opentelemetry-instrument start, the ADOT variables, and the default X-Ray target together.
+ */
+export function otelOn(runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">): boolean {
+  return (runtime.instrumentation?.enableOtel ?? true) && !observabilityOff(runtime);
+}
+
+/** {@link runsInBox} for a runtime of `spec`. */
+export function runtimeRunsInBox(spec: ProjectSpec, runtime: ProjectRuntime): boolean {
+  return runsInBox(isBoxProject(spec), runtime);
 }
 
 /**
@@ -227,6 +363,26 @@ const GEMINI: ApiKeyRoute = {
   header: "x-goog-api-key",
   providerVariable: "GEMINI_API_KEY",
 };
+const OPENAI_COMPATIBLE_ROUTE = "openai-compatible";
+
+/**
+ * The `[egress.<name>]` routes `agentcore create` writes for a model provider's API key. Their key
+ * is the project's model-provider credential, which `create` declares when it is given a key, or
+ * else a provider variable that LiteLLM reads; build does not declare a credential for them.
+ */
+export const MODEL_PROVIDER_EGRESS_ROUTES: ReadonlySet<string> = new Set([
+  OPENAI.name,
+  ANTHROPIC.name,
+  GEMINI.name,
+  OPENAI_COMPATIBLE_ROUTE,
+]);
+
+/** The provider variables a model-provider route reads its key from when `create` had no key. */
+export const MODEL_PROVIDER_KEY_VARIABLES: ReadonlySet<string> = new Set(
+  [OPENAI, ANTHROPIC, GEMINI].flatMap(({ providerVariable }) =>
+    providerVariable === undefined ? [] : [providerVariable],
+  ),
+);
 
 /**
  * The route the agent's model calls take when they carry an API key, or
@@ -245,7 +401,7 @@ function apiKeyRoute(runtime: ScaffoldRuntimeInput): ApiKeyRoute | undefined {
       // The schema requires --api-base for this provider; the type still allows it to be absent.
       return runtime.apiBase === undefined
         ? undefined
-        : { name: "openai-compatible", host: new URL(runtime.apiBase).host };
+        : { name: OPENAI_COMPATIBLE_ROUTE, host: new URL(runtime.apiBase).host };
     case "LiteLLM": {
       // LiteLLM picks the provider from the model ID's prefix.
       const prefix = (runtime.modelId ?? DEFAULT_MODEL_IDS.LiteLLM).split("/")[0];
@@ -267,6 +423,7 @@ function serve(
   workloadPort: number,
   reload: boolean,
   python = `${appDir}/.venv/bin/python`,
+  cardUrl = `http://localhost:${boxIngressPort(protocol)}/`,
 ): { command: string[]; env: Record<string, string> } {
   if (protocol === "HTTP") {
     return {
@@ -286,18 +443,17 @@ function serve(
       env: { PORT: String(workloadPort) },
     };
   }
-  // The box starts the agent in the project folder, and boxy refuses a script path inside it,
-  // so the module is found through PYTHONPATH. `agentcore dev` runs these without a reload too.
+  // box starts the agent in the folder it runs in (the runtime's own, locally), and refuses a
+  // script path inside it, so the module is found through PYTHONPATH. `agentcore dev` runs these
+  // without a reload too.
   const portVariable = { AGUI: "PORT", A2A: "A2A_PORT", MCP: "FASTMCP_PORT" }[protocol];
-  // serve_a2a puts its listen port in the agent card's URL, but callers reach the agent only
-  // through box's ingress port, so the card names that port instead.
-  const cardUrl: Record<string, string> =
-    protocol === "A2A"
-      ? { AGENTCORE_RUNTIME_URL: `http://localhost:${boxIngressPort(protocol)}/` }
-      : {};
+  // serve_a2a puts its listen port in the agent card's URL, and AGENTCORE_RUNTIME_URL takes
+  // precedence. Locally, callers reach the agent only through box's ingress port, so the card names
+  // that port; on the Runtime, `cardUrl` is the Runtime's own value (see renderAgentCorePack).
+  const card: Record<string, string> = protocol === "A2A" ? { AGENTCORE_RUNTIME_URL: cardUrl } : {};
   return {
     command: [python, "-m", "main"],
-    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...cardUrl },
+    env: { PYTHONPATH: appDir, [portVariable]: String(workloadPort), ...card },
   };
 }
 
@@ -343,7 +499,7 @@ function codeZipRunner(protocol: Protocol, appDir: string, workloadPort: number)
  * /usr/local. `agentcore dev` sets LOCAL_DEV and reloads it on edits.
  */
 function containerRunner(workloadPort: number, dev: boolean): Runner {
-  const appDir = "${{ workspace }}";
+  const appDir = CODEZIP_START_FOLDER;
   const { command, env } = serve("HTTP", appDir, workloadPort, dev);
   return {
     command,
@@ -358,13 +514,14 @@ function containerRunner(workloadPort: number, dev: boolean): Runner {
 
 /**
  * A CodeZip agent on AgentCore Runtime, in the paths of the local profile: the paths rule of the
- * Runtime profile derivation moves them to the Runtime's code folder and Python. It does not
- * reload. Box Core adds the loader folders itself and refuses exec on them, so they are read only.
- * One grant may not sit inside another, so the Python's prefix covers its bin/ folder. The box
- * starts in a writable folder outside the code, so nothing the agent runs needs `deny_write`.
+ * Runtime profile derivation moves them to the Runtime's code folder, Python, and standard library.
+ * It does not reload. Box Core adds the loader folders itself and refuses exec on them, so they are
+ * read only. The box starts in a writable folder outside the code, so nothing the agent runs needs
+ * `deny_write`.
  */
 function runtimeCodeZipRunner(protocol: Protocol, appDir: string, workloadPort: number): Runner {
-  const { command, env } = serve(protocol, appDir, workloadPort, false);
+  // An A2A agent card advertises the URL of the Runtime, which @box/agentcore reads.
+  const { command, env } = serve(protocol, appDir, workloadPort, false, undefined, RUNTIME_URL);
   return {
     command,
     env,
@@ -377,20 +534,25 @@ function runtimeCodeZipRunner(protocol: Protocol, appDir: string, workloadPort: 
 /**
  * The box profile that `agentcore dev` runs for the scaffolded agent, or `undefined` when the
  * template has none. It holds no host path: box fills `${{ workspace }}` (the folder `box run`
- * starts in) and `${{ home }}` at run time. On a Mac, box starts in the project root and names no
- * interpreter, only the folder of every uv-managed Python, so it is the same with and without
- * `--skip-install`. The agent calls Bedrock in `region`, the one create resolved. The container
- * template's runs in its dev image, in /app. Build and deploy derive the AgentCore Runtime profile
- * from it (runtimeProfile/derive.ts).
+ * starts in) and `${{ home }}` at run time. For a CodeZip agent, box starts in the runtime's
+ * folder, `app/<runtime>`, and the profile names no interpreter, only the folder of every
+ * uv-managed Python, so it is the same with and without `--skip-install`. The agent calls Bedrock
+ * in `region`, the one create resolved. The container template's runs in its dev image, in /app.
+ * Build and deploy derive the AgentCore Runtime profile from it (runtimeProfile/derive.ts).
  */
 export function renderBoxProfile(
   projectName: string,
   runtime: ScaffoldRuntimeInput,
-  region: string = BOX_GATEWAY_BEDROCK_REGION,
+  region: string,
 ) {
   if (!hasBoxProfile(runtime)) return undefined;
 
   const protocol = runtime.protocol ?? "HTTP";
+  // `agentcore dev` starts box in the runtime's folder, so the agent can read and write that folder
+  // and nothing else of the project: not agentcore/.env.local, with the model's key, nor .git or
+  // agentcore/cdk, which run outside the box.
+  const codeFolder = `app/${runtime.runtimeName}`;
+  const appDir = "${{ workspace }}";
   const ingressPort = boxIngressPort(protocol);
   const workloadPort = boxWorkloadPort(protocol);
   const container = isBoxedContainer(runtime);
@@ -402,17 +564,19 @@ export function renderBoxProfile(
     : '# The agent, and the tools its packs add, can read and write the folder box starts in.\n[project]\naccess = "write"\n';
   const runner = container
     ? containerRunner(workloadPort, true)
-    : codeZipRunner(protocol, boxAppDir(runtime), workloadPort);
+    : codeZipRunner(protocol, appDir, workloadPort);
   // In an image, the port is reached on the machine's own address.
   const listenHost = container ? "0.0.0.0" : "127.0.0.1";
-  const bedrock = protocol !== "MCP" && callsBedrockModel(runtime);
+  const bedrock = writesBedrockRoute(runtime);
   const keyed = protocol !== "MCP" ? apiKeyRoute(runtime) : undefined;
   const environment = { ...runner.env, ...PYTHON_ENV };
 
   // The optional sections, each empty or ending in a newline.
   const header = container
     ? "# Written by `agentcore create` for the agent's image, to run with `box run` in /app."
-    : `# Written by \`agentcore create\`. Run \`box run ${boxLocalProfileFile(runtime.runtimeName)}\` in the project folder.`;
+    : `# Written by \`agentcore create\` or \`agentcore add runtime\` for ${codeFolder}: ` +
+      `\`agentcore dev\` runs \`box run ${posix.relative(codeFolder, boxLocalProfileFile(runtime.runtimeName))}\` ` +
+      "there, so the agent can reach no other folder of the project.";
   const options = bedrock
     ? "[options]\n" +
       "# The AWS region `agentcore create` resolved. Change it to call Bedrock in another region\n" +
@@ -430,10 +594,10 @@ export function renderBoxProfile(
       : "";
   const bedrockRoute = bedrock
     ? `
-# Sign the model calls with your default AWS profile, as \`agentcore dev\` does without a box,
-# rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
+# Sign the model calls with the AWS default credential chain, as \`agentcore dev\` does without a
+# box, rather than with the Bedrock API key that @box/bedrock reads from AWS_BEARER_TOKEN_BEDROCK.
 [egress.bedrock]
-secret.ref = "aws://default"
+secret.ref = "aws://"
 `
     : "";
   const keyedRoute = keyed ? apiKeyRouteSection(keyed, apiKeyVariable(runtime, keyed)) : "";
@@ -446,6 +610,10 @@ secret.ref = "aws://default"
   return `# Runs the agent of the AgentCore project '${projectName}' in a box.
 ${header}
 packs = ${packs}
+# The policy files whose rules box loads, beside this profile. ${AWS_METADATA_POLICY_FILE} keeps the
+# agent from the AWS instance metadata service. Put rules of your own in another file beside it,
+# such as policy.dw, and add it to this list.
+policies = ${list([AWS_METADATA_POLICY_FILE])}
 
 [profile]
 name = ${str(boxLocalProfileName(projectName, runtime.runtimeName))}
@@ -467,11 +635,6 @@ workload_port = ${workloadPort}
 ${toolDenyWrite}${bedrockRoute}${keyedRoute}`;
 }
 
-/** The code folder of a box template's agent in its local profile: `${{ workspace }}/app/<name>`. */
-function boxAppDir(runtime: ScaffoldRuntimeInput): string {
-  return `\${{ workspace }}/app/${runtime.runtimeName}`;
-}
-
 /**
  * The `[agent]` table of a box template's agent on AgentCore Runtime, or `undefined` when the
  * template has none: what the additions rule of the Runtime profile derivation gives each value
@@ -488,7 +651,7 @@ export function runtimeAgentTemplate(
   const workloadPort = boxWorkloadPort(protocol);
   const runner = isBoxedContainer(runtime)
     ? containerRunner(workloadPort, false)
-    : runtimeCodeZipRunner(protocol, boxAppDir(runtime), workloadPort);
+    : runtimeCodeZipRunner(protocol, CODEZIP_START_FOLDER, workloadPort);
   return {
     command: runner.command,
     env: { ...runner.env, ...PYTHON_ENV },
@@ -537,8 +700,8 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
     return [
       `the box profile has no route for the LiteLLM model '${modelId}': add an ` +
         `${section} section with its provider's host to ` +
-        `${boxLocalProfileFile(runtime.runtimeName)}${prefixHint}, or the box blocks the ` +
-        "agent's model calls",
+        `${boxLocalProfileFile(runtime.runtimeName)}${prefixHint}, or the ` +
+        "box blocks the agent's model calls",
     ];
   }
   if (runtime.apiKey !== undefined || route.providerVariable === undefined) return [];
@@ -550,15 +713,44 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
 }
 
 /**
- * The `@box/agentcore` pack a container runtime imports: it declares the inputs the runtime profile
- * reads from the environment the Runtime sets after deploy. The `gateway.url` input fills each
+ * The variables that set up the ADOT SDK of an agent with OTEL on: the AWS distro and its
+ * configurator, spans and logs over OTLP to the box's own receiver (box sets each
+ * `OTEL_EXPORTER_OTLP_*`), no metrics, and no span for each health check of the Runtime.
+ */
+const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
+  OTEL_PYTHON_DISTRO: "aws_distro",
+  OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
+  AGENT_OBSERVABILITY_ENABLED: "true",
+  OTEL_TRACES_EXPORTER: "otlp",
+  OTEL_LOGS_EXPORTER: "otlp",
+  OTEL_METRICS_EXPORTER: "none",
+  OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+};
+
+/** The variable in which AgentCore Runtime names the resource of the runtime's spans. */
+const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
+
+/**
+ * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
+ * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
+ * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
  * egress backend `url`, bounded by a pattern so a value from the environment names only the host the
  * profile expects. The `runtime.log_group` and `runtime.log_stream` inputs each read one key of
- * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One input per project
- * memory carries its ID into the agent's environment. box finds the pack beside its binary at
+ * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. One
+ * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
+ * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
+ * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
+ * gateway of the project that the agent calls through the Box gateway gets two inputs: its host,
+ * for the destination of its `[mcp]` server, and its URL, which the agent gets under the variable
+ * name that a runtime without a box reads. box finds the pack beside its binary at
  * {@link AGENTCORE_PACK_PATH}; build and deploy stage it there.
  */
-export function renderAgentCorePack(spec: ProjectSpec): string {
+export function renderAgentCorePack(
+  spec: ProjectSpec,
+  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
+  gateways: readonly BoxProjectGateway[] = [],
+): string {
+  const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
   const memoryInputs = memories
     .map(
@@ -574,7 +766,46 @@ from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
         `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
     )
     .join("\n");
-  const agentEnv = memoryEnv ? `\n[agent.env]\n${memoryEnv}\n` : "";
+  const otelEnv = otel
+    ? [
+        ...Object.entries(AGENT_OTEL_ENV).map(([name, value]) => `${name} = ${str(value)}`),
+        `${RUNTIME_RESOURCE_ATTRIBUTES_ENV} = "\${{ inputs.runtime.resource_attributes }}"`,
+      ].join("\n")
+    : "";
+  const otelInput = otel
+    ? `
+
+# The resource of the agent's spans, which the Runtime names so the console links them to it.
+[inputs.runtime.resource_attributes]
+description = "The OpenTelemetry resource attributes of the runtime."
+from = ${str(`env:${RUNTIME_RESOURCE_ATTRIBUTES_ENV}`)}
+default = ${str(`service.name=${runtime.name}`)}`
+    : "";
+  const gatewayInputs = gateways
+    .map((gateway) => {
+      const inputs = projectGatewayInputs(gateway);
+      return `
+
+# The '${gateway.name}' gateway of the project, which the agent calls through the Box gateway.
+[inputs.${inputs.url}]
+description = ${str(`The deployed '${gateway.name}' gateway URL.`)}
+from = ${str(`env:${gateway.variablePrefix}_URL`)}
+pattern = ${str(PROJECT_GATEWAY_URL_PATTERN)}
+
+[inputs.${inputs.host}]
+description = ${str(`The deployed '${gateway.name}' gateway host.`)}
+from = ${str(`env:${gateway.variablePrefix}_HOST`)}
+pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
+    })
+    .join("");
+  const gatewayEnv = gateways
+    .map(
+      (gateway) =>
+        `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
+    )
+    .join("\n");
+  const env = [memoryEnv, otelEnv, gatewayEnv].filter((lines) => lines !== "").join("\n");
+  const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.
 [pack]
@@ -588,7 +819,8 @@ description = "The runtime's Box gateway URL."
 from = ${str(`env:${BOX_GATEWAY_URL_ENV}`)}
 pattern = ${str(GATEWAY_URL_PATTERN)}
 
-# The Runtime's region, which box signs each Box gateway backend for. The Runtime sets AWS_REGION.
+# The Runtime's region, which box signs each Box gateway backend for and passes to the agent. The
+# Runtime sets AWS_REGION.
 [inputs.aws.region]
 description = "The AWS region the runtime runs in."
 from = "env:AWS_REGION"
@@ -604,16 +836,24 @@ key = "x-aws-log-group"
 [inputs.runtime.log_stream]
 description = "The runtime's own CloudWatch Logs log stream."
 from = ${str(`env:${RUNTIME_LOGS_HEADERS_ENV}`)}
-key = "x-aws-log-stream"${memoryInputs}
+key = "x-aws-log-stream"
+
+# The URL an A2A agent card advertises. Outside a box, serve_a2a reads AGENTCORE_RUNTIME_URL itself
+# and otherwise names the contract port; the agent in the box gets the same value through this.
+[inputs.runtime.url]
+description = "The URL an A2A agent card advertises on the Runtime."
+from = "env:AGENTCORE_RUNTIME_URL"
+default = "http://localhost:9000/"${memoryInputs}${otelInput}${gatewayInputs}
 ${agentEnv}`;
 }
 
 /**
  * The `@box/agentcore-codezip` pack a CodeZip Runtime profile adds: the Runtime's Python interpreter
- * and base prefix, and the read-only code directory, which only the microVM knows. start.py exports
- * them ({@link BOX_PYTHON_ENV}, {@link BOX_PYTHON_PREFIX_ENV}, {@link BOX_CODE_ENV}) before it runs
- * box, and the profile reads them through these inputs, so no start script fills the profile in. box
- * finds the pack beside its binary at {@link AGENTCORE_CODEZIP_PACK_PATH}.
+ * and its standard library, and the read-only code directory, which only the microVM knows.
+ * start.py exports them ({@link BOX_PYTHON_ENV}, {@link BOX_PYTHON_STDLIB_ENV},
+ * {@link BOX_CODE_ENV}) before it runs box, and the profile reads them through these inputs, so no
+ * start script fills the profile in. box finds the pack beside its binary at
+ * {@link AGENTCORE_CODEZIP_PACK_PATH}.
  */
 export function renderAgentCoreCodeZipPack(): string {
   return `# The CodeZip Runtime's Python and code directory, read from the environment start.py exports.
@@ -629,9 +869,10 @@ description = "The AgentCore Runtime's Python interpreter."
 from = ${str(`env:${BOX_PYTHON_ENV}`)}
 pattern = ${str(ABSOLUTE_PATH_PATTERN)}
 
-[inputs.python.prefix]
-description = "The Python interpreter's base prefix, for its standard library."
-from = ${str(`env:${BOX_PYTHON_PREFIX_ENV}`)}
+[inputs.python.stdlib]
+description = "The Python interpreter's standard library, with its native modules."
+from = ${str(`env:${BOX_PYTHON_STDLIB_ENV}`)}
+pattern = ${str(ABSOLUTE_PATH_PATTERN)}
 
 [inputs.code.dir]
 description = "The unpacked zip directory the Runtime runs the agent from."
@@ -660,7 +901,7 @@ function str(value: string): string {
   return JSON.stringify(value);
 }
 
-/** A filesystem list: each grant as a TOML string, or as an inline table when it is optional. */
+/** A list of filesystem grants as TOML. */
 function grants(values: readonly Grant[]): string {
   const grant = (value: Grant) =>
     typeof value === "string" ? str(value) : `{ path = ${str(value.path)}, optional = true }`;
@@ -671,7 +912,18 @@ function list(values: string[]): string {
   return `[${values.map(str).join(", ")}]`;
 }
 
-/** A TOML key: bare when TOML allows it, else a quoted string. */
+/**
+ * A TOML key: bare when TOML allows it, else a quoted string. Defensive: AgentCore Gateway takes
+ * only target names of letters, digits and single dashes, which are bare keys already.
+ */
 function tomlKey(key: string): string {
   return /^[A-Za-z0-9_-]+$/.test(key) ? key : str(key);
+}
+
+/**
+ * Whether the profile has the `[egress.bedrock]` route: the agent calls a Bedrock model, which an
+ * MCP server does not.
+ */
+function writesBedrockRoute(runtime: ScaffoldRuntimeInput): boolean {
+  return (runtime.protocol ?? "HTTP") !== "MCP" && callsBedrockModel(runtime);
 }

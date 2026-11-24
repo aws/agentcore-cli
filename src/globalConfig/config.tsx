@@ -11,6 +11,7 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   },
   installationId: crypto.randomUUID(),
   transactionSearch: true,
+  disableDependencyManagement: false,
 };
 
 /**
@@ -28,5 +29,7 @@ export function applyOverrides(
     },
     installationId: overrides.installationId ?? defaults.installationId,
     transactionSearch: overrides.transactionSearch ?? defaults.transactionSearch,
+    disableDependencyManagement:
+      overrides.disableDependencyManagement ?? defaults.disableDependencyManagement,
   };
 }

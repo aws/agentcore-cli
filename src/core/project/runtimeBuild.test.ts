@@ -47,6 +47,22 @@ const pyproject = (requiresPython: string, extra = "") =>
 const packageJson = (fields: Record<string, unknown>) =>
   JSON.stringify({ name: "search", ...fields });
 
+test("build inference preserves an explicit ContainerLocal choice", async () => {
+  const root = await project({ "app/search/Dockerfile": "FROM scratch\n" });
+  const synced = syncRuntimeBuild(
+    runtime({ build: "ContainerLocal", runtimeVersion: undefined }),
+    root,
+  );
+  expect(synced.runtime.build).toBe("ContainerLocal");
+  expect(synced.runtime.dockerfile).toBe("Dockerfile");
+  expect(synced.runtime.runtimeVersion).toBeUndefined();
+  expect(prepareRuntimes(root, [synced.runtime], "deploy").runtimes[0]?.build).toBe(
+    "ContainerLocal",
+  );
+  // Auto-detection from a Dockerfile only ever selects the CodeBuild Container mode.
+  expect(syncRuntimeBuild(runtime({ build: "CodeZip" }), root).runtime.build).toBe("Container");
+});
+
 describe("runtimeVersion from requires-python", () => {
   test.each([
     [">=3.12", "PYTHON_3_14"],
@@ -268,7 +284,9 @@ describe("build", () => {
       "search: build CodeZip -> Container (Dockerfile in app/search). It now builds and " +
         "deploys as a container image from that Dockerfile; to go back, delete the Dockerfile, " +
         'then in agentcore.json set "build": "CodeZip", remove "dockerfile", and add back the ' +
-        '"runtimeVersion" removed below.',
+        '"runtimeVersion" removed below. Container images are built by CodeBuild; a local ' +
+        "build (ContainerLocal) can only be chosen when adding a workload, with --build-config, " +
+        "and a workload cannot be switched to it later.",
     );
   });
 
@@ -611,5 +629,55 @@ describe("prepareRuntimes", () => {
     });
     expect(prepareRuntimes(root, [nodeRuntime()], "dev").changed).toEqual([]);
     expect(() => prepareRuntimes(root, [nodeRuntime()], "deploy")).toThrow("no node_modules");
+  });
+});
+
+describe("entrypoint of a CodeZip runtime that runs in a box", () => {
+  const boxed = (overrides: Partial<ProjectRuntime> = {}) =>
+    runtime({ entrypoint: "start.py", box: { version: "1.0.0" }, ...overrides });
+
+  test("stays start.py when pyproject.toml names the agent's main.py, with a warning", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(
+        ">=3.12",
+        '[tool.agentcore]\nentrypoint = "main.py"\n',
+      ),
+    });
+
+    const sync = syncRuntimeBuild(boxed(), root, { boxProject: true });
+
+    expect(sync.runtime.entrypoint).toBe("start.py");
+    expect(sync.changes.map(({ field }) => field)).not.toContain("entrypoint");
+    expect(sync.warnings).toEqual([
+      'runtime "search" runs its agent in a box, so its entrypoint stays start.py, which starts ' +
+        "box, and its box profile runs the agent. [tool.agentcore] entrypoint in " +
+        "app/search/pyproject.toml names main.py, which is not used.",
+    ]);
+  });
+
+  test.each([
+    ["a runtime with no box", runtime(), true],
+    ["a box runtime outside a Box project", boxed(), false],
+  ])("still takes the pyproject.toml entrypoint for %s", async (_, synced, boxProject) => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(">=3.12", '[tool.agentcore]\nentrypoint = "app.py"\n'),
+    });
+
+    expect(syncRuntimeBuild(synced, root, { boxProject }).runtime.entrypoint).toBe("app.py");
+  });
+
+  test("refuses the switch to a container build when a Dockerfile appears", async () => {
+    const root = await project({
+      "app/search/pyproject.toml": pyproject(">=3.12"),
+      "app/search/start.py": "",
+      "app/search/Dockerfile": "FROM python:3.12\n",
+    });
+
+    expect(() => prepareRuntimes(root, [boxed()], "deploy", { boxProject: true })).toThrow(
+      'runtime "search" runs its agent in a box as a CodeZip agent, but app/search has a ' +
+        "Dockerfile",
+    );
+    // Outside a Box project the Dockerfile still makes it a container build.
+    expect(syncRuntimeBuild(boxed(), root).runtime.build).toBe("Container");
   });
 });

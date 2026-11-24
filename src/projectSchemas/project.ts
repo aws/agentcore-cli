@@ -1,5 +1,10 @@
 import { isReservedProjectName } from "./constants";
-import { ProjectRuntimeSchema } from "./runtime";
+import {
+  BOX_PLATFORM_VERSION,
+  PRIVATE_VPC_LIMIT,
+  ProjectRuntimeSchema,
+  type Containment,
+} from "./runtime";
 import { AgentCoreGatewaySchema, REAL_KB_ID_PATTERN, ToolRuntimeSchema } from "./gateway";
 import { ConfigBundleSchema } from "./config-bundle";
 import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
@@ -27,126 +32,70 @@ export const ProjectNameSchema = z
     message:
       "This name conflicts with a reserved package dependency. Please choose a different name.",
   });
-/** The kind of project. `box` is the only kind: each runtime of a Box project gets a Box gateway. */
+/** The kind of project. `box` marks a project made from a Box template. */
 export const ProjectTypeSchema = z.enum(["box"]);
-export type ProjectType = z.infer<typeof ProjectTypeSchema>;
-export const SecureVpcSchema = z.enum(["ENABLED", "DISABLED", ""]);
-export type SecureVpc = z.infer<typeof SecureVpcSchema>;
-function isVpcCidr(value: string): boolean {
-  const [address = "", prefix = "", ...rest] = value.split("/");
-  const octets = address.split(".");
-  if (rest.length > 0 || !/^\d{2}$/.test(prefix) || octets.length !== 4) return false;
-  if (!octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255))
-    return false;
-  const bits = Number(prefix);
-  const ip = octets.reduce((total, octet) => total * 256 + Number(octet), 0);
-  return bits >= 16 && bits <= 24 && ip % 2 ** (32 - bits) === 0;
-}
-/** Everything else about the private VPC is set in CDK through `AgentCoreApplication.network()`. */
-export const SecureVpcNetworkSchema = z
-  .object({
-    mode: z.enum(["CONTAINED"]).optional(),
-    cidr: z
-      .string()
-      .refine(
-        isVpcCidr,
-        "Must be an aligned IPv4 CIDR block with a /16 to /24 prefix, such as 10.0.0.0/16",
-      )
-      .optional(),
-    availabilityZoneIds: z
-      .array(
-        z
-          .string()
-          .regex(
-            /^[a-z]{3,6}\d{1,2}-az\d{1,2}$/,
-            "Must be an Availability Zone ID, such as usw2-az1",
-          ),
-      )
-      .min(2)
-      .max(3)
-      .superRefine(
-        uniqueBy(
-          (id) => id,
-          (id) => `Duplicate Availability Zone ID: ${id}`,
-        ),
-      )
-      .optional(),
-    ipAddressType: z.enum(["IPV4", "DUAL_STACK"]).optional(),
-  })
-  .strict();
-export type SecureVpcNetwork = z.infer<typeof SecureVpcNetworkSchema>;
-/** Whether the project is a Box project, so the CDK library makes a Box gateway for each runtime. */
+/** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
-/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box`. */
-export const BOX_GATEWAY_SUFFIX = "-box";
-/** The only target type the Box gateway takes: it has no MCP interface (protocolType "None"). */
-export const BOX_GATEWAY_TARGET_TYPE = "passthrough";
 /**
- * The logical name of the Box gateway of a runtime, and of the gateway entry that adds targets to
- * it. Gateway names do not permit `_`, so `my_agent` gets `my-agent-box`. Must match the CDK library.
+ * The start of the name of each target that build adds to a Box gateway. Build manages every
+ * target whose name has it, and no other.
+ */
+export const BOX_EGRESS_TARGET_PREFIX = "egress-";
+/**
+ * Whether build writes and removes `target` of `gateway`: a target whose name starts with
+ * {@link BOX_EGRESS_TARGET_PREFIX}, on the Box gateway of a runtime (a gateway with
+ * `boundRuntime`), in a project with `"projectType": "box"`.
+ */
+export function isBuildOwnedTarget(
+  spec: { projectType?: string },
+  gateway: { boundRuntime?: string },
+  target: { name: string },
+): boolean {
+  return (
+    isBoxProject(spec) &&
+    gateway.boundRuntime !== undefined &&
+    target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)
+  );
+}
+/** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
+export const BOX_GATEWAY_SUFFIX = "-box-egress";
+/**
+ * The variable prefix of each Box gateway. The CLI sets it on every Box gateway, so agent code
+ * reads `AGENTCORE_GATEWAY_BOX_URL` in every runtime, each pointing to that runtime's own gateway.
+ */
+export const BOX_GATEWAY_DISCOVERY_PREFIX = "AGENTCORE_GATEWAY_BOX";
+/**
+ * The name the CLI gives the Box gateway of a runtime. Gateway names do not permit `_`, so
+ * `my_agent` gets `my-agent-box-egress`. Only `boxGatewaySpec` uses it: the CLI finds a runtime's
+ * Box gateway by `boundRuntime`, not by name.
  */
 export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
-/** The Box gateway names of a Box project, one for each runtime; none in any other project. */
-export const boxGatewayNames = (spec: {
-  projectType?: string;
-  runtimes: { name: string }[];
-}): string[] => (isBoxProject(spec) ? spec.runtimes.map(({ name }) => boxGatewayName(name)) : []);
 /**
- * Whether a gateway entry only adds targets to a Box gateway: it is named `<runtime>-box` for a
- * runtime of a Box project. In any other project, such a name is a normal gateway.
+ * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
+ * variable prefix, `AWS_IAM` auth, `protocolType: "None"` and its `APPLICATION_LOGS` on. The CDK
+ * library binds it from `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a
+ * user's `enableApplicationLogs: false` stays.
  */
-export const isBoxExtensionEntry = (
-  spec: { projectType?: string; runtimes: { name: string }[] },
-  gateway: { name: string },
-) => boxGatewayNames(spec).includes(gateway.name);
+export const boxGatewaySpec = (runtimeName: string) => ({
+  name: boxGatewayName(runtimeName),
+  authorizerType: "AWS_IAM" as const,
+  protocolType: "None" as const,
+  boundRuntime: runtimeName,
+  discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
+  enableApplicationLogs: true,
+  targets: [],
+});
 /**
- * Whether a gateway name is reserved for Box in a Box project: each name that ends in `-box`, in
- * any letter case. The CDK library refuses such a name unless it is a runtime's Box gateway.
+ * Whether a gateway is bound to one runtime. Each Box gateway is: it belongs to its runtime, so
+ * `remove runtime` removes it and `remove gateway` refuses it. It takes every target type.
  */
-export const isReservedBoxGatewayName = (spec: { projectType?: string }, name: string) =>
-  isBoxProject(spec) && name.toLowerCase().endsWith(BOX_GATEWAY_SUFFIX);
-/**
- * The AWS name the CDK library gives the Box gateway of a runtime: `<project>-<target>-<runtime>-box`.
- * A project migrated from v0 keeps v0's names, which have no target segment.
- */
-export const boxGatewayAwsName = (
-  spec: { name: string; migratedFrom?: string },
-  targetName: string,
-  runtimeName: string,
-): string =>
-  spec.migratedFrom === undefined
-    ? `${spec.name}-${targetName}-${boxGatewayName(runtimeName)}`
-    : `${spec.name}-${boxGatewayName(runtimeName)}`;
-/** "the Box gateway 'a'" or "the Box gateways 'a', 'b'", for messages about recorded gateways. */
-export const describeBoxGateways = (names: string[]): string =>
-  `the Box gateway${names.length === 1 ? "" : "s"} ${names.map((name) => `'${name}'`).join(", ")}`;
-/**
- * Whether a deploy of the spec would delete the Box gateways a previous deploy recorded because
- * agentcore.json lost its `"projectType": "box"`. A spec with no resources is left out: that is a
- * teardown, which its own confirmation covers.
- */
-export function dropsBoxGateways(spec: ProjectSpec): boolean {
-  return !isBoxProject(spec) && !declaresNoResources(spec);
-}
-/** Whether every resource collection of the spec is empty, as after `agentcore remove all`. */
-export function declaresNoResources(spec: ProjectSpec): boolean {
-  const collections = [
-    spec.runtimes,
-    spec.memories,
-    spec.knowledgeBases,
-    spec.credentials,
-    spec.evaluators,
-    spec.onlineEvalConfigs,
-    spec.agentCoreGateways,
-    spec.policyEngines,
-    spec.configBundles,
-    spec.harnesses,
-    spec.toolRuntimes ?? [],
-    spec.payments ?? [],
-  ];
-  return collections.every((collection) => collection.length === 0);
-}
+export const isBoundGateway = (gateway: { boundRuntime?: string }) =>
+  gateway.boundRuntime !== undefined;
+/** The variable prefix a gateway sets on each workload it binds to. Matches the CDK library. */
+export const gatewayDiscoveryPrefix = (gateway: { name: string; discoveryPrefix?: string }) =>
+  gateway.discoveryPrefix ??
+  `AGENTCORE_GATEWAY_${gateway.name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 const BUILTIN_EVALUATOR_PREFIX = "Builtin.";
 const ARN_PREFIX = "arn:";
 const toEnvironmentName = (name: string) => name.replace(/-/g, "_").toUpperCase();
@@ -170,15 +119,13 @@ export const ProjectSpecSchema = z
     managedBy: ManagedBySchema,
     tags: TagsSchema.optional(),
     /**
-     * `"box"` for a Box project. `agentcore create` writes it only for a project made from a box
-     * template, and the CDK library then adds one Box gateway for each runtime: logical name
-     * `<runtime>-box`, `AWS_IAM` auth, `protocolType: "None"`. A gateway entry with that name only
-     * adds targets to it. No default: the spec is written back to disk after each parse, so a
-     * default would add the field to every existing project.
+     * `"box"` for a Box project. `agentcore create` writes it when a Box template asks for it.
+     * The CLI then keeps one gateway entry bound to each runtime (see `boxGatewaySpec`): `AWS_IAM`
+     * auth, `protocolType: "None"`, `boundRuntime` and `discoveryPrefix`, from which the CDK library
+     * binds it. The CDK library does not read this field. No default: the spec is written back to
+     * disk after each parse, so a default would add the field to every existing project.
      */
     projectType: ProjectTypeSchema.optional(),
-    secureVpc: SecureVpcSchema.optional(),
-    network: SecureVpcNetworkSchema.optional(),
     runtimes: z.array(ProjectRuntimeSchema).default([]).superRefine(uniqueNames("agent")),
     memories: z.array(MemorySchema).default([]).superRefine(uniqueNames("memory")),
     knowledgeBases: z
@@ -209,9 +156,123 @@ export const ProjectSpecSchema = z
   })
   .strict()
   .superRefine((spec, ctx) => {
-    for (const issue of secureVpcIssues(spec)) ctx.addIssue({ code: "custom", ...issue });
+    for (const issue of containmentIssues(spec)) ctx.addIssue({ code: "custom", ...issue });
     const agentNames = new Set(spec.runtimes.map((a) => a.name));
     const evaluatorNames = new Set(spec.evaluators.map((e) => e.name));
+    // A gateway bound to a runtime that does not exist binds to nothing and fails the synth.
+    for (const gateway of spec.agentCoreGateways) {
+      if (gateway.boundRuntime !== undefined && !agentNames.has(gateway.boundRuntime)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}", but no runtime has that name`,
+          path: ["agentCoreGateways"],
+        });
+      }
+      // A Box gateway holds its runtime's outbound credentials. With NONE, anyone who has its URL
+      // can call it and use them. The L3 schema has the same check.
+      if (
+        isBoxProject(spec) &&
+        gateway.boundRuntime !== undefined &&
+        gateway.authorizerType === "NONE"
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}" in a Box project and authorizerType "NONE". Anyone with its URL could call it and use its credentials. Use "AWS_IAM".`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // Box runs only on AgentCore Runtime V2, and without the field the service picks the platform,
+    // which can be V1. `agentcore create` and `add runtime` write it, so every command stops on a
+    // Box runtime without it.
+    if (isBoxProject(spec)) {
+      for (const runtime of spec.runtimes) {
+        if (runtime.platformVersion === BOX_PLATFORM_VERSION) continue;
+        const actual =
+          runtime.platformVersion === undefined
+            ? "has no platformVersion"
+            : `has "platformVersion": "${runtime.platformVersion}"`;
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtime "${runtime.name}" ${actual}, but every runtime of a Box project runs on ` +
+            `AgentCore Runtime ${BOX_PLATFORM_VERSION}. Set "platformVersion": ` +
+            `"${BOX_PLATFORM_VERSION}" on the runtime in agentcore.json.`,
+          path: ["runtimes"],
+        });
+      }
+    }
+    // A passthrough target that names a gateway calls a gateway of this project. A gateway bound to
+    // a runtime belongs to that runtime, so no target of another gateway calls it. A target that
+    // build owns and that names no such gateway is not refused here: the next build removes it.
+    for (const gateway of spec.agentCoreGateways) {
+      for (const target of gateway.targets) {
+        const reached = target.passthrough?.gateway;
+        if (reached === undefined || isBuildOwnedTarget(spec, gateway, target)) continue;
+        const named = spec.agentCoreGateways.find((other) => other.name === reached);
+        const problem =
+          named === undefined
+            ? "but the project has no gateway of that name"
+            : named === gateway
+              ? "which is its own gateway"
+              : named.boundRuntime !== undefined
+                ? `which is bound to the runtime "${named.boundRuntime}"`
+                : undefined;
+        if (problem === undefined) continue;
+        ctx.addIssue({
+          code: "custom",
+          message: `Target "${target.name}" of gateway "${gateway.name}" names the gateway "${reached}" in passthrough.gateway, ${problem}. Name a gateway of this project without boundRuntime`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
+    // deployed gateway, so every command stops here and prints the entry to add back.
+    if (isBoxProject(spec)) {
+      const bound = new Set(spec.agentCoreGateways.map((gateway) => gateway.boundRuntime));
+      for (const runtime of spec.runtimes) {
+        if (bound.has(runtime.name)) continue;
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtime "${runtime.name}" has no Box gateway. A Box project needs a gateway with ` +
+            `boundRuntime "${runtime.name}" for each runtime, and a deploy without it would delete ` +
+            `the deployed gateway. Add this entry to "agentCoreGateways" in agentcore.json, or ` +
+            `delete the runtime from "runtimes" by hand:\n` +
+            JSON.stringify(boxGatewaySpec(runtime.name), null, 2),
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // Each gateway sets <prefix>_URL, _ARN, ... on each workload it binds to. Two gateways with the
+    // same prefix on one workload set one variable to two values, which fails the synth. An unbound
+    // gateway binds to every runtime and harness; a bound one binds to its runtime only.
+    const unbound = spec.agentCoreGateways.filter((gateway) => !isBoundGateway(gateway));
+    const workloads: [string, typeof unbound][] = [
+      ["every runtime and harness", unbound],
+      ...spec.runtimes.map((runtime): [string, typeof unbound] => [
+        `runtime "${runtime.name}"`,
+        [...unbound, ...spec.agentCoreGateways.filter((g) => g.boundRuntime === runtime.name)],
+      ]),
+    ];
+    const reported = new Set<string>();
+    for (const [workload, gateways] of workloads) {
+      const byPrefix = new Map<string, string>();
+      for (const gateway of gateways) {
+        const prefix = gatewayDiscoveryPrefix(gateway);
+        const other = byPrefix.get(prefix);
+        byPrefix.set(prefix, gateway.name);
+        if (other === undefined) continue;
+        const key = [other, gateway.name].sort().join("\0");
+        if (reported.has(key)) continue;
+        reported.add(key);
+        ctx.addIssue({
+          code: "custom",
+          message: `Gateways "${other}" and "${gateway.name}" both set ${prefix}_* on ${workload}. Rename one gateway or give it a different discoveryPrefix`,
+          path: ["agentCoreGateways"],
+        });
+      }
+    }
     for (const config of spec.onlineEvalConfigs) {
       if (config.agent && !agentNames.has(config.agent)) {
         ctx.addIssue({
@@ -395,49 +456,26 @@ export const ProjectSpecSchema = z
     }
   });
 export type ProjectSpec = z.infer<typeof ProjectSpecSchema>;
-/** In a private VPC project, a runtime with its own network, a harness or a tool runtime would run outside the VPC. **/
-function secureVpcIssues(spec: {
+/** Containment needs a Box project, and a project holds one PRIVATE_VPC runtime for now. **/
+function containmentIssues(spec: {
   projectType?: string;
-  secureVpc?: SecureVpc;
-  network?: SecureVpcNetwork;
-  runtimes: { name: string; networkMode?: string; networkConfig?: unknown }[];
-  harnesses: { name: string }[];
-  toolRuntimes?: { name: string }[];
+  runtimes: { name: string; containment?: Containment }[];
 }): { message: string; path: (string | number)[] }[] {
-  const enabled = spec.secureVpc === "ENABLED";
   const issues: { message: string; path: (string | number)[] }[] = [];
-  if (enabled && !isBoxProject(spec)) {
-    issues.push({
-      message: '"secureVpc": "ENABLED" requires "projectType": "box"',
-      path: ["secureVpc"],
-    });
-  }
-  if (spec.network && !enabled) {
-    issues.push({
-      message: '"network" is only allowed with "secureVpc": "ENABLED"',
-      path: ["network"],
-    });
-  }
-  if (!enabled) return issues;
   spec.runtimes.forEach((runtime, index) => {
-    if (runtime.networkMode !== undefined || runtime.networkConfig !== undefined) {
+    if (runtime.containment !== undefined && !isBoxProject(spec)) {
       issues.push({
-        message: `Runtime "${runtime.name}" sets networkMode or networkConfig, but in a project with "secureVpc": "ENABLED" every runtime runs in its private VPC`,
-        path: ["runtimes", index],
+        message: `Runtime "${runtime.name}" sets containment, which requires "projectType": "box"`,
+        path: ["runtimes", index, "containment"],
       });
     }
   });
-  spec.harnesses.forEach((harness, index) => {
+  const contained = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
+  if (contained.length > 1) {
     issues.push({
-      message: `Harness "${harness.name}" can't be added to a project with "secureVpc": "ENABLED": it would run outside the private VPC`,
-      path: ["harnesses", index],
+      message: `${PRIVATE_VPC_LIMIT} Found ${contained.map((runtime) => runtime.name).join(", ")}.`,
+      path: ["runtimes"],
     });
-  });
-  (spec.toolRuntimes ?? []).forEach((tool, index) => {
-    issues.push({
-      message: `Tool runtime "${tool.name}" can't be added to a project with "secureVpc": "ENABLED": it would run outside the private VPC`,
-      path: ["toolRuntimes", index],
-    });
-  });
+  }
   return issues;
 }

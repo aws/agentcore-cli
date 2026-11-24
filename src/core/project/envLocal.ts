@@ -76,6 +76,53 @@ export class EnvLocalFile {
   }
 
   /**
+   * Writes each entry: replaces the value of a key the file holds already, in place and under its
+   * own comment, and appends the others as {@link insertIfNew} does. Returns the keys appended and
+   * those whose value it replaced.
+   */
+  async upsert(entries: EnvLocalEntry[]): Promise<{ written: string[]; updated: string[] }> {
+    const existing = await this.readOrNull();
+    if (existing === null) {
+      const { written } = await this.insertIfNew(entries);
+      return { written, updated: [] };
+    }
+    await this.enforcePermissions();
+    const values = new Map(entries.map((entry) => [entry.key, entry.value ?? ""]));
+    const encrypted = await this.secrets.encrypt(Object.fromEntries(values));
+    const updated: string[] = [];
+    const lines: string[] = [];
+    for (const line of existing.split("\n")) {
+      const key = KEY_LINE.exec(line)?.[1];
+      if (key === undefined || !values.has(key)) {
+        lines.push(line);
+        continue;
+      }
+      // Every line of the key gets the value: the parser keeps the last, so replacing only the
+      // first would leave an older one in force. An `export` line stays one.
+      const exported = /^\s*export\s+/.exec(line)?.[0] ?? "";
+      lines.push(`${exported}${key}=${formatValue(encrypted[key] ?? "")}`);
+      if (!updated.includes(key)) updated.push(key);
+    }
+    // Keep the earliest snapshot, as removeKeys does, so rollback undoes this whole call even when
+    // insertIfNew, which snapshots the file it starts from, fails after the in-place write.
+    const snapshot = this.snapshot === undefined ? existing : this.snapshot;
+    if (updated.length > 0) {
+      this.snapshot = snapshot;
+      await atomicWrite(this.path, await this.encryptContent(lines.join("\n")), {
+        mode: SECRET_FILE_MODE,
+      });
+    }
+    try {
+      const { written } = await this.insertIfNew(
+        entries.filter((entry) => !updated.includes(entry.key)),
+      );
+      return { written, updated };
+    } finally {
+      if (updated.length > 0) this.snapshot = snapshot;
+    }
+  }
+
+  /**
    * Reads the file's entries as a key/value map, returning {} when the file
    * does not exist. Values are read back with the same parser `agentcore dev`
    * uses, so quoting written by {@link insertIfNew} round-trips.

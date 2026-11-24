@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   LegacyDeployError,
@@ -8,6 +9,7 @@ import {
 } from "../../../errors/errors";
 import { createRootHandler } from "../../index";
 import { DEFAULT_GLOBAL_CONFIG } from "../../../globalConfig";
+import { applyOverrides } from "../../../globalConfig/config";
 import { ValueContext } from "../../../router";
 import {
   assertMetricEmitted,
@@ -97,6 +99,8 @@ type TestDeployOptions = {
   resolveAccount?: (region: string) => Promise<string>;
   /** Seeds the global config's transactionSearch flag (defaults to on). */
   transactionSearch?: boolean;
+  /** Seeds the global config's disableDependencyManagement flag (defaults to off). */
+  disableDependencyManagement?: boolean;
   runV0Deploy?: V0DeployRunner;
 };
 
@@ -112,16 +116,12 @@ async function testDeployCommand(
     resolveAccount: options.resolveAccount,
   });
   const logger = createSilentLogger();
-  const globalConfigAccessor = new TestGlobalConfigAccessor(
-    options.transactionSearch === undefined
-      ? undefined
-      : {
-          initialConfigData: {
-            ...DEFAULT_GLOBAL_CONFIG,
-            transactionSearch: options.transactionSearch,
-          },
-        },
-  );
+  const globalConfigAccessor = new TestGlobalConfigAccessor({
+    initialConfigData: applyOverrides(DEFAULT_GLOBAL_CONFIG, {
+      transactionSearch: options.transactionSearch,
+      disableDependencyManagement: options.disableDependencyManagement,
+    }),
+  });
   const { client, filePath, cleanup } = await getTestTelemetryClient();
   cleanups.push(cleanup);
   const root = createRootHandler(core, {
@@ -415,9 +415,14 @@ describe("project deploy handler", () => {
       exit_reason: "success",
       project_runtime_count: 1,
       project_memory_count: 0,
-      // the agent-box gateway entry that create declares.
+      // agent-python-minimal is not a box template, so the project has no Box gateway.
       project_gateway_count: 0,
       project_harness_count: 0,
+      project_runtime_codezip_count: 1,
+      project_runtime_container_count: 0,
+      project_runtime_container_local_count: 0,
+      project_harness_container_count: 0,
+      project_harness_container_local_count: 0,
     });
     expect(subject.calls).toHaveLength(1);
     expect(subject.calls[0]?.input.target).toEqual(DEFAULT_TARGET);
@@ -430,6 +435,90 @@ describe("project deploy handler", () => {
     expect(subject.io.stdout()).toBe("");
   });
 
+  test("counts runtimes and harnesses by build type", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    const projectRoot = await inProjectWithTargets();
+    const dockerfile = join(projectRoot, "Dockerfile");
+    await writeFile(dockerfile, "FROM scratch\n");
+    const add = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+    });
+    for (const args of [
+      ["runtime", "--name", "local_rt", "--language", "python", "--build-config"],
+      ["harness", "--name", "local_h", "--dockerfile", dockerfile, "--build-config"],
+    ]) {
+      const config =
+        args[0] === "runtime"
+          ? { build: "ContainerLocal", dockerfile }
+          : { build: "ContainerLocal" };
+      await add.route(["node", "agentcore", "add", ...args, JSON.stringify(config)]);
+    }
+    await add.route([
+      "node",
+      "agentcore",
+      "add",
+      "harness",
+      "--name",
+      "cb_h",
+      "--dockerfile",
+      dockerfile,
+    ]);
+
+    // Telemetry and the deploy share one resolution of harness.yaml.
+    const reads = spyOn(fs, "readFileSync");
+    try {
+      await subject.run();
+      const harnessReads = reads.mock.calls.filter(([path]) =>
+        String(path).endsWith("harness.yaml"),
+      );
+      expect(harnessReads).toHaveLength(2); // one per harness
+    } finally {
+      reads.mockRestore();
+    }
+    expect(subject.calls[0]?.input.workloadBuilds).toEqual({
+      "runtime/agent": "CodeZip",
+      "runtime/local_rt": "ContainerLocal",
+      "harness/local_h": "ContainerLocal",
+      "harness/cb_h": "Container",
+    });
+
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      project_runtime_count: 2,
+      project_harness_count: 2,
+      project_runtime_codezip_count: 1,
+      project_runtime_container_count: 0,
+      project_runtime_container_local_count: 1,
+      project_harness_container_count: 1,
+      project_harness_container_local_count: 1,
+    });
+  });
+
+  test("counts the build type a runtime deploys with after Dockerfile auto-detection", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    const projectRoot = await inProjectWithTargets();
+    const spec = JSON.parse(
+      await readFile(join(projectRoot, "agentcore", "agentcore.json"), "utf8"),
+    );
+    expect(spec.runtimes[0]).toMatchObject({ name: "agent", build: "CodeZip" });
+    // A Dockerfile added to a CodeZip runtime's code switches it to Container at deploy.
+    await writeFile(
+      join(projectRoot, spec.runtimes[0].codeLocation, "Dockerfile"),
+      "FROM scratch\n",
+    );
+
+    await subject.run();
+
+    expect(subject.calls[0]?.input.workloadBuilds).toEqual({ "runtime/agent": "Container" });
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      project_runtime_codezip_count: 0,
+      project_runtime_container_count: 1,
+    });
+  });
+
   test("passes the global config's transactionSearch flag into the deploy", async () => {
     const enabled = await testDeployCommand({ outputs: {} });
     await inProjectWithTargets();
@@ -440,6 +529,20 @@ describe("project deploy handler", () => {
     await inProjectWithTargets();
     await disabled.run();
     expect(disabled.calls[0]?.input.transactionSearch).toBe(false);
+  });
+
+  test("passes the global config's disableDependencyManagement flag into the deploy", async () => {
+    const managed = await testDeployCommand({ outputs: {} });
+    await inProjectWithTargets();
+    await managed.run();
+    expect(managed.calls[0]?.input.disableDependencyManagement).toBe(false);
+
+    const optedOut = await testDeployCommand({ outputs: {} }, [], {
+      disableDependencyManagement: true,
+    });
+    await inProjectWithTargets();
+    await optedOut.run();
+    expect(optedOut.calls[0]?.input.disableDependencyManagement).toBe(true);
   });
 
   test("passes --skip-bootstrap into the deploy", async () => {
@@ -760,99 +863,5 @@ describe("project deploy reports which field of aws-targets.json is wrong", () =
 
     await expect(subject.run()).rejects.toThrow(/JSON Parse error/);
     expect(subject.calls).toEqual([]);
-  });
-});
-
-describe("project deploy and the Box gateway", () => {
-  const BOX_PROMPT =
-    `agentcore.json has no "projectType": "box", so this deploy will delete the Box gateway ` +
-    `'orders-default-agent-box'. Continue? (y/N)`;
-  const REQUEST = {
-    projectName: "orders",
-    targetName: "default",
-    gatewayNames: ["orders-default-agent-box"],
-  };
-
-  /** A Box project that lost its projectType after a deploy recorded its Box gateway. */
-  async function lostMarker(): Promise<string> {
-    const projectRoot = await inProjectWithTargets();
-    const specPath = join(projectRoot, "agentcore", "agentcore.json");
-    const { projectType: _projectType, ...spec } = JSON.parse(await readFile(specPath, "utf8"));
-    await writeFile(specPath, JSON.stringify(spec));
-    await mkdir(join(projectRoot, "agentcore", ".cli"), { recursive: true });
-    await writeFile(
-      join(projectRoot, "agentcore", ".cli", "deployed-state.json"),
-      JSON.stringify({
-        targets: {
-          default: { resources: { boxGateways: [{ name: "orders-default-agent-box" }] } },
-        },
-      }),
-    );
-    return projectRoot;
-  }
-
-  const answer = (subject: { calls: { input: DeployBackendInput }[] }) =>
-    subject.calls[0]!.input.confirmBoxGatewayDeletion!(REQUEST);
-
-  test("asks before it deletes the Box gateway and proceeds on yes", async () => {
-    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
-    await lostMarker();
-
-    await subject.run();
-
-    expect(subject.io.stderr()).toContain(BOX_PROMPT);
-    expect(await answer(subject)).toBe(true);
-  });
-
-  test("cancels before the deploy when the user declines", async () => {
-    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "n\n" });
-    await lostMarker();
-
-    await expect(subject.run()).rejects.toBeInstanceOf(UserCancellationError);
-    expect(subject.calls).toEqual([]);
-  });
-
-  test("--yes confirms without a prompt", async () => {
-    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "n\n" });
-    await lostMarker();
-
-    await subject.run(["--yes"]);
-
-    expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(await answer(subject)).toBe(true);
-  });
-
-  test("declines without a prompt in a non-interactive shell", async () => {
-    const subject = await testDeployCommand({ outputs: {} }, [], { stdin: "y\n" });
-    await lostMarker();
-
-    await subject.run();
-
-    expect(subject.io.stderr()).not.toContain("(y/N)");
-    expect(await answer(subject)).toBe(false);
-  });
-
-  test("does not ask in a project that kept projectType", async () => {
-    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
-    await inProjectWithTargets();
-
-    await subject.run();
-
-    expect(subject.io.stderr()).not.toContain("(y/N)");
-  });
-
-  test("a Box project with no runtimes asks before the teardown", async () => {
-    // Box gateways come with runtimes, so this is the state after `agentcore remove all`.
-    const subject = await testDeployCommand({ outputs: {} }, [], { isTTY: true, stdin: "y\n" });
-    const projectRoot = await inProjectWithTargets();
-    await writeFile(
-      join(projectRoot, "agentcore", "agentcore.json"),
-      JSON.stringify({ name: "orders", version: 2, projectType: "box" }),
-    );
-
-    await subject.run();
-
-    expect(subject.io.stderr()).toContain("(y/N)");
-    expect(await subject.calls[0]!.input.confirmTeardown(TEARDOWN)).toBe(true);
   });
 });

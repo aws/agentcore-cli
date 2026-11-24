@@ -59,6 +59,7 @@ async function drain<T>(generator: AsyncGenerator<ProjectEvent, T>): Promise<T> 
 async function projectWithHarness(
   subject: FsProjectManager,
   harness: Record<string, unknown> = {},
+  template: Parameters<typeof resolveRuntimeTemplateShortcut>[0] = "agent-python-minimal",
 ): Promise<Project> {
   await inTempDirectory();
   let project = await drain(
@@ -66,7 +67,7 @@ async function projectWithHarness(
       name: "orders",
       skipInstall: true,
       skipGit: true,
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-minimal"),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template),
     }),
   );
   project = await drain(
@@ -484,6 +485,22 @@ describe("FsProjectManager.exportHarness rendered tree", () => {
     // With the subagent tool on, that turn's frame still streams, so the final frame leaves it out.
     expect(main).toMatch(
       /budget\.after_model_call\(event\["event"\]\["metadata"\]\)\n(\s+#.*\n)*\s+budget\.streamed\(event\["event"\]\["metadata"\]\)\n\s+yield event\n\s+if inline_handoff:\n\s+break\n/,
+    );
+  });
+
+  test("refuses to export a harness into a Box project, whose runtimes run in a box", async () => {
+    const { manager: subject } = manager();
+    // A box template makes a Box project.
+    const project = await projectWithHarness(subject, {}, "agent-python-strands-box");
+    expect(project.spec.projectType).toBe("box");
+    const before = await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text();
+
+    await expect(drain(subject.exportHarness(project, exportInput()))).rejects.toThrow(
+      "cannot add the exported harness as a runtime: every runtime of a Box project runs in a " +
+        "box, and the exported harness does not.",
+    );
+    expect(await Bun.file(join(project.rootPath, "agentcore", "agentcore.json")).text()).toBe(
+      before,
     );
   });
 

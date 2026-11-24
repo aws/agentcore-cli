@@ -1,6 +1,6 @@
 import { NetworkModeSchema, NodeRuntimeSchema, PythonRuntimeSchema } from "./constants";
 import type { DirectoryPath, FilePath } from "./types";
-import { EnvVarNameSchema, GatewayNameSchema } from "./runtime";
+import { AgentNameSchema, EnvVarNameSchema, GatewayNameSchema } from "./runtime";
 import { GatewayAuthorizerConfigSchema, GatewayAuthorizerTypeSchema } from "./auth";
 import { ToolDefinitionSchema } from "./mcp-defs";
 import { TagsSchema } from "./tags";
@@ -93,7 +93,6 @@ export const TARGET_TYPE_AUTH_CONFIG: Record<
   },
   httpRuntime: { authRequired: false, validAuthTypes: ["OAUTH", "NONE"], iamRoleFallback: true },
   connector: { authRequired: false, validAuthTypes: [], iamRoleFallback: true },
-  // A passthrough target with no outbound auth gets no credential provider.
   passthrough: {
     authRequired: false,
     validAuthTypes: ["GATEWAY_IAM_ROLE", "OAUTH", "JWT_PASSTHROUGH", "API_KEY", "NONE"],
@@ -279,11 +278,17 @@ export const PassthroughConfigSchema = z
     endpoint: z
       .string()
       .min(1)
-      .regex(/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/, "Must be a valid HTTPS URL"),
+      .regex(/^https:\/\/[a-zA-Z0-9\-.]+(:[0-9]{1,5})?(\/.*)?$/, "Must be a valid HTTPS URL")
+      .optional(),
+    /** A gateway of this project, in place of `endpoint`: the CDK library calls its URL. */
+    gateway: GatewayNameSchema.optional(),
     protocolType: PassthroughProtocolTypeSchema.default("CUSTOM"),
     stickinessConfiguration: StickinessConfigSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((config) => (config.endpoint === undefined) !== (config.gateway === undefined), {
+    message: "A passthrough configuration needs exactly one of endpoint and gateway.",
+  });
 export type PassthroughConfig = z.infer<typeof PassthroughConfigSchema>;
 const TARGET_CONFIGURATION_FIELDS = [
   "toolDefinitions",
@@ -510,11 +515,29 @@ export const AgentCoreGatewaySchema = z
       .regex(/^arn:[^:]+:iam::\d{12}:role\/.+/, "Must be a valid IAM role ARN")
       .max(2048)
       .optional(),
+    // Bind this gateway to one runtime only. The CLI sets it on each Box gateway. The project
+    // schema checks that it names one of runtimes[].name.
+    boundRuntime: AgentNameSchema.optional(),
+    // The variable prefix for this gateway, in place of AGENTCORE_GATEWAY_<NAME>. Each variable
+    // name starts with it, so it must be a valid variable name. Needs boundRuntime.
+    discoveryPrefix: EnvVarNameSchema.optional(),
     /**
      * IAM policies for the gateway's execution role: managed-policy ARNs, or `.json` policy
      * files relative to the project root.
      */
     additionalPolicies: z.array(z.string().min(1)).optional(),
+    /**
+     * Deliver the gateway's `APPLICATION_LOGS` to the CloudWatch Logs group
+     * `/aws/vendedlogs/bedrock-agentcore/gateway/APPLICATION_LOGS/<gateway ID>`. Defaults to false
+     * for every gateway, because the logs can hold the request and response bodies of its MCP
+     * operations.
+     */
+    enableApplicationLogs: z.boolean().optional(),
+    /**
+     * Deliver the gateway's `TRACES` to X-Ray. Defaults to false for every gateway, because the
+     * deploy fails in an account and Region without CloudWatch Transaction Search.
+     */
+    enableTraces: z.boolean().optional(),
     tags: TagsSchema.optional(),
   })
   .strict()
@@ -543,6 +566,13 @@ export const AgentCoreGatewaySchema = z
           message: `Target "${target.name}" is ${target.targetType} but the Gateway does not have protocolType: "None"`,
         });
       }
+    }
+    if (gw.discoveryPrefix !== undefined && gw.boundRuntime === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Gateway "${gw.name}" sets discoveryPrefix without boundRuntime`,
+        path: ["discoveryPrefix"],
+      });
     }
   });
 export type AgentCoreGateway = z.infer<typeof AgentCoreGatewaySchema>;

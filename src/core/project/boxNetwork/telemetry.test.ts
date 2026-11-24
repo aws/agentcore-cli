@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cloudWatchTelemetry, thirdPartyTelemetry, withDeployRegion } from "./telemetry";
+import { cloudWatchTelemetry, withDeployRegion } from "./telemetry";
 
 const LOGS = {
   kind: "cloudwatch_logs",
@@ -106,122 +106,6 @@ describe("cloudWatchTelemetry", () => {
   });
 });
 
-describe("thirdPartyTelemetry", () => {
-  const LANGSMITH = {
-    kind: "langsmith",
-    project: "box",
-    include: ["trace"],
-    secret: { ref: "env://LANGSMITH_KEY" },
-  };
-
-  test("reads a target's key variable and each key Box takes, and no file or CloudWatch target", () => {
-    const telemetry = {
-      records: { kind: "file", destination: "/tmp/records.jsonl" },
-      langsmith: LANGSMITH,
-      logs: { ...LOGS },
-      collector: {
-        kind: "otlp",
-        destination: "https://collector.example.com/otlp",
-        accepts: ["traces", "logs"],
-        headers: { "x-team": "box" },
-        secret: { ref: "secret://COLLECTOR_TOKEN", header: "x-api-key", prefix: "Key " },
-      },
-    };
-
-    expect(thirdPartyTelemetry({ telemetry })).toEqual({
-      targets: [
-        {
-          name: "langsmith",
-          kind: "langsmith",
-          keys: [
-            ["project", "box"],
-            ["include", ["trace"]],
-          ],
-          secret: { variable: "LANGSMITH_KEY", keys: [] },
-        },
-        {
-          name: "collector",
-          kind: "otlp",
-          keys: [
-            ["destination", "https://collector.example.com/otlp"],
-            ["accepts", ["traces", "logs"]],
-            ["headers", { "x-team": "box" }],
-          ],
-          secret: {
-            variable: "COLLECTOR_TOKEN",
-            keys: [
-              ["header", "x-api-key"],
-              ["prefix", "Key "],
-            ],
-          },
-        },
-      ],
-      leftOut: [],
-    });
-  });
-
-  test("reads a target with no key, which needs no secret", () => {
-    const collector = { kind: "otlp", destination: "https://collector.example.com" };
-
-    expect(thirdPartyTelemetry({ telemetry: { collector } }).targets).toEqual([
-      {
-        name: "collector",
-        kind: "otlp",
-        keys: [["destination", "https://collector.example.com"]],
-      },
-    ]);
-  });
-
-  test.each([
-    ["an aws:// profile", "aws://my-profile"],
-    ["a credsd:// environment", "credsd://work"],
-    ["a Secrets Manager secret", "aws-secretsmanager://box/telemetry#KEY"],
-    ["no variable", "env://"],
-    ["a variable with a -", "env://MY-KEY"],
-  ])("leaves out a target whose key names %s, and says why", (_label, ref) => {
-    const telemetry = { langsmith: { ...LANGSMITH, secret: { ref } } };
-
-    expect(thirdPartyTelemetry({ telemetry })).toEqual({
-      targets: [],
-      leftOut: [
-        {
-          name: "langsmith",
-          reason:
-            "its `secret.ref` names no `env://` or `secret://` variable, and build moves only " +
-            "such a key to AWS Secrets Manager",
-        },
-      ],
-    });
-  });
-
-  test.each([
-    ["a /", "team/langsmith"],
-    ["a space", "lang smith"],
-    ["129 characters", "k".repeat(129)],
-  ])(
-    "leaves out a target with a key whose name has %s, as it cannot name a variable",
-    (_label, name) => {
-      const { targets, leftOut } = thirdPartyTelemetry({ telemetry: { [name]: LANGSMITH } });
-
-      expect(targets).toEqual([]);
-      expect(leftOut.map((target) => target.name)).toEqual([name]);
-      expect(leftOut[0]?.reason).toContain("cannot name the variable deploy reads its key from");
-    },
-  );
-
-  test("leaves out a target with a key that build cannot copy", () => {
-    const telemetry = { langsmith: { ...LANGSMITH, include: [1] } };
-
-    expect(thirdPartyTelemetry({ telemetry }).leftOut).toEqual([
-      { name: "langsmith", reason: "Box resolves its `include` to a value build cannot copy" },
-    ]);
-  });
-
-  test("reads nothing from a box.toml with no telemetry table", () => {
-    expect(thirdPartyTelemetry({})).toEqual({ targets: [], leftOut: [] });
-  });
-});
-
 describe("withDeployRegion", () => {
   const PROFILE = ".box/agent/local/profile.toml";
   const logs = { name: "logs", kind: "cloudwatch_logs", logGroup: "g", logStream: "s" } as const;
@@ -237,10 +121,10 @@ describe("withDeployRegion", () => {
 
   test("warns once that agentcore dev cannot run a profile with a target that has no region", () => {
     expect(withDeployRegion([logs, traces], "ap-south-1", PROFILE).warnings).toEqual([
-      `${PROFILE}: [telemetry.logs] and [telemetry.traces] have no region, so build sets ` +
-        "ap-south-1, the deploy region, in the AgentCore Runtime profile. Box refuses a " +
-        "CloudWatch target with no region, so `agentcore dev` cannot run this profile until " +
-        "you add region to it.",
+      `${PROFILE}: [telemetry.logs] and [telemetry.traces] have no region, so the AgentCore ` +
+        "Runtime profile and the telemetry policy get ap-south-1. Deploy sets the region of its " +
+        "deploy target. Box refuses a CloudWatch target with no region, so `agentcore dev` " +
+        "cannot run this profile until you add region to it.",
     ]);
     expect(withDeployRegion([{ ...logs, region: "us-west-2" }], "ap-south-1", PROFILE)).toEqual({
       telemetry: [{ ...logs, region: "us-west-2" }],

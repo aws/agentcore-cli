@@ -4,16 +4,12 @@
  * Box adds already in them, so build reads them rather than compiling the profile itself.
  */
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative, sep } from "node:path";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
 import { z } from "zod";
 import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
-import {
-  BOX_MINIMUM_VERSION,
-  BOX_OTHER_MACHINE_HINT,
-  BOX_RELEASE,
-  BOX_RELEASE_PAGE,
-} from "./backends/boxRelease";
+import { resolveExecutable } from "../../io/exec";
+import { BOX_MACOS_HINT, BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -37,35 +33,34 @@ export interface ResolvedBoxProfile {
   readonly warnings: readonly string[];
 }
 
-/** Resolves the box profile at `profilePath`, relative to `projectRoot`, as a run there gets it. */
+/**
+ * Resolves the box profile at `profilePath`, relative to `projectRoot`, as a run there gets it:
+ * box starts in `startFolder`, from the project root, as `agentcore dev` starts it.
+ */
 export interface BoxProfileResolver {
-  resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile>;
+  resolve(
+    projectRoot: string,
+    profilePath: string,
+    startFolder?: string,
+  ): Promise<ResolvedBoxProfile>;
 }
 
 /** What to install, which each error names when the `box` on PATH cannot resolve a profile. */
-const INSTALL_BOX = `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry. ${BOX_OTHER_MACHINE_HINT}`;
+const INSTALL_BOX =
+  `Install box ${BOX_RELEASE.version} (${BOX_RELEASE_PAGE}), then retry.` +
+  (BOX_MACOS_HINT === "" ? "" : ` ${BOX_MACOS_HINT}`);
 
-/** The refusal of an `@box/<name>` pack by a box older than {@link BOX_MINIMUM_VERSION}. */
+/** The refusal of an `@box/<name>` pack by a box from before those names. */
 const OLD_BOX_PACK_NAME = /"@box\/[^"\s]+" is not a pack name/;
 
 /** The error of a box that has no `--format` or `--full` option, as clap prints it. */
 const REFUSED_JSON = /(?:unexpected argument|Found argument) '--(?:format|full)'/;
 
-/**
- * The destinations of an open route, as a list: box 0.1.11-linux-preview.6 joins them into one
- * string with ", ", and later boxes print a list.
- */
-const OpenRouteDestinations = z
-  .union([z.string(), z.array(z.string())])
-  .transform((destinations) =>
-    typeof destinations === "string" ? destinations.split(", ") : destinations,
-  );
-
 /** The parts of the document of `box profile show --format json --full` that build reads. */
 const BoxProfileShowSchema = z.object({
   box_toml: z.record(z.string(), z.unknown()),
   policy: z.string(),
-  open_routes: z.array(z.object({ route: z.string(), destinations: OpenRouteDestinations })),
+  open_routes: z.array(z.object({ route: z.string(), destinations: z.array(z.string()) })),
   packs: z.array(z.object({ name: z.string(), version: z.string() })).default([]),
   warnings: z.array(z.string()).default([]),
 });
@@ -126,13 +121,22 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     this.streamProcess = config.streamProcess ?? streamProcess;
   }
 
-  public async resolve(projectRoot: string, profilePath: string): Promise<ResolvedBoxProfile> {
-    const command = ["box", "profile", "show", profilePath, "--format", "json", "--full"];
+  public async resolve(
+    projectRoot: string,
+    profilePath: string,
+    startFolder = "",
+  ): Promise<ResolvedBoxProfile> {
+    // box takes a relative profile path from the folder it starts in.
+    const shown = isAbsolute(profilePath) ? profilePath : posix.relative(startFolder, profilePath);
+    const command = ["box", "profile", "show", shown, "--format", "json", "--full"];
     const stdout: string[] = [];
     const stderr: string[] = [];
     try {
       const events = this.streamProcess(command, {
-        cwd: projectRoot,
+        cwd:
+          startFolder === ""
+            ? projectRoot
+            : join(projectRoot, ...startFolder.split("/").filter(Boolean)),
         env: { ...this.env, NO_COLOR: "1" },
       });
       for await (const event of events) {
@@ -140,7 +144,12 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
       }
     } catch (error) {
       if (!(error instanceof ProcessFailedError)) throw error;
-      if (error.meta.exitCode === null && stderr.length === 0) {
+      // A signal also stops box with no exit code, so box is missing only when PATH has none.
+      if (
+        error.meta.exitCode === null &&
+        stderr.length === 0 &&
+        resolveExecutable("box", { env: this.env }) === null
+      ) {
         throw new InvalidEnvironmentError(`Box is not installed or not on PATH. ${INSTALL_BOX}`, {
           cause: error,
         });
@@ -168,8 +177,7 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
           `Box refused the profile ${profilePath}:`,
           ...lines.map((line) => `  ${line}`),
           oldBox
-            ? `This box is older than ${BOX_MINIMUM_VERSION}, the first box that names its packs ` +
-              `@box/<name>. ${INSTALL_BOX}`
+            ? `This box is older than the pinned box, which names its packs @box/<name>. ${INSTALL_BOX}`
             : agent === undefined
               ? "Fix what Box reports, then retry."
               : `Run 'uv sync' in ${agent}, then retry.`,

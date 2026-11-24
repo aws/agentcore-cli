@@ -18,15 +18,15 @@ import {
 import { createRootHandler } from "../../../index";
 import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
-import { createGatewayProjectTestHarness, removeDefaultBoxGateway } from "../gateway-test-support";
+import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { knowledgeBaseSchema } from "./screen";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const KB_HELP =
   "a ten-character Knowledge Base ID, or the name of a Knowledge Base in this project";
 
-const { addGateway, cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
-  "add-gateway-connector-wizard",
-);
+const { addGateway, cleanup, inProject, projectSpec, run, writeProjectSpec } =
+  createGatewayProjectTestHarness("add-gateway-connector-wizard");
 
 afterEach(cleanup);
 afterEach(cleanupScreens);
@@ -37,17 +37,32 @@ async function targetsOf(projectRoot: string, gateway = "tools") {
     .targets;
 }
 
-// reachConnectorStep picks the test's Gateway, "tools" (listed after the
-// project's "agent-box" gateway entry), leaving the wizard on the connector step.
+// reachConnectorStep confirms the only Gateway, leaving the wizard on the
+// connector step.
 async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
   await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
-  await screen.press("down");
-  await waitForText(screen.lastFrame, "❯ ● tools");
   await screen.press("return");
   await waitForText(screen.lastFrame, "which connector?");
 }
 
 describe("gateway-connector wizard helpers", () => {
+  test("offers the Box gateway, which takes every target type", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-connector");
+
+    await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
+    expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
+    screen.unmount();
+  });
+
   test("a Knowledge Base is a ten-character ID or a project Knowledge Base name", () => {
     const external = knowledgeBaseSchema([]);
     expect(external.safeParse("ABCDEFGHIJ").success).toBe(true);
@@ -74,9 +89,7 @@ describe("project add gateway-connector wizard", () => {
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
-    expect(screen.lastFrame()).toContain("❯ ● agent-box");
-    await screen.press("down");
-    await waitForText(screen.lastFrame, "❯ ● tools");
+    expect(screen.lastFrame()).toContain("❯ ● tools");
     await screen.press("return");
 
     await waitForText(screen.lastFrame, "which connector?");
@@ -224,7 +237,7 @@ describe("project add gateway-connector wizard", () => {
   });
 
   test("without a Gateway the first step says what to add and esc returns to the menu", async () => {
-    await removeDefaultBoxGateway(await inProject());
+    await inProject();
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "no Gateways in this project");

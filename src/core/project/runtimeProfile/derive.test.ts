@@ -18,7 +18,7 @@ const CODEZIP = {
   box: { version: "1.0.0" },
 } as ProjectRuntime;
 const CONTAINER = { ...CODEZIP, build: "Container", entrypoint: "main.py" } as ProjectRuntime;
-const SPEC = { name: "demo", runtimes: [CODEZIP] } as unknown as ProjectSpec;
+const SPEC = { name: "demo", runtimes: [CODEZIP], memories: [] } as unknown as ProjectSpec;
 
 const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
   runtimeProfileContext({
@@ -32,7 +32,7 @@ const context = (runtime: ProjectRuntime, places = new Map<string, string>()) =>
     places,
   });
 
-/** The keys of a profile that no rule of the derivation changes, as box 0.1.11-linux-preview.6 takes them. */
+/** The keys of a profile that no rule of the derivation changes, as box takes them. */
 const CARRIED: TomlTable = {
   "agent-args": ["--verbose"],
   "file-attributes": true,
@@ -72,20 +72,25 @@ describe("deriveRuntimeProfile", () => {
 });
 
 describe("runtimePaths", () => {
-  test("moves a CodeZip runtime's code and Python to the inputs of @box/agentcore-codezip", () => {
+  test("moves a CodeZip runtime's code folder, ${{ workspace }}, and Python to the inputs of @box/agentcore-codezip", () => {
+    // dev starts box in the code folder of a CodeZip runtime (boxStartFolder).
     expect(runtimePaths(CODEZIP)).toEqual({
       build: "CodeZip",
-      localCode: "${{ workspace }}/app/agent",
-      localVenv: "${{ workspace }}/app/agent/.venv",
+      localCode: "${{ workspace }}",
+      localVenv: "${{ workspace }}/.venv",
       localPythons: "${{ home }}/.local/share/uv/python",
       runtimeCode: "${{ inputs.code.dir }}",
       runtimePython: "${{ inputs.python.path }}",
-      runtimePythonPrefix: "${{ inputs.python.prefix }}",
+      runtimePythonStdlib: "${{ inputs.python.stdlib }}",
+      otelInstrument: [
+        "${{ inputs.python.path }}",
+        "${{ inputs.code.dir }}/bin/opentelemetry-instrument",
+      ],
       shownCode: "app/agent/",
     });
-    expect(
-      runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime).localCode,
-    ).toBe("${{ workspace }}/app/agent");
+    expect(runtimePaths({ ...CODEZIP, codeLocation: "./app/agent/" } as ProjectRuntime)).toEqual(
+      runtimePaths(CODEZIP),
+    );
   });
 
   test("keeps each path of a container image, which runs in /app under dev and on the Runtime", () => {
@@ -93,6 +98,7 @@ describe("runtimePaths", () => {
 
     expect(paths.runtimeCode).toBe(paths.localCode);
     expect(paths.runtimePython).toBe("${{ workspace }}/.venv/bin/python");
+    expect(paths.otelInstrument).toEqual(["${{ workspace }}/.venv/bin/opentelemetry-instrument"]);
   });
 });
 
@@ -104,7 +110,7 @@ describe("runtimeTemplate", () => {
     expect(Object.keys(runtime)).toEqual(["agent"]);
     const agent = runtime.agent as { command: string[]; env: Record<string, string> };
     expect(agent.command).not.toContain("--reload");
-    expect(agent.command[0]).toBe("${{ workspace }}/app/agent/.venv/bin/python");
+    expect(agent.command[0]).toBe("${{ workspace }}/.venv/bin/python");
     expect(agent.env).not.toHaveProperty("LOCAL_DEV");
   });
 });

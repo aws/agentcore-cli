@@ -20,7 +20,8 @@ const HOME = "${{ home }}";
 /**
  * Where the paths of the local profile of `runtime` are on AgentCore Runtime. A container image runs
  * the profile in /app, its workspace, under `agentcore dev` and on the Runtime alike, so each path
- * stays. A CodeZip runtime runs it in the project folder under `agentcore dev`.
+ * stays. Under `agentcore dev`, box starts a CodeZip runtime in its code folder (boxStartFolder),
+ * so `${{ workspace }}` is the code folder.
  */
 export function runtimePaths(
   runtime: Pick<ProjectRuntime, "build" | "codeLocation">,
@@ -33,7 +34,8 @@ export function runtimePaths(
       localPythons: "/usr/local",
       runtimeCode: WORKSPACE,
       runtimePython: `${WORKSPACE}/.venv/bin/python`,
-      runtimePythonPrefix: "/usr/local",
+      runtimePythonStdlib: "/usr/local",
+      otelInstrument: [`${WORKSPACE}/.venv/bin/opentelemetry-instrument`],
       shownCode: "/app/",
     };
   }
@@ -41,15 +43,18 @@ export function runtimePaths(
     .normalize(runtime.codeLocation.replace(/\\/g, "/"))
     .replace(/^\.\/|\/+$/g, "");
   const root = folder === "." || folder === "";
-  const localCode = root ? WORKSPACE : `${WORKSPACE}/${folder}`;
   return {
     build: "CodeZip",
-    localCode,
-    localVenv: `${localCode}/.venv`,
+    localCode: WORKSPACE,
+    localVenv: `${WORKSPACE}/.venv`,
     localPythons: `${HOME}/.local/share/uv/python`,
     runtimeCode: RUNTIME_INPUTS.codeDir,
     runtimePython: RUNTIME_INPUTS.pythonPath,
-    runtimePythonPrefix: RUNTIME_INPUTS.pythonPrefix,
+    runtimePythonStdlib: RUNTIME_INPUTS.pythonStdlib,
+    otelInstrument: [
+      RUNTIME_INPUTS.pythonPath,
+      `${RUNTIME_INPUTS.codeDir}/bin/opentelemetry-instrument`,
+    ],
     shownCode: root ? "./" : `${folder}/`,
   };
 }
@@ -73,7 +78,7 @@ export function runtimeTemplate(
     protocol: runtime.protocol,
     modelProvider: runtime.modelProvider,
     modelId: runtime.modelId,
-    box: true,
+    boxTemplate: true,
   } as ScaffoldRuntimeInput;
   const agent = runtimeAgentTemplate(input);
   return {

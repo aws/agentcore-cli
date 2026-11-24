@@ -149,6 +149,12 @@ Global flags, available on every command:
 (`transformAgentCoreJson`). All three come from `@aws/agentcore-cdk`, so that
 logic is updated through the library rather than changes to your CDK app.
 
+`agentcore build` and `agentcore deploy` keep the dependencies `agentcore create`
+wrote to `agentcore/cdk/package.json` at the versions this CLI vends, and run
+`npm install` when they change or are not installed, so both commands may need
+network access to npm. Dependencies you add yourself are left alone. To manage
+the CDK dependencies yourself, run `agentcore config disableDependencyManagement true`.
+
 `lib/cdk-stack.ts` instantiates one `AgentCoreApplication`. This is the file you
 edit to add your own resources. Runtimes and harnesses implement `iam.IGrantable`,
 so you can pass them to a resource's CDK grant methods to give your agents access.
@@ -197,33 +203,36 @@ declares, not the ones you add in the stack.
 
 ## Running agents in Box (preview)
 
-These templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
-`agent-python-strands-box-container` (Container), and the CodeZip templates
-`agent-python-strands-box`, `agent-python-minimal-box`, `agent-python-langchain-box`,
-`a2a-python-strands-box`, `agui-python-strands-box` and `mcp-python-fastmcp-box`.
-`agentcore create --template <name>` makes a Box project from any of them; every other template runs
-its agent without box, and `--isolation private-vpc` needs a box template. Each box runtime has its
-own box profile, `.box/<runtime>/local/profile.toml`; build and deploy stop without it. Build
-derives the AgentCore Runtime profile of each runtime from its local profile. box comes from the
-public GitHub release `v0.1.11-preview.10` of
-[mquang-amazon/box-releases](https://github.com/mquang-amazon/box-releases). No token or account
-is needed to download it. When that release has no build for your machine, use the build of
-`v0.1.11-linux-preview.7`, or of a later release that has one, for `agentcore dev` and the profile
-checks of `build`.
+Six templates run their agent in a box, both under `agentcore dev` and on AgentCore Runtime:
+the CodeZip templates `agent-python-strands-box`, `agent-python-minimal-box`,
+`agent-python-langchain-box`, `a2a-python-strands-box`, and `agui-python-strands-box`, and the
+container template `agent-python-strands-box-container`.
+`agentcore create --template <name>` makes a Box project from one of them; every other template
+runs its agent without box. Each runtime of a Box project runs in a box, with its own box profile,
+`.box/<runtime>/local/profile.toml`. `agentcore add runtime` adds a Python CodeZip runtime in a box
+to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import there.
+`agentcore export harness` refuses a Box project. Each box runtime needs its
+`"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
+box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
+each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
+release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
+or account is needed to download it. Use that release's build for your machine for `agentcore dev`
+and the profile checks of `build`: an older box cannot read the profiles that this CLI writes. On
+macOS, use the build of `v0.3.0-preview.1` instead: the macOS build of `v0.3.0` does not run.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
-Runtime, with its repository, version and SHA-256. `bun scripts/bump-box-release.ts --box <version>`
+Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e
+workflow installs on its macOS runner. `bun scripts/bump-box-release.ts --box <version>`
 (with `--box-repo` to move repository) rewrites the file from the release's `SHA256SUMS.txt`.
 
 How each command uses it:
 
 - A CodeZip agent's zip carries box. `build` and `deploy` download box once with `curl` into
-  `~/.agentcore/box/`, check it against its pinned SHA-256, and generate box and its packs into the agent's `.box/<name>/aws/`. They then
-  copy that folder into the runtime's `.box-dist/` so the zip carries it.
-- A container agent's image downloads box while it builds. `build` and `deploy` generate the release
-  that `box.version` names, with its checksum, as `box-release.env` in the agent's `.box/<name>/aws/`,
-  then copy it into the build context's `.box-dist/` beside the Dockerfile (`dev` stages the local
-  profile into `.box-dev/` instead). The Dockerfile downloads that release with `curl`,
+  `~/.agentcore/box/`, check it against its pinned SHA-256, and stage box and its packs into the
+  runtime's `.box-dist/`.
+- A container agent's image downloads box while it builds. `dev`, `build` and `deploy` stage the
+  release that `box.version` names, with its checksum, as `box-release.env` beside the Dockerfile
+  (`.box-dist/`, or `.box-dev/` under `dev`), and the Dockerfile downloads that release with `curl`,
   checks its SHA-256 and unpacks it into `/opt/box`. The CLI downloads nothing for a container, so
   the build machine, or AWS CodeBuild on `deploy`, needs network to github.com. `agentcore dev`
   builds the image on your machine and `agentcore deploy` builds it in AWS CodeBuild.
@@ -233,13 +242,8 @@ How each command uses it:
   with that instruction when `box` is not on your PATH. Container agents need no local box.
 
 Each box runtime names its release in `agentcore.json` with `"box": { "version": "<version>" }`,
-which `agentcore create` writes. The pinned version keeps the checksums in `boxRelease.json`;
-another version takes them from its release's `SHA256SUMS.txt`. To try an unreleased box build,
-publish it as a pre-release with the same file names and set `box.version` to it.
-
-`build` and `deploy` read each agent's box profile as box resolves it, with
-`box profile show .box/<name>/local/profile.toml --format json --full`, so they need a `box` on your
-`PATH` that has it.
+which `agentcore create` writes. Every box runtime runs the pinned version, whose checksums
+`boxRelease.json` keeps: build and deploy set `box.version` to it, and say so when it named another.
 
 On AgentCore Runtime, box signs the agent's Bedrock and Memory calls with the execution role: the
 profile's bare `aws://` resolves the AWS default credential chain, which box reads and refreshes
@@ -248,31 +252,53 @@ itself.
 ### Create, run and deploy
 
 ```sh
-agentcore create --name MyBoxAgent --template agent-python-strands-container
+agentcore create --name MyBoxAgent --template agent-python-strands-box-container
 cd MyBoxAgent
 AGENTCORE_CONTAINER_TOOL=finch agentcore dev   # optional
 agentcore deploy --yes
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"My favorite color is teal. Remember it."}'
 agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000001 --payload '{"prompt":"What is my favorite color?"}'
-agentcore logs runtime --name agent --since 15m --query '"[box]"'
+agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.1.11-preview.10`. The
-second answer should say teal, and the runtime log shows `running profile ...` with no `FALLBACK`,
-`FAILED`, `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
-`--template agent-python-strands` and skip the container settings.
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.3.0`. The
+second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
+`blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
+`--template agent-python-strands-box` and skip the container settings.
+
+A boxed agent gets the deployed Memory IDs and the Runtime's region inside the box. It does not get
+the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
+its Box gateway. With its default Memory, its calls to the AgentCore host
+(`bedrock-agentcore.<region>.amazonaws.com`) are the exception: box signs them with the execution
+role and sends them to that host directly, so Memory can hold each call to the session of the
+runtime. Box routes a connection by its host alone, and Code Interpreter, Browser, and the other
+AgentCore APIs share that host, so their calls go there directly too. A `PRIVATE_VPC` runtime
+reaches that host through the AgentCore endpoint of its private VPC, which only the runtime's role
+may call through. Code in the box can make any AgentCore call on that host that the
+execution role allows, so a `bedrock-agentcore` grant added through `additionalPolicies` is open
+to it. A runtime in a VPC of your own needs a `bedrock-agentcore` VPC endpoint.
+
+A Box project that an older CLI created still has `start.sh`, or a Dockerfile that runs it. Build
+and deploy now render profiles that those files cannot start. Create the project again, or copy
+`start.py` (CodeZip) or the `Dockerfile` (container) from a new `agentcore create` project.
+
+### Containment
+
+`agentcore create --containment private-vpc` with a box template also runs the runtime in its own
+private VPC with no internet path. It writes `"containment": "PRIVATE_VPC"` on the runtime.
 
 ### Troubleshooting
 
 - `ExpiredTokenException` from `aws` or `deploy`: your AWS credentials expired. Refresh them and
   run the command again.
 - `curl: (22) The requested URL returned error: 404` in the CodeBuild log, or a deploy error that
-  names the release URL: the pinned version is not published in `mquang-amazon/box-releases`.
+  names the release URL: the pinned version is not published in `strands-agents/box`.
 - `SHA-256 ... not the pinned` or `sha256sum: WARNING: 1 computed checksum did NOT match`: the
   release asset changed after it was pinned. Nothing was installed.
-- `FAILED (box run exited with 1)` (CodeZip) or `FALLBACK (box run exited with 1)` (container) in
-  the runtime log: box refused its profile. The line above it names the reason. A CodeZip agent
-  does not start without box unless the runtime sets `BOX_START_FALLBACK=1`.
+- `box run` exits with an error in the runtime log: box refused its profile, and the agent does
+  not start. The error names the reason. The agent never runs outside box on AgentCore Runtime.
+- A CodeZip agent on `PYTHON_3_10` needs `tomli` in its dependencies, because `start.py` reads the
+  profile with it there. `agent-python-strands-box` lists it.
 
 ## Documentation
 

@@ -13,6 +13,7 @@ import {
   tagsFlag,
 } from "../../../utils";
 import { filtersHelp } from "../filtersHelp";
+import { FAILURE_ANALYSIS, noteInsightsForConfig } from "../insightsNote";
 import { onlineEvalDataSourceConfigHelp } from "../dataSourceConfigHelp";
 import { OnlineEvalOutputConfigFlag } from "../outputConfig";
 
@@ -129,6 +130,14 @@ export const createCreateOnlineEvalHandler = (core: Core, io: AppIO) =>
             },
         coreOptsFromCtx(ctx),
       );
+      if (flags["evaluators"].includes(FAILURE_ANALYSIS) && response.onlineEvaluationConfigId) {
+        await noteInsightsForConfig(
+          core,
+          io,
+          response.onlineEvaluationConfigId,
+          coreOptsFromCtx(ctx),
+        );
+      }
       ctx.require(JsonRendererKey).renderJson(response);
     },
   });

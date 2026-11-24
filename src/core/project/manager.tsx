@@ -1,13 +1,14 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import semver from "semver";
 import type {
   AddResourceOptions,
   AddResourceInput,
   CreateProjectInput,
+  BuildProjectInput,
   DeployProjectInput,
   DeployResult,
   EnvLocalEntry,
@@ -29,6 +30,7 @@ import type {
   SyncRuntimeBuildsResult,
   RemoveResourceInput,
   RemoveResourceResult,
+  RemovedGateway,
   RemoveResourcesResult,
   ScaffoldRuntimeInput,
 } from "../../handlers/project/types";
@@ -54,24 +56,37 @@ import {
   validateHarnessTemplateSource,
 } from "./templates/harness";
 import { boxGatewayIamWarnings, type BoxNetwork } from "./boxNetwork";
+import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
+import { resolveRegion } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
-import { DEFAULT_REGION, regionFromConfigFile } from "../region";
-import { BOX_NETWORK_WRITERS, boxNetworkEdits, writeBoxNetworkFiles } from "./boxNetworkWriters";
-import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
-import { createProjectTree } from "./templates/project";
 import {
+  BOX_NETWORK_WRITERS,
+  boxKeyReads,
+  boxNetworkEdits,
+  writeBoxNetworkFiles,
+} from "./boxNetworkWriters";
+import { boxCodeZipFiles, createProjectTree } from "./templates/project";
+import {
+  BOX_CODEZIP_ENTRYPOINT,
+  boxAgentDir,
+  boxAwsDir,
+  boxLocalMetadataPolicyPath,
   boxLocalProfileFile,
   boxLocalProfilePath,
   boxProfileWarnings,
   boxUvSyncEnv,
   hasBoxProfile,
+  observabilityOff,
+  renderAwsMetadataPolicy,
   renderBoxProfile,
+  runsInBox,
+  runtimeRunsInBox,
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
-import { BOX_INSTALL_HINT } from "./backends/boxRelease";
-import { runsAgentInBox } from "./backends/boxContainer";
-import { defaultLogTargetNotice, observabilityOff } from "./runtimeProfile/rules/additions";
+import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
+import { assertRuntimeV2RegionSupported, validateBoxRuntimes } from "./boxValidation";
+import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
   EXPORT_NOTES_FILENAME,
@@ -82,17 +97,15 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
-  BOX_GATEWAY_TARGET_TYPE,
-  boxGatewayName,
-  boxGatewayNames,
-  isBoxExtensionEntry,
+  boxGatewaySpec,
+  isBoundGateway,
   isBoxProject,
-  isReservedBoxGatewayName,
+  isBuildOwnedTarget,
   ProjectSpecSchema,
   type ManagedBy,
 } from "../../projectSchemas/project";
-import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
+import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
 import {
   CredentialSchema,
   credentialEnvVarName,
@@ -103,7 +116,7 @@ import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
-import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, RuntimeEndpointSchema } from "../../projectSchemas/runtime";
 import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
@@ -120,8 +133,18 @@ import {
 import { isChinaRegion } from "../partition";
 import z from "zod";
 import { CdkBackend, type TransactionSearchEnabler } from "./backends/cdk";
+import {
+  cdkAcceptsPassthroughGateway,
+  type PassthroughGatewayCheck,
+} from "./backends/cdk/compatibility";
+import {
+  customJwtGatewayNotice,
+  gatewayList,
+  reachedGatewayNames,
+  uncheckedBecause,
+} from "./boxNetwork/projectGateways";
 import { resolveAwsAccount } from "./backends/cdk/environment";
-import { boxGatewaysOf, readDeployedState } from "./backends/cdk/deployedState";
+import { pinnedVersion } from "./backends/cdk/dependencies";
 import type { ProjectBackend } from "./backends/types";
 import {
   AwsDeploymentTargetSchema,
@@ -132,6 +155,7 @@ import {
 import { V0AwsDeploymentTargetsSchema } from "../../projectSchemas/v0";
 import {
   isRuntimeDocsConfig,
+  type RuntimeDocsConfig,
   type RuntimeResourceConfig,
 } from "../../handlers/project/add/runtime/types";
 import { buildDocsRuntimeSpec, runtimeDocsTree } from "./templates/runtimeDocs";
@@ -145,7 +169,9 @@ import { projectFormat, type ProjectFormat } from "./legacy/detect";
 import { loadLegacyProject } from "./legacy/load";
 import { assertV1Project } from "./legacy/writeGate";
 import { assertNoPendingMigration } from "./migrate/journal";
-import { prepareRuntimes } from "./runtimeBuild";
+import { LATEST_PYTHON, prepareRuntimes } from "./runtimeBuild";
+import { isContainerBuild } from "../../projectSchemas/constants";
+import { resolveWorkloads } from "./backends/cdk/localContainers";
 
 const TARGETS_EXAMPLE = '[{ "name": "default", "account": "111122223333", "region": "us-east-1" }]';
 
@@ -426,13 +452,21 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
-  /** The environment the CDK backend reads HOME (the box cache) from; process.env by default. */
+  /**
+   * The environment the CDK backend reads HOME (the box cache) from, and build reads box `env://`
+   * egress secrets from; process.env by default.
+   */
   processEnv?: NodeJS.ProcessEnv;
   /**
    * Resolves the box profile as Box does, for build and deploy to read its network; the `box` on
    * PATH by default.
    */
   boxProfileResolver?: BoxProfileResolver;
+  /**
+   * Whether the @aws/agentcore-cdk of the CDK app in a folder accepts a passthrough target with
+   * `gateway`; build writes such a target only then. `cdkAcceptsPassthroughGateway` by default.
+   */
+  cdkAcceptsPassthroughGateway?: (cdkDirectory: string) => Promise<PassthroughGatewayCheck>;
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   templateRenderer?: TemplateRenderer;
   /**
@@ -457,6 +491,9 @@ export class FsProjectManager implements ProjectManager {
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly boxProfileResolver: BoxProfileResolver;
+  private readonly cdkAcceptsPassthroughGateway: (
+    cdkDirectory: string,
+  ) => Promise<PassthroughGatewayCheck>;
 
   constructor(config: ProjectManagerConfig) {
     this.logger = config.logger;
@@ -474,6 +511,7 @@ export class FsProjectManager implements ProjectManager {
         checkTool: config.checkTool,
         json: config.json,
         processEnv: config.processEnv,
+        source: this.assetSource,
       }),
     };
     this.templateRenderer = config.templateRenderer ?? new HandlebarsTemplateRenderer();
@@ -481,6 +519,8 @@ export class FsProjectManager implements ProjectManager {
     this.processEnv = config.processEnv ?? process.env;
     this.boxProfileResolver =
       config.boxProfileResolver ?? new BoxCliProfileResolver({ env: this.processEnv });
+    this.cdkAcceptsPassthroughGateway =
+      config.cdkAcceptsPassthroughGateway ?? cdkAcceptsPassthroughGateway;
   }
 
   public async resolve(input: ResolveProjectInput): Promise<Project | undefined> {
@@ -526,9 +566,8 @@ export class FsProjectManager implements ProjectManager {
     const declared = manifest?.dependencies?.["@aws/agentcore-cdk"];
     if (typeof declared !== "string") return undefined;
 
-    const spec = declared.trim();
-    const version = semver.valid(spec.replace(/^[~^=]/, ""));
-    return version ? { spec, version } : undefined;
+    const version = pinnedVersion(declared)?.version;
+    return version ? { spec: declared.trim(), version } : undefined;
   }
 
   public async *create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project> {
@@ -540,16 +579,16 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    const destination = join(process.cwd(), input.name);
     if (input.scaffoldHarnessInput) {
-      validateHarnessTemplateSource(input.scaffoldHarnessInput);
+      validateHarnessTemplateSource(input.scaffoldHarnessInput, destination);
     }
 
     const scaffoldRuntimeInput = input.scaffoldRuntimeInput;
-    const destination = join(process.cwd(), input.name);
 
     const { tree: projectTree, envEntries } = await createProjectTree(
       { templateRenderer: this.templateRenderer, assetSource: this.assetSource },
-      { projectName: input.name, secureVpc: input.isolation === "private-vpc" },
+      { projectName: input.name, privateVpc: input.containment === "private-vpc" },
       { runtime: scaffoldRuntimeInput, importBedrockAgent: input.importBedrockAgent },
     );
 
@@ -592,20 +631,22 @@ export class FsProjectManager implements ProjectManager {
         yield* this.installRuntimeDependencies(appDir, scaffoldRuntimeInput);
       }
     } else if (
-      scaffoldRuntimeInput?.build === "Container" &&
+      scaffoldRuntimeInput !== undefined &&
+      isContainerBuild({ build: scaffoldRuntimeInput.build }) &&
       templateManagesDependencies(resolveRuntimeTemplateProfile(scaffoldRuntimeInput))
     ) {
       // Container builds install from a lockfile, so generate it even with no-install.
       const appDir = join(destination, "app", scaffoldRuntimeInput.runtimeName);
       yield* this.ensureLockFileExists(appDir);
     }
-
     if (scaffoldRuntimeInput) {
+      // Both create paths pass the region they resolved; without one, create resolves it as
+      // --region does with no flag.
       yield* this.writeBoxProfile(
         destination,
         input.name,
         scaffoldRuntimeInput,
-        input.region ?? (await this.boxBuildRegion()),
+        input.region ?? (await resolveRegion(undefined, this.processEnv)),
       );
     }
 
@@ -623,7 +664,8 @@ export class FsProjectManager implements ProjectManager {
         `the project scaffolded at ${destination} could not be read back`,
       );
     }
-    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes, project.rootPath);
+    yield* defaultLogTargetNotices(project.spec, project.spec.runtimes);
+    if (isBoxProject(project.spec)) yield* boxGatewayLogsWarnings(project.spec.agentCoreGateways);
     return project;
   }
 
@@ -662,6 +704,13 @@ export class FsProjectManager implements ProjectManager {
           `a gateway target with name '${input.resourceConfig.name}' already exists in gateway '${gateway.name}'`,
         );
       }
+      // Build owns some target names on the Box gateway of a boxed runtime.
+      const parent = projectSpec.agentCoreGateways.find(
+        (candidate) => candidate.name === input.gatewayName,
+      );
+      const reserved =
+        parent && reservedBoxTargetNameProblem(projectSpec, parent, input.resourceConfig.name);
+      if (reserved) throw new InputValidationError(reserved);
     } else if (input.resourceType === "policy") {
       // Policy names are account-unique on the service, so the check spans engines.
       const engine = projectSpec.policyEngines.find((candidate) =>
@@ -813,11 +862,20 @@ export class FsProjectManager implements ProjectManager {
         if (!existsSync(outputPath)) scaffoldedPaths.push(outputPath);
 
         const resolver = getHarnessTemplateResolver({
+          projectRoot: project.rootPath,
           assetSource: this.assetSource,
           templateRenderer: this.templateRenderer,
         });
         const result = await resolver.resolve(resourceConfig);
         await result.tree.write(dirname(outputPath));
+        if (resourceConfig.dockerfile && !resourceConfig.buildContextPath) {
+          yield {
+            type: "step",
+            message:
+              `copied ${resourceConfig.dockerfile} to app/${harnessName}/Dockerfile; later ` +
+              "edits to the original are not used",
+          };
+        }
         if (result.spec.harnesses) projectSpec.harnesses.push(...result.spec.harnesses);
         if (harnessEnvEntries.length > 0) {
           envFile = new EnvLocalFile(project.rootPath);
@@ -833,6 +891,11 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "runtime": {
+        // Every runtime of a Box project runs in a box, so a runtime added to one gets what
+        // create gives a box runtime, with its own box profile in .box/<name>/local/.
+        const boxInput = isBoxProject(projectSpec)
+          ? boxRuntimeInput(projectSpec, input.resourceConfig)
+          : undefined;
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
         // The folder may hold the user's own code, but never another resource's.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
@@ -842,13 +905,18 @@ export class FsProjectManager implements ProjectManager {
               `overlaps the files of ${owner}. Choose a different --name.`,
           );
         }
+        if (boxInput) await this.assertNoOtherStartScript(outputPath, input.resourceConfig.name);
         // Rollback removes only what this add created, never a folder the user already had.
         const folderExisted = existsSync(outputPath);
         if (isRuntimeDocsConfig(input.resourceConfig)) {
           const relativeFolder = `app/${input.resourceConfig.name}`;
           yield { type: "step", message: `writing runtime docs to '${relativeFolder}'` };
           const tree = await runtimeDocsTree(
-            { assetSource: this.assetSource, templateRenderer: this.templateRenderer },
+            {
+              assetSource: this.assetSource,
+              templateRenderer: this.templateRenderer,
+              projectRoot: project.rootPath,
+            },
             input.resourceConfig,
           );
           // Tracked as each file is written, so a write that fails partway is
@@ -862,6 +930,14 @@ export class FsProjectManager implements ProjectManager {
             throw err;
           }
           if (folderExisted) scaffoldedPaths.push(...written);
+          if (written.includes(join(outputPath, "Dockerfile"))) {
+            yield {
+              type: "step",
+              message:
+                `copied ${input.resourceConfig.dockerfile} to ${relativeFolder}/Dockerfile; ` +
+                "later edits to the original are not used",
+            };
+          }
           for (const child of tree.children) {
             if (!written.includes(join(outputPath, child.name))) {
               yield {
@@ -871,6 +947,22 @@ export class FsProjectManager implements ProjectManager {
             }
           }
           projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          if (boxInput) {
+            // A failure here comes before the spec write, whose catch removes what this add
+            // created, so the box scaffold removes it itself.
+            try {
+              yield* this.addBoxRuntime(
+                project.rootPath,
+                projectSpec,
+                boxInput,
+                scaffoldedPaths,
+                await resolveRegion(options.region, this.processEnv),
+              );
+            } catch (err) {
+              await this.discardStaged(scaffoldedPaths);
+              throw err;
+            }
+          }
           break;
         }
 
@@ -909,24 +1001,6 @@ export class FsProjectManager implements ProjectManager {
           outputPath,
           input.resourceConfig.scaffoldRuntimeInput,
         );
-        // Each boxed agent gets its own .box/<name>/local profile, so a runtime added later is
-        // not left without one. Create writes the first runtime's profile on its own path.
-        const addedRuntimeInput = input.resourceConfig.scaffoldRuntimeInput;
-        if (addedRuntimeInput && hasBoxProfile(addedRuntimeInput)) {
-          const profilePath = boxLocalProfilePath(project.rootPath, addedRuntimeInput.runtimeName);
-          const agentBoxDir = dirname(dirname(profilePath));
-          const agentBoxDirExisted = existsSync(agentBoxDir);
-          const profileExisted = existsSync(profilePath);
-          yield* this.writeBoxProfile(
-            project.rootPath,
-            projectSpec.name,
-            addedRuntimeInput,
-            await this.boxBuildRegion(),
-          );
-          // Removed with the runtime's folder if the spec does not commit, so a retry writes it anew.
-          if (!agentBoxDirExisted) scaffoldedPaths.push(agentBoxDir);
-          else if (!profileExisted) scaffoldedPaths.push(profilePath);
-        }
         break;
       }
       case "credential": {
@@ -980,16 +1054,6 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway":
-        // In a Box project, names that end in -box belong to the Box gateways, in any
-        // letter case. The CDK library would refuse them at synth; refusing here keeps
-        // agentcore.json unchanged.
-        if (isReservedBoxGatewayName(projectSpec, input.resourceConfig.name)) {
-          throw new InputValidationError(
-            `the gateway name '${input.resourceConfig.name}' is reserved: in this project, names that ` +
-              `end in '-box' belong to the Box gateways of the runtimes. Give the gateway a name that ` +
-              `does not end in '-box'.${boxGatewayHint(projectSpec)}`,
-          );
-        }
         projectSpec.agentCoreGateways.push(input.resourceConfig);
         break;
       case "payment-manager": {
@@ -1028,35 +1092,12 @@ export class FsProjectManager implements ProjectManager {
         break;
       }
       case "gateway-target": {
-        let gatewayIndex = projectSpec.agentCoreGateways.findIndex(
+        const gatewayIndex = projectSpec.agentCoreGateways.findIndex(
           (gateway) => gateway.name === input.gatewayName,
         );
-        // In a Box project the L3 owns the Box gateway, so the entry that holds its targets
-        // comes and goes with them. It states the gateway's true settings: the write-back would
-        // fill in authorizerType NONE, and the schema checks targets against protocolType.
-        const boxEntry = isBoxExtensionEntry(projectSpec, { name: input.gatewayName });
-        if (boxEntry && input.resourceConfig.targetType !== BOX_GATEWAY_TARGET_TYPE) {
-          throw new InputValidationError(
-            `the Box gateway takes only passthrough targets, but target ` +
-              `'${input.resourceConfig.name}' is ${input.resourceConfig.targetType}. Pass ` +
-              `--target-configuration with "targetType": "passthrough".`,
-          );
-        }
-        if (gatewayIndex < 0 && boxEntry) {
-          gatewayIndex =
-            projectSpec.agentCoreGateways.push(
-              parseResource(AgentCoreGatewaySchema, {
-                name: input.gatewayName,
-                authorizerType: "AWS_IAM",
-                protocolType: "None",
-                targets: [],
-              }),
-            ) - 1;
-        }
         if (gatewayIndex < 0) {
-          const hint = boxGatewayHint(projectSpec);
           throw new ResourceNotFoundError(
-            `no gateway named '${input.gatewayName}' exists in this project${hint ? `.${hint}` : ""}`,
+            `no gateway named '${input.gatewayName}' exists in this project`,
           );
         }
         projectSpec.agentCoreGateways[gatewayIndex]!.targets.push(input.resourceConfig);
@@ -1113,13 +1154,41 @@ export class FsProjectManager implements ProjectManager {
       ]);
       throw err;
     }
+    // After the write, so a failed write gives no notice for a gateway that was not written.
+    if (input.resourceType === "gateway") {
+      const added = newProjectSpec.agentCoreGateways.find(
+        ({ name }) => name === input.resourceConfig.name,
+      );
+      const boxed = newProjectSpec.runtimes.some(
+        (runtime) =>
+          runtimeRunsInBox(newProjectSpec, runtime) && runtime.containment !== "PRIVATE_VPC",
+      );
+      if (added && !added.boundRuntime && added.authorizerType === "CUSTOM_JWT" && boxed) {
+        yield { type: "warning", message: customJwtGatewayNotice(added.name) };
+      }
+    }
     // After the write, so a failed write gives no notice for a runtime that was not written.
     if (input.resourceType === "runtime") {
+      const added = input.resourceConfig.name;
       yield* defaultLogTargetNotices(
         newProjectSpec,
-        newProjectSpec.runtimes.filter(({ name }) => name === input.resourceConfig.name),
-        project.rootPath,
+        newProjectSpec.runtimes.filter(({ name }) => name === added),
       );
+      yield* boxGatewayLogsWarnings(
+        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
+      );
+      // A new boxed runtime cannot call a CUSTOM_JWT gateway that is in the project already.
+      const runtime = newProjectSpec.runtimes.find(({ name }) => name === added);
+      if (
+        runtime &&
+        runtimeRunsInBox(newProjectSpec, runtime) &&
+        runtime.containment !== "PRIVATE_VPC"
+      ) {
+        for (const gateway of newProjectSpec.agentCoreGateways) {
+          if (gateway.boundRuntime || gateway.authorizerType !== "CUSTOM_JWT") continue;
+          yield { type: "warning", message: customJwtGatewayNotice(gateway.name) };
+        }
+      }
     }
 
     return {
@@ -1130,8 +1199,17 @@ export class FsProjectManager implements ProjectManager {
 
   /** Best-effort removal of paths an add created; failures are logged, not thrown. */
   private async discardStaged(paths: string[]): Promise<void> {
+    // A path inside another one goes with it. Removing both at the same time races: the
+    // recursive remove of the folder can stop on a child the other remove took first.
+    const inside = (child: string, parent: string) => {
+      const path = relative(parent, child);
+      return path !== "" && !path.startsWith("..") && !isAbsolute(path);
+    };
+    const outermost = [...new Set(paths)].filter(
+      (path) => !paths.some((other) => inside(path, other)),
+    );
     await Promise.all(
-      paths.map((p) =>
+      outermost.map((p) =>
         rm(p, { recursive: true, force: true }).catch((e) => {
           const error = AgentCoreCLIError.fromError(e);
           this.logger
@@ -1154,9 +1232,23 @@ export class FsProjectManager implements ProjectManager {
     const agentCoreSpecPath = this.getProjectSpecPath(project);
     const existingProjectSpec = await this.json.read(agentCoreSpecPath, ProjectSpecSchema);
 
+    // A gateway bound to a runtime (each Box gateway is) belongs to that runtime: `remove runtime`
+    // removes it. Its targets go with `remove gateway-target`.
+    const boundGateway = existingProjectSpec.agentCoreGateways.find(
+      (gateway) => gateway.name === input.name && isBoundGateway(gateway),
+    );
+    if (input.resourceType === "gateway" && boundGateway) {
+      throw new InputValidationError(
+        `the gateway '${input.name}' is bound to runtime '${boundGateway.boundRuntime}' and cannot ` +
+          `be removed with 'remove gateway'. 'remove runtime' removes it. To remove its targets, ` +
+          `use 'remove gateway-target --gateway ${input.name}'.`,
+      );
+    }
+
     let removed = false;
     let newSpec: unknown;
     let removedResource = input;
+    let removedGateways: RemovedGateway[] = [];
     if (input.resourceType === "policy") {
       const candidates = existingProjectSpec.policyEngines.filter((engine) =>
         engine.policies.some((policy) => policy.name === input.name),
@@ -1201,12 +1293,9 @@ export class FsProjectManager implements ProjectManager {
       const gateway = gateways[gatewayIndex]!;
       const targets = gateway.targets.filter((target) => target.name !== input.name);
       removed = targets.length !== gateway.targets.length;
-      // The Box gateway stays without its entry, so the file shows only what the user added.
-      if (isBoxExtensionEntry(existingProjectSpec, gateway) && targets.length === 0) {
-        gateways.splice(gatewayIndex, 1);
-      } else {
-        gateways[gatewayIndex] = { ...gateway, targets };
-      }
+      // The Box gateway entry stays, even with no targets: the CLI keeps one entry for each
+      // runtime so the gateway is not removed by accident.
+      gateways[gatewayIndex] = { ...gateway, targets };
       newSpec = { ...existingProjectSpec, agentCoreGateways: gateways };
     } else if (input.resourceType === "payment-connector") {
       const payments = [...(existingProjectSpec.payments ?? [])];
@@ -1247,16 +1336,37 @@ export class FsProjectManager implements ProjectManager {
       const newResources = existingResources.filter((resource) => resource.name !== input.name);
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
-      // The Box gateway of a runtime goes with the runtime, so its targets go too. An
-      // entry for a runtime that no longer exists would fail the synth.
-      if (input.resourceType === "runtime" && removed && isBoxProject(existingProjectSpec)) {
-        const boxName = boxGatewayName(input.name);
+      // Build writes a target on each Box gateway for each other gateway of the project. Such a
+      // target goes with its gateway; a target of the user's that names it stays, and fails.
+      if (input.resourceType === "gateway" && removed) {
         newSpec = {
           ...(newSpec as object),
-          agentCoreGateways: existingProjectSpec.agentCoreGateways.filter(
-            (gateway) => gateway.name !== boxName,
-          ),
+          agentCoreGateways: existingProjectSpec.agentCoreGateways
+            .filter((gateway) => gateway.name !== input.name)
+            .map((gateway) => ({
+              ...gateway,
+              targets: gateway.targets.filter(
+                (target) =>
+                  !(
+                    isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
+                    target.passthrough?.gateway === input.name
+                  ),
+              ),
+            })),
         };
+      }
+      // A gateway bound to the runtime (each Box gateway is) goes with the runtime, and its
+      // targets go too. A gateway bound to a runtime that does not exist fails validation.
+      if (input.resourceType === "runtime" && removed) {
+        const gateways = existingProjectSpec.agentCoreGateways;
+        const bound = gateways.filter((gateway) => gateway.boundRuntime === input.name);
+        removedGateways = bound.map(({ name, targets }) => ({ name, targetCount: targets.length }));
+        if (bound.length > 0) {
+          newSpec = {
+            ...(newSpec as object),
+            agentCoreGateways: gateways.filter((gateway) => gateway.boundRuntime !== input.name),
+          };
+        }
       }
     }
 
@@ -1283,11 +1393,20 @@ export class FsProjectManager implements ProjectManager {
     }
 
     const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
+    // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
+    if (input.resourceType === "runtime") {
+      await rm(join(project.rootPath, ...boxAwsDir(input.name).split("/")), {
+        recursive: true,
+        force: true,
+      });
+    }
 
     return {
       project: { ...project, spec: newProjectSpec },
       removedEnvKeys,
       removedResource,
+      removedGateways,
     };
   }
 
@@ -1310,13 +1429,11 @@ export class FsProjectManager implements ProjectManager {
     // resource collection is emptied while name, version, managedBy, and tags
     // survive. Code under app/ and aws-targets.json are left in place
     // so a following deploy can tear down the target's stack.
-    // The project type stays, so a runtime added later still gets its Box gateway. With no
-    // runtimes there is no Box gateway, so the next deploy reaches the teardown confirmation.
-    // The private VPC goes, though: with "secureVpc": "ENABLED" the CDK library builds the VPC
-    // even with no runtimes, and the next deploy would not tear the stack down.
-    const { secureVpc: _secureVpc, network: _network, ...rest } = existingProjectSpec;
+    // `projectType` stays: a Box project with no runtimes has no Box gateways, so the next deploy
+    // still reaches the teardown confirmation. A runtime added later gets its Box gateway back
+    // under the same name, so a deploy updates that gateway in place and does not delete it.
     const newSpec = {
-      ...rest,
+      ...existingProjectSpec,
       runtimes: [],
       memories: [],
       knowledgeBases: [],
@@ -1369,6 +1486,8 @@ export class FsProjectManager implements ProjectManager {
     input: ExportHarnessInput,
   ): AsyncGenerator<ProjectEvent, ExportHarnessResult> {
     if (project) assertV1Project(project, "export harness");
+    // Export adds a runtime, which a Box project cannot take.
+    if (project) assertNotBoxProject(project.spec, "the exported harness as a runtime");
     if (!project) {
       if (!input.prefetched) {
         throw new ProjectStateError(
@@ -1612,102 +1731,103 @@ export class FsProjectManager implements ProjectManager {
     return { spec: result.spec, envEntries: result.envEntries ?? [] };
   }
 
-  public async *build(project: Project): AsyncGenerator<ProjectEvent, void> {
+  public async *build(
+    project: Project,
+    input: BuildProjectInput & { region?: string } = {},
+  ): AsyncGenerator<ProjectEvent, void> {
     assertV1Project(project, "build");
     // Half-written project files from an interrupted `agentcore migrate` must not
     // be synced or synthesized; build has no target, so only that state stops it.
     await assertNoPendingMigration(project.rootPath);
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
-    const region = await this.boxBuildRegion();
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
+    // The region build writes the Box gateway's `bedrock` and `agentcore` targets and the
+    // AgentCore Runtime profiles for: --region, else AWS_REGION, AWS_DEFAULT_REGION, the AWS config
+    // file, then DEFAULT_REGION. Deploy uses its target's region instead.
     const boxed = await this.applyBoxNetwork(
       synced.project,
       "build",
-      region,
-      await this.boxDeployRegion(synced.project, region),
+      await resolveRegion(input.region, this.processEnv),
     );
     yield* boxed.events;
-    yield* this.backendFor(project).build(boxed.project, { boxNetworks: boxed.networks });
-  }
-
-  /**
-   * The region `agentcore build` sets on each CloudWatch target of a box profile that names no
-   * region: that of the `default` target of aws-targets.json, which `agentcore deploy` deploys to
-   * with no --target, else `buildRegion`, which the first deploy gives that target. Deploy uses its
-   * own target's region.
-   */
-  private async boxDeployRegion(project: Project, buildRegion: string): Promise<string> {
-    if (!isBoxProject(project.spec)) return buildRegion;
-    const targets = await this.listTargets(project);
-    return targets.find(({ name }) => name === DEFAULT_TARGET_NAME)?.region ?? buildRegion;
-  }
-
-  /**
-   * The region `agentcore build` writes the Box gateway's `bedrock` and `agentcore` targets and the
-   * AgentCore Runtime profile for, as the first deploy picks the default target's: AWS_REGION,
-   * then AWS_DEFAULT_REGION, then the active profile's region in the shared AWS config file, then
-   * DEFAULT_REGION. Deploy uses its target's region instead.
-   */
-  private async boxBuildRegion(): Promise<string> {
-    return (
-      this.processEnv.AWS_REGION ||
-      this.processEnv.AWS_DEFAULT_REGION ||
-      (await regionFromConfigFile()) ||
-      DEFAULT_REGION
-    );
+    yield* this.backendFor(project).build(boxed.project, {
+      disableDependencyManagement: input.disableDependencyManagement,
+      boxNetworks: boxed.networks,
+    });
   }
 
   /**
    * Builds the Box network model of each box runtime from the box profile as Box resolves it
-   * (`box profile show --format json --full`), then writes what the Box network writers derive from
-   * it, before synth reads agentcore.json and staging writes the Runtime profile that each model
-   * derives (`BoxNetwork.runtimeProfile`): agentcore.json once, patched in the raw file so unknown
-   * fields and key order survive and checked against the schema first, then the files, then
-   * `.env.local`. The Bedrock and Memory targets, and Box's resolution of the profile, are for
-   * `region`, and a CloudWatch target with no region gets `deployRegion`. A failure of any model
-   * stops `command` before anything of the box profile is written.
+   * (`box profile show --format json --full`) for `region`, then writes what the Box network
+   * writers derive from it, before synth reads agentcore.json and staging writes the Runtime
+   * profile that each model derives (`BoxNetwork.runtimeProfile`): agentcore.json once, patched in
+   * the raw file so unknown fields and key order survive and checked against the schema first,
+   * then the files, then `.env.local`. A failure of any model stops `command` before anything is
+   * written.
    */
   private async applyBoxNetwork(
     project: Project,
     command: "build" | "deploy",
     region: string,
-    deployRegion: string = region,
   ): Promise<{ project: Project; networks: BoxNetwork[]; events: ProjectEvent[] }> {
+    // Only a gateway that a boxed runtime calls through its Box gateway needs the check of the CDK
+    // app: none for a CUSTOM_JWT gateway or a PRIVATE_VPC runtime.
+    const boxRuntimes = project.spec.runtimes.filter((runtime) =>
+      runtimeRunsInBox(project.spec, runtime),
+    );
+    const reached = reachedGatewayNames(project.spec, boxRuntimes);
+    const projectGatewayCheck =
+      reached.length > 0
+        ? await this.cdkAcceptsPassthroughGateway(join(project.rootPath, "agentcore", "cdk"))
+        : undefined;
+    // Only a library that refuses passthrough.gateway is an answer; build then removes the
+    // gateway targets. For each other reason, the command stops before it writes, so a transient
+    // failure keeps the targets that a deploy needs.
+    if (
+      projectGatewayCheck &&
+      !projectGatewayCheck.accepts &&
+      projectGatewayCheck.reason !== "refuses"
+    ) {
+      throw new ProjectStateError(
+        `${command === "build" ? "Build" : "Deploy"} stopped, and wrote nothing: build cannot ` +
+          `tell if it can route the gateways ${gatewayList(reached)} of this project for a boxed ` +
+          `agent, because ${uncheckedBecause(projectGatewayCheck)}`,
+      );
+    }
     const networks = await readBoxNetworks(
       project.spec,
       project.rootPath,
       this.boxProfileResolver,
       region,
-      boxSecretsManagerEnabled(this.processEnv),
-      deployRegion,
+      projectGatewayCheck,
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
+    const envLocal = new EnvLocalFile(project.rootPath);
     const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
+      envLocal: await envLocal.read(boxKeyReads(networks, project.spec, this.processEnv)),
     });
     const messages = [...edits.messages];
     let result = project;
     if (edits.specChanged) {
+      // Only the fields a writer changed are set, so every other field keeps its value and place.
+      // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
+      // their changed fields, so schema defaults are not written into the user's other entries.
       const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
-      const updated = {
-        ...raw,
-        agentCoreGateways: patchNamedEntries(
-          raw.agentCoreGateways,
-          project.spec.agentCoreGateways,
-          edits.spec.agentCoreGateways,
-        ),
-        credentials: patchNamedEntries(
-          raw.credentials,
-          project.spec.credentials,
-          edits.spec.credentials,
-        ),
-        runtimes: patchNamedEntries(raw.runtimes, project.spec.runtimes, edits.spec.runtimes),
-      };
+      const changes = edits.changedFields.map((field) => [
+        field,
+        field === "agentCoreGateways" || field === "credentials" || field === "runtimes"
+          ? patchNamedEntries<{ name: string }>(raw[field], project.spec[field], edits.spec[field])
+          : edits.spec[field],
+      ]);
+      const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
       if (!parsed.success) {
         throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
@@ -1725,13 +1845,20 @@ export class FsProjectManager implements ProjectManager {
     }
     writeBoxNetworkFiles(project.rootPath, edits.files);
     if (edits.envLocal.length > 0) {
-      const { written } = await new EnvLocalFile(project.rootPath).insertIfNew([...edits.envLocal]);
+      // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
+      const { written } = await envLocal.upsert([...edits.envLocal]);
       for (const key of written) messages.push(`writing ${key} to ${ENV_LOCAL_RELATIVE_PATH}`);
     }
-    const warnings = networks.flatMap((network) => [
-      ...network.warnings,
-      ...boxGatewayIamWarnings(edits.spec, network),
-    ]);
+    // Each box runtime gives the same warning for the CDK app, so it appears once.
+    const warnings = [
+      ...new Set([
+        ...edits.warnings,
+        ...networks.flatMap((network) => [
+          ...network.warnings,
+          ...boxGatewayIamWarnings(edits.spec, network),
+        ]),
+      ]),
+    ];
     const events: ProjectEvent[] = [
       ...messages.map((message) => ({ type: "step" as const, message })),
       ...warnings.map((message) => ({ type: "warning" as const, message })),
@@ -1748,7 +1875,9 @@ export class FsProjectManager implements ProjectManager {
     const runtimes = input.runtimeNames
       ? project.spec.runtimes.filter((runtime) => input.runtimeNames!.includes(runtime.name))
       : project.spec.runtimes;
-    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose);
+    const prepared = prepareRuntimes(project.rootPath, runtimes, input.purpose, {
+      boxProject: isBoxProject(project.spec),
+    });
     if (prepared.changed.length === 0) {
       return { project, messages: prepared.messages, written: false };
     }
@@ -1805,6 +1934,12 @@ export class FsProjectManager implements ProjectManager {
     // `default` gets this treatment: inventing a *named* target would turn a
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
+      // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
+      assertRuntimeV2RegionSupported(
+        project.spec,
+        { name: DEFAULT_TARGET_NAME, region: input.region },
+        { provisioning: true, otherTargets: targets.length > 0 },
+      );
       target = await this.provisionDefaultTarget(project, targetsPath, input.region);
       yield {
         type: "step",
@@ -1833,13 +1968,22 @@ export class FsProjectManager implements ProjectManager {
       );
     }
 
+    // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
+    assertRuntimeV2RegionSupported(project.spec, target);
+
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
     const synced = await this.syncRuntimeBuilds(project, { purpose: "deploy" });
     for (const message of synced.messages) yield { type: "step", message };
+    // Every runtime of a Box project runs in a box, so stop before anything is written.
+    validateBoxRuntimes(synced.project.spec);
     const boxed = await this.applyBoxNetwork(synced.project, "deploy", target.region);
     yield* boxed.events;
     project = boxed.project;
+    // Resolved once, after auto-detection, so the caller (telemetry) and the
+    // backend see the build modes this deploy actually uses.
+    const { builds: workloadBuilds, local: localWorkloads } = resolveWorkloads(project);
+    input.onWorkloadBuilds?.(workloadBuilds);
 
     // China (aws-cn) targets cannot run runtimes whose scaffolded code is
     // wired to Bedrock/Anthropic/OpenAI/Gemini (unreachable there), nor
@@ -1939,10 +2083,12 @@ export class FsProjectManager implements ProjectManager {
     return yield* this.backendFor(project).deploy(project, {
       target,
       confirmTeardown: input.confirmTeardown,
-      confirmBoxGatewayDeletion: input.confirmBoxGatewayDeletion,
       transactionSearch: input.transactionSearch,
       skipBootstrap: input.skipBootstrap,
       boxNetworks: boxed.networks,
+      workloadBuilds,
+      localWorkloads,
+      disableDependencyManagement: input.disableDependencyManagement,
     });
   }
 
@@ -1964,10 +2110,6 @@ export class FsProjectManager implements ProjectManager {
   ): Promise<AwsDeploymentTarget | undefined> {
     const targets = await this.listTargets(project);
     return targets.find((candidate) => candidate.name === input.target);
-  }
-
-  public async recordedBoxGateways(project: Project, input: ResolveTargetInput): Promise<string[]> {
-    return boxGatewaysOf(await readDeployedState(this.json, project.rootPath), input.target);
   }
 
   public async resolveDeployedResource(
@@ -2129,10 +2271,67 @@ export class FsProjectManager implements ProjectManager {
   }
 
   /**
+   * Gives the runtime `boxInput` names, just added to the Box project `projectSpec`, what create
+   * gives a CodeZip box runtime: `box.version`, start.py as its entry point, its own Box gateway,
+   * and its own box profile in `.box/<name>/local/`. Each path it creates goes into
+   * `scaffoldedPaths`, so a failed add removes it; a file or folder the user already had stays.
+   */
+  private async *addBoxRuntime(
+    projectRoot: string,
+    projectSpec: z.infer<typeof ProjectSpecSchema>,
+    boxInput: ScaffoldRuntimeInput,
+    scaffoldedPaths: string[],
+    region: string,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const name = boxInput.runtimeName;
+    const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
+    // The box release build and deploy ship, as create pins it.
+    runtime.box = { version: BOX_RELEASE.version };
+    // Box runs only on AgentCore Runtime V2, as create pins it.
+    runtime.platformVersion = BOX_PLATFORM_VERSION;
+    // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
+    runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+    projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
+
+    // start.py and an empty .venv, as create writes them. A file or folder the user has stays.
+    const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
+    const venv = join(appDir, ".venv");
+    if (!existsSync(venv)) scaffoldedPaths.push(venv);
+    await FsTreeNode.createDirectory(basename(appDir), boxCodeZipFiles(this.assetSource)).write(
+      dirname(appDir),
+      { skipExisting: true, written: scaffoldedPaths },
+    );
+    const boxFolder = join(projectRoot, ...boxAgentDir(name).split("/"));
+    if (!existsSync(boxFolder)) scaffoldedPaths.push(boxFolder);
+    yield* this.writeBoxProfile(projectRoot, projectSpec.name, boxInput, region);
+  }
+
+  /**
+   * Throws when `appDir` already holds a start.py that is not the one that starts box. A box
+   * runtime runs start.py as its entry point, so AgentCore Runtime would run the user's file with
+   * no box, while build still writes the runtime's box profile and Box gateway.
+   */
+  private async assertNoOtherStartScript(appDir: string, runtimeName: string): Promise<void> {
+    const startScript = join(appDir, BOX_CODEZIP_ENTRYPOINT);
+    if (!existsSync(startScript)) return;
+    const boxStart = await this.assetSource.read(`templates/box-codezip/${BOX_CODEZIP_ENTRYPOINT}`);
+    if ((await readFile(startScript, "utf8")) === boxStart) return;
+    const shown = `app/${runtimeName}/${BOX_CODEZIP_ENTRYPOINT}`;
+    throw new InputValidationError(
+      `cannot add runtime '${runtimeName}' to a Box project: ${shown} exists, and it is not the ` +
+        `${BOX_CODEZIP_ENTRYPOINT} that starts box. A box runtime runs ${BOX_CODEZIP_ENTRYPOINT} as ` +
+        `its entry point, so AgentCore Runtime would run your file with no box. Rename ${shown}, ` +
+        "then retry.",
+    );
+  }
+
+  /**
    * Writes the box profile that runs the scaffolded agent into the agent's
    * `.box/<runtime>/local/` folder, named after the project and the runtime,
-   * calling Bedrock in `region`. An existing profile is the user's, so it is
-   * never overwritten.
+   * calling Bedrock in `region`, and first, beside it, the policy file the
+   * profile lists. An existing profile is the user's, so it is never
+   * overwritten, and then neither file is written. The policy file is the CLI's,
+   * so it replaces one already there.
    */
   private async *writeBoxProfile(
     projectRoot: string,
@@ -2145,10 +2344,26 @@ export class FsProjectManager implements ProjectManager {
     const path = boxLocalProfilePath(projectRoot, runtime.runtimeName);
     if (existsSync(path)) {
       yield { type: "warning", message: `box profile ${path} already exists; left unchanged` };
+      const kept = ingressPort(await readFile(path, "utf8"));
+      const wanted = ingressPort(text);
+      if (kept !== undefined && wanted !== undefined && kept !== wanted) {
+        yield {
+          type: "warning",
+          message:
+            `box profile ${path} is for another protocol: it listens on port ${kept}, and a ` +
+            `${runtime.protocol ?? "HTTP"} runtime listens on port ${wanted}. Remove ` +
+            `${dirname(path)}, then add the runtime again, or edit the profile.`,
+        };
+      }
       return;
     }
-    yield { type: "step", message: `writing box profile ${path}` };
     await mkdir(dirname(path), { recursive: true });
+    // The profile lists this file under `policies`, and box refuses the profile without it, so it
+    // is written first: a failed write then leaves no profile that names a missing file.
+    const policy = boxLocalMetadataPolicyPath(projectRoot, runtime.runtimeName);
+    yield { type: "step", message: `writing box policy file ${policy}` };
+    await writeFile(policy, renderAwsMetadataPolicy());
+    yield { type: "step", message: `writing box profile ${path}` };
     await writeFile(path, text, { flag: "wx" });
     for (const message of boxProfileWarnings(runtime)) yield { type: "warning", message };
   }
@@ -2167,11 +2382,10 @@ export class FsProjectManager implements ProjectManager {
       yield { type: "step", message: "syncing Python dependencies with uv" };
       // A boxed CodeZip agent's profile grants exec only on the uv-managed Pythons in uv's default
       // folder, so its venv must link to one there, not to a Homebrew or system Python, or to a
-      // Python in the user's own UV_PYTHON_INSTALL_DIR. A box container's image builds its own
-      // venv, so its host venv may use any Python.
+      // Python in the user's own UV_PYTHON_INSTALL_DIR. A container image builds its own venv.
       const env =
-        input && startsInBoxOnCodeZip(input)
-          ? { ...this.processEnv, ...boxUvSyncEnv(homedir()) }
+        input && input.build === "CodeZip" && hasBoxProfile(input)
+          ? { ...process.env, ...boxUvSyncEnv(homedir()) }
           : undefined;
       yield* this.run(["uv", "sync"], appDir, undefined, env);
     } else if (existsSync(join(appDir, "package.json"))) {
@@ -2316,6 +2530,28 @@ function isInside(path: string, dir: string): boolean {
   );
 }
 
+/** What the CLI tells the user about the `APPLICATION_LOGS` of a Box gateway that it writes. */
+export function boxGatewayLogsNotice(gatewayName: string): string {
+  return (
+    `the Box gateway '${gatewayName}' sends its APPLICATION_LOGS to CloudWatch Logs, which keeps ` +
+    "them for 90 days. They can hold the request and response bodies of its calls, prompts and " +
+    `completions included. To stop them, set "enableApplicationLogs": false on that gateway in ` +
+    "agentcore/agentcore.json"
+  );
+}
+
+/**
+ * A warning for each gateway of `gateways` that is a Box gateway and sends its `APPLICATION_LOGS`.
+ * Each command that writes a new Box gateway gives these warnings: `create` and `add runtime`.
+ */
+function boxGatewayLogsWarnings(
+  gateways: readonly { name: string; boundRuntime?: string; enableApplicationLogs?: boolean }[],
+): ProjectEvent[] {
+  return gateways
+    .filter((gateway) => isBoundGateway(gateway) && gateway.enableApplicationLogs)
+    .map((gateway) => ({ type: "warning", message: boxGatewayLogsNotice(gateway.name) }));
+}
+
 /** The strands-agents requirement from the rendered pyproject.toml, for EXPORT_NOTES.md. */
 async function readStrandsVersion(agentDir: string): Promise<string> {
   try {
@@ -2327,22 +2563,83 @@ async function readStrandsVersion(agentDir: string): Promise<string> {
   }
 }
 
+/** The port of the first `[[agent.ingress]] listen` in the box profile `text`, if it names one. */
+function ingressPort(text: string): string | undefined {
+  return /^\s*listen\s*=\s*"[^"]*:(\d+)"/m.exec(text)?.[1];
+}
+
 /**
  * The notice of the default log target (defaultLogTargetNotice) for each runtime of `runtimes` that
- * runs in a box in `spec`, at `projectRoot`, and that does not turn observability off.
+ * runs in a box in `spec`, and that does not turn observability off.
  */
 function defaultLogTargetNotices(
   spec: z.infer<typeof ProjectSpecSchema>,
   runtimes: readonly z.infer<typeof ProjectSpecSchema>["runtimes"][number][],
-  projectRoot: string,
 ): ProjectEvent[] {
-  if (!isBoxProject(spec)) return [];
   return runtimes
-    .filter((runtime) => runsAgentInBox(projectRoot, runtime) && !observabilityOff(runtime))
+    .filter((runtime) => runsInBox(isBoxProject(spec), runtime) && !observabilityOff(runtime))
     .map((runtime) => ({
       type: "warning",
       message: defaultLogTargetNotice(runtime.name, boxLocalProfileFile(runtime.name)),
     }));
+}
+
+/**
+ * Refuses to export a harness as a runtime into a Box project. Every runtime of a Box project runs
+ * in a box, and the exported harness runs its agent the usual way.
+ */
+function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: string): void {
+  if (!isBoxProject(spec)) return;
+  throw new ProjectStateError(
+    `cannot add ${what}: every runtime of a Box project runs in a box, and the exported ` +
+      "harness does not. Export it into a project that is not a Box project.",
+  );
+}
+
+/**
+ * The input that the box profile of `config`, a docs-only runtime added to the Box project `spec`,
+ * renders from: a Python CodeZip agent with the framework `none` and Bedrock, as
+ * agent-python-minimal-box has. Throws for a Bedrock Agent import, for a TypeScript runtime, and
+ * for a runtime whose Box gateway name is taken.
+ */
+function boxRuntimeInput(
+  spec: z.infer<typeof ProjectSpecSchema>,
+  config: RuntimeResourceConfig | RuntimeDocsConfig,
+): ScaffoldRuntimeInput {
+  // The imported agent can call Bedrock Agent and action group hosts that the box profile of a
+  // new runtime does not allow, so a Box project does not take an import yet.
+  if (!isRuntimeDocsConfig(config)) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project from a Bedrock Agent import: every ` +
+        "runtime of a Box project runs in a box, and the box profile of an added runtime does not " +
+        "allow the hosts an imported agent calls. Import it into a project that is not a Box " +
+        "project, or add a runtime with --language python.",
+    );
+  }
+  if (config.language !== "Python") {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project: every runtime of a Box project ` +
+        "runs in a box, and add runtime adds a box runtime only as a Python CodeZip agent. Add " +
+        "it with --language python.",
+    );
+  }
+  const gateway = boxGatewaySpec(config.name).name;
+  if (spec.agentCoreGateways.some(({ name }) => name === gateway)) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}': its Box gateway needs the name '${gateway}', and a ` +
+        "gateway with that name already exists. Choose a different --name.",
+    );
+  }
+  return {
+    runtimeName: config.name,
+    build: "CodeZip",
+    language: "Python",
+    framework: "none",
+    protocol: config.protocol ?? "HTTP",
+    modelProvider: "Bedrock",
+    runtimeVersion: LATEST_PYTHON,
+    boxTemplate: true,
+  };
 }
 
 /**
@@ -2382,13 +2679,6 @@ function patchNamedEntries<T extends { name: string }>(
     patched[index] = next;
   }
   return patched;
-}
-
-/** A hint that lists the Box gateways of a Box project, for errors about gateway names. */
-function boxGatewayHint(spec: { projectType?: string; runtimes: { name: string }[] }): string {
-  const names = boxGatewayNames(spec);
-  if (names.length === 0) return "";
-  return ` The Box gateways in this project are: ${names.map((name) => `'${name}'`).join(", ")}.`;
 }
 
 function parseResource<TSchema extends z.ZodType>(

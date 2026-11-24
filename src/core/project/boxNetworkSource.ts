@@ -8,18 +8,23 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
-import { boxGatewayName, isBoxProject, type ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectSpec } from "../../projectSchemas/project";
+import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
-import { runsAgentInBox, type PolicyFileCopy } from "./backends/boxContainer";
-import { BOX_GATEWAY_BEDROCK_REGION } from "../../handlers/project/shortcuts";
-import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import type { PolicyFileCopy } from "./backends/boxContainer";
+import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
+import { DEFAULT_EGRESS_BEDROCK_REGION } from "../../handlers/project/shortcuts";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_BEDROCK_PACK,
   boxLocalDir,
   boxLocalProfileFile,
   boxLocalProfilePath,
+  boxStartFolder,
+  runtimeRunsInBox,
 } from "./templates/boxProfile";
 import {
+  boxGatewayOf,
   buildBoxNetwork,
   parseResolvedPolicy,
   parseResolvedProfile,
@@ -43,49 +48,46 @@ const noPolicy = (profilePath: string): ParsedPolicy => ({
 
 /**
  * The Box network model of each runtime of `spec` that runs its agent in a box, from the agent's
- * own local box profile as `resolver` resolves it for a build in `region`. A CloudWatch target with
- * no region gets `deployRegion`, the region of the deploy target. A project with no box runtime
- * resolves nothing. Throws, naming the file, for a box runtime with no local box profile.
+ * own local box profile as `resolver` resolves it for a build in `region`. A project with no box
+ * runtime resolves nothing. Throws, naming the file, for a box runtime with no local box profile.
  */
 export async function readBoxNetworks(
   spec: ProjectSpec,
   projectRoot: string,
   resolver: BoxProfileResolver,
-  region: string = BOX_GATEWAY_BEDROCK_REGION,
-  secretsManager = false,
-  deployRegion: string = region,
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+  /** What the check of the @aws/agentcore-cdk of the project gives for `passthrough.gateway`. */
+  projectGatewayCheck?: PassthroughGatewayCheck,
 ): Promise<BoxNetwork[]> {
-  const runtimes = isBoxProject(spec)
-    ? spec.runtimes.filter((runtime) => runsAgentInBox(projectRoot, runtime))
-    : [];
+  const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
   assertBoxRuntimesHaveProfiles(projectRoot, runtimes);
-  // The model sees the targets build adds for the model and Memory calls, so no host takes a
-  // second target for their endpoints.
+  // The model sees the target build adds for the model calls, so no host takes a second target for
+  // its endpoint.
   const withDefaults = structuredClone(spec);
-  addBoxGatewayTargets(withDefaults, projectRoot, region);
+  addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
   const keys: SharedKeys = new Map();
   for (const runtime of runtimes) {
+    // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
+    const entry = boxGatewayOf(withDefaults, runtime.name);
+    if (!entry) continue;
     // Each boxed agent reads its own .box/<name>/local profile and policy files.
     const { parsed, failures: found } = await readResolvedPolicy(
       projectRoot,
-      runtime.name,
+      runtime,
       resolver,
       region,
     );
-    const gateway = boxGatewayName(runtime.name);
-    const entry = withDefaults.agentCoreGateways.find(({ name }) => name === gateway);
-    const granted = grantedActions(projectRoot, gateway, entry?.additionalPolicies ?? []);
+    const granted = grantedActions(projectRoot, entry.name, entry.additionalPolicies ?? []);
     const network = buildBoxNetwork(parsed, found, {
       spec,
       runtime,
-      gateway,
+      gateway: entry.name,
       region,
-      deployRegion,
-      targets: entry?.targets ?? [],
+      targets: entry.targets,
       grantedActions: granted.actions,
-      secretsManager,
+      ...(projectGatewayCheck && { projectGatewayCheck }),
     });
     networks.push({
       ...network,
@@ -111,18 +113,13 @@ function assertBoxRuntimesHaveProfiles(
   throw new ProjectStateError(
     missing
       .map(
-        ({ name, build, entrypoint }) =>
-          `runtime "${name}" runs its agent in a box (${boxReason(build, entrypoint)}), but ` +
+        ({ name }) =>
+          `runtime "${name}" runs its agent in a box (it has box.version in agentcore.json), but ` +
           `${boxLocalProfileFile(name)} does not exist. Create that box profile for the runtime, ` +
-          "then retry.",
+          "or remove its box.version, then retry.",
       )
       .join("\n"),
   );
-}
-
-/** Why dev and build run the agent of a runtime in a box: its start.py, or its Dockerfile. */
-function boxReason(build: string, entrypoint: string): string {
-  return build === "CodeZip" ? `entrypoint ${entrypoint}` : "its Dockerfile installs box";
 }
 
 /** By API key credential, the variable and the runtime of the first entry that takes it. */
@@ -193,20 +190,20 @@ export function boxPolicyFileCopies(projectRoot: string, agentName: string): Pol
 }
 
 /**
- * Box's resolution of the local box profile of `agentName` for a build in `region`, parsed, with
+ * Box's resolution of the local box profile of `runtime` for a build in `region`, parsed, with
  * the profile's own policy files to place its rules and to stage; nothing when the agent has no
  * local box profile.
  */
 async function readResolvedPolicy(
   projectRoot: string,
-  agentName: string,
+  runtime: ProjectRuntime,
   resolver: BoxProfileResolver,
   region: string,
 ): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
+  const agentName = runtime.name;
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
   if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
-  refuseOldShippedNames(text, profileFile);
   const named = profilePolicyFiles(text, profileFile);
   const places = profilePlaces(text, profileFile);
   const files = readPolicyFiles(
@@ -220,10 +217,11 @@ async function readResolvedPolicy(
   // a failure of its own stops build either way, so Box resolves it as it is.
   const forRegion =
     named.ok && files.failures.length === 0 ? profileForRegion(text, region) : undefined;
+  const startFolder = boxStartFolder(runtime);
   const resolved =
     forRegion === undefined
-      ? await resolver.resolve(projectRoot, profileFile)
-      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts);
+      ? await resolver.resolve(projectRoot, profileFile, startFolder)
+      : await resolveCopy(projectRoot, agentName, resolver, forRegion, files.texts, startFolder);
   const profile = parseResolvedProfile(resolved, named.ok ? named.files : [], profileFile);
   const source = profileSource(text, profileFile);
   const policy = parseResolvedPolicy(
@@ -242,48 +240,13 @@ async function readResolvedPolicy(
   };
 }
 
-/** The old name of a pack or a plugin that box ships, before box named them `@box/<name>`. */
-const OLD_SHIPPED_NAME = /^box\/[^/]+$/;
-
-/**
- * Throws when the `packs` or `plugins` of the box profile `text` at `profileFile` name a pack or a
- * plugin that box ships by its old `box/<name>` name, which box refuses. The message names each old
- * name and its `@box/<name>` name. Box reports a profile that is not TOML itself.
- */
-function refuseOldShippedNames(text: string, profileFile: string): void {
-  let table: Record<string, unknown>;
-  try {
-    table = parseToml(text) as Record<string, unknown>;
-  } catch {
-    return;
-  }
-  const names = [table.packs, table.plugins].flatMap((list) => (Array.isArray(list) ? list : []));
-  const old = [
-    ...new Set(
-      names.filter(
-        (name): name is string => typeof name === "string" && OLD_SHIPPED_NAME.test(name),
-      ),
-    ),
-  ];
-  if (old.length === 0) return;
-  const changes = old.map((name) => `"${name}" to "@${name}"`);
-  throw new ProjectStateError(
-    `The box profile ${profileFile} names ${old.map((name) => `"${name}"`).join(", ")}. Box now ` +
-      'names each pack and plugin that it ships "@box/<name>", and it refuses the old "box/<name>" ' +
-      `name. In ${profileFile}, change ${changes.join(", ")}, then build again.`,
-  );
-}
-
 /**
  * The box profile `text` at `profileFile` as a TOML table, with where it sets each key, or
  * `undefined` when it is not TOML; the profile parser stops build for that.
  */
 function profileSource(text: string, profileFile: string): ParsedProfileSource | undefined {
   try {
-    return {
-      table: parseToml(text) as TomlTable,
-      places: profileKeyPlaces(text, profileFile),
-    };
+    return { table: parseToml(text) as TomlTable, places: profileKeyPlaces(text, profileFile) };
   } catch {
     return undefined;
   }
@@ -346,6 +309,7 @@ async function resolveCopy(
   resolver: BoxProfileResolver,
   text: string,
   policies: readonly PolicyFileText[],
+  startFolder: string,
 ): Promise<ResolvedBoxProfile> {
   const localDir = boxLocalDir(agentName);
   const folder = realpathSync(await mkdtemp(join(tmpdir(), "agentcore-box-profile-")));
@@ -357,7 +321,7 @@ async function resolveCopy(
       await mkdir(dirname(to), { recursive: true });
       await writeFile(to, policy.text);
     }
-    return await resolver.resolve(projectRoot, copy);
+    return await resolver.resolve(projectRoot, copy, startFolder);
   } catch (error) {
     if (!(error instanceof InvalidEnvironmentError)) throw error;
     throw new InvalidEnvironmentError(
@@ -373,8 +337,8 @@ async function resolveCopy(
 
 /**
  * Each policy file the local box profile of `agentName` names, read as Box reads it: a regular
- * file with one link, inside `.box/<name>/local/`, and a failure for each other one, at `policies`,
- * the place the profile names it.
+ * file with one link, inside `.box/<name>/local/`, and a failure for each other one, at
+ * `policies`, the place the profile names it.
  */
 function readPolicyFiles(
   projectRoot: string,
@@ -407,7 +371,7 @@ const BOX_DIST_NAMES: ReadonlySet<string> = new Set([
   "strands-box-contain-trampoline",
   "resources",
   "profile.toml",
-  "start.sh",
+  ".gitignore",
 ]);
 
 /**
@@ -460,10 +424,7 @@ function policyFileProblem(
 }
 
 /** The policy files that build writes for the gateway's role. */
-const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([
-  BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
-]);
+const BUILD_POLICY_FILES: ReadonlySet<string> = new Set([BOX_BEDROCK_POLICY_FILE]);
 
 /**
  * The actions that the Allow statements of the `.json` policy files of `policies` grant, and a
@@ -540,8 +501,8 @@ function failureLine(failure: BoxNetworkFailure, profileFile: string): string {
 }
 
 /**
- * The lines of `failures` of the box profile `profileFile`, each once, in order of file, line, and
- * column, as a compiler lists them; failures at one place keep their order.
+ * The lines of `failures`, each once, in order of file, line, and column, as a compiler lists
+ * them; failures at one place keep their order.
  */
 function failureLines(failures: readonly BoxNetworkFailure[], profileFile: string): string[] {
   const key = (failure: BoxNetworkFailure) => {
@@ -560,7 +521,7 @@ function failureLines(failures: readonly BoxNetworkFailure[], profileFile: strin
   return unique(sorted.map(({ failure }) => failureLine(failure, profileFile)));
 }
 
-/** `Build stopped: 2 problems in the Box profile. Nothing was changed.` */
+/** `Build stopped: 2 problems in the Box profile. Build wrote nothing from the Box profile.` */
 function stoppedHeader(
   command: BoxNetworkCommand,
   count: number,
@@ -573,7 +534,7 @@ function stoppedHeader(
   ].filter(Boolean);
   return (
     `${STOPPED[command]} stopped: ${count} ${count === 1 ? "problem" : "problems"} in ` +
-    `${where.join(" and ")}. Nothing was changed.`
+    `${where.join(" and ")}. ${STOPPED[command]} wrote nothing from the Box profile.`
   );
 }
 

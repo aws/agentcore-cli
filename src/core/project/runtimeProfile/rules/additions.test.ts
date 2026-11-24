@@ -2,39 +2,77 @@ import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import {
   RUNTIME_TEMPLATE_SHORTCUTS,
-  getBoxGatewayEntry,
   resolveRuntimeTemplateShortcut,
   type RuntimeTemplateShortcutName,
 } from "../../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
-import type { ProjectSpec } from "../../../../projectSchemas/project";
+import { boxGatewaySpec, type ProjectSpec } from "../../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
-import {
-  cloudWatchTelemetry,
-  thirdPartyTelemetry,
-  withDeployRegion,
-  type CloudWatchTelemetry,
-  type ThirdPartyTelemetry,
-} from "../../boxNetwork";
+import { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from "../../boxNetwork";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderAgentCorePack, renderBoxProfile } from "../../templates/boxProfile";
+import {
+  AWS_METADATA_POLICY_FILE,
+  BOX_BEDROCK_API_KEY_ROUTE,
+  BOX_BEDROCK_PACK,
+  BOX_BEDROCK_ROUTE,
+  renderAgentCorePack,
+  renderBoxProfile,
+} from "../../templates/boxProfile";
 import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
 import type { TomlTable } from "../types";
-import { apply, DEFAULT_TELEMETRY_TARGET, runtimeProfileHeader } from "./additions";
+import { defaultMemoryName } from "../../../../projectSchemas/memory";
+import {
+  agentStartsUnderOtel,
+  apply,
+  DEFAULT_TELEMETRY_TARGET,
+  DEFAULT_TRACES_TARGET,
+  defaultTracesTelemetry,
+  MEMORY_ROUTE,
+  runtimeProfileHeader,
+} from "./additions";
 
 const PROFILE_FILE = ".box/agent/local/profile.toml";
 /** The region create resolved, which the local profile names: not the build region. */
 const CREATE_REGION = "us-east-1";
 const BUILD_REGION = "us-west-2";
 
+/**
+ * The Runtime form of `recorded`, a profile the old renderer wrote for a runtime with its default
+ * Memory: the Memory route goes to the AgentCore host directly, under the same name, in the same
+ * place.
+ */
+function withDirectMemory(recorded: TomlTable): TomlTable {
+  const result = structuredClone(recorded);
+  if (isTableValue(result.egress)) result.egress[MEMORY_ROUTE] = DIRECT_MEMORY_ROUTE;
+  return result;
+}
+
+const isTableValue = (value: unknown): value is TomlTable =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The route of the agent's Memory calls: to Memory directly, signed with the execution role. */
+const DIRECT_MEMORY_ROUTE = {
+  destinations: [`bedrock-agentcore.${BUILD_REGION}.amazonaws.com`],
+  secret: { ref: "aws://" },
+};
+
 type Build = "CodeZip" | "Container";
 type Protocol = NonNullable<ProjectRuntime["protocol"]>;
 
-function runtimeOf(build: Build, protocol: Protocol = "HTTP", modelProvider = "Bedrock") {
+/**
+ * A box runtime, with OTEL off unless `otel`: only the OTEL tests depend on it. With OTEL on it has
+ * no `instrumentation`, as `agentcore create` writes it.
+ */
+function runtimeOf(
+  build: Build,
+  protocol: Protocol = "HTTP",
+  modelProvider = "Bedrock",
+  otel = false,
+) {
   return {
     name: "agent",
     build,
@@ -42,6 +80,7 @@ function runtimeOf(build: Build, protocol: Protocol = "HTTP", modelProvider = "B
     codeLocation: "app/agent",
     protocol,
     modelProvider,
+    ...(!otel && { instrumentation: { enableOtel: false } }),
     box: { version: "1.0.0" },
   } as ProjectRuntime;
 }
@@ -55,20 +94,18 @@ function passthrough(name: string, endpoint: string): AgentCoreGatewayTarget {
   } as AgentCoreGatewayTarget;
 }
 
-/** A Box project with `runtime`, its Box gateway with the targets build adds, and `memories`. */
+/**
+ * A Box project with `runtime`, its Box gateway with the target build adds, and `memories`. Build
+ * adds no target for Memory: the agent's Memory calls go to Memory directly.
+ */
 function specOf(runtime: ProjectRuntime, memories: readonly string[] = []) {
-  const targets = [
-    passthrough("bedrock", `https://bedrock-runtime.${BUILD_REGION}.amazonaws.com`),
-    ...(memories.length > 0
-      ? [passthrough("agentcore", `https://bedrock-agentcore.${BUILD_REGION}.amazonaws.com`)]
-      : []),
-  ];
+  const targets = [passthrough("bedrock", `https://bedrock-runtime.${BUILD_REGION}.amazonaws.com`)];
   return {
     name: "demo",
     runtimes: [runtime],
     memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
     projectType: "box",
-    agentCoreGateways: [{ ...getBoxGatewayEntry(runtime.name), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec(runtime.name), targets }],
   } as unknown as ProjectSpec;
 }
 
@@ -77,7 +114,6 @@ function contextOf(
   options: {
     memories?: readonly string[];
     telemetry?: readonly CloudWatchTelemetry[];
-    thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
   } = {},
 ) {
   const spec = specOf(runtime, options.memories);
@@ -92,31 +128,8 @@ function contextOf(
     },
     hosts: [],
     telemetry: options.telemetry ?? [],
-    ...(options.thirdPartyTelemetry && {
-      thirdPartyTelemetry: options.thirdPartyTelemetry,
-      secretsManager: true,
-    }),
     places: new Map(),
   });
-}
-
-/**
- * `profile`, a table of the renderer that the derivation replaced, with the one change that the
- * derivation makes on purpose: the agent gets the region of the Runtime, `AWS_DEFAULT_REGION`, and
- * `AWS_REGION` when the profile imports no @box/bedrock, which sets it. The renderer of
- * box-integration-development gave the agent no region.
- */
-function withRuntimeRegion(profile: TomlTable): TomlTable {
-  const result = structuredClone(profile) as TomlTable;
-  const agent = result.agent as { env?: Record<string, string> } | undefined;
-  if (agent === undefined) return result;
-  const bedrock = Array.isArray(result.packs) && result.packs.includes("@box/bedrock");
-  agent.env = {
-    ...agent.env,
-    ...(!bedrock && { AWS_REGION: "${{ inputs.aws.region }}" }),
-    AWS_DEFAULT_REGION: "${{ inputs.aws.region }}",
-  };
-  return result;
 }
 
 /** The local profile that `agentcore create` writes for `runtime`, as a table. */
@@ -128,7 +141,7 @@ function createdProfile(runtime: ProjectRuntime): TomlTable {
     framework: "strands",
     protocol: runtime.protocol,
     modelProvider: runtime.modelProvider,
-    box: true,
+    boxTemplate: true,
   } as ScaffoldRuntimeInput;
   return parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
 }
@@ -159,6 +172,59 @@ const DEFAULT_TARGET = {
   secret: { ref: "aws://" },
 };
 
+/** The default X-Ray target of a Runtime profile with OTEL on. */
+const DEFAULT_TRACES = {
+  kind: "cloudwatch_traces",
+  region: "${{ inputs.aws.region }}",
+  include: ["deny", "permit", "trace"],
+  secret: { ref: "aws://" },
+};
+
+/** The words that start the agent under opentelemetry-instrument on the Runtime. */
+const OTEL_START: Record<Build, string[]> = {
+  CodeZip: ["${{ inputs.python.path }}", "${{ inputs.code.dir }}/bin/opentelemetry-instrument"],
+  Container: ["${{ workspace }}/.venv/bin/opentelemetry-instrument"],
+};
+
+/**
+ * `profile`, a Runtime profile that the old renderer wrote, as the derivation writes it for box
+ * 0.3: with @box/bedrock, `bedrock.sign-in` is `api-key`, and the Bedrock route through the
+ * gateway is `[egress.bedrock-api-key]`, the pack's route for that sign-in. Nothing else changes.
+ */
+function withApiKeySignIn(profile: TomlTable): TomlTable {
+  const packs = profile.packs;
+  if (!Array.isArray(packs) || !packs.includes(BOX_BEDROCK_PACK)) return profile;
+  const result = structuredClone(profile);
+  const options = result.options as TomlTable;
+  options.bedrock = { ...(options.bedrock as TomlTable), "sign-in": "api-key" };
+  const egress = result.egress as TomlTable | undefined;
+  if (egress !== undefined && Object.hasOwn(egress, BOX_BEDROCK_ROUTE)) {
+    result.egress = Object.fromEntries(
+      Object.entries(egress).map(([name, route]) => [
+        name === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : name,
+        route,
+      ]),
+    );
+  }
+  return result;
+}
+
+/**
+ * `profile`, a Runtime profile with OTEL off, as OTEL on gives it: the agent starts under
+ * opentelemetry-instrument, and the default X-Ray target comes last when no target is
+ * `cloudwatch_traces`. Nothing else changes.
+ */
+function withOtel(profile: TomlTable, build: Build): TomlTable {
+  const result = structuredClone(profile);
+  const agent = result.agent as TomlTable;
+  agent.command = [...OTEL_START[build], ...(agent.command as string[])];
+  const telemetry = result.telemetry as Record<string, TomlTable>;
+  if (!Object.values(telemetry).some(({ kind }) => kind === "cloudwatch_traces")) {
+    telemetry.agentcore_traces = DEFAULT_TRACES;
+  }
+  return result;
+}
+
 /** The CloudWatch targets that box takes from the local profile `local`, as build gives them. */
 const acceptedTelemetry = (local: TomlTable) =>
   withDeployRegion(cloudWatchTelemetry(local), BUILD_REGION, PROFILE_FILE).telemetry;
@@ -172,10 +238,14 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
 
 /**
  * What the Runtime renderer that the derivation replaced wrote: the owned tables for each build and
- * protocol (`templates`), the whole profile for each box template of create (`boxTemplates`), the
- * gateway fixture, and each third-party target with AGENTCORE_BOX_SECRETS_MANAGER=1
- * (`secretsManager`). Recorded from renderRuntimeBoxProfile of box-integration-development
- * (da8df856), with the default telemetry target, before that renderer was deleted.
+ * protocol (`templates`), the whole profile for each box template of create (`boxTemplates`), and
+ * the gateway fixture. The gateway fixture is recorded from renderRuntimeBoxProfile of
+ * box-integration (f5503f02). The two template sets are recorded, with the default telemetry
+ * target, from the renderer of aws/agentcore-cli#2867 (f40ebce7): box-integration (7252504c) with
+ * the `@box/` pack names. Their read and exec grants of the Runtime's Python name its standard
+ * library, `${{ inputs.python.stdlib }}`, where that renderer named its prefix,
+ * `${{ inputs.python.prefix }}`: the prefix is /usr on the Runtime, which box refuses as a system
+ * root.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
@@ -183,8 +253,17 @@ const OLD_RENDERER = JSON.parse(
   templates: Record<string, TomlTable>;
   boxTemplates: Record<string, TomlTable>;
   gateway: Record<string, TomlTable>;
-  secretsManager: Record<string, { local: TomlTable; old: TomlTable }>;
 };
+
+/**
+ * A profile the old renderer wrote, which named no file of create's under `policies`, with the
+ * policy file create now lists first, then the files of the recording. A case that adds a policy
+ * file of its own appends it to create's list, as a user does, and the derived profile keeps both.
+ */
+const withCreatePolicy = (old: TomlTable): TomlTable => ({
+  ...old,
+  policies: [AWS_METADATA_POLICY_FILE, ...((old.policies as string[] | undefined) ?? [])],
+});
 
 /** The tables that the additions rule owns, which the old renderer wrote. */
 const OWNED = [
@@ -216,26 +295,22 @@ describe("deriveRuntimeProfile on the created templates", () => {
   ).flatMap(([build, protocol]) =>
     ["Bedrock", "OpenAI"].flatMap((provider) =>
       [[], ["agentMemory"]].flatMap((memories) =>
-        Object.keys(TELEMETRY_CASES).map((telemetry) => ({
-          build,
-          protocol,
-          provider,
-          memories,
-          telemetry,
-        })),
+        Object.keys(TELEMETRY_CASES).flatMap((telemetry) =>
+          [false, true].map((otel) => ({ build, protocol, provider, memories, telemetry, otel })),
+        ),
       ),
     ),
   );
 
   test.each(cases)(
-    "gives the tables the old renderer wrote (recorded in __fixtures__), and the default target with no cloudwatch_logs target ($build $protocol $provider, memories $memories, telemetry $telemetry)",
-    ({ build, protocol, provider, memories, telemetry: telemetryCase }) => {
-      const runtime = runtimeOf(build, protocol, provider);
+    "gives the tables the old renderer wrote (recorded in __fixtures__), and the default target with no cloudwatch_logs target, and with OTEL on only the OTEL start and the default X-Ray target ($build $protocol $provider, memories $memories, telemetry $telemetry, OTEL $otel)",
+    ({ build, protocol, provider, memories, telemetry: telemetryCase, otel }) => {
+      const runtime = runtimeOf(build, protocol, provider, otel);
       const local = createdProfile(runtime);
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -248,11 +323,15 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const expected = withRuntimeRegion(
-        OLD_RENDERER.templates[
-          `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
-        ]!,
+      const old = withApiKeySignIn(
+        withCreatePolicy(
+          OLD_RENDERER.templates[
+            `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
+          ] as TomlTable,
+        ),
       );
+      const recorded = memories.length > 0 ? withDirectMemory(old) : old;
+      const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
       for (const key of OWNED)
         expect([key, profile[key]]).toEqual([key, expected[key] ?? undefined]);
@@ -265,8 +344,11 @@ const BOX_TEMPLATES = (Object.keys(RUNTIME_TEMPLATE_SHORTCUTS) as RuntimeTemplat
   .filter((name) => (RUNTIME_TEMPLATE_SHORTCUTS[name] as { box?: boolean }).box === true)
   .sort();
 
-/** The runtime that `agentcore create` writes into agentcore.json for the template `input`. */
-function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
+/**
+ * The runtime that `agentcore create` writes into agentcore.json for the template `input`, with
+ * `instrumentation.enableOtel` false unless `otel`.
+ */
+function createdRuntime(input: ScaffoldRuntimeInput, otel: boolean): ProjectRuntime {
   return {
     name: input.runtimeName,
     build: input.build,
@@ -274,6 +356,7 @@ function createdRuntime(input: ScaffoldRuntimeInput): ProjectRuntime {
     codeLocation: `app/${input.runtimeName}`,
     ...(input.protocol !== undefined && { protocol: input.protocol }),
     ...(input.modelProvider !== undefined && { modelProvider: input.modelProvider }),
+    ...(!otel && { instrumentation: { enableOtel: false } }),
     box: { version: "1.0.0" },
   } as ProjectRuntime;
 }
@@ -285,29 +368,26 @@ describe("deriveRuntimeProfile on each box template of create", () => {
       : ["of the template"];
     return providers.flatMap((provider) =>
       [[], ["agentMemory"]].flatMap((memories) =>
-        Object.keys(TELEMETRY_CASES).map((telemetry) => ({
-          template,
-          provider,
-          memories,
-          telemetry,
-        })),
+        Object.keys(TELEMETRY_CASES).flatMap((telemetry) =>
+          [false, true].map((otel) => ({ template, provider, memories, telemetry, otel })),
+        ),
       ),
     );
   });
 
   test.each(cases)(
-    "gives the whole profile that the old renderer wrote (recorded in __fixtures__), with the default target when no target is cloudwatch_logs ($template, provider $provider, memories $memories, telemetry $telemetry)",
-    ({ template, provider, memories, telemetry: telemetryCase }) => {
+    "gives the whole profile that the old renderer wrote (recorded in __fixtures__), with the default target when no target is cloudwatch_logs, and with OTEL on only the OTEL start and the default X-Ray target ($template, provider $provider, memories $memories, telemetry $telemetry, OTEL $otel)",
+    ({ template, provider, memories, telemetry: telemetryCase, otel }) => {
       const input = resolveRuntimeTemplateShortcut(
         template as RuntimeTemplateShortcutName,
         provider === "OpenAI" ? { modelProvider: "OpenAI", apiKey: "sk-test" } : {},
       );
-      const runtime = createdRuntime(input);
+      const runtime = createdRuntime(input, otel);
       const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -318,103 +398,107 @@ describe("deriveRuntimeProfile on each box template of create", () => {
 
       const { profile, problems } = deriveRuntimeProfile(
         local,
-        contextOf(runtime, { memories, telemetry }),
+        contextOf(runtime, {
+          memories: memories.length > 0 ? [defaultMemoryName(runtime.name)] : [],
+          telemetry,
+        }),
       );
 
-      expect(problems).toEqual([]);
-      expect(profile).toEqual(
-        withRuntimeRegion(
-          OLD_RENDERER.boxTemplates[
-            `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
-          ]!,
-        ),
+      // The old renderer sent the Memory calls through the gateway's `agentcore` target.
+      const old = withCreatePolicy(
+        OLD_RENDERER.boxTemplates[
+          `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
+        ]!,
       );
+      const recorded = memories.length > 0 ? withDirectMemory(old) : old;
+      expect(problems).toEqual([]);
+      const signedIn = withApiKeySignIn(recorded);
+      expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
     },
   );
 });
 
-describe("deriveRuntimeProfile on a third-party target with AGENTCORE_BOX_SECRETS_MANAGER=1", () => {
-  const cases = Object.entries(OLD_RENDERER.secretsManager).map(([label, { local, old }]) => ({
-    label,
-    local,
-    old,
-  }));
+/**
+ * The value of each input of @box/agentcore-codezip on a CodeZip AgentCore Runtime, as start.py
+ * exports it there. Measured on a PYTHON_3_14 Runtime: its Python is /usr/bin/python3.14, with the
+ * base prefix /usr and the standard library /usr/lib/python3.14.
+ */
+const CODEZIP_RUNTIME_INPUTS: Readonly<Record<string, string>> = {
+  "${{ inputs.code.dir }}": "/var/task",
+  "${{ inputs.python.path }}": "/usr/bin/python3.14",
+  "${{ inputs.python.stdlib }}": "/usr/lib/python3.14",
+  "${{ inputs.python.prefix }}": "/usr",
+};
 
-  test("covers a CodeZip and a container template, with and without a key", () => {
-    expect(cases.map(({ label }) => label)).toEqual([
-      "agent-python-strands-box telemetry=langfuse and otlp",
-      "agent-python-strands-box telemetry=otlp only",
-      "agent-python-strands-box-container telemetry=langfuse and otlp",
-      "agent-python-strands-box-container telemetry=otlp only",
-      "mcp-python-fastmcp-box telemetry=langfuse and otlp",
-      "mcp-python-fastmcp-box telemetry=otlp only",
-    ]);
-  });
+/** The system roots that box refuses as a grant in each list (the floor of Box Core). */
+const BOX_SYSTEM_ROOTS: ReadonlySet<string> = new Set([
+  "/",
+  "/bin",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/srv",
+  "/sys",
+  "/tmp",
+  "/usr",
+  "/usr/bin",
+  "/usr/local",
+  "/usr/sbin",
+  "/usr/share",
+  "/var",
+]);
 
-  test.each(cases)(
-    "gives the profile that the old renderer wrote, with the Secrets Manager plugin and refs ($label)",
-    ({ label, local, old }) => {
-      const template = label.split(" ")[0] as RuntimeTemplateShortcutName;
-      const runtime = createdRuntime(resolveRuntimeTemplateShortcut(template, {}));
-      // As the Box network model carries them with the switch on: a CodeZip runtime carries no
-      // target with a key, because its Runtime has no AWS CLI for box to read the key with.
-      const carried = thirdPartyTelemetry(local).targets.filter(
-        ({ secret }) => runtime.build !== "CodeZip" || secret === undefined,
-      );
+/** The loader folders, which box grants only to `read`, as a whole tree. */
+const BOX_LOADER_FOLDERS: ReadonlySet<string> = new Set([
+  "/lib",
+  "/lib64",
+  "/usr/lib",
+  "/usr/lib64",
+]);
+
+describe("the Runtime profile of each CodeZip box template of create", () => {
+  const templates = BOX_TEMPLATES.filter(
+    (template) => resolveRuntimeTemplateShortcut(template).build === "CodeZip",
+  );
+
+  test.each(templates)(
+    "lets the Runtime's Python read its standard library and load its native modules, and grants no folder that box refuses on the Runtime (%s)",
+    (template) => {
+      const input = resolveRuntimeTemplateShortcut(template);
+      const local = parse(renderBoxProfile("demo", input, CREATE_REGION)!) as TomlTable;
 
       const { profile, problems } = deriveRuntimeProfile(
         local,
-        contextOf(runtime, { thirdPartyTelemetry: carried }),
+        contextOf(createdRuntime(input, false)),
       );
 
-      const expected = withRuntimeRegion(old);
-      const refused = thirdPartyTelemetry(local).targets.filter(
-        ({ name }) => !carried.some((target) => target.name === name),
-      );
-      // The old renderer left out a target that the model does not carry. The derivation keeps
-      // it, and the refusals rule stops build for it: nothing is dropped with no message.
-      expect(problems.map(({ code, key }) => [code, key])).toEqual(
-        refused.map(({ name }) => [
-          "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
-          ["telemetry", name, "kind"],
-        ]),
-      );
-      const kept = structuredClone(profile) as TomlTable;
-      for (const { name } of refused) delete (kept.telemetry as TomlTable)[name];
-      // The routes come from the gateway rule, which the gateway tests compare.
-      for (const key of [...OWNED, "plugins"])
-        expect([key, kept[key]]).toEqual([key, expected[key] ?? undefined]);
+      expect(problems).toEqual([]);
+      const filesystem = agentOf(profile).filesystem as Record<string, unknown[]>;
+      // A non-loader folder that box reads cannot map code, so lib-dynload needs exec too.
+      expect(filesystem.read).toContain("${{ inputs.python.stdlib }}");
+      expect(filesystem.exec).toContain("${{ inputs.python.stdlib }}");
+      for (const [list, grants] of Object.entries(filesystem)) {
+        for (const grant of grants) {
+          const path = typeof grant === "string" ? grant : (grant as { path: string }).path;
+          const onRuntime = CODEZIP_RUNTIME_INPUTS[path] ?? path;
+          const refused =
+            BOX_SYSTEM_ROOTS.has(onRuntime) ||
+            (list !== "read" && BOX_LOADER_FOLDERS.has(onRuntime));
+          expect({ list, path, onRuntime, refused }).toEqual({
+            list,
+            path,
+            onRuntime,
+            refused: false,
+          });
+        }
+      }
     },
   );
-
-  test("names the plugin once, after the user's own plugins", () => {
-    const { local } =
-      OLD_RENDERER.secretsManager[
-        "agent-python-strands-box-container telemetry=langfuse and otlp"
-      ]!;
-    const runtime = createdRuntime(
-      resolveRuntimeTemplateShortcut("agent-python-strands-box-container", {}),
-    );
-    const thirdParty = thirdPartyTelemetry(local).targets;
-
-    for (const own of [[], ["@acme/plugin"], ["@acme/plugin", "@box/aws-secrets-manager"]]) {
-      const { profile } = deriveRuntimeProfile(
-        { ...local, plugins: own },
-        contextOf(runtime, { thirdPartyTelemetry: thirdParty }),
-      );
-      expect(profile.plugins).toEqual([
-        ...own.filter((plugin) => plugin !== "@box/aws-secrets-manager"),
-        "@box/aws-secrets-manager",
-      ]);
-    }
-    const { profile } = deriveRuntimeProfile(
-      local,
-      contextOf(runtime, {
-        thirdPartyTelemetry: thirdParty.filter(({ secret }) => secret === undefined),
-      }),
-    );
-    expect(profile.plugins).toBeUndefined();
-  });
 });
 
 describe("the additions rule", () => {
@@ -451,20 +535,14 @@ describe("the additions rule", () => {
     expect(local).toEqual(before);
   });
 
-  test("removes the [tool.uname] table that a CodeZip template writes, and keeps each tool table of the user", () => {
+  test("writes no tool table for a CodeZip template, and keeps each tool table of the user", () => {
     const local = createdProfile(CODEZIP);
     const notes = { program: "/usr/bin/notes" };
-    const changed = { filesystem: { deny_write: ["${{ workspace }}/app/agent/data"] } };
 
-    expect(Object.keys(local.tool as TomlTable)).toEqual(["uname"]);
+    // The pinned box's @box/base has no tools, so the template gives none the project write grant.
+    expect(local).not.toHaveProperty("tool");
     expect(apply(local, contextOf(CODEZIP)).table).not.toHaveProperty("tool");
-    expect(
-      apply({ ...local, tool: { ...(local.tool as TomlTable), notes } }, contextOf(CODEZIP)).table
-        .tool,
-    ).toEqual({ notes });
-    expect(apply({ ...local, tool: { uname: changed } }, contextOf(CODEZIP)).table.tool).toEqual({
-      uname: changed,
-    });
+    expect(apply({ ...local, tool: { notes } }, contextOf(CODEZIP)).table.tool).toEqual({ notes });
   });
 
   test("keeps the user's packs in their order, then adds the Runtime packs once", () => {
@@ -502,19 +580,26 @@ describe("the additions rule", () => {
     });
   });
 
-  test("sets bedrock.region to the build region, and keeps the other options", () => {
+  test("sets bedrock.region to the build region and bedrock.sign-in to api-key, and keeps the other options", () => {
+    // Box refuses the aws:// route of @box/bedrock beside the gateway backend, so the Runtime
+    // signs in with the pack's api-key route, whose env:// secret box replaces with a stand-in.
     const dotted = { options: { bedrock: { region: CREATE_REGION }, other: { input: "x" } } };
     const quoted = { options: { "bedrock.region": CREATE_REGION } };
+    const signedIn = { options: { bedrock: { region: CREATE_REGION, "sign-in": "aws" } } };
 
     expect(apply(dotted, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
       other: { input: "x" },
     });
     expect(apply(quoted, contextOf(CODEZIP)).table.options).toEqual({
       "bedrock.region": BUILD_REGION,
+      "bedrock.sign-in": "api-key",
+    });
+    expect(apply(signedIn, contextOf(CODEZIP)).table.options).toEqual({
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/bedrock"] }, contextOf(CODEZIP)).table.options).toEqual({
-      bedrock: { region: BUILD_REGION },
+      bedrock: { region: BUILD_REGION, "sign-in": "api-key" },
     });
     expect(apply({ packs: ["@box/base"] }, contextOf(CODEZIP)).table.options).toBeUndefined();
   });
@@ -536,7 +621,7 @@ describe("the additions rule", () => {
       const local = createdProfile(CODEZIP);
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).command).toEqual(
-        runtimeCommand("${{ workspace }}/app/agent", "${{ workspace }}/app/agent/.venv/bin/python"),
+        runtimeCommand("${{ workspace }}", "${{ workspace }}/.venv/bin/python"),
       );
       expect(agentOf(deriveRuntimeProfile(local, contextOf(CODEZIP)).profile).command).toEqual(
         runtimeCommand("${{ inputs.code.dir }}", "${{ inputs.python.path }}"),
@@ -546,20 +631,20 @@ describe("the additions rule", () => {
     test("removes --reload and --reload-dir from a command of the user, and moves no path", () => {
       const local = createdProfile(CODEZIP);
       agentOf(local).command = [
-        "${{ workspace }}/app/agent/.venv/bin/python",
+        "${{ workspace }}/.venv/bin/python",
         "-m",
         "uvicorn",
         "main:app",
         "--reload",
         "--reload-dir",
-        "${{ workspace }}/app/agent",
-        "--reload-dir=${{ workspace }}/app/agent/lib",
+        "${{ workspace }}",
+        "--reload-dir=${{ workspace }}/lib",
         "--log-level",
         "debug",
       ];
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).command).toEqual([
-        "${{ workspace }}/app/agent/.venv/bin/python",
+        "${{ workspace }}/.venv/bin/python",
         "-m",
         "uvicorn",
         "main:app",
@@ -696,32 +781,32 @@ describe("the additions rule", () => {
     test("gives the template's grants their Runtime grants, and keeps each grant of the user", () => {
       const local = createdProfile(CODEZIP);
       const filesystem = agentOf(local).filesystem;
-      filesystem.read.push("${{ workspace }}/app/agent/data", "/usr/lib64");
-      filesystem.deny_write.push("${{ workspace }}/app/agent/secrets");
+      filesystem.read.push("${{ workspace }}/data", "/usr/lib64");
+      filesystem.deny_write.push("${{ workspace }}/secrets");
       filesystem.write = ["/tmp/agent"];
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
         read: [
-          "${{ workspace }}/app/agent",
+          "${{ workspace }}",
           "${{ home }}/.local/share/uv/python",
           "/usr/lib64",
           "/lib64",
-          "${{ workspace }}/app/agent/data",
+          "${{ workspace }}/data",
         ],
-        exec: ["${{ workspace }}/app/agent", "${{ home }}/.local/share/uv/python"],
-        deny_write: ["${{ workspace }}/app/agent/secrets"],
+        exec: ["${{ workspace }}", "${{ home }}/.local/share/uv/python"],
+        deny_write: ["${{ workspace }}/secrets"],
         write: ["/tmp/agent"],
       });
       // The paths rule moves each path of the project after this rule.
       expect(agentOf(deriveRuntimeProfile(local, contextOf(CODEZIP)).profile).filesystem).toEqual({
         read: [
           "${{ inputs.code.dir }}",
-          "${{ inputs.python.prefix }}",
+          "${{ inputs.python.stdlib }}",
           "/usr/lib64",
           "/lib64",
           "${{ inputs.code.dir }}/data",
         ],
-        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.prefix }}"],
+        exec: ["${{ inputs.code.dir }}", "${{ inputs.python.stdlib }}"],
         deny_write: ["${{ inputs.code.dir }}/secrets"],
         write: ["/tmp/agent"],
       });
@@ -737,8 +822,8 @@ describe("the additions rule", () => {
       );
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
-        read: ["${{ workspace }}/app/agent", "/usr/lib64", "/lib64"],
-        exec: ["${{ workspace }}/app/agent", "${{ home }}/.local/share/uv/python"],
+        read: ["${{ workspace }}", "/usr/lib64", "/lib64"],
+        exec: ["${{ workspace }}", "${{ home }}/.local/share/uv/python"],
       });
     });
 
@@ -748,7 +833,7 @@ describe("the additions rule", () => {
 
       expect(agentOf(apply(local, contextOf(CODEZIP)).table).filesystem).toEqual({
         read: ["/usr/lib64", "/lib64"],
-        exec: ["${{ workspace }}/app/agent"],
+        exec: ["${{ workspace }}"],
       });
     });
 
@@ -934,7 +1019,7 @@ describe("the additions rule", () => {
     });
 
     test("reads each value through an input that the @box/agentcore pack declares", () => {
-      const { inputs } = parse(renderAgentCorePack(specOf(CODEZIP))) as {
+      const { inputs } = parse(renderAgentCorePack(specOf(CODEZIP), CODEZIP)) as {
         inputs: Record<string, Record<string, unknown>>;
       };
       const declared = (placeholder: string) => {
@@ -1039,6 +1124,434 @@ describe("the additions rule", () => {
     });
   });
 
+  describe("the Memory route", () => {
+    const MEMORY = defaultMemoryName("agent");
+
+    test("sends the Memory calls of a runtime with its default Memory to Memory directly, signed with the execution role", () => {
+      const { table, problems } = apply(
+        createdProfile(CODEZIP),
+        contextOf(CODEZIP, { memories: [MEMORY] }),
+      );
+
+      expect(problems).toEqual([]);
+      const route = (table.egress as TomlTable)[MEMORY_ROUTE];
+      expect(route).toEqual(DIRECT_MEMORY_ROUTE);
+      // No backend: the Box gateway would sign the calls with its own role.
+      expect(route).not.toHaveProperty("backends");
+    });
+
+    test("keeps each route of the profile, and adds the Memory route after them", () => {
+      const local = {
+        ...createdProfile(CONTAINER),
+        egress: { github: { destinations: ["api.github.com"] } },
+      };
+
+      const egress = apply(local, contextOf(CONTAINER, { memories: [MEMORY] })).table
+        .egress as TomlTable;
+
+      expect(Object.keys(egress)).toEqual(["github", MEMORY_ROUTE]);
+      expect(egress.github).toEqual({ destinations: ["api.github.com"] });
+    });
+
+    test("adds no Memory route for a runtime with no default Memory", () => {
+      const none = apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table;
+      const other = apply(createdProfile(CODEZIP), contextOf(CODEZIP, { memories: ["shared"] }));
+      expect(none.egress).not.toHaveProperty(MEMORY_ROUTE);
+      expect(other.table.egress).not.toHaveProperty(MEMORY_ROUTE);
+    });
+
+    test("sends a route or HTTP MCP server of the profile to the AgentCore host directly, with its name, and adds no second route", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const backends = [{ url: "${{ inputs.gateway.url }}/egress-tools" }];
+      const local = {
+        egress: { tools: { destinations: [host], backends, when: "true" } },
+        mcp: { recall: { type: "http", destinations: [host], backends } },
+      };
+
+      const { table, problems, warnings } = apply(
+        local,
+        contextOf(CODEZIP, { memories: [MEMORY] }),
+      );
+
+      // Box chooses where a connection goes from its host alone, so every call to the AgentCore
+      // host goes there directly. Box refuses two signed routes for one host.
+      expect([problems, warnings]).toEqual([[], []]);
+      expect(table.egress).toEqual({
+        tools: { destinations: [host], when: "true", secret: { ref: "aws://" } },
+      });
+      expect(table.mcp).toEqual({
+        recall: { type: "http", destinations: [host], secret: { ref: "aws://" } },
+      });
+    });
+
+    test.each([
+      { kind: "egress", entry: {} },
+      { kind: "mcp", entry: { type: "http" } },
+    ] as const)(
+      "stops build for an [$kind] entry that sends an env:// key to the AgentCore host",
+      ({ kind, entry }) => {
+        const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+        const context = {
+          ...contextOf(CODEZIP, { memories: [MEMORY] }),
+          hosts: [
+            {
+              host,
+              authority: host,
+              target: "egress-tools",
+              outboundAuth: {
+                kind: "apiKey",
+                credentialName: "tools",
+                variable: "TOOLS_TOKEN",
+                header: "Authorization",
+              },
+              sources: [
+                kind === "egress"
+                  ? { kind: "entry", egressEntry: "tools", destinations: [host] }
+                  : { kind: "mcp", mcpEntry: "tools", destinations: [host] },
+              ],
+            },
+          ],
+        } as unknown as Parameters<typeof apply>[1];
+        // As the gateway rule writes it: a backend to the target that sends the key.
+        const local = {
+          [kind]: {
+            tools: {
+              ...entry,
+              destinations: [host],
+              backends: [{ url: "${{ inputs.gateway.url }}/egress-tools" }],
+            },
+          },
+        };
+
+        const { problems } = apply(local, context);
+
+        expect(problems).toEqual([
+          {
+            code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+            key: [kind, "tools"],
+            place: PROFILE_FILE,
+            reason:
+              `[${kind}.tools] sends env://TOOLS_TOKEN to ${host}. On AgentCore Runtime, runtime ` +
+              "'agent' has its default Memory, so box sends every call to that host directly, " +
+              "signed with the execution role, and not through the Box gateway. Box cannot route " +
+              "one host both ways, so the key would not be sent. Remove the secret from " +
+              `[${kind}.tools] if the service takes the execution role's signature, or remove the ` +
+              "default Memory of runtime 'agent' from agentcore.json.",
+          },
+        ]);
+      },
+    );
+
+    test("stops build for a route to the AgentCore host that still holds a secret other than aws://", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = {
+        mcp: {
+          tools: { type: "http", destinations: [host], secret: { ref: "env://TOOLS_TOKEN" } },
+        },
+      };
+
+      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems.map(({ code, key }) => [code, key])).toEqual([
+        ["RUNTIME_AGENTCORE_HOST_CREDENTIAL", ["mcp", "tools"]],
+      ]);
+    });
+
+    test("counts a route to the AgentCore host with :443, in another case, or as a wildcard", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      for (const destination of [
+        `bedrock-agentcore.${BUILD_REGION}.amazonaws.com:443`,
+        `Bedrock-AgentCore.${BUILD_REGION}.amazonaws.com`,
+        "*.amazonaws.com",
+      ]) {
+        const local = { egress: { tools: { destinations: [destination] } } };
+
+        expect([destination, apply(local, context).table.egress]).toEqual([
+          destination,
+          { tools: { destinations: [destination], secret: { ref: "aws://" } } },
+        ]);
+      }
+      // Another port, or a wildcard of another domain, is not the AgentCore host.
+      const other = {
+        egress: {
+          tools: {
+            destinations: ["*.example.com", `bedrock-agentcore.${BUILD_REGION}.amazonaws.com:8443`],
+          },
+        },
+      };
+      expect(Object.keys(apply(other, context).table.egress as TomlTable)).toEqual([
+        "tools",
+        MEMORY_ROUTE,
+      ]);
+    });
+
+    test("leaves a gateway route to the Memory host alone for a runtime with no default Memory", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const local = { egress: { memory: { destinations: [host], backends: [{ url: "x" }] } } };
+
+      const { table, problems, warnings } = apply(local, contextOf(CODEZIP));
+      expect([problems, warnings]).toEqual([[], []]);
+      expect(table.egress).toEqual(local.egress);
+    });
+
+    test("names the gateway target when a target of the user takes the Memory route's name", () => {
+      const context = contextOf(CODEZIP, { memories: [MEMORY] });
+      const withTarget = {
+        ...context,
+        gateway: {
+          ...context.gateway,
+          targets: [
+            ...context.gateway.targets,
+            passthrough("agentcore", "https://memory.example.com"),
+          ],
+        },
+      };
+      const local = { egress: { [MEMORY_ROUTE]: { destinations: ["memory.example.com"] } } };
+
+      const [problem] = apply(local, withTarget).problems;
+
+      expect(problem?.place).toBe("agentcore/agentcore.json");
+      expect(problem?.reason).toEndWith(
+        `Rename the 'agentcore' target of gateway '${context.gateway.name}'.`,
+      );
+    });
+
+    test("stops build for a route of the user under the name of the Memory route", () => {
+      const local = { egress: { [MEMORY_ROUTE]: { destinations: ["api.example.com"] } } };
+
+      const { problems } = apply(local, contextOf(CODEZIP, { memories: [MEMORY] }));
+
+      expect(problems).toEqual([
+        {
+          code: "RUNTIME_ROUTE_NAME_TAKEN",
+          key: ["egress", MEMORY_ROUTE],
+          place: PROFILE_FILE,
+          reason:
+            `[egress.${MEMORY_ROUTE}] is the name of the route that the agent's Memory calls ` +
+            `take on AgentCore Runtime, to bedrock-agentcore.${BUILD_REGION}.amazonaws.com. ` +
+            "Rename that entry.",
+        },
+      ]);
+    });
+  });
+
+  describe("with OTEL on", () => {
+    const OTEL_CODEZIP = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
+    const OTEL_CONTAINER = runtimeOf("Container", "HTTP", "Bedrock", true);
+    const otelRuntime = (build: Build) => (build === "CodeZip" ? OTEL_CODEZIP : OTEL_CONTAINER);
+    const BUILDS: Build[] = ["CodeZip", "Container"];
+
+    test.each(BUILDS)(
+      "starts the template's own command under opentelemetry-instrument, and with OTEL off does not (%s)",
+      (build) => {
+        const local = createdProfile(otelRuntime(build));
+        const off = agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile);
+        const on = agentOf(deriveRuntimeProfile(local, contextOf(otelRuntime(build))).profile);
+
+        expect(on.command).toEqual([...OTEL_START[build], ...off.command]);
+        expect(off.command.join(" ")).not.toContain("opentelemetry-instrument");
+      },
+    );
+
+    test.each(["MCP", "A2A", "AGUI"] as const)(
+      "starts a CodeZip %s template with the Runtime's Python and the script of the zip",
+      (protocol) => {
+        const runtime = runtimeOf("CodeZip", protocol, "Bedrock", true);
+
+        expect(
+          agentOf(deriveRuntimeProfile(createdProfile(runtime), contextOf(runtime)).profile)
+            .command,
+        ).toEqual([...OTEL_START.CodeZip, "${{ inputs.python.path }}", "-m", "main"]);
+      },
+    );
+
+    test.each(BUILDS)(
+      "starts a command of the user that runs the venv's Python under opentelemetry-instrument (%s)",
+      (build) => {
+        const command = ["${{workspace}}/.venv/bin/python3.12", "-m", "main", "--debug"];
+
+        expect(
+          agentOf(apply({ agent: { command } }, contextOf(otelRuntime(build))).table).command,
+        ).toEqual([...OTEL_START[build], ...command]);
+      },
+    );
+
+    test.each(BUILDS)(
+      "does not start a command under opentelemetry-instrument twice (%s)",
+      (build) => {
+        const python = "${{ workspace }}/.venv/bin/python";
+        const script = "${{ workspace }}/.venv/bin/opentelemetry-instrument";
+        // The script as the program, and as the script that the venv's Python runs.
+        for (const own of [
+          [script, python, "-m", "main"],
+          [python, script, python, "-m", "main"],
+        ]) {
+          expect(
+            agentOf(apply({ agent: { command: own } }, contextOf(otelRuntime(build))).table)
+              .command,
+          ).toEqual(own);
+        }
+      },
+    );
+
+    test("leaves a command of another program as it is, and an [agent] with no command", () => {
+      const command = ["/usr/local/bin/node", "${{ workspace }}/server.js"];
+
+      expect(
+        agentOf(apply({ agent: { command } }, contextOf(OTEL_CONTAINER)).table).command,
+      ).toEqual(command);
+      expect(agentOf(apply({ agent: {} }, contextOf(OTEL_CONTAINER)).table)).not.toHaveProperty(
+        "command",
+      );
+    });
+
+    test("tells whether the agent of a Runtime profile starts under opentelemetry-instrument", () => {
+      const started = (command: unknown) => agentStartsUnderOtel({ agent: { command } });
+
+      expect(started([...OTEL_START.Container, "${{ workspace }}/.venv/bin/python"])).toBe(true);
+      expect(started([...OTEL_START.CodeZip, "${{ inputs.python.path }}"])).toBe(true);
+      expect(started(["${{ workspace }}/.venv/bin/python", "-m", "main"])).toBe(false);
+      expect(started(undefined)).toBe(false);
+      expect(agentStartsUnderOtel({})).toBe(false);
+    });
+
+    test.each(BUILDS)(
+      "adds the default X-Ray target when no target is cloudwatch_traces, and with OTEL off does not (%s)",
+      (build) => {
+        expect(tableOf(apply({}, contextOf(otelRuntime(build))).table)).toEqual({
+          agentcore: DEFAULT_TARGET,
+          agentcore_traces: DEFAULT_TRACES,
+        });
+        expect(tableOf(apply({}, contextOf(runtimeOf(build))).table)).toEqual({
+          agentcore: DEFAULT_TARGET,
+        });
+        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(DEFAULT_TRACES);
+      },
+    );
+
+    test("adds the default X-Ray target beside a cloudwatch_logs target of the user", () => {
+      const local = { telemetry: { logs: CLOUDWATCH.logs } };
+
+      expect(
+        Object.keys(
+          tableOf(
+            apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+          ),
+        ),
+      ).toEqual(["logs", "agentcore_traces"]);
+    });
+
+    test("adds no default X-Ray target when the profile has its own cloudwatch_traces target", () => {
+      const local = { telemetry: { "x-ray": CLOUDWATCH["x-ray"] } };
+
+      expect(
+        tableOf(
+          apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+        ),
+      ).toEqual({
+        "x-ray": { kind: "cloudwatch_traces", region: BUILD_REGION, secret: { ref: "aws://" } },
+        agentcore: DEFAULT_TARGET,
+      });
+    });
+
+    test("adds no default X-Ray target when box resolves a cloudwatch_traces target that the profile does not declare", () => {
+      const telemetry: CloudWatchTelemetry[] = [
+        { name: "pack-traces", kind: "cloudwatch_traces", region: "eu-west-1" },
+      ];
+
+      expect(Object.keys(tableOf(apply({}, contextOf(OTEL_CODEZIP, { telemetry })).table))).toEqual(
+        ["pack-traces", "agentcore"],
+      );
+    });
+
+    test.each([
+      ["true", false],
+      [" TRUE ", false],
+      ["false", true],
+    ])(
+      "adds the default X-Ray target only when the envVars do not set DISABLE_ADOT_OBSERVABILITY to true (%j)",
+      (value, added) => {
+        const runtime = {
+          ...OTEL_CODEZIP,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value }],
+        } as ProjectRuntime;
+        const { table } = apply({}, contextOf(runtime));
+
+        expect(Object.hasOwn(tableOf(table), "agentcore_traces")).toBe(added);
+        expect(defaultTracesTelemetry(table, BUILD_REGION)).toHaveLength(added ? 1 : 0);
+      },
+    );
+
+    test.each(BUILDS)(
+      "does not start the agent under opentelemetry-instrument when the envVars set DISABLE_ADOT_OBSERVABILITY to true (%s)",
+      (build) => {
+        const optedOut = {
+          ...otelRuntime(build),
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        } as ProjectRuntime;
+        const local = createdProfile(optedOut);
+
+        expect(agentOf(deriveRuntimeProfile(local, contextOf(optedOut)).profile)).toEqual(
+          agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile),
+        );
+      },
+    );
+
+    test("names the default X-Ray target agentcore_traces_default when a target is agentcore_traces", () => {
+      const local = { telemetry: { agentcore_traces: CLOUDWATCH.logs } };
+      const telemetry = tableOf(
+        apply(local, contextOf(OTEL_CODEZIP, { telemetry: acceptedTelemetry(local) })).table,
+      );
+
+      expect(Object.keys(telemetry)).toEqual(["agentcore_traces", "agentcore_traces_default"]);
+      expect(telemetry.agentcore_traces_default).toEqual(DEFAULT_TRACES);
+    });
+
+    test("reads the region of the default X-Ray target through the input of @box/agentcore", () => {
+      const { inputs } = parse(renderAgentCorePack(specOf(OTEL_CODEZIP), OTEL_CODEZIP)) as {
+        inputs: { aws: { region: unknown } };
+      };
+
+      expect(DEFAULT_TRACES.region).toBe("${{ inputs.aws.region }}");
+      expect(inputs.aws.region).toMatchObject({ from: "env:AWS_REGION" });
+    });
+
+    test("names the default X-Ray target in the header", () => {
+      const context = contextOf(OTEL_CODEZIP);
+
+      expect(runtimeProfileHeader(context, apply({}, context).table).at(-1)).toBe(
+        "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
+          `own, in the Runtime's region. Add a cloudwatch_traces target to ${PROFILE_FILE} to ` +
+          "use another, or set instrumentation.enableOtel to false in agentcore.json to send none.",
+      );
+    });
+
+    test("gives the default X-Ray target to the grant of the execution role, and no other target", () => {
+      const { table } = apply({ telemetry: { logs: CLOUDWATCH.logs } }, contextOf(OTEL_CODEZIP));
+
+      expect(defaultTracesTelemetry(table, BUILD_REGION)).toEqual([
+        {
+          name: "agentcore_traces",
+          kind: "cloudwatch_traces",
+          region: BUILD_REGION,
+          include: ["deny", "permit", "trace"],
+        },
+      ]);
+      expect(defaultTracesTelemetry(apply({}, contextOf(CODEZIP)).table, BUILD_REGION)).toEqual([]);
+    });
+
+    test.each(BUILDS)(
+      "keeps each OTEL variable that the user sets in [agent.env], so it wins over the pack (%s)",
+      (build) => {
+        const env = { OTEL_TRACES_EXPORTER: "none", OTEL_RESOURCE_ATTRIBUTES: "service.name=mine" };
+
+        expect(
+          agentOf(apply({ agent: { env } }, contextOf(otelRuntime(build))).table).env,
+        ).toMatchObject(env);
+      },
+    );
+  });
+
   test("keeps the policies list as the local profile names it", () => {
     const local = { policies: ["./policy.dw", "rules/extra.dw"] };
 
@@ -1055,6 +1568,19 @@ describe("the additions rule", () => {
     expect(derived).toContain("@box/agentcore and @box/agentcore-codezip packs");
     expect(runtimeProfileHeader(contextOf(CONTAINER))[1]).not.toContain("@box/agentcore-codezip");
     expect(standIns).toContain("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are stand-ins");
+    expect(standIns).toEndWith("Every AWS route goes to the Box gateway.");
+    const context = contextOf(CODEZIP, { memories: [defaultMemoryName("agent")] });
+    const withMemory = runtimeProfileHeader(context, apply(createdProfile(CODEZIP), context).table);
+    const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+    expect(withMemory[2]).toEndWith(
+      `except [egress.${MEMORY_ROUTE}], to ${host}: box sends the calls to that host directly, so ` +
+        "Memory can hold each call to the session of the runtime.",
+    );
+    // A route of the user that replaces [egress.agentcore] is the one the header names.
+    const routed = apply({ egress: { tools: { destinations: [host] } } }, context).table;
+    expect(runtimeProfileHeader(context, routed)[2]).toContain(
+      `except [egress.tools], to ${host}:`,
+    );
     const text = serializeRuntimeProfile(
       apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table,
       runtimeProfileHeader(contextOf(CODEZIP)),

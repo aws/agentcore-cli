@@ -7,43 +7,55 @@
  * | `packs` | the user's packs in their order, then @box/agentcore, and @box/agentcore-codezip for CodeZip |
  * | `[profile] name` | the project's name |
  * | `[options] bedrock.region` | the build region, where the profile sets it or imports @box/bedrock |
- * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>` |
+ * | `[options] bedrock.sign-in` | `api-key`, beside `bedrock.region`: the gateway signs each Bedrock call, and box refuses the `aws://` route of @box/bedrock beside its backend |
+ * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
- * | `[telemetry.<name>]`, third party | with AGENTCORE_BOX_SECRETS_MANAGER=1, each target that the Box network model carries (`context.thirdPartyTelemetry`) keeps its keys, and reads its key from its field of the runtime's AWS Secrets Manager secret |
- * | `plugins` | the user's plugins, then @box/aws-secrets-manager when a carried target has a key |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
+ * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
+ * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
+ * | a route to the AgentCore host | with a default Memory, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
+import { posix } from "node:path";
+import { agentCoreDataPlaneHost } from "../../../../handlers/project/shortcuts";
+import { BOX_MEMORY_ROUTE_NAME, hasDefaultMemory } from "../../boxMemory";
+import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
   BOX_BEDROCK_PACK,
+  BOX_BEDROCK_RUNTIME_SIGN_IN,
   boxIngressPort,
   boxWorkloadPort,
+  OBSERVABILITY_OFF_ENV,
+  observabilityOff,
+  otelOn,
   RUNTIME_LOGS_HEADERS_ENV,
 } from "../../templates/boxProfile";
-import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
-import type { ThirdPartyTelemetry } from "../../boxNetwork";
-import {
-  BOX_SECRETS_MANAGER_PLUGIN,
-  boxTelemetrySecretField,
-  boxTelemetrySecretName,
-  boxTelemetrySecretRef,
-} from "../../boxTelemetrySecrets";
-import { isTable } from "../projectPaths";
+import type { CloudWatchTelemetry } from "../../boxNetwork";
+import { isTable, isVenvPython } from "../projectPaths";
 import { FILE_TELEMETRY_KIND } from "./refusals";
 import {
   RUNTIME_AWS_SIGNER,
   RUNTIME_INPUTS,
   type RuleResult,
+  type RuntimePaths,
   type RuntimeProfileContext,
+  type RuntimeProfileProblem,
   type TomlTable,
 } from "../types";
+
+/**
+ * The `[egress]` route of the agent's Memory calls. Box signs them with the execution role and
+ * sends them to AgentCore Memory directly. The Box gateway would sign them with its own role, and
+ * Memory could then not hold each call to the session of the runtime by its context keys.
+ */
+export const MEMORY_ROUTE = BOX_MEMORY_ROUTE_NAME;
 
 /** The variables of the region of the agent, which get the region of the Runtime. */
 const REGION_ENV_NAMES: ReadonlySet<string> = new Set(["AWS_REGION", "AWS_DEFAULT_REGION"]);
@@ -58,8 +70,8 @@ const LOCAL_DEV = "LOCAL_DEV";
 const CLOUDWATCH_KINDS: ReadonlySet<unknown> = new Set(["cloudwatch_logs", "cloudwatch_traces"]);
 
 /**
- * Stand-in AWS keys for boto3 in the box on AgentCore Runtime. They authenticate nothing: each AWS
- * route goes to the Box gateway, and box signs each call for it with the execution role.
+ * Stand-in AWS keys for boto3 in the box on AgentCore Runtime. They authenticate nothing: box signs
+ * each AWS call with the execution role, for the Box gateway or, on the Memory route, for Memory.
  */
 const RUNTIME_AWS_STAND_INS: Readonly<Record<string, string>> = {
   AWS_ACCESS_KEY_ID: "box-stand-in",
@@ -88,6 +100,31 @@ export const DEFAULT_TELEMETRY_TARGET = {
 } as const;
 
 /**
+ * The X-Ray target of a Runtime profile with OTEL on ({@link otelOn}) that has no
+ * `cloudwatch_traces` target: the agent's spans and box's own, in the Runtime's region, signed with
+ * the execution role.
+ */
+export const DEFAULT_TRACES_TARGET = {
+  kind: "cloudwatch_traces",
+  region: RUNTIME_INPUTS.awsRegion,
+  include: ["deny", "permit", "trace"],
+  secret: { ref: RUNTIME_AWS_SIGNER },
+} as const;
+
+/** The program that starts a Python command with the OpenTelemetry instrumentation. */
+const OTEL_INSTRUMENT = "opentelemetry-instrument";
+
+/** Whether `command` starts under opentelemetry-instrument, as its program or as the script of it. */
+function startsUnderOtel(command: unknown): boolean {
+  return (
+    Array.isArray(command) &&
+    command
+      .slice(0, 2)
+      .some((word) => typeof word === "string" && posix.basename(word) === OTEL_INSTRUMENT)
+  );
+}
+
+/**
  * The Runtime's region in the agent's environment, from the @box/agentcore `aws.region` input.
  * @box/bedrock sets `AWS_REGION` itself, so the profile sets it only without that pack.
  */
@@ -97,20 +134,7 @@ function runtimeRegionEnv(bedrock: boolean): Record<string, string> {
 }
 
 /**
- * The variable that turns off the observability of a runtime on AgentCore Runtime. When the envVars
- * of the runtime set it to `true`, the Runtime profile gets no default log target.
- */
-const OBSERVABILITY_OFF_ENV = "DISABLE_ADOT_OBSERVABILITY";
-
-/** Whether the envVars of `runtime` set {@link OBSERVABILITY_OFF_ENV} to `true`. */
-export function observabilityOff(runtime: Pick<ProjectRuntime, "envVars">): boolean {
-  return (runtime.envVars ?? []).some(
-    ({ name, value }) => name === OBSERVABILITY_OFF_ENV && value.trim().toLowerCase() === "true",
-  );
-}
-
-/**
- * The notice that `agentcore create` gives for a box runtime: what the
+ * The notice that `agentcore create` and `agentcore add runtime` give for a box runtime: what the
  * default log target sends, where, what it costs, and how to turn it off.
  */
 export function defaultLogTargetNotice(runtimeName: string, profileFile: string): string {
@@ -138,8 +162,13 @@ export function runtimeProfileHeader(
     `Runs the agent of the AgentCore project '${context.spec.name}' in a box.`,
     `Derived by agentcore build and deploy from ${context.profileFile}, for AgentCore Runtime. ${packs}`,
     `${Object.keys(RUNTIME_AWS_STAND_INS).join(" and ")} are stand-ins so boto3 in the box can ` +
-      "build its requests. They authenticate nothing: every AWS route goes to the Box gateway, " +
-      "and box signs each request for it with the execution role.",
+      "build its requests. They authenticate nothing: box signs each request with the execution " +
+      "role. Every AWS route goes to the Box gateway" +
+      (hasDefaultMemory(context.spec, context.runtime)
+        ? `, except ${routesToHost(profile, agentCoreDataPlaneHost(context.region))}: box sends ` +
+          "the calls to that host directly, so Memory can hold each call to the session of the " +
+          "runtime."
+        : "."),
     ...Object.entries(tableOf(profile.telemetry))
       .filter(([, target]) => sameValue(target, DEFAULT_TELEMETRY_TARGET))
       .map(
@@ -148,7 +177,41 @@ export function runtimeProfileHeader(
           `and log stream, which box reads from ${RUNTIME_LOGS_HEADERS_ENV} when the run starts. ` +
           `Add a cloudwatch_logs target to ${context.profileFile} to use another.`,
       ),
+    ...defaultTracesTargets(profile).map(
+      (name) =>
+        `[telemetry.${name}] is the default X-Ray target: the agent's spans and box's own, in the ` +
+        `Runtime's region. Add a cloudwatch_traces target to ${context.profileFile} to use ` +
+        "another, or set instrumentation.enableOtel to false in agentcore.json to send none.",
+    ),
   ];
+}
+
+/** The name of each {@link DEFAULT_TRACES_TARGET} in the `[telemetry]` of `profile`. */
+function defaultTracesTargets(profile: Readonly<TomlTable>): string[] {
+  return Object.entries(tableOf(profile.telemetry))
+    .filter(([, target]) => sameValue(target, DEFAULT_TRACES_TARGET))
+    .map(([name]) => name);
+}
+
+/**
+ * Each {@link DEFAULT_TRACES_TARGET} of `profile`, a Runtime profile, as a CloudWatch target in
+ * `region`, the region build builds for: the execution role needs a grant for it.
+ */
+export function defaultTracesTelemetry(
+  profile: Readonly<TomlTable>,
+  region: string,
+): CloudWatchTelemetry[] {
+  return defaultTracesTargets(profile).map((name) => ({
+    name,
+    kind: "cloudwatch_traces",
+    region,
+    include: [...DEFAULT_TRACES_TARGET.include],
+  }));
+}
+
+/** Whether the `[agent] command` of `profile`, a Runtime profile, starts under opentelemetry-instrument. */
+export function agentStartsUnderOtel(profile: Readonly<TomlTable>): boolean {
+  return startsUnderOtel(tableOf(profile.agent).command);
 }
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
@@ -168,46 +231,165 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     else result.tool = tool;
   }
   result.telemetry = runtimeTelemetry(result.telemetry, context, warnings);
-  const plugins = runtimePlugins(result.plugins, context);
-  if (plugins !== undefined) result.plugins = plugins;
-  return { table: result, problems: [], warnings };
+  const problems: RuntimeProfileProblem[] = [];
+  const routes = memoryRoutes(result, context, problems);
+  if (routes.egress !== undefined) result.egress = routes.egress;
+  if (routes.mcp !== undefined) result.mcp = routes.mcp;
+  return { table: result, problems, warnings };
 }
 
 /**
- * `plugins` for the Runtime: the user's plugins in their order, then {@link BOX_SECRETS_MANAGER_PLUGIN}
- * when a third-party target of `context.thirdPartyTelemetry` reads its key from AWS Secrets Manager.
- * Only the profile may list a plugin: box stops a run whose pack lists one.
+ * `[egress]` and `[mcp]` for the agent's Memory calls when the runtime has its default Memory. They
+ * go to the AgentCore data-plane host directly, signed with the execution role, not through the Box
+ * gateway, whose role would sign them and keep Memory from holding each call to the session of the
+ * runtime. Box chooses where a connection goes from its host alone, before it sees a path, and the
+ * other AgentCore APIs (Code Interpreter, Browser, and more) share that host. So every call of the
+ * box to the host goes there directly.
+ *
+ * - With no route of the profile to the AgentCore host, build adds {@link MEMORY_ROUTE}: that host,
+ *   signed with a bare `aws://`.
+ * - A route or HTTP MCP server of the profile to that host, which the gateway rule sends through the
+ *   gateway, goes to the host directly, signed with a bare `aws://`, with its name and other keys.
+ *   Build adds no {@link MEMORY_ROUTE} beside it: box refuses two signed routes for one host.
+ * - A route of the user named {@link MEMORY_ROUTE} for another host is a problem.
  */
-function runtimePlugins(plugins: unknown, context: RuntimeProfileContext): unknown {
-  const keyed = (context.thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined);
-  // box refuses `plugins` that is not a list before build gets the profile.
-  if (!keyed || (plugins !== undefined && !Array.isArray(plugins))) return plugins;
-  const own = (plugins ?? []) as unknown[];
-  return own.includes(BOX_SECRETS_MANAGER_PLUGIN) ? own : [...own, BOX_SECRETS_MANAGER_PLUGIN];
-}
-
-/**
- * A third-party target that the Box network model carries, on the Runtime: the table `entry` of
- * the local profile, or the target as box resolves it when the local profile does not declare it.
- * Its key comes from its field of the runtime's AWS Secrets Manager secret, which deploy writes,
- * and not from the variable that the local profile names.
- */
-function runtimeThirdPartyTarget(
-  entry: Readonly<TomlTable> | undefined,
-  target: ThirdPartyTelemetry,
+function memoryRoutes(
+  table: Readonly<TomlTable>,
   context: RuntimeProfileContext,
-): TomlTable {
-  const table: TomlTable = entry
-    ? (structuredClone(entry) as TomlTable)
-    : {
-        kind: target.kind,
-        ...Object.fromEntries(target.keys.map(([key, value]) => [key, structuredClone(value)])),
-        ...(target.secret && { secret: Object.fromEntries(target.secret.keys) }),
-      };
-  if (target.secret === undefined) return table;
-  const name = boxTelemetrySecretName(context.spec.name, context.runtime.name);
-  const ref = boxTelemetrySecretRef(name, boxTelemetrySecretField(target.name));
-  return { ...table, secret: { ...(isTable(table.secret) ? table.secret : {}), ref } };
+  problems: RuntimeProfileProblem[],
+): Pick<TomlTable, "egress" | "mcp"> {
+  const { egress, mcp } = table;
+  if (!hasDefaultMemory(context.spec, context.runtime)) return { egress, mcp };
+  // box refuses `[egress]` or `[mcp]` that is not a table before build gets the profile.
+  if ((egress !== undefined && !isTable(egress)) || (mcp !== undefined && !isTable(mcp))) {
+    return { egress, mcp };
+  }
+  const host = agentCoreDataPlaneHost(context.region);
+  credentialProblems(host, egress, mcp, context, problems);
+  const tables = { egress: { ...egress }, mcp: { ...mcp } } as Record<"egress" | "mcp", TomlTable>;
+  let routed = false;
+  for (const kind of ["egress", "mcp"] as const) {
+    for (const [name, entry] of Object.entries(tables[kind])) {
+      if (!isTable(entry) || !hasDestination(entry.destinations, host)) continue;
+      routed = true;
+      const { backends: _backends, secret: _secret, ...kept } = entry;
+      tables[kind][name] = { ...kept, secret: { ref: RUNTIME_AWS_SIGNER } };
+    }
+  }
+  const result = {
+    egress: Object.keys(tables.egress).length > 0 ? tables.egress : egress,
+    mcp: Object.keys(tables.mcp).length > 0 ? tables.mcp : mcp,
+  };
+  if (routed) return result;
+  if (Object.hasOwn(tables.egress, MEMORY_ROUTE)) {
+    const key = ["egress", MEMORY_ROUTE];
+    // The gateway rule names a route for a target that no entry of the profile names after it.
+    const target = context.gateway.targets.some(({ name }) => name === MEMORY_ROUTE);
+    problems.push({
+      code: "RUNTIME_ROUTE_NAME_TAKEN",
+      key,
+      place: target ? "agentcore/agentcore.json" : context.placeOf(key),
+      reason:
+        `[egress.${MEMORY_ROUTE}] is the name of the route that the agent's Memory calls take ` +
+        `on AgentCore Runtime, to ${host}. ` +
+        (target
+          ? `Rename the '${MEMORY_ROUTE}' target of gateway '${context.gateway.name}'.`
+          : "Rename that entry."),
+    });
+    return result;
+  }
+  return {
+    ...result,
+    egress: {
+      ...tables.egress,
+      [MEMORY_ROUTE]: { destinations: [host], secret: { ref: RUNTIME_AWS_SIGNER } },
+    },
+  };
+}
+
+/**
+ * A problem for each entry of the profile that sends a credential of its own to the AgentCore host,
+ * such as the `env://` API key of an MCP server on another AgentCore Runtime. With the default
+ * Memory, every call of the box to that host goes there directly, signed with the execution role,
+ * and box cannot route one host both ways. So the key would never be sent, and the server would
+ * refuse the call. The Box network model records the API key of the host; an entry that still
+ * holds a secret other than `aws://` names one too.
+ */
+function credentialProblems(
+  host: string,
+  egress: TomlTable | undefined,
+  mcp: TomlTable | undefined,
+  context: RuntimeProfileContext,
+  problems: RuntimeProfileProblem[],
+): void {
+  const named = new Map<string, { key: string[]; secret: string }>();
+  for (const record of context.hosts) {
+    if (record.host !== host || record.outboundAuth.kind !== "apiKey") continue;
+    const secret = `env://${record.outboundAuth.variable}`;
+    for (const source of record.sources) {
+      if (source.kind === "entry") {
+        named.set(`egress.${source.egressEntry}`, { key: ["egress", source.egressEntry], secret });
+      } else if (source.kind === "mcp") {
+        named.set(`mcp.${source.mcpEntry}`, { key: ["mcp", source.mcpEntry], secret });
+      }
+    }
+  }
+  for (const [kind, table] of [
+    ["egress", egress],
+    ["mcp", mcp],
+  ] as const) {
+    for (const [name, entry] of Object.entries(table ?? {})) {
+      if (!isTable(entry) || !hasDestination(entry.destinations, host)) continue;
+      const ref = isTable(entry.secret) ? entry.secret.ref : undefined;
+      if (typeof ref !== "string" || ref.startsWith("aws://")) continue;
+      if (!named.has(`${kind}.${name}`))
+        named.set(`${kind}.${name}`, { key: [kind, name], secret: ref });
+    }
+  }
+  for (const { key, secret } of named.values()) {
+    const label = `[${key.join(".")}]`;
+    problems.push({
+      code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+      key,
+      place: context.placeOf(key),
+      reason:
+        `${label} sends ${secret} to ${host}. On AgentCore Runtime, runtime ` +
+        `'${context.runtime.name}' has its default Memory, so box sends every call to that host ` +
+        "directly, signed with the execution role, and not through the Box gateway. Box cannot " +
+        "route one host both ways, so the key would not be sent. Remove the secret from " +
+        `${label} if the service takes the execution role's signature, or remove the default ` +
+        `Memory of runtime '${context.runtime.name}' from agentcore.json.`,
+    });
+  }
+}
+
+/**
+ * The routes and HTTP MCP servers of `profile` to `host`, as the header names them: `[egress.agentcore]`,
+ * or the user's routes when one replaces it. With none, as before the rule runs, the host itself.
+ */
+function routesToHost(profile: Readonly<TomlTable>, host: string): string {
+  const labels = (["egress", "mcp"] as const).flatMap((kind) =>
+    Object.entries(tableOf(profile[kind]))
+      .filter(([, entry]) => isTable(entry) && hasDestination(entry.destinations, host))
+      .map(([name]) => `[${kind}.${name}]`),
+  );
+  return labels.length > 0 ? `${labels.join(", ")}, to ${host}` : `each route to ${host}`;
+}
+
+/**
+ * Whether `destinations` has one that box matches to `host` on port 443: the host itself, in any
+ * case, with or without `:443`, or a `*.` wildcard of its parent domains.
+ */
+function hasDestination(destinations: unknown, host: string): boolean {
+  if (!Array.isArray(destinations)) return false;
+  return destinations.some((text) => {
+    const destination = typeof text === "string" ? parseDestination(text) : undefined;
+    if (destination === undefined || destination.port !== 443) return false;
+    const name = destination.host.toLowerCase();
+    return destination.wildcard
+      ? name.startsWith("*.") && host.endsWith(name.slice(1))
+      : name === host;
+  });
 }
 
 /** The user's packs in their order, then each Runtime pack that they do not import. */
@@ -224,7 +406,8 @@ function runtimePacks(packs: unknown, context: RuntimeProfileContext): unknown {
 
 /**
  * `[options]` with `bedrock.region` in the build region, the region of the gateway's `bedrock`
- * target: where the profile sets it, as a dotted or a quoted key, or where it imports @box/bedrock.
+ * target, and `bedrock.sign-in` of the route that goes through the gateway: where the profile sets
+ * `bedrock.region`, as a dotted or a quoted key, or where it imports @box/bedrock.
  */
 function runtimeOptions(options: unknown, bedrock: boolean, region: string): unknown {
   if (options !== undefined && !isTable(options)) return options;
@@ -232,8 +415,14 @@ function runtimeOptions(options: unknown, bedrock: boolean, region: string): unk
   const dotted = options !== undefined && isTable(options.bedrock);
   if (!quoted && !dotted && !bedrock) return options;
   const result: TomlTable = { ...options };
-  if (quoted) result["bedrock.region"] = region;
-  if (dotted || !quoted) result.bedrock = { ...(result.bedrock as TomlTable), region };
+  const signIn = BOX_BEDROCK_RUNTIME_SIGN_IN;
+  if (quoted) {
+    result["bedrock.region"] = region;
+    result["bedrock.sign-in"] = signIn;
+  }
+  if (dotted || !quoted) {
+    result.bedrock = { ...(result.bedrock as TomlTable), region, "sign-in": signIn };
+  }
   return result;
 }
 
@@ -250,9 +439,10 @@ function runtimeAgent(
   const templateRuntime = tableOf(context.template.runtime.agent);
   const result: TomlTable = { ...local };
   if (local.command !== undefined) {
-    result.command = sameValue(local.command, templateLocal.command)
+    const command = sameValue(local.command, templateLocal.command)
       ? structuredClone(templateRuntime.command)
       : withoutReload(local.command);
+    result.command = otelOn(context.runtime) ? underOtel(command, context.paths) : command;
   }
   result.env = runtimeEnv(
     local.env,
@@ -310,6 +500,18 @@ function withoutReload(command: unknown): unknown {
     result.push(word);
   }
   return result;
+}
+
+/**
+ * `command` under opentelemetry-instrument (`paths.otelInstrument`) when its program is the venv's
+ * Python, whose dependencies hold the script. A command that already starts under it, or that runs
+ * another program, stays.
+ */
+function underOtel(command: unknown, paths: RuntimePaths): unknown {
+  if (!Array.isArray(command) || startsUnderOtel(command)) return command;
+  const program: unknown = command[0];
+  if (typeof program !== "string" || !isVenvPython(program, paths)) return command;
+  return [...paths.otelInstrument, ...command];
 }
 
 /**
@@ -488,9 +690,11 @@ function onAllAddresses(entry: unknown): unknown {
  * names of `context.telemetry`) with its keys, signed with a bare `aws://`, in the deploy region
  * when it names none; one that box refuses goes; then each CloudWatch target of the
  * context that the local profile does not declare, as box resolves it. A target of another kind
- * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes last, as
+ * stays as it is. With no `cloudwatch_logs` target, {@link DEFAULT_TELEMETRY_TARGET} comes next, as
  * `agentcore`, or as `agentcore_default` when a target has that name, unless the envVars of the
- * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}).
+ * runtime turn observability off ({@link OBSERVABILITY_OFF_ENV}). With OTEL on and no
+ * `cloudwatch_traces` target, {@link DEFAULT_TRACES_TARGET} comes last, as `agentcore_traces`, or
+ * as `agentcore_traces_default` when a target has that name ({@link otelOn}).
  */
 function runtimeTelemetry(
   telemetry: unknown,
@@ -500,16 +704,8 @@ function runtimeTelemetry(
   if (telemetry !== undefined && !isTable(telemetry)) return telemetry;
   const local: TomlTable = telemetry ?? {};
   const resolved = new Map(context.telemetry.map((target) => [target.name, target]));
-  const carried = new Map(
-    (context.thirdPartyTelemetry ?? []).map((target) => [target.name, target]),
-  );
   const result: TomlTable = {};
   for (const [name, entry] of Object.entries(local)) {
-    const thirdParty = carried.get(name);
-    if (thirdParty !== undefined && isTable(entry)) {
-      result[name] = runtimeThirdPartyTarget(entry, thirdParty, context);
-      continue;
-    }
     if (isTable(entry) && entry.kind === FILE_TELEMETRY_KIND) {
       warnings.push(
         `[telemetry.${name}] writes its records to a file. On AgentCore Runtime that file is in ` +
@@ -547,17 +743,19 @@ function runtimeTelemetry(
       secret: { ref: RUNTIME_AWS_SIGNER },
     };
   }
-  for (const target of carried.values()) {
-    if (Object.hasOwn(local, target.name)) continue;
-    result[target.name] = runtimeThirdPartyTarget(undefined, target, context);
-  }
-  const logs = Object.entries(result).some(
-    ([name, entry]) =>
-      isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === "cloudwatch_logs",
-  );
-  if (!logs && !observabilityOff(context.runtime)) {
+  const has = (kind: string) =>
+    Object.entries(result).some(
+      ([name, entry]) => isTable(entry) && (entry.kind ?? resolved.get(name)?.kind) === kind,
+    );
+  if (!has("cloudwatch_logs") && !observabilityOff(context.runtime)) {
     const name = Object.hasOwn(result, "agentcore") ? "agentcore_default" : "agentcore";
     result[name] = structuredClone(DEFAULT_TELEMETRY_TARGET);
+  }
+  if (!has("cloudwatch_traces") && otelOn(context.runtime)) {
+    const name = Object.hasOwn(result, "agentcore_traces")
+      ? "agentcore_traces_default"
+      : "agentcore_traces";
+    result[name] = structuredClone(DEFAULT_TRACES_TARGET);
   }
   return result;
 }

@@ -1,58 +1,61 @@
 /**
- * The writers of the Box network model. Each writer declares the outputs it owns and returns pure
- * edits for exactly those: changes to agentcore.json, files, and `.env.local` entries. One output
- * belongs to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
+ * The writers of the Box network model. Each writer declares the outputs it owns and returns the
+ * edits for exactly those, which {@link boxNetworkEdits} applies in order to one copy of
+ * agentcore.json: changes to agentcore.json, files, and `.env.local` entries. One output belongs
+ * to one writer, and {@link boxNetworkEdits} refuses two writers that declare it.
  */
-import { copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import {
+  boxGatewayOf,
   gatewayTargetFor,
   hostKey,
   isManagedTarget,
   parseEndpoint,
   type BoxNetwork,
+  type BoxNetworkHost,
 } from "./boxNetwork";
+import { agentCoreDataPlaneHost } from "../../handlers/project/shortcuts";
+import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
+import type { ReadEnvFileOptions } from "../../io/envFile";
 import {
-  addBoxGatewayTargets,
-  BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
-  boxBedrockPolicy,
-  boxMemoryPolicy,
-} from "./boxMemory";
-import { addBoxEgressCredentials, boxProfileCredentialEnvEntries } from "./boxProfileCredentials";
+  boxKeyVariables,
+  planBoxProfileCredentials,
+  type BoxKeySources,
+} from "./boxProfileCredentials";
+import { hasValue, type BoxEnvRoute } from "./boxProfileEgress";
 import {
   boxTelemetryPolicy,
   boxTelemetryPolicyFile,
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 import {
-  boxTelemetrySecretEnvEntries,
-  boxTelemetrySecrets,
-  boxTelemetrySecretsStatement,
-} from "./boxTelemetrySecrets";
-import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
+  boxAwsDir,
   boxLocalDir,
   boxLocalProfileFile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
 } from "./templates/boxProfile";
+import { isTable } from "./runtimeProfile/projectPaths";
 import { serializeRuntimeProfile } from "./runtimeProfile/serialize";
+import { RUNTIME_INPUTS, type TomlTable } from "./runtimeProfile/types";
 import { ProjectStateError } from "../../errors/errors";
+import { BOX_RELEASE } from "./backends/boxRelease";
 
 /** Something exactly one writer owns. */
 export type BoxNetworkOutput =
   | { readonly kind: "gatewayTargets"; readonly gateway: string }
   | { readonly kind: "defaultTargets" }
-  | { readonly kind: "projectType" }
   | { readonly kind: "credentials" }
   | { readonly kind: "runtimePolicies" }
+  | { readonly kind: "boxVersions" }
   | { readonly kind: "envLocal" }
   | { readonly kind: "file"; readonly path: string };
 
@@ -70,20 +73,24 @@ export interface BoxNetworkEdits {
   /** Changes to the copy of agentcore.json, in order; each returns its step messages. */
   readonly spec?: readonly ((spec: ProjectSpec) => string[])[];
   readonly files?: readonly BoxNetworkFile[];
-  /** Entries for `.env.local`, which keep any value it holds already. */
+  /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
+  /** Messages about what the writer could not do, for the user to act on. */
+  readonly warnings?: readonly string[];
 }
 
-/** What a writer reads besides the models. */
-export interface BoxNetworkWriteContext {
+/** What a writer reads besides the models: the project, and where build looks for each key. */
+export interface BoxNetworkWriteContext extends BoxKeySources {
   readonly spec: ProjectSpec;
   readonly projectRoot: string;
-  readonly env: NodeJS.ProcessEnv;
 }
 
 export interface BoxNetworkWriter {
   readonly name: string;
-  readonly writes: (networks: readonly BoxNetwork[]) => readonly BoxNetworkOutput[];
+  readonly writes: (
+    networks: readonly BoxNetwork[],
+    context: BoxNetworkWriteContext,
+  ) => readonly BoxNetworkOutput[];
   readonly edits: (
     networks: readonly BoxNetwork[],
     context: BoxNetworkWriteContext,
@@ -95,14 +102,19 @@ export interface CollectedEdits {
   readonly spec: ProjectSpec;
   /** Whether any writer changed agentcore.json. */
   readonly specChanged: boolean;
+  /** The fields of agentcore.json that the writers changed. */
+  readonly changedFields: readonly (keyof ProjectSpec)[];
   readonly files: readonly BoxNetworkFile[];
   readonly envLocal: readonly EnvLocalEntry[];
+  /** The step messages of the changes to agentcore.json. */
   readonly messages: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 /**
  * Runs each writer on the models: refuses two writers that declare one output, as a programmer
- * error, then applies every change of agentcore.json to one copy of `context.spec`.
+ * error, then applies every change of agentcore.json to one copy of `context.spec`, in the order
+ * of `writers`.
  */
 export function boxNetworkEdits(
   writers: readonly BoxNetworkWriter[],
@@ -111,7 +123,7 @@ export function boxNetworkEdits(
 ): CollectedEdits {
   const owners = new Map<string, string>();
   for (const writer of writers) {
-    for (const output of writer.writes(networks)) {
+    for (const output of writer.writes(networks, context)) {
       const key = JSON.stringify(output);
       const owner = owners.get(key);
       if (owner !== undefined) {
@@ -124,18 +136,25 @@ export function boxNetworkEdits(
   const messages: string[] = [];
   const files: BoxNetworkFile[] = [];
   const envLocal: EnvLocalEntry[] = [];
+  const warnings: string[] = [];
   for (const writer of writers) {
     const edits = writer.edits(networks, context);
     for (const change of edits.spec ?? []) messages.push(...change(spec));
     files.push(...(edits.files ?? []));
     envLocal.push(...(edits.envLocal ?? []));
+    warnings.push(...(edits.warnings ?? []));
   }
+  const changedFields = (Object.keys(spec) as (keyof ProjectSpec)[]).filter(
+    (field) => !isDeepStrictEqual(spec[field], context.spec[field]),
+  );
   return {
     spec,
-    specChanged: !isDeepStrictEqual(spec, context.spec),
+    specChanged: changedFields.length > 0,
+    changedFields,
     files,
     envLocal,
     messages,
+    warnings,
   };
 }
 
@@ -156,6 +175,59 @@ export function writeBoxNetworkFiles(projectRoot: string, files: readonly BoxNet
   }
 }
 
+/**
+ * The API key credential of each `env://` route that a target sends, and its key in `.env.local`,
+ * as {@link planBoxProfileCredentials} plans them. It runs before the gateway targets writer, which
+ * writes a target that sends an API key only when its credential is in agentcore.json.
+ */
+export const credentialsWriter: BoxNetworkWriter = {
+  name: "credentials",
+  writes: () => [{ kind: "credentials" }, { kind: "envLocal" }],
+  edits: (networks, { spec, env, envLocal }) => {
+    const plan = planBoxProfileCredentials(structuredClone(spec), uniqueRoutes(networks), {
+      env,
+      envLocal,
+    });
+    return {
+      spec: [
+        (copy) => {
+          copy.credentials.push(...plan.added);
+          return plan.messages;
+        },
+      ],
+      envLocal: plan.entries,
+      warnings: plan.warnings,
+    };
+  },
+};
+
+/**
+ * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it: only
+ * the variables its routes use, and none that `env` sets to a value, because a value set in `env`
+ * wins. An entry that is not read is not decrypted, so it cannot stop the build. With no routes,
+ * no entry is read.
+ */
+export function boxKeyReads(
+  networks: readonly BoxNetwork[],
+  spec: ProjectSpec,
+  env: NodeJS.ProcessEnv,
+): ReadEnvFileOptions {
+  const variables = boxKeyVariables(spec.credentials, uniqueRoutes(networks));
+  return {
+    select: (name) => variables.has(name),
+    // A blank value in `env` does not win, so build reads that variable from the file instead.
+    overrides: Object.fromEntries(Object.entries(env).filter(([, value]) => hasValue(value))),
+  };
+}
+
+function uniqueRoutes(networks: readonly BoxNetwork[]): BoxEnvRoute[] {
+  const routes: BoxEnvRoute[] = [];
+  for (const route of networks.flatMap((network) => network.envRoutes)) {
+    if (!routes.some((other) => other.route === route.route)) routes.push(route);
+  }
+  return routes;
+}
+
 /** The `egress-` targets of each Box gateway, which build adds, rewrites, and removes. */
 export const gatewayTargetsWriter: BoxNetworkWriter = {
   name: "gateway targets",
@@ -166,33 +238,72 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
 };
 
 /**
- * Sets the build-owned targets of the network's Box gateway: a managed target that a host takes is
- * rewritten in place, every other managed target goes, a host whose managed target the gateway
- * lacks gets one at the end, and every target build does not manage stays. Returns the step
- * messages.
+ * Sets the build-owned targets of the network's Box gateway: a managed target that a host or a
+ * gateway of the project takes is rewritten in place, every other managed target goes, a host or a
+ * gateway whose managed target the gateway lacks gets one at the end, and every target build does
+ * not manage stays. A host whose target sends an API key credential that agentcore.json does not
+ * declare gets no target. Returns the step messages.
  */
 function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
+  const gateway = boxGatewayOf(spec, network.runtime);
+  if (!gateway) return [];
   const served = network.hosts.flatMap((host) =>
     host.target === undefined || !isManagedTarget({ name: host.target })
       ? []
       : [{ ...host, target: host.target }],
   );
-  let gateway = spec.agentCoreGateways.find(({ name }) => name === network.gateway);
-  const existing = gateway?.targets ?? [];
+  // The AgentCore host takes no target when the Runtime profile sends its calls directly: with the
+  // default Memory, every call of the box to that host goes there (runtimeProfile/rules/additions.ts).
+  // Only that host, so a rule that drops another route never removes its target with this message.
+  const routed = gatewayRoutedTargets(network.runtimeProfile);
+  const agentCoreHost = agentCoreDataPlaneHost(network.region);
+  const direct = served.filter(
+    (host) => host.host === agentCoreHost && routed !== undefined && !routed.has(host.target),
+  );
+  const used = served.filter((host) => !direct.includes(host));
+  const sent = used.filter((host) => undeclaredKey(spec, host) === undefined);
+  const unsent = used.filter((host) => undeclaredKey(spec, host) !== undefined);
+  const existing = gateway.targets;
   const messages: string[] = [];
   const targets: AgentCoreGatewayTarget[] = [];
-  const gatewayName = `'${network.gateway}'`;
+  const gatewayName = `'${gateway.name}'`;
+  const reached = network.projectGateways ?? [];
   for (const target of existing) {
     if (!isManagedTarget(target)) {
       targets.push(target);
       continue;
     }
-    const host = served.find((candidate) => candidate.target === target.name);
+    const called = reached.find((candidate) => candidate.target === target.name);
+    if (called) {
+      const written = projectGatewayTargetFor(called);
+      if (!isDeepStrictEqual(written, target)) {
+        messages.push(
+          `updating gateway target '${target.name}' of ${gatewayName} for the gateway ` +
+            `'${called.name}'`,
+        );
+      }
+      targets.push(written);
+      continue;
+    }
+    const host = sent.find((candidate) => candidate.target === target.name);
     if (!host) {
-      const at = target.passthrough && parseEndpoint(target.passthrough.endpoint);
+      if (unsent.some((candidate) => candidate.target === target.name)) continue;
+      const directHost = direct.find((candidate) => candidate.target === target.name);
+      if (directHost) {
+        messages.push(
+          `removing gateway target '${target.name}' from ${gatewayName}: on AgentCore Runtime the ` +
+            `box sends the calls to ${directHost.authority} directly, not through the gateway`,
+        );
+        continue;
+      }
+      const named = target.passthrough?.gateway;
+      const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
       messages.push(
-        `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
-          `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
+        named !== undefined
+          ? `removing gateway target '${target.name}' from ${gatewayName}: the boxed agent no ` +
+              `longer calls the gateway '${named}'`
+          : `removing gateway target '${target.name}' from ${gatewayName}: the Box profile no ` +
+              `longer allows ${at ? hostKey(at.host, at.port) : "its host"}`,
       );
       continue;
     }
@@ -204,69 +315,87 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     }
     targets.push(written);
   }
-  for (const host of served) {
+  for (const host of sent) {
     if (existing.some(({ name }) => name === host.target)) continue;
     targets.push(gatewayTargetFor(host));
     messages.push(`adding gateway target '${host.target}' to ${gatewayName} for ${host.authority}`);
   }
-  if (messages.length === 0) return [];
-  if (!gateway) {
-    gateway = getBoxGatewayEntry(network.runtime);
-    spec.agentCoreGateways.push(gateway);
-    messages.unshift(`adding gateway '${network.gateway}' to agentcore.json`);
+  for (const called of reached) {
+    if (existing.some(({ name }) => name === called.target)) continue;
+    targets.push(projectGatewayTargetFor(called));
+    messages.push(
+      `adding gateway target '${called.target}' to ${gatewayName}, for the boxed agent's calls ` +
+        `to the gateway '${called.name}'`,
+    );
   }
+  for (const host of unsent) {
+    const auth = undeclaredKey(spec, host)!;
+    const removed = existing.some(({ name }) => name === host.target);
+    messages.push(
+      `${removed ? "removing" : "not adding"} gateway target '${host.target}' of ${gatewayName} ` +
+        `for ${host.authority}: it sends the key of env://${auth.variable}, and agentcore.json ` +
+        `has no API key credential '${auth.credentialName}' to hold it`,
+    );
+  }
+  if (isDeepStrictEqual(targets, existing)) return messages;
   gateway.targets = targets;
   return messages;
 }
 
 /**
- * The API key credentials the box profile's `env://` routes need, and their `.env.local` keys, and
- * the `.env.local` key of each third-party telemetry target's secret.
+ * The names of the gateway targets that a route or MCP server of `profile` sends calls to, through
+ * a backend at `${{ inputs.gateway.url }}/<target>`; `undefined` when build has no Runtime profile
+ * for the network.
  */
-export const credentialsWriter: BoxNetworkWriter = {
-  name: "credentials",
-  writes: () => [{ kind: "credentials" }, { kind: "envLocal" }],
-  edits: (networks, { env, spec }) => {
-    const needed = uniqueCredentials(networks);
-    return {
-      spec: [(copy) => addBoxEgressCredentials(copy, needed)],
-      envLocal: [
-        ...boxProfileCredentialEnvEntries(needed, env),
-        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), env),
-      ],
-    };
-  },
-};
-
-function uniqueCredentials(networks: readonly BoxNetwork[]) {
-  const needed: { name: string; variable: string }[] = [];
-  for (const credential of networks.flatMap((network) => network.credentials)) {
-    if (!needed.some(({ name }) => name === credential.name)) needed.push({ ...credential });
+function gatewayRoutedTargets(profile: Readonly<TomlTable> | undefined): Set<string> | undefined {
+  if (profile === undefined) return undefined;
+  const prefix = `${RUNTIME_INPUTS.gatewayUrl}/`;
+  const names = new Set<string>();
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    for (const entry of Object.values(table)) {
+      if (!isTable(entry) || !Array.isArray(entry.backends)) continue;
+      for (const backend of entry.backends) {
+        const url = isTable(backend) ? backend.url : undefined;
+        if (typeof url === "string" && url.startsWith(prefix)) names.add(url.slice(prefix.length));
+      }
+    }
   }
-  return needed;
+  return names;
+}
+
+/** The API key that a host's target sends, when agentcore.json declares no credential for it. */
+function undeclaredKey(
+  spec: ProjectSpec,
+  { outboundAuth: auth }: BoxNetworkHost,
+): Extract<BoxNetworkHost["outboundAuth"], { kind: "apiKey" }> | undefined {
+  if (auth.kind !== "apiKey") return undefined;
+  const declared = spec.credentials.some(
+    ({ authorizerType, name }) =>
+      authorizerType === "ApiKeyCredentialProvider" && name === auth.credentialName,
+  );
+  return declared ? undefined : auth;
 }
 
 /**
- * The `bedrock` and `agentcore` targets that each box runtime's model and Memory calls take, and
- * the Bedrock and Memory policies of the gateways' role, as `addBoxGatewayTargets` adds them.
+ * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
+ * gateways' role, as `addBoxGatewayTargets` adds them.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
-  writes: () => [
-    { kind: "defaultTargets" },
-    { kind: "projectType" },
-    { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
-    { kind: "file", path: BOX_MEMORY_POLICY_FILE },
-  ],
-  edits: (networks, { spec, projectRoot }) => {
+  writes: () => [{ kind: "defaultTargets" }, { kind: "file", path: BOX_BEDROCK_POLICY_FILE }],
+  edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
     const region = networks[0]?.region;
     return {
-      spec: [(copy) => addBoxGatewayTargets(copy, projectRoot, region)],
+      spec: [(copy) => addBoxGatewayTargets(copy, region)],
       files: [
-        { path: BOX_BEDROCK_POLICY_FILE, policy: boxBedrockPolicy(spec, projectRoot) },
-        { path: BOX_MEMORY_POLICY_FILE, policy: boxMemoryPolicy(spec, projectRoot, region) },
-      ].flatMap(({ path, policy }) =>
+        {
+          path: BOX_BEDROCK_POLICY_FILE,
+          policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
+        },
+      ].flatMap(({ path, policy }): BoxNetworkFile[] =>
         policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
       ),
     };
@@ -275,17 +404,16 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its own box profile and read the secrets of its third-party targets, and the entry in that
- * runtime's `additionalPolicies`. A runtime with neither gets no policy, and loses the file and
- * the entry it had.
+ * its own box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime,
+ * and a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
-  writes: (networks) => [
+  writes: (_networks, { spec }) => [
     { kind: "runtimePolicies" },
-    ...networks.map(({ runtime }) => ({
+    ...spec.runtimes.map(({ name }) => ({
       kind: "file" as const,
-      path: boxTelemetryPolicyFile(runtime),
+      path: boxTelemetryPolicyFile(name),
     })),
   ],
   edits: (networks, { spec, projectRoot }) => {
@@ -295,11 +423,7 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
       const network = networks.find(({ runtime }) => runtime === name);
-      const policy = withStatement(
-        boxTelemetryPolicy(network?.telemetry ?? []),
-        network &&
-          boxTelemetrySecretsStatement(boxTelemetrySecrets(spec.name, [network]), network.region),
-      );
+      const policy = boxTelemetryPolicy(network?.telemetry ?? []);
       const path = boxTelemetryPolicyFile(name);
       if (policy) {
         boxed.push(name);
@@ -312,24 +436,34 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
   },
 };
 
-/** `policy` with `statement` after its own statements, or a policy of `statement` alone. */
-function withStatement(
-  policy: Record<string, unknown> | undefined,
-  statement: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (statement === undefined) return policy;
-  const statements = (policy?.Statement as unknown[] | undefined) ?? [];
-  return { Version: "2012-10-17", ...policy, Statement: [...statements, statement] };
+/**
+ * Writes a copy of `files`, what the runtime profile writer wrote into the staged folder `dist` of
+ * `runtime`, into the runtime's `.box/<name>/aws/` folder, so people can read the AgentCore
+ * Runtime profile that deploys. The folder gets nothing else: the box release is only in `dist`.
+ */
+export function writeRenderedBoxFiles(
+  projectRoot: string,
+  runtime: string,
+  dist: string,
+  files: readonly BoxNetworkFile[],
+): void {
+  const aws = boxAwsDir(runtime);
+  rmSync(join(projectRoot, ...aws.split("/")), { recursive: true, force: true });
+  writeBoxNetworkFiles(
+    projectRoot,
+    files.map((file) => ({ ...file, path: `${aws}/${file.path.slice(dist.length + 1)}` })),
+  );
 }
 
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */
 export interface StagedRuntime {
   readonly runtime: string;
   readonly dist: string;
-  /** Whether the runtime is a container. Both runtimes stage the `@box/agentcore` pack. */
-  readonly container: boolean;
-  /** Whether the runtime is a CodeZip deploy, which also stages the `@box/agentcore-codezip` pack. */
-  readonly codezip: boolean;
+  /**
+   * How the runtime deploys. Both kinds stage the `@box/agentcore` pack; a CodeZip deploy also
+   * stages the `@box/agentcore-codezip` pack.
+   */
+  readonly kind: "container" | "codezip";
 }
 
 /**
@@ -342,14 +476,12 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
   return {
     name: "runtime profile",
     writes: (networks) =>
-      staged.flatMap(({ runtime, dist, container, codezip }) => [
+      staged.flatMap(({ runtime, dist, kind }) => [
         { kind: "file" as const, path: `${dist}/profile.toml` },
         // Both Runtime profiles read the deployed resources through this pack.
-        ...(container || codezip
-          ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` }]
-          : []),
+        { kind: "file" as const, path: `${dist}/${AGENTCORE_PACK_PATH}` },
         // The CodeZip Runtime also reads its Python and code paths through this one.
-        ...(codezip
+        ...(kind === "codezip"
           ? [{ kind: "file" as const, path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}` }]
           : []),
         ...(networkOf(networks, runtime)?.policyFiles ?? []).map((file) => ({
@@ -358,14 +490,16 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
         })),
       ]),
     edits: (networks, { spec }) => ({
-      files: staged.flatMap(({ runtime, dist, container, codezip }) => {
+      files: staged.flatMap(({ runtime, dist, kind }) => {
         const network = networkOf(networks, runtime);
+        const entry = spec.runtimes.find(({ name }) => name === runtime) ?? { name: runtime };
         return [
-          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network) },
-          ...(container || codezip
-            ? [{ path: `${dist}/${AGENTCORE_PACK_PATH}`, text: renderAgentCorePack(spec) }]
-            : []),
-          ...(codezip
+          { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
+          {
+            path: `${dist}/${AGENTCORE_PACK_PATH}`,
+            text: renderAgentCorePack(spec, entry, network?.projectGateways),
+          },
+          ...(kind === "codezip"
             ? [
                 {
                   path: `${dist}/${AGENTCORE_CODEZIP_PACK_PATH}`,
@@ -387,7 +521,11 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
  * The text of the AgentCore Runtime profile of `runtime`, which build derived from its local box
  * profile into the Box network model (`BoxNetwork.runtimeProfile`).
  */
-function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): string {
+function runtimeProfileText(
+  runtime: string,
+  network: BoxNetwork | undefined,
+  spec: ProjectSpec,
+): string {
   if (network?.runtimeProfile === undefined) {
     throw new ProjectStateError(
       `runtime "${runtime}" runs its agent in a box, but build has no AgentCore Runtime profile ` +
@@ -396,13 +534,78 @@ function runtimeProfileText(runtime: string, network: BoxNetwork | undefined): s
         "Box gateway is in agentcore.json and that the profile is there, then retry.",
     );
   }
-  return serializeRuntimeProfile(network.runtimeProfile, network.runtimeProfileHeader);
+  return serializeRuntimeProfile(
+    withoutUnsentRoutes(network.runtimeProfile, network, spec),
+    network.runtimeProfileHeader,
+  );
 }
+
+/**
+ * `profile` with no `[egress]` route and no `[mcp]` server to the target of a host that sends an
+ * API key that agentcore.json holds no credential for: the gateway targets writer writes no such
+ * target (writeGatewayTargets), and says so.
+ */
+function withoutUnsentRoutes(
+  profile: Readonly<TomlTable>,
+  network: BoxNetwork,
+  spec: ProjectSpec,
+): TomlTable {
+  const unsent = new Set(
+    network.hosts.flatMap((host) =>
+      host.target !== undefined && undeclaredKey(spec, host) !== undefined
+        ? [`${RUNTIME_INPUTS.gatewayUrl}/${host.target}`]
+        : [],
+    ),
+  );
+  const result: TomlTable = { ...profile };
+  if (unsent.size === 0) return result;
+  const routesToUnsent = (entry: unknown) =>
+    isTable(entry) &&
+    Array.isArray(entry.backends) &&
+    entry.backends.some((backend) => isTable(backend) && unsent.has(backend.url as string));
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    const kept = Object.fromEntries(
+      Object.entries(table).filter(([, entry]) => !routesToUnsent(entry)),
+    );
+    if (Object.keys(kept).length > 0) result[key] = kept;
+    else delete result[key];
+  }
+  return result;
+}
+
+/**
+ * Sets the `box.version` of each box runtime to the box this CLI pins, which build and deploy
+ * stage: the box features and the profiles that the CLI writes change together, so a runtime runs
+ * only the pinned box. A runtime that names another version, as one created by an earlier CLI
+ * does, says so.
+ */
+export const boxVersionWriter: BoxNetworkWriter = {
+  name: "box versions",
+  writes: () => [{ kind: "boxVersions" }],
+  edits: (networks) => ({
+    spec: [
+      (copy) =>
+        networks.flatMap(({ runtime: name }) => {
+          const runtime = copy.runtimes.find((candidate) => candidate.name === name);
+          const version = runtime?.box?.version;
+          if (!runtime?.box || version === BOX_RELEASE.version) return [];
+          runtime.box = { ...runtime.box, version: BOX_RELEASE.version };
+          return [
+            `updating box.version of runtime '${name}' from ${version} to ${BOX_RELEASE.version}, ` +
+              "the box this CLI ships",
+          ];
+        }),
+    ],
+  }),
+};
 
 /** The writers that build and deploy run before synth, in order. */
 export const BOX_NETWORK_WRITERS: readonly BoxNetworkWriter[] = [
-  gatewayTargetsWriter,
+  boxVersionWriter,
   credentialsWriter,
+  gatewayTargetsWriter,
   defaultTargetsWriter,
   telemetryPolicyWriter,
 ];

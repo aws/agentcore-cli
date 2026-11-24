@@ -8,11 +8,15 @@ export const DEFAULT_REGION = "us-east-1";
 /**
  * Reads the `region` setting for the active profile from the shared AWS config
  * file (~/.aws/config, or $AWS_CONFIG_FILE). The active profile is $AWS_PROFILE,
- * else "default". Returns undefined if the file, profile, or setting is absent —
- * never throws.
+ * else "default". AWS_CONFIG_FILE, AWS_PROFILE and the home folder (HOME, or
+ * USERPROFILE on Windows) come from `env`. Returns undefined if the file,
+ * profile, or setting is absent — never throws.
  */
-export async function regionFromConfigFile(): Promise<string | undefined> {
-  const path = process.env.AWS_CONFIG_FILE || join(homedir(), ".aws", "config");
+export async function regionFromConfigFile(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+  const home = env.HOME || env.USERPROFILE || homedir();
+  const path = env.AWS_CONFIG_FILE || join(home, ".aws", "config");
   let text: string;
   try {
     text = await readTextFile(path);
@@ -22,7 +26,7 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
 
   // In ~/.aws/config the default profile is "[default]" and named profiles are
   // "[profile name]".
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = env.AWS_PROFILE || "default";
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
@@ -43,14 +47,18 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
 /**
  * Picks the effective AWS region: an explicit --region value, then
  * AWS_REGION / AWS_DEFAULT_REGION, then the shared config file, finally
- * DEFAULT_REGION. It always resolves to a value.
+ * DEFAULT_REGION. The variables and the config file come from `env`. It always
+ * resolves to a value.
  */
-export async function resolveRegion(flagRegion: string | undefined): Promise<string> {
+export async function resolveRegion(
+  flagRegion: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
   return (
     flagRegion ||
-    process.env.AWS_REGION ||
-    process.env.AWS_DEFAULT_REGION ||
-    (await regionFromConfigFile()) ||
+    env.AWS_REGION ||
+    env.AWS_DEFAULT_REGION ||
+    (await regionFromConfigFile(env)) ||
     DEFAULT_REGION
   );
 }

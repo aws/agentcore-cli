@@ -2,6 +2,7 @@ import { ResourceNotFoundError } from "../../errors";
 import { waitForPort } from "../../io";
 import type { DevEvent, DevRunner } from "../../handlers/project/dev/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { isContainerBuild } from "../../projectSchemas/constants";
 
 export type AgentPhase = "idle" | "starting" | "running" | "failed";
 
@@ -197,7 +198,7 @@ export class DevSupervisor {
     try {
       const port = await this.config.resolvePort(entry.runtime);
       const env = await this.config.getDevEnvVarsForRuntime(entry.runtime);
-      const runner = this.config.runners[entry.runtime.build];
+      const runner = this.config.runners[isContainerBuild(entry.runtime) ? "Container" : "CodeZip"];
 
       let ready = false;
       const activity = { at: Date.now() };

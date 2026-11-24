@@ -7,7 +7,7 @@
  * | --- | --- |
  * | the venv's Python, `<code>/.venv/bin/python[3[.N]]` | `${{ inputs.python.path }}` |
  * | the venv, `<code>/.venv` | `${{ inputs.code.dir }}`, where the Runtime installs the dependencies |
- * | the uv Pythons, `${{ home }}/.local/share/uv/python` | `${{ inputs.python.prefix }}` |
+ * | the uv Pythons, `${{ home }}/.local/share/uv/python` | `${{ inputs.python.stdlib }}`, the standard library of the Runtime's Python |
  * | the code folder and each path in it, `<code>[/...]` | `${{ inputs.code.dir }}[/...]` |
  * | another path of the project, of the home folder, or in the venv | none: a {@link PathProblem} |
  */
@@ -127,7 +127,7 @@ export function moveProjectPath(
     .replace(new RegExp(`${venv}${PATH_END}`, "g"), () => paths.runtimeCode)
     .replace(
       new RegExp(`${literal(paths.localPythons)}${PATH_END}`, "g"),
-      () => paths.runtimePythonPrefix,
+      () => paths.runtimePythonStdlib,
     );
   if (new RegExp(`${venv}/`).test(moved)) return { problem: "venv" };
   const result = moved.replace(
@@ -216,6 +216,12 @@ export function processTables(profile: Readonly<TomlTable>): ProcessTable[] {
 export function programOf(table: Readonly<TomlTable>): string | undefined {
   const command = table.command;
   return Array.isArray(command) && typeof command[0] === "string" ? command[0] : undefined;
+}
+
+/** Whether `value` is the venv's Python as the local profile names it: `<venv>/bin/python[3[.N]]`. */
+export function isVenvPython(value: string, paths: RuntimePaths): boolean {
+  const normal = value.replace(/\$\{\{\s*workspace\s*\}\}/g, () => WORKSPACE);
+  return new RegExp(`^${literal(paths.localVenv)}/bin/python(?:3(?:\\.\\d+)?)?$`).test(normal);
 }
 
 /** Whether `program`, as a CodeZip Runtime profile names it, is on the Runtime. */

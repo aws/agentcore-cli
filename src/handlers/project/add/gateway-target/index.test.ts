@@ -3,7 +3,9 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../../../errors";
 import { expectError } from "../../../../testing";
-import { createGatewayProjectTestHarness, DEFAULT_BOX_GATEWAY } from "../gateway-test-support";
+import { createGatewayProjectTestHarness } from "../gateway-test-support";
+import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const DISCOVERY_URL = "https://idp.example.com/.well-known/openid-configuration";
 const ENDPOINT = "https://mcp.example.com";
@@ -36,6 +38,120 @@ async function projectWithCredentials() {
 }
 
 describe("project add gateway-target", () => {
+  test("names the bound runtime when the target goes on a Box gateway", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const runtime = spec.runtimes[0].name;
+    const box = boxGatewaySpec(runtime);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
+      agentCoreGateways: [box],
+    });
+    await addGateway();
+
+    const onBox = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", box.name, "--name", "search", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none"],
+    ]);
+    const onTools = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", "tools", "--name", "docs", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none"],
+    ]);
+
+    const note = `Gateway '${box.name}' is bound to runtime '${runtime}', so only that runtime gets its variables`;
+    expect(onBox.stderr()).toContain(note);
+    expect(onTools.stderr()).not.toContain("bound to runtime");
+
+    const asJson = await run([
+      "add",
+      "gateway-target",
+      ...["--gateway", box.name, "--name", "wiki", "--endpoint", ENDPOINT],
+      ...["--outbound-auth", "none", "--json"],
+    ]);
+    expect(JSON.parse(asJson.stdout()).notes).toEqual([note]);
+  });
+
+  /** A Box project with its Box gateway and the `tools` gateway; `boxed` gives the runtime a box. */
+  async function boxProject(boxed: boolean) {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const runtime = spec.runtimes[0];
+    const box = boxGatewaySpec(runtime.name);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: [
+        boxed
+          ? { ...runtime, box: { version: BOX_RELEASE.version }, platformVersion: "V2" as const }
+          : { ...runtime, platformVersion: "V2" as const },
+      ],
+      agentCoreGateways: [box],
+    });
+    await addGateway();
+    return { projectRoot, box };
+  }
+
+  async function targetNames(projectRoot: string, gateway: string): Promise<string[]> {
+    return (await projectSpec(projectRoot)).agentCoreGateways
+      .find((candidate: { name: string }) => candidate.name === gateway)
+      .targets.map((target: { name: string }) => target.name);
+  }
+
+  const BUILD_OWNED_NAMES = ["bedrock", "agentcore", "egress-api-example-com"];
+
+  test.each(BUILD_OWNED_NAMES)(
+    "refuses the build-owned name %s on a Box gateway, and only there",
+    async (name) => {
+      const { projectRoot, box } = await boxProject(true);
+
+      await expectError(
+        run([
+          "add",
+          "gateway-target",
+          ...["--gateway", box.name, "--name", name, "--endpoint", ENDPOINT],
+          ...["--outbound-auth", "none"],
+        ]),
+        `the gateway target name '${name}' is reserved on Box gateway '${box.name}': build ` +
+          `owns the names 'bedrock', 'agentcore', 'egress-*' for the agent's model calls, Memory ` +
+          `route, and egress targets. Choose another name.`,
+        InputValidationError,
+      );
+      // The same name is the user's on a gateway that is not a Box gateway.
+      await run([
+        "add",
+        "gateway-target",
+        ...["--gateway", "tools", "--name", name, "--endpoint", ENDPOINT],
+        ...["--outbound-auth", "none"],
+      ]);
+
+      expect(await targetNames(projectRoot, box.name)).toEqual([]);
+      expect(await targetNames(projectRoot, "tools")).toEqual([name]);
+    },
+  );
+
+  test.each(BUILD_OWNED_NAMES)(
+    "accepts the name %s on a bound gateway whose runtime does not run in a box",
+    async (name) => {
+      // A Box project runtime with no box.version: build writes no targets on its gateway.
+      const { projectRoot, box } = await boxProject(false);
+
+      await run([
+        "add",
+        "gateway-target",
+        ...["--gateway", box.name, "--name", name, "--endpoint", ENDPOINT],
+        ...["--outbound-auth", "none"],
+      ]);
+
+      expect(await targetNames(projectRoot, box.name)).toEqual([name]);
+    },
+  );
+
   test("adds endpoint and project Runtime shortcuts", async () => {
     const projectRoot = await inProject();
     await addGateway();
@@ -65,7 +181,7 @@ describe("project add gateway-target", () => {
       "DEFAULT",
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual([
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual([
       {
         name: "external",
         targetType: "mcpServer",
@@ -125,7 +241,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
     expect(await Bun.file(join(projectRoot, "agentcore", "assets")).exists()).toBe(false);
   });
 
@@ -149,7 +265,7 @@ describe("project add gateway-target", () => {
       `file://${path}`,
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets[0]).toEqual(target);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0]).toEqual(target);
   });
 
   test("accepts configured IAM auth through --target-configuration", async () => {
@@ -188,7 +304,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
   });
 
   test("rejects shortcut flags with complete Target JSON", async () => {
@@ -258,7 +374,7 @@ describe("project add gateway-target", () => {
       ]);
     }
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets).toEqual(targets);
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets).toEqual(targets);
   });
 
   test("adds an OAuth-authenticated endpoint shortcut", async () => {
@@ -278,7 +394,7 @@ describe("project add gateway-target", () => {
       ),
     ]);
 
-    expect((await projectSpec(projectRoot)).agentCoreGateways[1].targets[0].outboundAuth).toEqual({
+    expect((await projectSpec(projectRoot)).agentCoreGateways[0].targets[0].outboundAuth).toEqual({
       type: "OAUTH",
       credentialName: "oauth",
       scopes: ["read", "write"],
@@ -433,8 +549,7 @@ describe("project add gateway-target", () => {
     }
 
     const gateways = (await projectSpec(projectRoot)).agentCoreGateways;
-    expect(gateways[0]).toEqual(DEFAULT_BOX_GATEWAY);
-    expect(gateways[1].targets).toHaveLength(1);
-    expect(gateways[2].targets).toHaveLength(0);
+    expect(gateways[0].targets).toHaveLength(1);
+    expect(gateways[1].targets).toHaveLength(0);
   });
 });

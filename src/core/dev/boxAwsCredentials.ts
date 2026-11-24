@@ -3,18 +3,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AwsCredentialIdentity } from "@smithy/types";
 
-/** Resolves the AWS credentials `agentcore dev` hands to box; undefined when there are none. */
-export type ResolveAwsCredentials = () => Promise<AwsCredentialIdentity | undefined>;
+/**
+ * Resolves the AWS credentials `agentcore dev` hands to box, from the environment the dev
+ * container runs with; undefined when there are none.
+ */
+export type ResolveAwsCredentials = (
+  env: Record<string, string | undefined>,
+) => Promise<AwsCredentialIdentity | undefined>;
 
 /**
- * The credentials of the default AWS SDK provider chain, as the CLI's own AWS calls find them:
- * environment variables, the shared files, SSO, or a credential process. Undefined when the chain
- * finds none.
+ * The credentials of the identity the dev container runs with. Keys in `env` (from
+ * `agentcore/.env.local` or the shell) come first, then the `AWS_PROFILE` that `env` names, and
+ * then the default AWS SDK provider chain: the shared files, SSO, or a credential process. So box
+ * signs as the same account as the agent outside a box. Undefined when nothing resolves.
  */
-export const resolveDefaultAwsCredentials: ResolveAwsCredentials = async () => {
+export const resolveDefaultAwsCredentials: ResolveAwsCredentials = async (env) => {
+  if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) {
+    return {
+      accessKeyId: env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      ...(env.AWS_SESSION_TOKEN && { sessionToken: env.AWS_SESSION_TOKEN }),
+    };
+  }
   const { STSClient } = await import("@aws-sdk/client-sts");
   // The region only satisfies the client; resolving credentials makes no call to it.
-  const client = new STSClient({ region: "us-east-1" });
+  const client = new STSClient({
+    region: "us-east-1",
+    ...(env.AWS_PROFILE && { profile: env.AWS_PROFILE }),
+  });
   try {
     return await client.config.credentials();
   } catch {
@@ -57,19 +73,21 @@ function credentialsText(credentials: AwsCredentialIdentity): string {
 
 /**
  * Writes the resolved AWS credentials as the `[default]` profile that a boxed dev container signs
- * with (`aws://default`), in place of a mount of `~/.aws`. Box in the container runs as the image's
+ * with (a bare `aws://`), in place of a mount of `~/.aws`. Box in the container runs as the image's
  * user, not as you, so it cannot read a `~/.aws/credentials` that only you may read (mode 0600, the
  * usual case on Linux), and `~/.aws` may not hold the credentials at all (SSO, a credential process,
  * environment variables). The files are readable by any user in the container but sit in a folder
  * that only you may open on the host, and they hold only the current credentials, not every profile
  * in `~/.aws`. Each file is mounted on its own, so a rewrite in place reaches the container.
- * Returns undefined when no credentials resolve.
+ * `env` is the environment the container runs with, which picks the identity. Returns undefined
+ * when no credentials resolve.
  */
 export async function writeBoxDevAwsFiles(
   resolveCredentials: ResolveAwsCredentials,
-  region: string | undefined,
+  env: Record<string, string | undefined>,
 ): Promise<BoxDevAwsFiles | undefined> {
-  const credentials = await resolveCredentials();
+  const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
+  const credentials = await resolveCredentials(env);
   if (!credentials) return undefined;
 
   // mkdtemp makes the folder 0700: no other host user can reach the files inside.
@@ -100,7 +118,7 @@ export async function writeBoxDevAwsFiles(
       AWS_SHARED_CREDENTIALS_FILE: `${CONTAINER_AWS_DIRECTORY}/credentials`,
     },
     async refresh() {
-      const next = await resolveCredentials();
+      const next = await resolveCredentials(env);
       // writeFile truncates in place, so the file keeps the inode the container mounted.
       if (next) await writeFile(credentialsFile, credentialsText(next));
     },

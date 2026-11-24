@@ -1,11 +1,12 @@
+import type { LocalWorkloadSources, WorkloadBuilds } from "../../../handlers/project/types";
 import type {
+  BuildProjectInput,
   DeployResult,
   Project,
   ProjectEvent,
   ResolvedDeployedResource,
   ResolvedProjectResource,
   TeardownConfirmationHandler,
-  BoxGatewayDeletionHandler,
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
 import type { BoxNetwork } from "../boxNetwork";
@@ -15,17 +16,19 @@ export type BuildBackendInput = {
   boxNetworks: readonly BoxNetwork[];
 };
 
-export type DeployBackendInput = {
+export type DeployBackendInput = BuildProjectInput & {
   /** Fully resolved account and region selected from aws-targets.json. */
   target: AwsDeploymentTarget;
   /** Requests approval after synthesis identifies a teardown. */
   confirmTeardown: TeardownConfirmationHandler;
-  /** Requests approval for a deploy that would delete the Box gateway; absent means declined. */
-  confirmBoxGatewayDeletion?: BoxGatewayDeletionHandler;
   /** Whether to enable CloudWatch Transaction Search on deploy (global config). */
   transactionSearch?: boolean;
   /** Leaves the CDK bootstrap stack alone for accounts bootstrapped outside the CLI. */
   skipBootstrap?: boolean;
+  /** Effective workload build modes the manager resolved; resolved here when absent. */
+  workloadBuilds?: WorkloadBuilds;
+  /** Build sources of the ContainerLocal workloads, resolved with workloadBuilds. */
+  localWorkloads?: LocalWorkloadSources;
 } & BuildBackendInput;
 
 export type ResolveDeployedResourcesBackendInput = {
@@ -38,7 +41,10 @@ export type ResolveProjectResourcesBackendInput = {
 
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
-  build(project: Project, input: BuildBackendInput): AsyncGenerator<ProjectEvent, void>;
+  build(
+    project: Project,
+    input: BuildProjectInput & BuildBackendInput,
+  ): AsyncGenerator<ProjectEvent, void>;
   deploy(project: Project, input: DeployBackendInput): AsyncGenerator<ProjectEvent, DeployResult>;
   resolveDeployedResources(
     project: Project,

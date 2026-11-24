@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { parse } from "smol-toml";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { writeMigrationState } from "./migrate/journal";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import semver from "semver";
 import {
@@ -17,7 +18,7 @@ import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
 } from "../../projectSchemas/credential";
-import { ProjectSpecSchema } from "../../projectSchemas/project";
+import { boxGatewaySpec, ProjectSpecSchema } from "../../projectSchemas/project";
 import { ENV_LOCAL_RELATIVE_PATH } from "./envLocal";
 import { readEnvFile } from "../../io/envFile";
 import {
@@ -46,13 +47,18 @@ import {
   type AddResourceOptions,
 } from "../../handlers/project/types";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
-import { boxLocalProfileFile, boxProfileWarnings, renderBoxProfile } from "./templates/boxProfile";
+import {
+  boxLocalProfileFile,
+  boxProfileWarnings,
+  renderAwsMetadataPolicy,
+  renderBoxProfile,
+} from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
 import type { DeployBackendInput, ProjectBackend } from "./backends/types";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { MissingToolError } from "../../io/exec";
-import { seedBoxCache } from "./backends/box-release-test-support";
 import { FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
+import { seedBoxCache } from "./backends/box-release-test-support";
 import { MINIMUM_COMPATIBLE_CDK_VERSION } from "./backends/cdk/compatibility";
 
 const AGENT_PYTHON = resolveRuntimeTemplateShortcut("agent-python-minimal");
@@ -97,7 +103,6 @@ afterEach(async () => {
   );
 });
 
-// A manager whose runner records commands instead of spawning them.
 /** A command the manager ran, with the uv Python settings it set, if any. */
 type Command = {
   command: string[];
@@ -106,6 +111,7 @@ type Command = {
   UV_PYTHON_INSTALL_DIR?: string;
 };
 
+// A manager whose runner records commands instead of spawning them.
 function manager(processEnv?: NodeJS.ProcessEnv): {
   manager: FsProjectManager;
   commands: Command[];
@@ -167,13 +173,6 @@ async function runAdd(
     const next = await iterator.next();
     if (next.done) return next.value;
   }
-}
-
-/** Every event an operation yields, in order. */
-async function collectEvents(iterator: AsyncGenerator<ProjectEvent, unknown>) {
-  const events: ProjectEvent[] = [];
-  for await (const event of iterator) events.push(event);
-  return events;
 }
 
 async function projectManifest(projectRoot: string): Promise<string[]> {
@@ -373,7 +372,8 @@ describe("FsProjectManager.create", () => {
 
   test("scaffolds the container template with a Dockerfile and .dockerignore", async () => {
     const directory = await inTempDirectory();
-    await runCreate(manager().manager, {
+    const setup = manager();
+    await runCreate(setup.manager, {
       name: "example",
       scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_CONTAINER,
     });
@@ -386,6 +386,12 @@ describe("FsProjectManager.create", () => {
 
     const spec = await Bun.file(join(directory, "example", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes[0]).toMatchObject({ build: "Container", dockerfile: "Dockerfile" });
+    // The image builds its own venv, so the host venv may use any Python. Only a box template runs
+    // the agent in a box, so this template gets no box profile and makes no Box project.
+    expect(setup.commands).toContainEqual({ command: ["uv", "sync"], cwd: appDir });
+    expect(await Bun.file(join(directory, "example", BOX_PROFILE_FILE)).exists()).toBe(false);
+    expect(await Bun.file(join(appDir, "start.sh")).exists()).toBe(false);
+    expect(spec.projectType).toBeUndefined();
   });
 
   test("scaffolds a container image that runs the box dev, build and deploy stage", async () => {
@@ -514,7 +520,11 @@ describe("FsProjectManager.create", () => {
         command: ["npm", "install", "--loglevel=http"],
         cwd: join(projectRoot, "agentcore", "cdk"),
       },
-      { command: ["uv", "sync"], cwd: join(projectRoot, "app", "agent_python_minimal") },
+      // The minimal template is not a box template, so uv may use any Python.
+      {
+        command: ["uv", "sync"],
+        cwd: join(projectRoot, "app", "agent_python_minimal"),
+      },
       { command: ["git", "init"], cwd: projectRoot },
     ]);
   });
@@ -553,6 +563,7 @@ describe("FsProjectManager.create", () => {
       name: "python",
       scaffoldRuntimeInput: AGENT_PYTHON,
     });
+    // Only a box template makes a Box project, whose dev runs the box on PATH.
     expect(python.checkedTools).toEqual(["npm", "uv", "git", "uv"]);
 
     const typescript = manager();
@@ -573,7 +584,28 @@ describe("FsProjectManager.create", () => {
     expect(harness.checkedTools).toEqual(["npm", "git"]);
   });
 
-  test("checks for box only for the CodeZip box template, whose dev runs the box on PATH", async () => {
+  test("syncs a boxed agent's venv on a uv-managed Python in the folder its profile grants", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager();
+    // A user's own UV_PYTHON_INSTALL_DIR would put the Python outside the profile's exec grant.
+    const userDir = process.env.UV_PYTHON_INSTALL_DIR;
+    process.env.UV_PYTHON_INSTALL_DIR = "/opt/pythons";
+    try {
+      await runCreate(subject, { name: "example", scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX });
+    } finally {
+      if (userDir === undefined) delete process.env.UV_PYTHON_INSTALL_DIR;
+      else process.env.UV_PYTHON_INSTALL_DIR = userDir;
+    }
+
+    expect(commands).toContainEqual({
+      command: ["uv", "sync"],
+      cwd: join(directory, "example", "app", "agent_python_strands_box"),
+      UV_MANAGED_PYTHON: "1",
+      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    });
+  });
+
+  test("checks for box only for a CodeZip Box template, whose dev runs the box on PATH", async () => {
     await inTempDirectory();
 
     const codeZip = manager();
@@ -600,41 +632,25 @@ describe("FsProjectManager.create", () => {
     expect(skipInstall.checkedTools).toEqual(["git"]);
   });
 
-  test("syncs a box template's venv on a uv-managed Python in the folder its profile grants", async () => {
+  // box drops the profile's optional .venv deny_write while the folder is missing, and then refuses
+  // the profile, as the venv's Python would be under the project's write grant. A container's image
+  // builds its own venv, and an agent outside a box has no profile.
+  test.each([
+    ["a CodeZip box agent", AGENT_PYTHON_STRANDS_BOX, true],
+    ["a container box agent", AGENT_PYTHON_STRANDS_BOX_CONTAINER, false],
+    ["an agent outside a box", AGENT_PYTHON, false],
+  ] as const)("makes an empty .venv for %s: %p", async (_, runtime, made) => {
     const directory = await inTempDirectory();
-    // The user's own folder would put the venv's Python outside the profile's exec grant.
-    const userEnv = { UV_PYTHON_INSTALL_DIR: "/opt/pythons", XDG_DATA_HOME: "/xdg" };
 
-    const boxed = manager(userEnv);
-    await runCreate(boxed.manager, {
-      name: "boxed",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-    });
-    expect(boxed.commands).toContainEqual({
-      command: ["uv", "sync"],
-      cwd: join(directory, "boxed", "app", AGENT_PYTHON_STRANDS_BOX.runtimeName),
-      UV_MANAGED_PYTHON: "1",
-      UV_PYTHON_INSTALL_DIR: join(homedir(), ".local", "share", "uv", "python"),
+    await runCreate(manager().manager, {
+      name: "demo",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
     });
 
-    // Another template keeps the user's uv settings.
-    const plain = manager(userEnv);
-    await runCreate(plain.manager, { name: "plain", scaffoldRuntimeInput: AGENT_PYTHON });
-    expect(plain.commands).toContainEqual({
-      command: ["uv", "sync"],
-      cwd: join(directory, "plain", "app", "agent_python_minimal"),
-    });
-
-    // A box container's image builds its own venv, so the host venv keeps the user's uv settings.
-    const container = manager(userEnv);
-    await runCreate(container.manager, {
-      name: "container",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX_CONTAINER,
-    });
-    expect(container.commands).toContainEqual({
-      command: ["uv", "sync"],
-      cwd: join(directory, "container", "app", AGENT_PYTHON_STRANDS_BOX_CONTAINER.runtimeName),
-    });
+    const venv = join(directory, "demo", "app", runtime.runtimeName, ".venv");
+    expect(existsSync(venv)).toBe(made);
+    if (made) expect(readdirSync(venv)).toEqual([]);
   });
 
   test("fails before writing files when box is not on PATH, with the install hint", async () => {
@@ -800,6 +816,24 @@ describe("FsProjectManager.create", () => {
 
 describe("FsProjectManager.create box profile", () => {
   test.each([
+    ["a Box project gets the Box lines", AGENT_PYTHON_STRANDS_BOX, true],
+    ["a project with no box matches v1.x", AGENT_PYTHON, false],
+  ])("writes .gitignore: %s", async (_label, scaffoldRuntimeInput, boxed) => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const gitignore = await readFile(join(directory, "example", ".gitignore"), "utf8");
+    for (const line of [".box/*/aws/", ".box-dist/", ".box-dev/"]) {
+      expect(gitignore.split("\n").includes(line)).toBe(boxed);
+    }
+  });
+
+  test.each([
     ["after installing", false],
     ["with --skip-install", true],
   ])(
@@ -819,25 +853,20 @@ describe("FsProjectManager.create box profile", () => {
         renderBoxProfile("example", AGENT_PYTHON_STRANDS_BOX, "eu-west-1")!,
       );
       expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
+      // Beside it, the policy file it lists, written first.
+      const policy = join(dirname(path), "aws-metadata-block.dw");
+      expect(await readFile(policy, "utf8")).toBe(renderAwsMetadataPolicy());
+      const messages = events.map((event) => (event as { message?: string }).message);
+      expect(messages.indexOf(`writing box policy file ${policy}`)).toBeGreaterThanOrEqual(0);
+      expect(messages.indexOf(`writing box policy file ${policy}`)).toBeLessThan(
+        messages.indexOf(`writing box profile ${path}`),
+      );
       expect(events).toContainEqual({
         type: "warning",
         message: defaultLogTargetNotice(AGENT_PYTHON_STRANDS_BOX.runtimeName, BOX_PROFILE_FILE),
       });
     },
   );
-
-  test("calls Bedrock in the region build would use when create is given none", async () => {
-    const directory = await inTempDirectory();
-    await runCreate(manager({ AWS_REGION: "ap-southeast-2" }).manager, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall: true,
-      skipGit: true,
-    });
-
-    const text = await readFile(join(directory, "example", BOX_PROFILE_FILE), "utf8");
-    expect(text).toContain('bedrock.region = "ap-southeast-2"');
-  });
 
   test("warns when a LiteLLM agent's box profile reads a key that nothing set", async () => {
     await inTempDirectory();
@@ -909,6 +938,41 @@ describe("FsProjectManager.create box profile", () => {
     } as CreateProjectInput);
 
     expect(existsSync(join(directory, "example", ".box"))).toBe(false);
+  });
+
+  test.each([
+    ["the CodeZip box template", AGENT_PYTHON_STRANDS_BOX],
+    ["the container box template", AGENT_PYTHON_STRANDS_BOX_CONTAINER],
+  ])("a template with a box profile makes a Box project: %s", async (_label, runtime) => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: runtime,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const spec = JSON.parse(
+      await readFile(join(directory, "example", "agentcore", "agentcore.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(spec.projectType).toBe("box");
+    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec(runtime.runtimeName)]);
+  });
+
+  test("a template with no box profile makes no Box project", async () => {
+    const directory = await inTempDirectory();
+    await runCreate(manager().manager, {
+      name: "example",
+      scaffoldRuntimeInput: AGENT_TYPESCRIPT_STRANDS,
+      skipInstall: true,
+      skipGit: true,
+    });
+
+    const spec = JSON.parse(
+      await readFile(join(directory, "example", "agentcore", "agentcore.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect("projectType" in spec).toBe(false);
+    expect(spec.agentCoreGateways ?? []).toEqual([]);
   });
 });
 
@@ -1465,6 +1529,7 @@ describe("FsProjectManager.addResource", () => {
           bedrockManagedAgents?: boolean;
           tags?: Record<string, string>;
           additionalPolicies?: string[];
+          platformVersion?: string;
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1508,6 +1573,159 @@ describe("FsProjectManager.addResource", () => {
       expect(String(error)).toContain("Cannot deploy to China region cn-north-1");
       expect(String(error)).toContain("'agent_python_minimal'");
       expect(deployCalls).toEqual([]);
+    });
+
+    test("deploy of a project that is not a Box project needs no platformVersion", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget("us-west-2");
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeUndefined();
+      expect(deployCalls).toHaveLength(1);
+    });
+
+    describe("runtimes on Runtime V2 in a region without it", () => {
+      // partition.test.ts covers which regions have no Runtime V2; one is enough here.
+      test.each(["us-west-1"])(
+        "deploy of a Box project to %s fails before anything is written",
+        async (region) => {
+          await inTempDirectory();
+          const { subject, project, deployCalls } = await projectWithTarget(
+            region,
+            undefined,
+            AGENT_PYTHON_STRANDS_BOX,
+          );
+          const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+          const before = await readFile(specPath, "utf8");
+
+          const { error } = await deployOutcome(subject, project);
+          expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+          expect(String(error)).toContain(
+            `Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target ` +
+              `'primary' in ${region}: Box runs on AgentCore Runtime V2 ("platformVersion": "V2"), ` +
+              `which is not available in ${region}. Change the region of ` +
+              "target 'primary' in agentcore/aws-targets.json, or deploy with --target to a target " +
+              "in another region, then retry.",
+          );
+          expect(await readFile(specPath, "utf8")).toBe(before);
+          expect(deployCalls).toEqual([]);
+        },
+      );
+
+      // Deploying a project with no runtime is how the CLI removes its stack, so a Box project that was
+      // deployed to such a region with an earlier build can still be torn down.
+      test("deploy of a Box project with no runtime to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        await writeFile(
+          specPath,
+          JSON.stringify({ ...spec, runtimes: [], agentCoreGateways: [], memories: [] }, null, 2),
+        );
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).not.toBeInstanceOf(RegionUnsupportedFeatureError);
+      });
+
+      test("deploy of a Box project with no target to us-west-1 fails before STS or aws-targets.json", async () => {
+        await inTempDirectory();
+        const { project } = await projectWithTarget(
+          "us-east-1",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const targetsPath = join(project.rootPath, "agentcore", "aws-targets.json");
+        await rm(targetsPath);
+        const accounts: string[] = [];
+        const subject = new FsProjectManager({
+          logger: createSilentLogger(),
+          identity: new TestIdentityClient(),
+          enableTransactionSearch: async () => {},
+          boxProfileResolver: new FakeBoxProfileResolver(),
+          runner: async () => {},
+          checkTool: async () => {},
+          resolveAccount: async (region) => {
+            accounts.push(region);
+            return "111122223333";
+          },
+        });
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          new RegionUnsupportedFeatureError(
+            "Cannot deploy runtime 'agent_python_strands_box' of project 'example' to target " +
+              "'default' in us-west-1: Box runs on AgentCore Runtime V2 (\"platformVersion\": " +
+              '"V2"), which is not available in us-west-1. Deploy with --region set ' +
+              "to a region that has it, or add a target in another region to " +
+              "agentcore/aws-targets.json, then retry.",
+          ),
+        );
+        expect(accounts).toEqual([]);
+        expect(existsSync(targetsPath)).toBe(false);
+      });
+
+      test("deploy of a project that is not a Box project to us-west-1 is not refused", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeUndefined();
+        expect(deployCalls).toHaveLength(1);
+      });
+
+      // Outside a Box project too: CloudFormation could not create a V2 runtime there either.
+      test("refuses a runtime that asks for V2 in a project that is not a Box project, by name", async () => {
+        await inTempDirectory();
+        const { subject, project, deployCalls } = await projectWithTarget("us-west-1");
+        const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+        const spec = JSON.parse(await readFile(specPath, "utf8"));
+        spec.runtimes[0].platformVersion = "V2";
+        await writeFile(specPath, JSON.stringify(spec, null, 2));
+
+        const { error } = await deployOutcome(subject, project);
+        expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+        expect(String(error)).toContain(
+          `Cannot deploy runtime '${spec.runtimes[0].name}' of project 'example' to target ` +
+            "'primary' in us-west-1: it asks for AgentCore Runtime V2",
+        );
+        expect(deployCalls).toEqual([]);
+      });
+
+      test("names --target, not a new target, when aws-targets.json has targets", async () => {
+        await inTempDirectory();
+        const { subject, project } = await projectWithTarget(
+          "us-west-2",
+          undefined,
+          AGENT_PYTHON_STRANDS_BOX,
+        );
+        const fresh = (await subject.resolve({ filePath: project.rootPath }))!;
+
+        const deploying = (async () => {
+          for await (const _ of subject.deploy(fresh, {
+            target: "default",
+            region: "us-west-1",
+            confirmTeardown: async () => false,
+          }));
+        })();
+
+        await expect(deploying).rejects.toThrow(
+          "Deploy with --region set to a region that has it, or with --target set to a target in " +
+            "another region, then retry.",
+        );
+      });
     });
 
     test("deploy to a China target hard-fails a Bedrock Managed Agents runtime", async () => {
@@ -1862,11 +2080,8 @@ describe("FsProjectManager.addResource", () => {
           httpRuntime: { runtime: "agent_python_minimal" },
         },
       });
-      expect(
-        added.spec.agentCoreGateways
-          .find((gateway) => gateway.name === "gw")!
-          .targets.map((target) => target.name),
-      ).toEqual(["rt"]);
+      const gateway = added.spec.agentCoreGateways.find(({ name }) => name === "gw");
+      expect(gateway!.targets.map((target) => target.name)).toEqual(["rt"]);
     });
 
     test("deploy to a China target hard-fails a Gateway with a connector Target", async () => {
@@ -1874,6 +2089,7 @@ describe("FsProjectManager.addResource", () => {
       const { subject, project, deployCalls } = await projectWithTarget("cn-north-1");
       await editSpec(project, (spec) => {
         spec.agentCoreGateways = [
+          ...(spec.agentCoreGateways ?? []),
           {
             name: "gw",
             authorizerType: "AWS_IAM",
@@ -2001,7 +2217,7 @@ describe("FsProjectManager.build", () => {
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
-  // never produces them, so tests stub the directory in.
+  // never produces them, so tests stub in the library at the pin create() vends.
   async function scaffolded(
     subject: FsProjectManager,
     directory: string,
@@ -2014,9 +2230,16 @@ describe("FsProjectManager.build", () => {
       skipGit: true,
     });
     if (withDependencies) {
-      await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-        recursive: true,
-      });
+      const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+      const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+      const { dependencies } = JSON.parse(
+        await readFile(join(cdkDirectory, "package.json"), "utf8"),
+      );
+      await mkdir(library, { recursive: true });
+      await writeFile(
+        join(library, "package.json"),
+        JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+      );
     }
     return project;
   }
@@ -2050,41 +2273,63 @@ describe("FsProjectManager.build", () => {
         cwd: join(directory, "example", "agentcore", "cdk"),
       },
     ]);
-    // Build adds the Bedrock target, which create no longer declares; the Box gateway signs the
-    // model calls with its own role, so build grants it Bedrock.
+    // Build adds the Bedrock target, and grants it to the Box gateway's role, since the gateway signs
+    // the agent's model calls with that role. The Memory calls take no target: they go to Memory
+    // directly, signed with the execution role. With OTEL on, build grants the execution role X-Ray
+    // for the default traces target of the Runtime profile.
     expect(events).toEqual([
       {
         type: "step",
         message:
-          "adding gateway target 'bedrock' to 'agent-python-strands-box-box' for the agent's model calls",
+          "adding target 'bedrock' to gateway 'agent-python-strands-box-box-egress' in agentcore.json, for the boxed agent's model calls",
       },
       {
         type: "step",
         message:
-          "adding agentcore/box-bedrock-policy.json to additionalPolicies of 'agent-python-strands-box-box', so the gateway can call the Bedrock model",
+          "adding 'agentcore/box-bedrock-policy.json' to gateway 'agent-python-strands-box-box-egress' additionalPolicies in agentcore.json, so its role can call the Bedrock model",
       },
       {
         type: "step",
         message:
-          "adding gateway target 'agentcore' to 'agent-python-strands-box-box' for the agent's Memory calls",
-      },
-      {
-        type: "step",
-        message:
-          "adding agentcore/box-memory-policy.json to additionalPolicies of 'agent-python-strands-box-box', so the gateway can call Memory",
+          "adding agentcore/box-telemetry-policy-agent_python_strands_box.json to additionalPolicies of 'agent_python_strands_box', so its box can send telemetry to CloudWatch",
       },
       { type: "step", message: "writing agentcore/box-bedrock-policy.json" },
-      { type: "step", message: "writing agentcore/box-memory-policy.json" },
+      {
+        type: "step",
+        message: "writing agentcore/box-telemetry-policy-agent_python_strands_box.json",
+      },
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
-    // Build generates the canonical AWS tree under .box/<agent>/aws.
-    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
-    expect(existsSync(join(aws, "box"))).toBe(true);
-    expect(existsSync(join(aws, "profile.toml"))).toBe(true);
-    // The zip carries box and the Runtime profile, copied into the code folder's .box-dist.
+    // The zip carries box and the Runtime profile in the code folder's .box-dist.
     const dist = join(directory, "example", "app", "agent_python_strands_box", ".box-dist");
     expect(existsSync(join(dist, "box"))).toBe(true);
-    expect(existsSync(join(dist, "profile.toml"))).toBe(true);
+    // .box/<agent>/aws has only the rendered Runtime profile, for people to read: box is staged once.
+    const aws = join(directory, "example", ".box", "agent_python_strands_box", "aws");
+    expect(await readFile(join(aws, "profile.toml"), "utf8")).toBe(
+      await readFile(join(dist, "profile.toml"), "utf8"),
+    );
+    expect(existsSync(join(aws, "box"))).toBe(false);
+    expect(existsSync(join(aws, "resources", "shared"))).toBe(false);
+  });
+
+  // An existing Box project has no platformVersion, the common case; a V1 one is a hand edit.
+  // The project schema holds the rule, so every command stops when it reads agentcore.json, before
+  // build, deploy, or any other step writes a file.
+  test.each([
+    ["no platformVersion", undefined, "has no platformVersion"],
+    ['"platformVersion": "V1"', "V1", 'has "platformVersion": "V1"'],
+  ])("a Box runtime with %s stops the project from loading", async (_label, version, actual) => {
+    const directory = await inTempDirectory();
+    const { manager: subject } = manager(await boxHome());
+    const project = await scaffolded(subject, directory);
+    const specPath = join(project.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf8"));
+    spec.runtimes[0].platformVersion = version;
+    await writeFile(specPath, JSON.stringify(spec, null, 2));
+
+    await expect(subject.resolve({ filePath: project.rootPath })).rejects.toThrow(
+      `${actual}, but every runtime of a Box project runs on AgentCore Runtime V2.`,
+    );
   });
 
   test("downloads box from the public box release when it is not cached", async () => {
@@ -2097,18 +2342,39 @@ describe("FsProjectManager.build", () => {
 
     // The test runner downloads nothing, so build stops before synth and names the URL.
     await expect(drain(subject.build(project))).rejects.toThrow(
-      /downloaded from https:\/\/github\.com\/mquang-amazon\/box-releases\//,
+      /downloaded from https:\/\/github\.com\/strands-agents\/box\//,
     );
     expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });
 
-  test("fails actionably when the CDK dependencies are missing", async () => {
+  test("installs the CDK dependencies when node_modules is missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager(await boxHome());
+    const project = await scaffolded(subject, directory, false);
+    commands.length = 0;
+    const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+
+    const events = await drain(subject.build(project));
+
+    expect(events).toContainEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commands.map(({ command, cwd }) => [command.slice(0, 2), cwd])).toEqual([
+      [["npm", "install"], cdkDirectory],
+      [["npm", "run"], cdkDirectory],
+    ]);
+  });
+
+  test("fails actionably when node_modules is missing and dependency management is off", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
     const project = await scaffolded(subject, directory, false);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/npm install/);
+    await expect(
+      drain(subject.build(project, { disableDependencyManagement: true })),
+    ).rejects.toThrow(/Run 'npm install'/);
     expect(commands).toEqual([]);
   });
 
@@ -2127,42 +2393,40 @@ describe("FsProjectManager.build", () => {
     expect(commands).toEqual([]);
   });
 
-  test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
+  test("sends a boxed agent's default Memory calls to Memory directly, not through the Box gateway", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager(await boxHome());
-    const { project } = await runCreate(subject, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall: true,
-      skipGit: true,
-    });
-    await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-      recursive: true,
-    });
+    const project = await scaffolded(subject, directory);
 
     const events = await drain(subject.build(project));
 
     const root = join(directory, "example");
     const spec = JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf8"));
+    const boxGatewayName = boxGatewaySpec(AGENT_PYTHON_STRANDS_BOX.runtimeName).name;
     const box = spec.agentCoreGateways.find(
-      ({ name }: { name: string }) => name === "agent-python-strands-box-box",
+      ({ name }: { name: string }) => name === boxGatewayName,
     );
-    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock", "agentcore"]);
-    expect(box.additionalPolicies).toEqual([
-      "agentcore/box-bedrock-policy.json",
-      "agentcore/box-memory-policy.json",
-    ]);
-    expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(true);
-    expect(events).toContainEqual({
+    // The gateway gets no Memory target, and its role no Memory policy.
+    expect(box.targets.map(({ name }: { name: string }) => name)).toEqual(["bedrock"]);
+    expect(box.additionalPolicies).toEqual(["agentcore/box-bedrock-policy.json"]);
+    expect(existsSync(join(root, "agentcore", "box-memory-policy.json"))).toBe(false);
+    expect(events).not.toContainEqual({
       type: "step",
       message: "writing agentcore/box-memory-policy.json",
     });
-    // The Runtime profile routes the Memory calls to that target.
-    const profile = await readFile(
-      join(root, "app", "agent_python_strands_box", ".box-dist", "profile.toml"),
-      "utf8",
-    );
-    expect(profile).toContain('url = "${{ inputs.gateway.url }}/agentcore"');
+    // The Runtime profile sends the Memory calls to Memory, signed with the execution role.
+    const profile = parse(
+      await readFile(
+        join(root, "app", "agent_python_strands_box", ".box-dist", "profile.toml"),
+        "utf8",
+      ),
+    ) as { egress: Record<string, unknown> };
+    // Build writes both for the region it builds for, which the environment of the test sets.
+    const region = box.targets[0].outboundAuth.region as string;
+    expect(profile.egress.agentcore).toEqual({
+      destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
+      secret: { ref: "aws://" },
+    });
 
     // A second build, of the project as it now reads, changes nothing in agentcore.json.
     const reread = await subject.resolve({ filePath: root });
@@ -3304,65 +3568,6 @@ describe("docs-only runtimes", () => {
     });
 
     expect(await readFile(join(appDir, "notes.txt"), "utf-8")).toBe("keep me\n");
-  });
-
-  test("a box runtime gets its own box profile, calling Bedrock in the region build uses", async () => {
-    const { manager: subject } = manager({ AWS_REGION: "ap-southeast-2" });
-    const project = await emptyProject(subject);
-
-    const events = await collectEvents(
-      subject.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: {
-          name: "agent",
-          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
-        },
-      }),
-    );
-
-    const path = join(project.rootPath, boxLocalProfileFile("agent"));
-    expect(await readFile(path, "utf-8")).toContain('bedrock.region = "ap-southeast-2"');
-    expect(events).toContainEqual({ type: "step", message: `writing box profile ${path}` });
-  });
-
-  test("a box runtime keeps a box profile that is already there", async () => {
-    const { manager: subject } = manager();
-    const project = await emptyProject(subject);
-    const path = join(project.rootPath, boxLocalProfileFile("agent"));
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, "# mine\n");
-
-    const events = await collectEvents(
-      subject.addResource(project, {
-        resourceType: "runtime",
-        resourceConfig: {
-          name: "agent",
-          scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
-        },
-      }),
-    );
-
-    expect(await readFile(path, "utf-8")).toBe("# mine\n");
-    expect(events).toContainEqual({
-      type: "warning",
-      message: `box profile ${path} already exists; left unchanged`,
-    });
-  });
-
-  test("a box runtime that fails to commit leaves no box profile behind", async () => {
-    const { manager: subject } = manager();
-    const project = await emptyProject(subject);
-
-    await addFails(subject, project, {
-      resourceType: "runtime",
-      resourceConfig: {
-        name: "agent",
-        networkMode: "VPC",
-        scaffoldRuntimeInput: { ...AGENT_PYTHON_STRANDS_BOX, runtimeName: "agent" },
-      },
-    });
-
-    expect(existsSync(join(project.rootPath, ".box", "agent"))).toBe(false);
   });
 
   test("build writes what the code changed to agentcore.json, then hands off to the backend", async () => {

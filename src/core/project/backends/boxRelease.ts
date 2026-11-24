@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -17,12 +25,16 @@ const TargetAssetSchema = AssetSchema.extend({ target: z.string().min(1) });
 
 /**
  * A box release: the Linux arm64 build that ships to AgentCore Runtime. Its archive holds box,
- * its helpers, its packs and release.json.
+ * its helpers, its packs and release.json. `darwin`, the macOS arm64 build, is what the e2e
+ * workflow installs on its macOS runner; the CLI does not read it. Its own `version`, when set,
+ * names the release it comes from instead of `version`, for a release whose macOS build is
+ * broken.
  */
 const BoxReleaseSchema = z.object({
   repo: z.string().min(1),
   version: z.string().min(1),
   linux: TargetAssetSchema,
+  darwin: TargetAssetSchema.extend({ version: z.string().min(1).optional() }).optional(),
 });
 
 export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
@@ -35,26 +47,20 @@ export type BoxRelease = z.infer<typeof BoxReleaseSchema>;
 const PINNED = z.object({ box: BoxReleaseSchema }).parse(pinned);
 export const BOX_RELEASE: BoxRelease = PINNED.box;
 
-/**
- * The first box release that reads the profiles that the CLI writes: their `@box/<name>` packs, and
- * the `key` of an input of the `@box/agentcore` pack.
- */
-export const BOX_MINIMUM_VERSION = "0.1.11-linux-preview.7";
-
 /** The GitHub release page of the pinned box, with a build for each machine it supports. */
 export const BOX_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_RELEASE.version}`;
 
 /**
- * The GitHub release page of {@link BOX_MINIMUM_VERSION}, which has a macOS build. A local box runs
- * only `agentcore dev` and the profile checks of build, so a box of this release or a later one
- * does, also when the pinned release has no build for the machine.
+ * Where macOS gets box when the darwin pin names its own release, because the pinned release's
+ * macOS build does not run; empty otherwise.
  */
-export const BOX_MINIMUM_RELEASE_PAGE = `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${BOX_MINIMUM_VERSION}`;
-
-/** What to install when the pinned release has no build for the machine. */
-export const BOX_OTHER_MACHINE_HINT =
-  `When that release has no build for your machine, use box ${BOX_MINIMUM_VERSION} ` +
-  `(${BOX_MINIMUM_RELEASE_PAGE}) or a later release that has one.`;
+const DARWIN_VERSION = BOX_RELEASE.darwin?.version;
+export const BOX_MACOS_HINT =
+  DARWIN_VERSION !== undefined && DARWIN_VERSION !== BOX_RELEASE.version
+    ? `On macOS, use ${BOX_RELEASE.darwin?.asset} from ` +
+      `https://github.com/${BOX_RELEASE.repo}/releases/tag/v${DARWIN_VERSION} instead: the ` +
+      `macOS build of ${BOX_RELEASE.version} does not run.`
+    : "";
 
 /** Where a release's asset downloads from: the public GitHub release, no token needed. */
 export function boxReleaseAssetUrl(
@@ -76,9 +82,10 @@ export const BOX_BINARIES = [
  * dev ask for when it is not on PATH.
  */
 export const BOX_INSTALL_HINT =
-  `Install box: download the build for your machine from ${BOX_RELEASE_PAGE}, unpack it into ` +
-  "a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH. " +
-  BOX_OTHER_MACHINE_HINT;
+  `Install box: download box-cli-v${BOX_RELEASE.version}-<target>.tar.gz for your machine from ` +
+  `${BOX_RELEASE_PAGE} (not a box-v${BOX_RELEASE.version}-* archive, which has no packs), unpack ` +
+  "it into a folder (tar -xzf <archive> -C <folder>), and add that folder to your PATH." +
+  (BOX_MACOS_HINT === "" ? "" : ` ${BOX_MACOS_HINT}`);
 
 /** A Linux arm64 box for AgentCore Runtime. */
 export type BoxLinuxBuild = {
@@ -233,18 +240,29 @@ async function installBox(
 /**
  * Moves the checked `payload` into the cache folder `root`, where another process may be
  * installing the same release at the same time: several concurrent build or deploy commands each
- * download into their own work folder. `root` only ever appears through a rename of a complete
- * payload, so once `installed()` holds it is never removed; a process that loses the race keeps
- * the winner's copy and drops its own.
+ * download into their own work folder. A complete `root` only ever appears through a rename of a
+ * complete payload, and a process that loses the race keeps the winner's copy and drops its own.
+ * `root` is removed only when the rename fails and `installed()` does not hold, as for a folder an
+ * interrupted install left. Another process can finish its install between that check and the
+ * removal; the removal then takes that install away while its command may still be reading it, and
+ * this process's own payload replaces it.
  */
-function publishInstall(payload: string, root: string, installed: () => boolean): void {
+export function publishInstall(payload: string, root: string, installed: () => boolean): void {
   if (installed()) return;
-  // An incomplete folder from an interrupted install; a concurrent process may remove it too.
+  try {
+    renameSync(payload, root);
+    return;
+  } catch (error) {
+    // `root` exists: EEXIST or ENOTEMPTY, or EPERM on Windows. It holds the install of a process
+    // that renamed its payload first, or an incomplete folder from an interrupted install.
+    if (installed()) return;
+    if (!existsSync(root)) throw error;
+  }
+  // A concurrent process may remove the incomplete folder too.
   rmSync(root, { recursive: true, force: true });
   try {
     renameSync(payload, root);
   } catch (error) {
-    // EEXIST or ENOTEMPTY: another process renamed its payload into `root` first.
     if (!installed()) throw error;
   }
 }
@@ -268,63 +286,5 @@ async function download(
     throw new InvalidEnvironmentError(
       `${failure(url)}\n\n${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-}
-
-/**
- * The box release of `version`, which a runtime's `box.version` names: the pinned one, else one
- * in BOX_RELEASE's repository, in its layout, whose checksums come from the release's own
- * SHA256SUMS.txt. No version means BOX_RELEASE.
- */
-export async function boxReleaseFor(
-  version: string | undefined,
-  env: NodeJS.ProcessEnv,
-  options: { runner?: ProcessRunner; home?: string } = {},
-): Promise<BoxRelease> {
-  if (version === undefined || version === BOX_RELEASE.version) return BOX_RELEASE;
-  const target = BOX_RELEASE.linux.target;
-  const linux = `box-v${version}-${target}.tar.gz`;
-  const release = { repo: BOX_RELEASE.repo, version };
-  const sums = await releaseChecksums(release, env, options.runner ?? runProcess, options.home);
-  const linuxSha = sums.get(linux);
-  if (!linuxSha) {
-    throw new InvalidEnvironmentError(
-      `box ${version}, which agentcore.json names under box.version, has no ${linux} in the ` +
-        `SHA256SUMS.txt of its release at github.com/${release.repo}. Name a box version that ` +
-        `release has, or remove box.version to use box ${BOX_RELEASE.version}.`,
-    );
-  }
-  return { ...release, linux: { target, asset: linux, sha256: linuxSha } };
-}
-
-/** The SHA-256 of each asset of `release`, from the SHA256SUMS.txt it publishes. */
-async function releaseChecksums(
-  release: Pick<BoxRelease, "repo" | "version">,
-  env: NodeJS.ProcessEnv,
-  runner: ProcessRunner,
-  home: string | undefined,
-): Promise<Map<string, string>> {
-  const cache = boxCache(home ?? env.HOME ?? homedir());
-  mkdirSync(cache, { recursive: true });
-  const work = mkdtempSync(join(cache, ".download-"));
-  try {
-    await download(
-      release,
-      "SHA256SUMS.txt",
-      work,
-      env,
-      runner,
-      (url) =>
-        `agentcore.json names box ${release.version} under box.version, whose checksums ` +
-        `download from ${url}, which failed. Check the version and your network, then retry.`,
-    );
-    const sums = new Map<string, string>();
-    for (const line of readFileSync(join(work, "SHA256SUMS.txt"), "utf8").split("\n")) {
-      const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
-      if (match) sums.set(match[2]!, match[1]!);
-    }
-    return sums;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
   }
 }

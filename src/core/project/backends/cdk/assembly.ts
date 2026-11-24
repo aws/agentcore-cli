@@ -8,6 +8,10 @@ const TARGET_TAG = "agentcore:target-name";
 const STACK_ARTIFACT = "aws:cloudformation:stack";
 /** The resource CDK adds to every stack of its own accord, which no user asked for. */
 const METADATA_RESOURCE_TYPE = "AWS::CDK::Metadata";
+const SECURE_VPC_TAG = "agentcore:secure-vpc";
+const SecureVpcTagsSchema = z.object({
+  Tags: z.array(z.object({ Key: z.string(), Value: z.string() })),
+});
 
 const AssemblyManifestSchema = z.object({
   artifacts: z
@@ -27,6 +31,13 @@ const AssemblyManifestSchema = z.object({
     .default({}),
 });
 
+/** A stack output that exports `Fn::GetAtt` of a resource, as each runtime's `RuntimeId` does. */
+const GetAttOutputSchema = z.object({
+  Value: z.object({ "Fn::GetAtt": z.tuple([z.string(), z.string()]) }),
+  Export: z.object({ Name: z.string() }),
+});
+const PlatformVersionPropertiesSchema = z.object({ PlatformVersion: z.string() });
+
 const StackTemplateSchema = z
   .object({
     Resources: z
@@ -38,6 +49,7 @@ const StackTemplateSchema = z
         z.object({ Type: z.string().optional() }).passthrough(),
       )
       .default({}),
+    Outputs: z.record(z.string(), z.unknown()).default({}),
   })
   .passthrough();
 
@@ -123,6 +135,107 @@ export async function countDeployableResources(
   assemblyDirectory: string,
   artifact: StackArtifact,
 ): Promise<number> {
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  return Object.values(template.Resources).filter(
+    (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
+  ).length;
+}
+
+/**
+ * Refuses a stack that leaves a `PRIVATE_VPC` runtime without its private VPC. A CDK library
+ * from before containment drops the field without an error and would deploy the runtime with an
+ * internet path. The CDK library tags each private VPC `agentcore:secure-vpc` with
+ * `<stack>/<runtime>`.
+ */
+export async function assertPrivateVpcs(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+  runtimeNames: readonly string[],
+): Promise<void> {
+  if (runtimeNames.length === 0) return;
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  const tagged = new Set(
+    Object.values(template.Resources)
+      .filter((resource) => resource.Type === "AWS::EC2::VPC")
+      .flatMap((resource) => SecureVpcTagsSchema.safeParse(resource.Properties).data?.Tags ?? [])
+      .filter((tag) => tag.Key === SECURE_VPC_TAG)
+      .map((tag) => tag.Value.slice(tag.Value.lastIndexOf("/") + 1)),
+  );
+  const missing = runtimeNames.filter((name) => !tagged.has(name));
+  if (missing.length > 0) {
+    throw new ProjectStateError(
+      `Runtime ${missing.map((name) => `'${name}'`).join(", ")} has "containment": "PRIVATE_VPC", ` +
+        "but the synthesized stack builds no private VPC for it. The @aws/agentcore-cdk in " +
+        "agentcore/cdk is older than containment: update it, then deploy again.",
+    );
+  }
+}
+
+/**
+ * The runtimes whose platform deploy checks after synth: each one that names a `platformVersion`,
+ * in a Box project or not, `"V1"` included, since a CDK library from before the field drops it.
+ */
+export function runtimePlatformVersions(
+  runtimes: readonly { readonly name: string; readonly platformVersion?: string }[],
+): { name: string; platformVersion: string }[] {
+  return runtimes.flatMap(({ name, platformVersion }) =>
+    platformVersion === undefined ? [] : [{ name, platformVersion }],
+  );
+}
+
+/**
+ * Refuses a stack in which a runtime of `runtimes` does not run on its own `platformVersion`. A
+ * CDK library from before `platformVersion` drops the field without an error, and the service
+ * would pick the platform. The CDK library exports each runtime's ID as
+ * `<stack>-<runtime>-RuntimeId` (`_` as `-`), from `Fn::GetAtt` of its
+ * `AWS::BedrockAgentCore::Runtime`; a runtime with no such export is refused too, as one whose
+ * platform deploy cannot check.
+ */
+export async function assertPlatformVersions(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+  runtimes: readonly { readonly name: string; readonly platformVersion: string }[],
+): Promise<void> {
+  if (runtimes.length === 0) return;
+  const template = await readStackTemplate(json, assemblyDirectory, artifact);
+  const logicalIdByExport = new Map(
+    Object.values(template.Outputs).flatMap((output) => {
+      const parsed = GetAttOutputSchema.safeParse(output).data;
+      return parsed ? [[parsed.Export.Name, parsed.Value["Fn::GetAtt"][0]] as const] : [];
+    }),
+  );
+  // The CDK library's exportName: each part with `_` as `-` and every other character but
+  // letters, digits, `:` and `-` removed, joined with `-`.
+  const exportName = (...parts: string[]) =>
+    parts.map((part) => part.replace(/_/g, "-").replace(/[^a-zA-Z0-9:-]/g, "")).join("-");
+  const problems = runtimes.flatMap(({ name, platformVersion }) => {
+    const logicalId = logicalIdByExport.get(exportName(artifact.stackName, name, "RuntimeId"));
+    const resource = logicalId === undefined ? undefined : template.Resources[logicalId];
+    if (resource === undefined) {
+      return [
+        `Could not find runtime '${name}' in the synthesized stack '${artifact.stackName}', so ` +
+          `deploy cannot check that it runs on "platformVersion": "${platformVersion}".`,
+      ];
+    }
+    const synthesized = PlatformVersionPropertiesSchema.safeParse(resource.Properties).data;
+    if (synthesized?.PlatformVersion === platformVersion) return [];
+    return [
+      `Runtime '${name}' has "platformVersion": "${platformVersion}", but the synthesized stack ` +
+        "does not set it: the @aws/agentcore-cdk in agentcore/cdk does not support platformVersion, " +
+        "and no released @aws/agentcore-cdk does yet. Deploy again once agentcore/cdk has a " +
+        "release that does.",
+    ];
+  });
+  if (problems.length > 0) throw new ProjectStateError(problems.join("\n"));
+}
+
+async function readStackTemplate(
+  json: ReadWriteJson,
+  assemblyDirectory: string,
+  artifact: StackArtifact,
+): Promise<z.infer<typeof StackTemplateSchema>> {
   // The cloud assembly schema requires templateFile on a stack artifact, so its
   // absence is a malformed assembly rather than a stack to deploy unchecked.
   if (artifact.templateFile === undefined) {
@@ -139,8 +252,5 @@ export async function countDeployableResources(
     );
   }
 
-  const template = await json.read(templatePath, StackTemplateSchema);
-  return Object.values(template.Resources).filter(
-    (resource) => resource.Type !== METADATA_RESOURCE_TYPE,
-  ).length;
+  return json.read(templatePath, StackTemplateSchema);
 }

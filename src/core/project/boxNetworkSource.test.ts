@@ -3,8 +3,7 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
-import { getBoxGatewayEntry } from "../../handlers/project/shortcuts";
-import type { ProjectSpec } from "../../projectSchemas/project";
+import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
@@ -16,15 +15,23 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
+/** A Box project with the runtime `agent`, with OTEL off: only the OTEL tests turn it on. */
 const SPEC = {
   name: "demo",
   projectType: "box",
   runtimes: [
-    { name: "agent", build: "CodeZip", entrypoint: "start.py", codeLocation: "app/agent" },
+    {
+      name: "agent",
+      build: "CodeZip",
+      entrypoint: "start.py",
+      codeLocation: "app/agent",
+      instrumentation: { enableOtel: false },
+      box: { version: "1.0.0" },
+    },
   ],
   memories: [],
   credentials: [],
-  agentCoreGateways: [],
+  agentCoreGateways: [boxGatewaySpec("agent")],
 } as unknown as ProjectSpec;
 
 /** What box resolves the profile of {@link project} to: its route `api`, which has no secret. */
@@ -65,10 +72,7 @@ function specWith(...names: string[]): ProjectSpec {
       ...SPEC.runtimes,
       ...names.map((name) => ({ ...SPEC.runtimes[0]!, name, codeLocation: `app/${name}` })),
     ],
-    agentCoreGateways: [
-      getBoxGatewayEntry("agent"),
-      ...names.map((name) => getBoxGatewayEntry(name)),
-    ],
+    agentCoreGateways: [boxGatewaySpec("agent"), ...names.map((name) => boxGatewaySpec(name))],
   } as unknown as ProjectSpec;
 }
 
@@ -89,7 +93,7 @@ describe("readBoxNetworks", () => {
     expect(box.calls).toEqual([
       { projectRoot: root, profilePath: ".box/agent/local/profile.toml" },
     ]);
-    expect(network?.gateway).toBe("agent-box");
+    expect(network?.gateway).toBe("agent-box-egress");
     expect(network?.policyFiles).toEqual(["policy.dw"]);
     // Box writes a route with no secret only as rules, and the target still takes its name.
     expect(network?.hosts.map(({ target }) => target)).toEqual(["egress-api"]);
@@ -107,6 +111,25 @@ describe("readBoxNetworks", () => {
     // A key that no rule of the derivation changes reaches the Runtime profile as it is.
     expect(network?.runtimeProfile?.limits).toEqual({ shell: { timeout: 30 } });
     expect(network?.runtimeProfile?.project).toEqual({ access: "read" });
+  });
+
+  test("finds each runtime's Box gateway by boundRuntime, whatever its name", async () => {
+    const root = await project([]);
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent"), name: "agent-box-egress", boundRuntime: undefined },
+        { ...boxGatewaySpec("agent"), name: "renamed" },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(
+      spec,
+      root,
+      new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE })),
+    );
+
+    expect(network?.gateway).toBe("renamed");
   });
 
   test("reads each runtime's own local box profile and policy files, one after the other", async () => {
@@ -141,9 +164,9 @@ describe("readBoxNetworks", () => {
         policyFiles,
       ]),
     ).toEqual([
-      ["agent", "agent-box", ["api.example.com"], ["policy.dw"]],
-      ["second", "second-box", ["docs.example.com"], ["rules.dw"]],
-      ["quiet", "quiet-box", [], []],
+      ["agent", "agent-box-egress", ["api.example.com"], ["policy.dw"]],
+      ["second", "second-box-egress", ["docs.example.com"], ["rules.dw"]],
+      ["quiet", "quiet-box-egress", [], []],
     ]);
   });
 
@@ -176,6 +199,7 @@ describe("readBoxNetworks", () => {
       spec: SPEC,
       projectRoot: root,
       env: {},
+      envLocal: {},
     });
     expect(files).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
   });
@@ -262,9 +286,9 @@ describe("readBoxNetworks", () => {
 
     await expect(read).rejects.toBeInstanceOf(ProjectStateError);
     await expect(read).rejects.toThrow(
-      'runtime "second" runs its agent in a box (entrypoint start.py), but ' +
+      'runtime "second" runs its agent in a box (it has box.version in agentcore.json), but ' +
         ".box/second/local/profile.toml does not exist. Create that box profile for the " +
-        "runtime, then retry.",
+        "runtime, or remove its box.version, then retry.",
     );
     expect(box.calls).toEqual([]);
   });
@@ -275,41 +299,6 @@ describe("readBoxNetworks", () => {
     await expect(
       readBoxNetworks(SPEC, await project([]), new FakeBoxProfileResolver(refused)),
     ).rejects.toBe(refused);
-  });
-
-  test("stops before box runs when the profile names a pack or a plugin that box ships by its old box/ name", async () => {
-    const root = await project([]);
-    await writeFile(
-      join(root, ...LOCAL, "profile.toml"),
-      'packs = ["box/base", "box/bedrock", "@box/node", "team-pack", "box/base"]\n' +
-        'plugins = ["box/aws-secrets-manager"]\n',
-    );
-    const box = new FakeBoxProfileResolver();
-
-    const stopped = readBoxNetworks(SPEC, root, box);
-
-    await expect(stopped).rejects.toBeInstanceOf(ProjectStateError);
-    await expect(stopped).rejects.toThrow(
-      'The box profile .box/agent/local/profile.toml names "box/base", "box/bedrock", ' +
-        '"box/aws-secrets-manager". Box now names each pack and plugin that it ships ' +
-        '"@box/<name>", and it refuses the old "box/<name>" name. In ' +
-        '.box/agent/local/profile.toml, change "box/base" to "@box/base", "box/bedrock" to ' +
-        '"@box/bedrock", "box/aws-secrets-manager" to "@box/aws-secrets-manager", then build again.',
-    );
-    expect(box.calls).toEqual([]);
-  });
-
-  test("runs box for a profile with only @box/ names and names of its own", async () => {
-    const root = await project([]);
-    await writeFile(
-      join(root, ...LOCAL, "profile.toml"),
-      'packs = ["@box/base", "@box/bedrock", "team-pack"]\nplugins = ["@box/aws-secrets-manager"]\n',
-    );
-    const box = new FakeBoxProfileResolver();
-
-    await readBoxNetworks(SPEC, root, box);
-
-    expect(box.calls).toHaveLength(1);
   });
 
   test("refuses a policy file Box would refuse, each at `policies`, and says how to fix it", async () => {
@@ -366,7 +355,12 @@ describe("the telemetry of each box runtime", () => {
         { ...SPEC.runtimes[0]!, name: "second", codeLocation: "app/second" },
         { ...SPEC.runtimes[0]!, name: "quiet", codeLocation: "app/quiet" },
       ],
-    } as ProjectSpec;
+      agentCoreGateways: [
+        boxGatewaySpec("agent"),
+        boxGatewaySpec("second"),
+        boxGatewaySpec("quiet"),
+      ],
+    } as unknown as ProjectSpec;
     const logs = (log_group: string) => ({
       kind: "cloudwatch_logs",
       region: "us-west-2",
@@ -411,11 +405,99 @@ describe("the telemetry of each box runtime", () => {
   });
 });
 
+describe("the default X-Ray target of a runtime with OTEL on", () => {
+  const OTEL_SPEC = {
+    ...SPEC,
+    runtimes: [{ ...SPEC.runtimes[0]!, instrumentation: undefined }],
+  } as unknown as ProjectSpec;
+  const TRACES = {
+    name: "agentcore_traces",
+    kind: "cloudwatch_traces" as const,
+    region: "us-west-2",
+    include: ["deny", "permit", "trace"],
+  };
+  const X_RAY = {
+    Sid: "BoxTelemetryToXRay",
+    Effect: "Allow",
+    Action: ["xray:PutSpans", "xray:PutTraceSegments"],
+    Resource: "*",
+  };
+
+  /** The telemetry policy file that build writes for the model `network`. */
+  const policyOf = (network: NonNullable<Awaited<ReturnType<typeof readBoxNetworks>>[number]>) =>
+    telemetryPolicyWriter.edits([network], {
+      spec: OTEL_SPEC,
+      projectRoot: "/project",
+      env: {},
+      envLocal: {},
+    }).files ?? [];
+
+  test("gets the grant of the execution role for X-Ray, and with OTEL off gets none", async () => {
+    const root = await project([]);
+    const box = new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE }));
+
+    const [on] = await readBoxNetworks(OTEL_SPEC, root, box);
+    const [off] = await readBoxNetworks(SPEC, root, box);
+
+    expect(on?.telemetry).toEqual([TRACES]);
+    const telemetry = on?.runtimeProfile?.telemetry as Record<string, unknown>;
+    expect(telemetry.agentcore_traces).toEqual({
+      kind: "cloudwatch_traces",
+      region: "${{ inputs.aws.region }}",
+      include: ["deny", "permit", "trace"],
+      secret: { ref: "aws://" },
+    });
+    const [file] = policyOf(on!);
+    expect(JSON.parse((file as { text: string }).text)).toEqual({
+      Version: "2012-10-17",
+      Statement: [X_RAY],
+    });
+    expect(off?.telemetry).toBeUndefined();
+    expect(policyOf(off!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
+  });
+
+  test("is not added, and gets no grant, when the envVars set DISABLE_ADOT_OBSERVABILITY to true", async () => {
+    const root = await project([]);
+    const box = new FakeBoxProfileResolver(boxShowOf({ egress: API_ROUTE }));
+    const spec = {
+      ...OTEL_SPEC,
+      runtimes: [
+        {
+          ...OTEL_SPEC.runtimes[0]!,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, box);
+
+    expect(network?.runtimeProfile?.telemetry).toEqual({});
+    expect(network?.telemetry).toBeUndefined();
+    expect(policyOf(network!)).toEqual([{ path: boxTelemetryPolicyFile("agent"), remove: true }]);
+  });
+
+  test("is not added, and gets no second grant, when the profile has its own cloudwatch_traces target", async () => {
+    const root = await project([]);
+    const shown = boxShowOf({ egress: API_ROUTE });
+    const own = { kind: "cloudwatch_traces", region: "eu-west-1", secret: { ref: "aws://" } };
+    const box = new FakeBoxProfileResolver({
+      ...shown,
+      boxToml: { ...shown.boxToml, telemetry: { mine: own } },
+    });
+
+    const [network] = await readBoxNetworks(OTEL_SPEC, root, box);
+
+    expect(network?.telemetry).toEqual([
+      { name: "mine", kind: "cloudwatch_traces", region: "eu-west-1" },
+    ]);
+    expect(network?.runtimeProfile?.telemetry).not.toHaveProperty("agentcore_traces");
+    const [file] = policyOf(network!);
+    expect(JSON.parse((file as { text: string }).text).Statement).toEqual([X_RAY]);
+  });
+});
+
 describe("two routes of one profile to one host", () => {
-  /**
-   * The Box network model of `agent` for the local profile `text`, which box resolves to `egress`.
-   * Each entry name is a valid API key credential name (3 or more characters), as dev requires.
-   */
+  /** The Box network model of `agent` for the local profile `text`, which box resolves to `egress`. */
   async function networkOf(text: string, egress: Record<string, unknown>) {
     const root = await project([]);
     await writeFile(join(root, ...LOCAL, "profile.toml"), text);
@@ -432,16 +514,16 @@ describe("two routes of one profile to one host", () => {
   test.each([
     [
       "two open routes",
-      '[egress.api]\ndestinations = ["api.example.com"]\n' +
-        '[egress.bee]\ndestinations = ["api.example.com"]\n',
-      { api: open, bee: open },
+      '[egress.a]\ndestinations = ["api.example.com"]\n' +
+        '[egress.b]\ndestinations = ["api.example.com"]\n',
+      { a: open, b: open },
       ".box/agent/local/profile.toml:3:1",
     ],
     [
       "a route with a secret and an open route",
-      '[egress.api]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
-        '[egress.bee]\ndestinations = ["api.example.com"]\n',
-      { api: keyed, bee: open },
+      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.b]\ndestinations = ["api.example.com"]\n',
+      { a: keyed, b: open },
       ".box/agent/local/profile.toml:4:1",
     ],
   ])(
@@ -452,7 +534,7 @@ describe("two routes of one profile to one host", () => {
       expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
         [
           "EGRESS_DESTINATION_OVERLAP",
-          "[egress.bee] names api.example.com, and [egress.api] names it too, but one host has only " +
+          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
             "one entry. Keep api.example.com in only one of the two.",
           place,
         ],
@@ -464,20 +546,20 @@ describe("two routes of one profile to one host", () => {
   test("gives an entry that names its host twice one target and one route", async () => {
     const twice = { destinations: ["api.example.com", "api.example.com:443"] };
     const network = await networkOf(
-      '[egress.api]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
         'secret.ref = "env://A_TOKEN"\n',
-      { api: { ...twice, secret: keyed.secret } },
+      { a: { ...twice, secret: keyed.secret } },
     );
 
     expect(network.failures).toEqual([]);
     expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
-      ["api.example.com", "egress-api"],
+      ["api.example.com", "egress-a"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
       ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["api", ["api.example.com"]],
+      ["a", ["api.example.com"]],
     ]);
   });
 });
@@ -495,24 +577,38 @@ describe("the IAM policy files of the Box gateway", () => {
     const listed = ["missing", "broken", "list", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...getBoxGatewayEntry("agent"), additionalPolicies: listed }],
-    } as ProjectSpec;
+      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+    } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
     expect(network?.grantedActions).toEqual(["bedrock:InvokeModel"]);
-    const listing = "in additionalPolicies of the gateway 'agent-box'";
+    const listing = "in additionalPolicies of the gateway 'agent-box-egress'";
     const check = "so build cannot check the permissions it grants.";
-    // Build writes box-bedrock-policy.json itself, so a missing one is no warning.
     expect(network?.warnings).toEqual([
       `agentcore/missing.json, ${listing}, does not exist, ${check} Create it, or remove it ` +
         "from additionalPolicies.",
       expect.stringMatching(
-        /^agentcore\/broken\.json, in additionalPolicies of the gateway 'agent-box', is not valid JSON \(.+\), so build cannot check the permissions it grants\. Correct the JSON\.$/,
+        /^agentcore\/broken\.json, in additionalPolicies of the gateway 'agent-box-egress', is not valid JSON \(.+\), so build cannot check the permissions it grants\. Correct the JSON\.$/,
       ),
       `agentcore/list.json, ${listing}, is not a JSON object, ${check} Make it an IAM policy ` +
         "document.",
     ]);
+  });
+
+  test("gives no warning for the Bedrock policy file that build writes before it writes it", async () => {
+    const root = await project([]);
+    const spec = {
+      ...SPEC,
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent"), additionalPolicies: ["agentcore/box-bedrock-policy.json"] },
+      ],
+    } as unknown as ProjectSpec;
+
+    const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
+
+    expect(network?.grantedActions).toEqual([]);
+    expect(network?.warnings).toEqual([]);
   });
 
   test("does not count the actions of the policy files that build writes", async () => {
@@ -520,19 +616,13 @@ describe("the IAM policy files of the Box gateway", () => {
     await mkdir(join(root, "agentcore"));
     const grant = (action: string) =>
       JSON.stringify({ Statement: [{ Effect: "Allow", Action: [action] }] });
-    await writeFile(
-      join(root, "agentcore", "box-memory-policy.json"),
-      grant("bedrock-agentcore:GetEvent"),
-    );
     await writeFile(join(root, "agentcore", "box-bedrock-policy.json"), "{ not json");
     await writeFile(join(root, "agentcore", "grants.json"), grant("lambda:InvokeFunctionUrl"));
-    const listed = ["box-memory-policy", "box-bedrock-policy", "grants"].map(
-      (name) => `agentcore/${name}.json`,
-    );
+    const listed = ["box-bedrock-policy", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...getBoxGatewayEntry("agent"), additionalPolicies: listed }],
-    } as ProjectSpec;
+      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+    } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
 
@@ -549,7 +639,7 @@ describe("boxNetworkFailureMessage", () => {
     const networks = await readBoxNetworks(SPEC, root, new FakeBoxProfileResolver());
 
     expect(boxNetworkFailureMessage(networks, "deploy")).toBe(
-      "Deploy stopped: 1 problem in the Box profile. Nothing was changed.\n" +
+      "Deploy stopped: 1 problem in the Box profile. Deploy wrote nothing from the Box profile.\n" +
         ".box/agent/local/profile.toml:1:1  `policies` names missing.dw, but " +
         ".box/agent/local/missing.dw does not exist. Create it, or remove it from `policies`.",
     );
@@ -562,8 +652,9 @@ describe("boxNetworkFailureMessage", () => {
       ...SPEC,
       runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
       agentCoreGateways: [
+        boxGatewaySpec("agent"),
         {
-          ...getBoxGatewayEntry("second"),
+          ...boxGatewaySpec("second"),
           targets: [
             {
               name: "api",
@@ -573,7 +664,7 @@ describe("boxNetworkFailureMessage", () => {
           ],
         },
       ],
-    } as ProjectSpec;
+    } as unknown as ProjectSpec;
 
     const networks = await readBoxNetworks(
       spec,
@@ -582,7 +673,7 @@ describe("boxNetworkFailureMessage", () => {
     );
 
     expect(boxNetworkFailureMessage(networks, "build")).toBe(
-      "Build stopped: 3 problems in the Box profile and agentcore.json. Nothing was changed.\n" +
+      "Build stopped: 3 problems in the Box profile and agentcore.json. Build wrote nothing from the Box profile.\n" +
         "In runtime agent:\n" +
         "  .box/agent/local/profile.toml:1:1  `policies` names missing.dw, but " +
         ".box/agent/local/missing.dw does not exist. Create it, or remove it from `policies`.\n" +

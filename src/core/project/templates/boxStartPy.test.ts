@@ -64,9 +64,7 @@ function boxPython(executable: string): string {
 /**
  * What start.py's main() does in `root`, with its folders there and os.execve replaced: the box it
  * runs, its arguments, the BOX_PYTHON it exports and what box_python gives, and the files it copies
- * into the profile folder. `withTomllib` false runs it as Python 3.10 does, with no tomllib, so
- * start.py reads the profile with tomli, which the template installs there. A Python with no
- * tomllib or tomli here gets a stand-in that reads the one `policies` line as JSON.
+ * into the profile folder. `withTomllib` false runs it as Python 3.10 does, with no tomllib.
  */
 function startRun(root: string, withTomllib: boolean) {
   const script = [
@@ -77,20 +75,7 @@ function startRun(root: string, withTomllib: boolean) {
     "start.HOME = os.path.join(root, 'home'); start.WORKSPACE = os.path.join(root, 'ws')",
     "start.PROFILE_DIR = os.path.join(root, 'profile')",
     "start.PROFILE = os.path.join(start.PROFILE_DIR, 'profile.toml')",
-    "import types",
-    "def load(handle):",
-    "    for line in handle.read().decode().splitlines():",
-    "        if line.startswith('policies = '): return {'policies': json.loads(line[11:])}",
-    "    return {}",
-    "stand_in = types.ModuleType('stand_in'); stand_in.load = load",
-    ...(withTomllib
-      ? [
-          "try:",
-          "    import tomllib",
-          "except ModuleNotFoundError:",
-          "    sys.modules['tomllib'] = stand_in",
-        ]
-      : ["sys.modules['tomllib'] = None", "sys.modules.setdefault('tomli', stand_in)"]),
+    ...(withTomllib ? [] : ["start.tomllib = None"]),
     "def execve(path, argv, env):",
     "    copied = sorted(os.path.relpath(os.path.join(d, f), start.PROFILE_DIR)",
     "                    for d, _, fs in os.walk(start.PROFILE_DIR) for f in fs)",

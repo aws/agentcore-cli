@@ -73,6 +73,20 @@ describe("parseResolvedProfile", () => {
     });
   });
 
+  test("takes the CloudWatch targets of Box's resolved [telemetry], and no other target", () => {
+    const telemetry = {
+      logs: { kind: "cloudwatch_logs", region: "us-west-2", log_group: "g", log_stream: "s" },
+      records: { kind: "file", destination: "/tmp/records.jsonl" },
+    };
+
+    expect(
+      parseResolvedProfile({ boxToml: { telemetry }, openRoutes: [] }, [], PROFILE).profile
+        .telemetry,
+    ).toEqual([
+      { name: "logs", kind: "cloudwatch_logs", region: "us-west-2", logGroup: "g", logStream: "s" },
+    ]);
+  });
+
   test.each([
     [
       { egress: 3 },
@@ -131,7 +145,7 @@ describe("profilePolicyFiles", () => {
     });
   });
 
-  test("refuses `policy`, which box refuses, at its line, as `agentcore dev` runs no box", () => {
+  test("refuses `policy` at its line, as box does", () => {
     expect(refusal('\npolicy = "policy.dw"\n')).toEqual({
       code: "UNSUPPORTED_POLICY_KEY",
       reason:

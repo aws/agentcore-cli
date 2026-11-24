@@ -4,12 +4,18 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "smol-toml";
-import { getBoxGatewayBedrockEntry } from "../../../handlers/project/box-gateway-test-support";
+import { boxGatewaySpec } from "../../../projectSchemas/project";
 import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
+import {
+  AGENTCORE_CODEZIP_PACK_PATH,
+  AGENTCORE_PACK_PATH,
+  renderAgentCoreCodeZipPack,
+  renderAgentCorePack,
+} from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
 import type { TomlTable } from "../runtimeProfile/types";
-import { stageBoxCodeZip } from "./boxCodeZip";
+import { BOX_DIST_GITIGNORE, stageBoxCodeZip } from "./boxCodeZip";
 import type { BoxLinuxBuild } from "./boxRelease";
 
 const directories: string[] = [];
@@ -59,9 +65,12 @@ async function project(
         codeLocation: `app/${name}`,
         runtimeVersion,
         modelProvider: "Bedrock",
+        // create writes box.version only for a box template, whose entry point is start.py.
+        ...(entrypoint === "start.py" && { box: { version: "1.0.0" } }),
       })),
       memories: [],
-      agentCoreGateways: names.map((name) => getBoxGatewayBedrockEntry(name)),
+      projectType: "box",
+      agentCoreGateways: names.map((name) => boxGatewaySpec(name)),
     },
   } as unknown as Project;
 }
@@ -84,27 +93,63 @@ describe("stageBoxCodeZip", () => {
     expect(await readFile(join(dist, "resources", "shared", "base", "pack.toml"), "utf8")).toBe(
       "[pack]\n",
     );
-    // box 0.1.11-mquang.preview.9 runs the Runtime's Python with no ffi shim.
-    expect(existsSync(join(dist, "ffi"))).toBe(false);
     // The Runtime profile is the one build derived from the local profile.
     const { runtimeProfile, runtimeProfileHeader } = model([]);
     expect(await readFile(join(dist, "profile.toml"), "utf8")).toBe(
       serializeRuntimeProfile(runtimeProfile!, runtimeProfileHeader),
     );
+    // The profile imports these generated packs, which box finds beside its binary. They are
+    // written after box's own resources are copied, so the copy does not remove them.
+    expect(await readFile(join(dist, AGENTCORE_PACK_PATH), "utf8")).toBe(
+      renderAgentCorePack(demo.spec, demo.spec.runtimes[0]!),
+    );
+    expect(await readFile(join(dist, AGENTCORE_CODEZIP_PACK_PATH), "utf8")).toBe(
+      renderAgentCoreCodeZipPack(),
+    );
+    // The runtime's .box/agent/aws/ holds a copy of what the profile writer stages, and no box.
+    const aws = join(demo.rootPath, ".box", "agent", "aws");
+    expect(await Bun.file(join(aws, "box")).exists()).toBe(false);
+    for (const file of ["profile.toml", AGENTCORE_PACK_PATH, AGENTCORE_CODEZIP_PACK_PATH]) {
+      expect(await readFile(join(aws, file), "utf8")).toBe(
+        await readFile(join(dist, file), "utf8"),
+      );
+    }
+    // A template's own .gitignore may not list .box-dist/, so the folder ignores itself.
+    expect(await readFile(join(dist, ".gitignore"), "utf8")).toBe(BOX_DIST_GITIGNORE);
   });
 
-  test("asks for the box of the runtime's box.version", async () => {
+  test("asks for the pinned box once, for every runtime", async () => {
     const build = await linuxBuild();
-    const demo = await project("start.py");
-    demo.spec.runtimes[0]!.box = { version: "2.0.0" };
-    const versions: (string | undefined)[] = [];
+    const demo = await project("start.py", "PYTHON_3_14", ["agent", "second"]);
+    demo.spec.runtimes[1]!.box = { version: "2.0.0" };
+    let asked = 0;
 
-    await stageBoxCodeZip(demo, [model([])], async (version) => {
-      versions.push(version);
+    await stageBoxCodeZip(demo, [model([]), model([], "second")], async () => {
+      asked++;
       return build;
     });
 
-    expect(versions).toEqual(["2.0.0"]);
+    expect(asked).toBe(1);
+  });
+
+  test.each([
+    ["a user's own start.py, with no box.version", false, "box"],
+    ["a box runtime outside a Box project", true, undefined],
+  ] as const)("stages nothing for %s", async (_label, boxVersion, projectType) => {
+    const demo = await project("start.py");
+    const runtime = demo.spec.runtimes[0]!;
+    if (!boxVersion) delete runtime.box;
+    (demo.spec as { projectType?: string }).projectType = projectType;
+    let asked = 0;
+
+    expect(
+      await stageBoxCodeZip(demo, [model([])], async () => {
+        asked++;
+        return linuxBuild();
+      }),
+    ).toEqual([]);
+    expect(asked).toBe(0);
+    expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
   });
 
   test("replaces what an earlier deploy staged", async () => {
@@ -200,10 +245,10 @@ describe("stageBoxCodeZip", () => {
 function model(policyFiles: string[], runtime = "agent"): BoxNetwork {
   return {
     runtime,
-    gateway: `${runtime}-box`,
+    gateway: `${runtime}-box-egress`,
     region: "us-west-2",
     hosts: [],
-    credentials: [],
+    envRoutes: [],
     policyFiles,
     runtimeProfile: runtimeProfileOf(policyFiles, runtime),
     runtimeProfileHeader: [`Derived from .box/${runtime}/local/profile.toml.`],

@@ -46,20 +46,6 @@ const ResourceStateSchema = z
         runtimeArns: z.array(z.string()),
       })
       .optional(),
-    /**
-     * The Box gateways (one for each runtime) that the last deploy of a Box project created. A
-     * deploy reads them to find out that agentcore.json lost its "projectType": "box", which would
-     * delete the gateways.
-     */
-    boxGateways: z.array(z.object({ name: z.string() }).passthrough()).optional(),
-    /**
-     * The AWS Secrets Manager secret of each third-party telemetry target of a box profile, by the
-     * secret's name. Deploy writes each one outside the stack, so this is the only record of what
-     * a later deploy or a teardown deletes.
-     */
-    boxTelemetrySecrets: z
-      .record(z.string(), z.object({ secretArn: z.string() }).passthrough())
-      .optional(),
     // The legacy deployer recorded the CloudFormation stack name
     // here. New deploys record the stack ARN instead. Keep this
     // field so projects can be correctly inspected after upgrading.
@@ -93,11 +79,6 @@ export type TargetState = z.infer<typeof TargetStateSchema>;
  */
 export function stackReferenceOf(state: TargetState | undefined): string | undefined {
   return state?.stackArn ?? state?.resources?.stackName;
-}
-
-/** The names of the Box gateways the last deploy of `targetName` recorded. */
-export function boxGatewaysOf(state: DeployedState, targetName: string): string[] {
-  return (state.targets[targetName]?.resources?.boxGateways ?? []).map(({ name }) => name);
 }
 
 function statePathFor(projectRoot: string): string {

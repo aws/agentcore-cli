@@ -1,4 +1,3 @@
-import type { DatasetSchemaType } from "@aws-sdk/client-bedrock-agentcore-control";
 import { InputValidationError } from "../../../errors";
 import type { Example } from "./example/types";
 import { PredefinedExample } from "./example/predefined";
@@ -42,30 +41,24 @@ export class DatasetLoader {
     return examples;
   }
 
-  // Classify by row shape — a local JSONL carries no schemaType, and AWS's own SDK
+  // Classify by row shape — datasets carry no type field, and AWS's own SDK
   // dispatches this way. Refuse a both-row rather than silently dropping the actor profile.
   private static build(row: Record<string, unknown>, exampleId: string): Example {
     const hasTurns = Array.isArray(row.turns);
     const hasActor = row.actor_profile != null;
+    const hasInput = row.input != null;
     if (hasTurns && hasActor) {
       throw new InputValidationError(
         `example "${exampleId}" has both 'turns' and 'actor_profile' — one row cannot be both`,
       );
     }
-    if (!hasTurns && !hasActor) {
-      throw new InputValidationError(
-        `example "${exampleId}" has neither 'turns' nor 'actor_profile'`,
-      );
-    }
-
-    const schemaType: DatasetSchemaType = hasTurns
-      ? "AGENTCORE_EVALUATION_PREDEFINED_V1"
-      : "AGENTCORE_EVALUATION_SIMULATED_V1";
-    switch (schemaType) {
-      case "AGENTCORE_EVALUATION_PREDEFINED_V1":
-        return new PredefinedExample(exampleId, row);
-      case "AGENTCORE_EVALUATION_SIMULATED_V1":
-        return new SimulatedExample(exampleId, row);
-    }
+    if (hasActor) return new SimulatedExample(exampleId, row);
+    if (hasTurns) return new PredefinedExample(exampleId, row);
+    // An input-only row is a single-turn conversation: send the input once, no replay.
+    if (hasInput)
+      return new PredefinedExample(exampleId, { ...row, turns: [{ input: row.input }] });
+    throw new InputValidationError(
+      `example "${exampleId}" has none of 'turns', 'actor_profile' or 'input'`,
+    );
   }
 }

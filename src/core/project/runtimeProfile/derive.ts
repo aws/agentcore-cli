@@ -8,7 +8,7 @@
  * | --- | --- |
  * | `refusals` | stops for a key that cannot work on the Runtime whatever its paths are |
  * | `gateway` | sends each call of the box through the runtime's Box gateway |
- * | `additions` | adds what only the Runtime needs, and replaces each value that works only under dev |
+ * | `additions` | adds what only the Runtime needs, the direct Memory route included, and replaces each value that works only under dev |
  * | `paths` | moves each path of the project to where the code is on the Runtime |
  */
 import * as additions from "./rules/additions";

@@ -17,6 +17,7 @@ import {
 import { SourceResolver } from "../../../../io";
 import type { AddResourceInput, Project } from "../../types";
 import { toLiteLlmGatewayModel } from "../../../harness/liteLlmGateway";
+import { buildConfigFlag, HarnessBuildConfigSchema, parseBuildConfig } from "../buildConfig";
 
 const CONFIGURATION = "Configuration:";
 const TOOLS_AND_SKILLS = "Tools and skills:";
@@ -194,8 +195,30 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         z.string().optional(),
         { group: ACCESS_AND_PERMISSIONS },
       ),
+      buildConfigFlag("Container or ContainerLocal"),
     ],
     handle: async (ctx, flags) => {
+      const buildConfig = parseBuildConfig(flags["build-config"], HarnessBuildConfigSchema);
+      if (buildConfig?.dockerfile !== undefined && flags.dockerfile !== undefined) {
+        throw new InputValidationError(
+          "--dockerfile and --build-config dockerfile both set the Dockerfile; pass only one",
+        );
+      }
+      const needsDockerfile = (
+        ["build", "buildContextPath", "customDockerBuildArgs"] as const
+      ).find((field) => buildConfig?.[field] !== undefined);
+      if (needsDockerfile && buildConfig?.dockerfile === undefined && !flags.dockerfile) {
+        throw new InputValidationError(
+          `Invalid value for option '--build-config': ${needsDockerfile} requires a Dockerfile; ` +
+            'set "dockerfile" in --build-config or pass --dockerfile',
+        );
+      }
+      if (buildConfig?.buildContextPath !== undefined && flags.dockerfile !== undefined) {
+        throw new InputValidationError(
+          "--dockerfile cannot be combined with --build-config buildContextPath: with a build " +
+            'context, set "dockerfile" inside --build-config, relative to that context',
+        );
+      }
       const harnessInput = {
         name: flags.name,
         model: parseJsonFlag("model", flags["model"]) ?? DEFAULT_HARNESS_MODEL,
@@ -227,14 +250,10 @@ export const createAddHarnessHandler = (config: AddProjectResourceConfig) =>
         timeoutSeconds: flags["timeout-seconds"],
         tags: parseTags(flags["tags"]),
         dockerfile: flags["dockerfile"],
+        ...buildConfig,
       };
 
       const project = ctx.require(ProjectKey);
-      if (project.spec.secureVpc === "ENABLED") {
-        throw new InputValidationError(
-          `a harness can't be added to '${project.name}': it has "secureVpc": "ENABLED", and a harness would run outside its private VPC`,
-        );
-      }
       const targets = await config.projectManager.listTargets(project);
       // Validate before reading the key, so a refused input never consumes stdin.
       if (flags["api-key"] !== undefined) toAddHarnessInput(project, targets, harnessInput, "");
