@@ -8,7 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack } from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
-import { stageBoxContainers } from "./boxContainer";
+import { AWS_CLI_RELEASE, stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE } from "./boxRelease";
 
 /** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
@@ -128,6 +128,50 @@ describe("stageBoxContainers", () => {
     const dist = join(demo.rootPath, "app", "agent", ".box-dist");
     expect((await readdir(dist)).sort()).toEqual(["policy.dw", ...STAGED, "resources"].sort());
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
+  });
+
+  test("names the AWS CLI for the image only when the Runtime profile reads a key from Secrets Manager", async () => {
+    const demo = await project(TEMPLATE_DOCKERFILE);
+    const env = () =>
+      readFile(join(demo.rootPath, "app", "agent", ".box-dist", "box-release.env"), "utf8");
+    const langsmith = {
+      name: "langsmith",
+      kind: "langsmith",
+      keys: [],
+      secret: { variable: "LANGSMITH_KEY", keys: [] },
+    } as const;
+    const open = {
+      name: "open",
+      kind: "otlp",
+      keys: [["destination", "https://o.example"]],
+    } as const;
+
+    await stageBoxContainers(demo, [{ ...model([]), thirdPartyTelemetry: [langsmith] }]);
+    expect(await env()).toEndWith(
+      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n`,
+    );
+
+    for (const networks of [
+      [model([])],
+      [{ ...model([]), thirdPartyTelemetry: [open] }],
+    ] as BoxNetwork[][]) {
+      await stageBoxContainers(demo, networks);
+      expect(await env()).not.toContain("AWS_CLI");
+    }
+  });
+
+  test("the image installs the AWS CLI it is told to, checks its archive, and keeps it out of /app", () => {
+    // Read from box-release.env, which the CLI writes only with the switch on.
+    expect(TEMPLATE_DOCKERFILE).toContain('if [ -n "${AWS_CLI_URL:-}" ]; then');
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      'echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c -',
+    );
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      "--install-dir /usr/local/aws-cli --bin-dir /usr/local/bin",
+    );
+    expect(AWS_CLI_RELEASE.url).toBe(
+      `https://awscli.amazonaws.com/awscli-exe-linux-aarch64-${AWS_CLI_RELEASE.version}.zip`,
+    );
   });
 
   test("refuses an image that copies only the profile when policy files go with it", async () => {

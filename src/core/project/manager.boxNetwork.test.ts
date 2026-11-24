@@ -153,6 +153,7 @@ async function strandsProject(
     acceptsPassthroughGateway?: boolean;
     /** What the probe answers, in place of `acceptsPassthroughGateway`; a test can change it. */
     check?: { current: PassthroughGatewayCheck };
+    template?: "agent-python-strands-box" | "agent-python-strands-box-container";
   } = {},
 ) {
   const directory = await temporary("agentcore-box-network-");
@@ -182,9 +183,10 @@ async function strandsProject(
   const { value: created, warnings: createWarnings } = await drain(
     manager.create({
       name: "demo",
-      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
-        runtimeName: "agent_python_strands",
-      }),
+      scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(
+        options.template ?? "agent-python-strands-box",
+        { runtimeName: "agent_python_strands" },
+      ),
       // As the create command does: the profile calls Bedrock in the region create resolved.
       region: "us-west-2",
       skipInstall: true,
@@ -1439,7 +1441,134 @@ describe("build reads the box profile as box resolves it", () => {
   });
 });
 
-describe("build writes the Bedrock target and the Memory route for the region it builds for", () => {
+describe("build writes the Bedrock target and the Memory route for the region it builds for", () => {});
+
+describe("build moves the key of a third-party telemetry target to AWS Secrets Manager", () => {
+  const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
+  const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
+  const SECRET = "agentcore/demo/agent_python_strands/box";
+  /** The switch that turns the move on, which is off by default. */
+  const ON = { AGENTCORE_BOX_SECRETS_MANAGER: "1" };
+  const VARIABLE = "AGENTCORE_CREDENTIAL_AGENT_PYTHON_STRANDS_TELEMETRY_LANGSMITH";
+  /** A stand-in key, which the test looks for in each file build writes. */
+  const KEY = "dummy-langsmith-key";
+  const LANGSMITH = {
+    kind: "langsmith",
+    project: "box",
+    include: ["trace"],
+    secret: { ref: "env://LANGSMITH_KEY" },
+  };
+  /** The default target of the Runtime profile, as the box profile has no cloudwatch_logs target. */
+  const DEFAULT_TARGET = {
+    kind: "cloudwatch_logs",
+    region: "us-west-2",
+    log_group: "/aws/bedrock-agentcore/box/demo/agent_python_strands",
+    log_stream: "box",
+    include: ["deny", "permit", "trace"],
+    secret: { ref: "aws://" },
+  };
+
+  const showsTelemetry = (telemetry: Record<string, unknown>) => {
+    const answer = shows();
+    return { ...answer, boxToml: { ...answer.boxToml, telemetry } };
+  };
+
+  test("names the secret in the Runtime profile, and lets the execution role read it alone", async () => {
+    const { manager, root, box } = await strandsProject({
+      env: { ...ON, LANGSMITH_KEY: KEY },
+      template: "agent-python-strands-box-container",
+    });
+    box.answer = showsTelemetry({ langsmith: LANGSMITH });
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toEqual({
+      agentcore: DEFAULT_TARGET,
+      langsmith: {
+        kind: "langsmith",
+        project: "box",
+        include: ["trace"],
+        secret: { ref: `aws-secretsmanager://${SECRET}#telemetry.langsmith` },
+      },
+    });
+    expect(profile.plugins).toEqual(["box/aws-secrets-manager"]);
+    // The image installs the AWS CLI, which box runs to read the key.
+    expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).toContain(
+      "AWS_CLI_URL=https://awscli.amazonaws.com/awscli-exe-linux-aarch64-",
+    );
+    expect(JSON.parse(await text(root, TELEMETRY_POLICY))).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "BoxTelemetrySecrets",
+          Effect: "Allow",
+          Action: ["secretsmanager:GetSecretValue"],
+          Resource: [`arn:aws:secretsmanager:us-west-2:*:secret:${SECRET}-??????`],
+        },
+      ],
+    });
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.runtimes[0].additionalPolicies).toEqual([ENTRY]);
+    // Deploy reads the key from .env.local; build copies it there from the profile's variable.
+    expect(steps).toContain(`writing ${VARIABLE} to agentcore/.env.local`);
+    expect(await text(root, "agentcore/.env.local")).toMatch(new RegExp(`^${VARIABLE}=.`, "m"));
+    const staged = [RUNTIME_PROFILE, ".box/agent_python_strands/aws/profile.toml"];
+    for (const file of [...staged, SPEC, TELEMETRY_POLICY]) {
+      expect(await text(root, file)).not.toContain(KEY);
+    }
+    // The target declares no credential: deploy writes a secret, not an Identity provider.
+    expect(spec.credentials).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  test("keeps today's Runtime profile with the switch off, and says why", async () => {
+    const { manager, root, box } = await strandsProject({
+      env: { LANGSMITH_KEY: KEY },
+      template: "agent-python-strands-box-container",
+    });
+    box.answer = showsTelemetry({ langsmith: LANGSMITH });
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+    expect(profile.plugins).toBeUndefined();
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect(steps.filter((step) => step.includes(VARIABLE))).toEqual([]);
+    expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).not.toContain(
+      "AWS_CLI",
+    );
+    expect(warnings).toContain(
+      ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
+        "[telemetry.langsmith]: on AgentCore Runtime, Box reads its key from AWS Secrets Manager, " +
+        "and no Box release for Linux can do that yet. To try a box build that can, set " +
+        "AGENTCORE_BOX_SECRETS_MANAGER=1.",
+    );
+  });
+
+  test("leaves out a target whose key the Runtime has no source for, and says so", async () => {
+    const { manager, root, box } = await strandsProject({ env: ON });
+    const collector = {
+      kind: "otlp",
+      destination: "https://collector.example.com",
+      secret: { ref: "aws://my-profile" },
+    };
+    box.answer = showsTelemetry({ collector });
+
+    const { warnings } = await build(manager, root);
+
+    expect((await runtimeProfile(root)).telemetry).toEqual({ agentcore: DEFAULT_TARGET });
+    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
+    expect(warnings).toContain(
+      ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
+        "[telemetry.collector]: its `secret.ref` names no `env://` or `secret://` variable, and " +
+        "build moves only such a key to AWS Secrets Manager.",
+    );
+  });
+});
+
+describe("build writes the Bedrock and Memory targets for the region it builds for", () => {
   const bedrockTarget = (region: string) => ({
     name: "bedrock",
     targetType: "passthrough",
