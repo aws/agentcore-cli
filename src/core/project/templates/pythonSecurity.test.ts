@@ -51,3 +51,9 @@ test("the Strands container updates OS packages and removes uv after installing 
     /RUN uv sync --frozen --no-dev && \/usr\/local\/bin\/python -m pip uninstall -y uv[\s\S]*USER bedrock_agentcore/,
   );
 });
+
+test("the Bedrock Managed Agents container updates OS packages", async () => {
+  const dockerfile = await source.read("templates/bedrock-managed-agents/Dockerfile");
+
+  expect(dockerfile).toMatch(/RUN dnf upgrade --releasever=latest --refresh -y[\s\S]*USER app/);
+});

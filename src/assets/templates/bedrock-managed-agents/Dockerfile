@@ -1,7 +1,8 @@
 FROM public.ecr.aws/lambda/microvms:al2023-minimal
 
 # OS setup
-RUN dnf install -y tar gzip findutils shadow-utils ca-certificates \
+RUN dnf upgrade --releasever=latest --refresh -y \
+ && dnf install -y tar gzip findutils shadow-utils ca-certificates \
  && dnf clean all \
  && useradd -m -u 1000 app
 
