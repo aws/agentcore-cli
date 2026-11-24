@@ -1521,8 +1521,6 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
-  // Validates and writes an updated spec; a failure rolls back any .env.local
-  // edit staged for the same removal so the two files stay consistent.
   /**
    * Writes `newSpec` to agentcore.json. `changeRecord` changes the record of build's targets just
    * before the write. When either fails, the record and `envFile` go back to what they were.
