@@ -121,6 +121,9 @@ jobs:
         with:
           # Keep template installs on the newest Python supported by AgentCore CodeZip.
           python-version: "3.14"
+          # A run whose tag filter leaves nothing to install with uv (for example `box` on Windows,
+          # which has no box) has no cache to save, which setup-uv otherwise reports as a failure.
+          ignore-nothing-to-cache: true
       - run: bun install --frozen-lockfile
       - name: Fetch E2E role from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
