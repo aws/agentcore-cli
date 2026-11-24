@@ -137,9 +137,11 @@ jobs:
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
-      # the Box tests. They skip on a runner with no box on PATH.
+      # the Box tests. They skip on a runner with no box on PATH. macOS is left out for now: its pinned
+      # box build is killed as soon as it starts (`Killed: 9` on `box --version`), so on macOS the Box
+      # tests skip and the rest of the suite still runs.
       - name: Install box
-        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        if: matrix.name == 'Linux-arm64'
         env:
           # The build's key in boxRelease.json, which pins its archive and SHA-256.
           BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
@@ -177,7 +179,7 @@ jobs:
       # repository is private and this job's GITHUB_TOKEN reads only this one, so the token comes
       # from the repository's GitHub App, scoped to the L3 repository and read-only.
       - name: Generate a read token for the L3 constructs
-        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        if: matrix.name == 'Linux-arm64'
         id: l3-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -187,7 +189,7 @@ jobs:
           repositories: agentcore-l3-cdk-constructs
           permission-contents: read
       - name: Check out the L3 constructs
-        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        if: matrix.name == 'Linux-arm64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aws/agentcore-l3-cdk-constructs
@@ -199,7 +201,7 @@ jobs:
       # Packed onto the runner only: nothing is published. The Box tests install it into each Box
       # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates.test.ts).
       - name: Pack the L3 constructs for the Box tests
-        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        if: matrix.name == 'Linux-arm64'
         working-directory: .l3-cdk
         run: |
           npm ci --no-audit --no-fund
