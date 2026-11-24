@@ -260,6 +260,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         transformContent: (raw) =>
           templateRenderer.render(raw, {
             name: toPythonPackageName(input.name),
+            // The Bedrock model the code calls: --model-id, else the default.
+            modelId: renderedModelId(input.scaffoldRuntimeInput),
             // The README says whether traces are collected, which they are not in a box.
             box: input.scaffoldRuntimeInput.boxTemplate === true,
           }),

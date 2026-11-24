@@ -1650,10 +1650,10 @@ describe("deploy writes the Box network before the backend deploys", () => {
       destinations: [`bedrock-agentcore.${region}.amazonaws.com`],
       secret: { ref: "aws://" },
     });
+    // create records the template's model in modelId, so the policy names only that model.
     const bedrockFor = (region: string) => [
-      [`arn:aws:bedrock:${region}:*:inference-profile/*`],
-      [`arn:aws:bedrock:${region}::foundation-model/*`],
-      ["arn:aws:bedrock:*::foundation-model/*"],
+      [`arn:aws:bedrock:${region}:*:inference-profile/global.anthropic.claude-sonnet-5-5`],
+      ["arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5*"],
     ];
     await build(manager, root);
     expect(await authOf("agentcore")).toBeUndefined();

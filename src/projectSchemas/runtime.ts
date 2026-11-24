@@ -364,11 +364,14 @@ export const ProjectRuntimeSchema = z
      */
     modelProvider: ModelProviderSchema.optional(),
     /**
-     * The model id the scaffold rendered into a LiteLLM runtime's code
-     * (explicit --model-id or the template default). Read by the China
-     * deploy gate to detect LiteLLM's Bedrock route ('bedrock/' prefix);
-     * ignored by the CDK app. Delete it together with modelProvider if you
-     * replace the model wiring by hand.
+     * The model id the scaffold rendered into the runtime's code (explicit
+     * --model-id or the template default), for a LiteLLM runtime and for a
+     * box runtime that calls a Bedrock model. The China deploy gate reads it
+     * to detect LiteLLM's Bedrock route ('bedrock/' prefix). For a box runtime,
+     * build lets its Box gateway call only this Bedrock model or inference
+     * profile; change it when the code calls another model. Ignored by the CDK
+     * app. Delete it together with modelProvider if you replace the model
+     * wiring by hand.
      */
     modelId: z.string().min(1).optional(),
     description: z.string().max(200).optional(),

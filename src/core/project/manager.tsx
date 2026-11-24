@@ -66,7 +66,7 @@ import {
   boxNetworkEdits,
   writeBoxNetworkFiles,
 } from "./boxNetworkWriters";
-import { boxCodeZipFiles, createProjectTree } from "./templates/project";
+import { boxCodeZipFiles, createProjectTree, recordBoxModelId } from "./templates/project";
 import {
   BOX_CODEZIP_ENTRYPOINT,
   boxAgentDir,
@@ -2289,6 +2289,8 @@ export class FsProjectManager implements ProjectManager {
     runtime.box = { version: BOX_RELEASE.version };
     // Box runs only on AgentCore Runtime V2, as create pins it.
     runtime.platformVersion = BOX_PLATFORM_VERSION;
+    // The model its code calls, so build lets its Box gateway call only that model.
+    recordBoxModelId(runtime, boxInput);
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));

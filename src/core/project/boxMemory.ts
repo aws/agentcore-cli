@@ -62,6 +62,91 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec): ProjectRuntime[] {
 }
 
 /**
+ * The Bedrock model ID or inference profile ID that `runtime`'s code calls, from its `modelId` in
+ * agentcore.json: the ID itself for the Bedrock provider, the ID after `bedrock/` for LiteLLM.
+ * Undefined when agentcore.json names no model.
+ */
+export function bedrockModelIdOf(runtime: ProjectRuntime): string | undefined {
+  if (runtime.modelId === undefined) return undefined;
+  if (runtime.modelProvider === "LiteLLM") {
+    return runtime.modelId.startsWith("bedrock/")
+      ? runtime.modelId.slice("bedrock/".length)
+      : undefined;
+  }
+  return runtime.modelId;
+}
+
+/** The geographic prefixes of a cross-region inference profile ID, as in `global.anthropic...`. */
+const INFERENCE_PROFILE_PREFIXES = ["global", "us", "eu", "apac", "us-gov", "jp", "au", "ca"];
+
+/** The foundation model behind inference profile `id`, or undefined when `id` is a model ID. */
+function modelBehindProfile(id: string): string | undefined {
+  const [prefix, ...rest] = id.split(".");
+  return INFERENCE_PROFILE_PREFIXES.includes(prefix!) && rest.length > 1
+    ? rest.join(".")
+    : undefined;
+}
+
+/**
+ * The statements that let the Box gateway's role call only `modelIds` in `region`: for an inference
+ * profile, the profile of the role's own account and its foundation model in any region, only
+ * through that profile (a cross-region profile sends the call to another region); for a model ID,
+ * that foundation model in `region`.
+ */
+function scopedBedrockStatements(modelIds: readonly string[], region: string): unknown[] {
+  const bedrock = `arn:${partition(region).name}:bedrock`;
+  // A Sid is unique in a policy, so each model's statements end in its number when there are more.
+  const sid = (name: string, index: number) => (modelIds.length > 1 ? `${name}${index + 1}` : name);
+  return modelIds.flatMap((id, index) => {
+    const model = modelBehindProfile(id);
+    if (model === undefined) {
+      return [
+        {
+          Sid: sid("BoxedAgentModelThroughGateway", index),
+          Effect: "Allow",
+          Action: BEDROCK_INVOKE_ACTIONS,
+          Resource: [`${bedrock}:${region}::foundation-model/${id}`],
+        },
+      ];
+    }
+    const profile = `${bedrock}:${region}:${PRINCIPAL_ACCOUNT}:inference-profile/${id}`;
+    return [
+      {
+        Sid: sid("BoxedAgentInferenceProfileThroughGateway", index),
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [`${bedrock}:${region}:*:inference-profile/${id}`],
+        Condition: { StringEquals: { "aws:ResourceAccount": PRINCIPAL_ACCOUNT } },
+      },
+      {
+        Sid: sid("BoxedAgentModelThroughItsInferenceProfile", index),
+        Effect: "Allow",
+        Action: BEDROCK_INVOKE_ACTIONS,
+        Resource: [`${bedrock}:*::foundation-model/${model}*`],
+        Condition: { StringEquals: { "bedrock:InferenceProfileArn": profile } },
+      },
+    ];
+  });
+}
+
+/**
+ * The warning build gives when the Box gateway's role can call every Bedrock model: a boxed runtime
+ * that calls a model has no `modelId` in agentcore.json. Undefined when every one has it.
+ */
+export function boxBedrockScopeWarning(spec: ProjectSpec): string | undefined {
+  const unnamed = boxedRuntimesCallingBedrock(spec).filter(
+    (runtime) => runtime.modelProvider !== undefined && bedrockModelIdOf(runtime) === undefined,
+  );
+  if (unnamed.length === 0) return undefined;
+  const names = unnamed.map(({ name }) => `"${name}"`).join(", ");
+  return (
+    `runtime ${names} has no modelId in agentcore.json, so its Box gateway can call every Bedrock ` +
+    `model of the account. Set "modelId" to the model ID or inference profile ID its code calls, ` +
+    "to let the gateway call only that model."
+  );
+}
+
+/**
  * The IAM policy document for {@link BOX_BEDROCK_POLICY_FILE}, or undefined when no boxed runtime
  * calls a Bedrock model. Each ARN is in the partition of `region`, the region of the `bedrock`
  * target that build writes. One file serves every deploy target, so the inference profile ARN
@@ -74,7 +159,16 @@ export function boxBedrockPolicy(
   spec: ProjectSpec,
   region: string,
 ): Record<string, unknown> | undefined {
-  if (boxedRuntimesCallingBedrock(spec).length === 0) return undefined;
+  const runtimes = boxedRuntimesCallingBedrock(spec);
+  if (runtimes.length === 0) return undefined;
+  // When agentcore.json names the model of each runtime, the role can call only those models.
+  const modelIds = runtimes.map(bedrockModelIdOf);
+  if (modelIds.every((id) => id !== undefined)) {
+    return {
+      Version: "2012-10-17",
+      Statement: scopedBedrockStatements([...new Set(modelIds)], region),
+    };
+  }
   const bedrock = `arn:${partition(region).name}:bedrock`;
   return {
     Version: "2012-10-17",

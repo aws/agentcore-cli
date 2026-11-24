@@ -16,7 +16,7 @@ import {
 } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
 import { boxGatewaySpec } from "../../../projectSchemas/project";
-import { BOX_PLATFORM_VERSION } from "../../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
@@ -53,8 +53,10 @@ export async function createProjectTree(
     }
     // Box runs only on AgentCore Runtime V2, so a box runtime pins it.
     if (hasBoxProfile(options.runtime)) {
-      for (const runtime of template.spec.runtimes ?? [])
+      for (const runtime of template.spec.runtimes ?? []) {
         runtime.platformVersion = BOX_PLATFORM_VERSION;
+        recordBoxModelId(runtime, options.runtime);
+      }
     }
     // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
     // only it makes a Box project.
@@ -133,6 +135,19 @@ function withBoxContainerBoxVersion(template: Template): void {
   // The box release that build and deploy stage into the image; change it to move to another.
   for (const runtime of template.spec.runtimes ?? [])
     runtime.box = { version: BOX_RELEASE.version };
+}
+
+/**
+ * Records in a box runtime that calls a Bedrock model the model ID its code renders (--model-id, or
+ * the template default), so build lets its Box gateway call only that model. A runtime with no
+ * model provider, such as the minimal template, calls no model and gets none.
+ */
+export function recordBoxModelId(
+  runtime: { modelProvider?: string; modelId?: string },
+  input: Pick<ScaffoldRuntimeInput, "modelId" | "modelProvider">,
+): void {
+  if (runtime.modelId !== undefined || runtime.modelProvider !== "Bedrock") return;
+  runtime.modelId = input.modelId ?? DEFAULT_MODEL_IDS.Bedrock;
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

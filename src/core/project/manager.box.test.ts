@@ -241,6 +241,39 @@ describe("agentcore create", () => {
     expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
+  test.each([
+    ["agent-python-strands-box", "global.anthropic.claude-sonnet-5-5"],
+    ["agent-python-langchain-box", "global.anthropic.claude-sonnet-5-5"],
+    ["agent-python-strands-box-container", "global.anthropic.claude-sonnet-5-5"],
+    ["agent-python-minimal-box", undefined],
+    ["agent-python-strands", undefined],
+  ] as const)(
+    "create --template %s records modelId %p, the model its code calls, for its Box gateway's Bedrock policy",
+    async (template, modelId) => {
+      const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+      tempDirectories.push(directory);
+      process.chdir(directory);
+      const generator = subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+      });
+      let next = await generator.next();
+      while (!next.done) next = await generator.next();
+
+      const [runtime] = (await specOnDisk(next.value)).runtimes as { modelId?: string }[];
+      expect(runtime?.modelId).toBe(modelId);
+      if (template === "agent-python-langchain-box") {
+        const load = await readFile(
+          join(directory, "example", "app", "agent", "model", "load.py"),
+          "utf8",
+        );
+        expect(load).toContain(`MODEL_ID = "${modelId}"`);
+      }
+    },
+  );
+
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
     const runtime = (name: string) =>
       ({ name, build: "CodeZip", entrypoint: "main.py", codeLocation: `app/${name}` }) as never;

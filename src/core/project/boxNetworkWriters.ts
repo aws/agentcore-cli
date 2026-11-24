@@ -21,7 +21,12 @@ import {
 } from "./boxNetwork";
 import { agentCoreDataPlaneHost } from "../../handlers/project/shortcuts";
 import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
-import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
+import {
+  addBoxGatewayTargets,
+  BOX_BEDROCK_POLICY_FILE,
+  boxBedrockPolicy,
+  boxBedrockScopeWarning,
+} from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
 import {
   boxKeyVariables,
@@ -390,6 +395,7 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     const region = networks[0]?.region;
     return {
       spec: [(copy) => addBoxGatewayTargets(copy, region)],
+      warnings: [boxBedrockScopeWarning(spec)].flatMap((warning) => (warning ? [warning] : [])),
       files: [
         {
           path: BOX_BEDROCK_POLICY_FILE,

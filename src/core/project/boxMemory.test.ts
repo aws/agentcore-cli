@@ -6,6 +6,7 @@ import {
   addBoxGatewayTargets,
   BOX_BEDROCK_POLICY_FILE,
   boxBedrockPolicy,
+  boxBedrockScopeWarning,
 } from "./boxMemory";
 
 function spec(options: { entrypoint?: string; memories?: string[] } = {}): ProjectSpec {
@@ -132,6 +133,95 @@ describe("boxBedrockPolicy", () => {
     expect(statements("us-gov-west-1")[1]!.Resource).toEqual([
       "arn:aws-us-gov:bedrock:us-gov-west-1::foundation-model/*",
     ]);
+  });
+});
+
+describe("boxBedrockPolicy with the runtime's modelId", () => {
+  type Statement = Record<string, unknown> & { Resource: string[] };
+  const ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+  const withModels = (...models: { modelProvider?: string; modelId?: string }[]) => {
+    const project = spec();
+    const [first] = project.runtimes;
+    project.runtimes = models.map((model, index) => ({
+      ...first!,
+      name: `agent${index}`,
+      ...model,
+    })) as ProjectSpec["runtimes"];
+    return project;
+  };
+  const statements = (project: ProjectSpec) =>
+    (boxBedrockPolicy(project, "us-west-2") as { Statement: Statement[] }).Statement;
+
+  test("allows only the runtime's inference profile, and its model only through that profile", () => {
+    const profile =
+      "arn:aws:bedrock:us-west-2:${aws:PrincipalAccount}:inference-profile/global.anthropic.claude-sonnet-5-5";
+    expect(
+      statements(
+        withModels({ modelProvider: "Bedrock", modelId: "global.anthropic.claude-sonnet-5-5" }),
+      ),
+    ).toEqual([
+      {
+        Sid: "BoxedAgentInferenceProfileThroughGateway",
+        Effect: "Allow",
+        Action: ACTIONS,
+        Resource: [
+          "arn:aws:bedrock:us-west-2:*:inference-profile/global.anthropic.claude-sonnet-5-5",
+        ],
+        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
+      },
+      {
+        Sid: "BoxedAgentModelThroughItsInferenceProfile",
+        Effect: "Allow",
+        Action: ACTIONS,
+        Resource: ["arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5*"],
+        Condition: { StringEquals: { "bedrock:InferenceProfileArn": profile } },
+      },
+    ]);
+  });
+
+  test("allows a model ID only as that foundation model in the region", () => {
+    expect(
+      statements(withModels({ modelProvider: "Bedrock", modelId: "amazon.nova-pro-v1:0" })),
+    ).toEqual([
+      {
+        Sid: "BoxedAgentModelThroughGateway",
+        Effect: "Allow",
+        Action: ACTIONS,
+        Resource: ["arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0"],
+      },
+    ]);
+  });
+
+  test("allows the model of each runtime once, each statement with its own Sid", () => {
+    const policy = statements(
+      withModels(
+        { modelProvider: "Bedrock", modelId: "us.anthropic.claude-sonnet-5-5" },
+        { modelProvider: "Bedrock", modelId: "us.anthropic.claude-sonnet-5-5" },
+        { modelProvider: "LiteLLM", modelId: "bedrock/amazon.nova-pro-v1:0" },
+      ),
+    );
+    expect(policy.map(({ Sid }) => Sid)).toEqual([
+      "BoxedAgentInferenceProfileThroughGateway1",
+      "BoxedAgentModelThroughItsInferenceProfile1",
+      "BoxedAgentModelThroughGateway2",
+    ]);
+  });
+
+  test("keeps every model, and warns, when a runtime that calls a model has no modelId", () => {
+    const project = withModels(
+      { modelProvider: "Bedrock", modelId: "global.anthropic.claude-sonnet-5-5" },
+      { modelProvider: "Bedrock" },
+    );
+    expect(statements(project).map(({ Sid }) => Sid)).toEqual([
+      "BoxedAgentInferenceProfilesThroughGateway",
+      "BoxedAgentModelsInRegionThroughGateway",
+      "BoxedAgentModelsThroughInferenceProfiles",
+    ]);
+    expect(boxBedrockScopeWarning(project)).toContain('runtime "agent1" has no modelId');
+  });
+
+  test("gives no warning for a runtime with no model provider, which calls no model as created", () => {
+    expect(boxBedrockScopeWarning(withModels({}))).toBeUndefined();
   });
 });
 
