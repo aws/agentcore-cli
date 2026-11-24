@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { parse } from "smol-toml";
-import { InputValidationError, InvalidEnvironmentError } from "../../errors/errors";
+import {
+  InputValidationError,
+  InvalidEnvironmentError,
+  ProjectStateError,
+} from "../../errors/errors";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import type { Project } from "../../handlers/project/types";
 import { FsReadWriteJson, type ReadWriteJson } from "../../io";
@@ -139,23 +143,26 @@ function countingJson() {
   /**
    * `refuseSpec` and `refuseRecord` make the next writes of agentcore.json or the record fail, and
    * `refuseRawSpecRead` each read of agentcore.json as a plain object, which build patches.
+   * `breakRawSpec` gives that read an invalid project name, so the patched spec fails the schema.
    */
   const counter = {
     specWrites: 0,
     refuseSpec: false,
     refuseRecord: false,
     refuseRawSpecRead: false,
+    breakRawSpec: false,
   };
   const json: ReadWriteJson = {
     read: (path, schema) => {
-      if (
-        counter.refuseRawSpecRead &&
-        path.endsWith("agentcore.json") &&
-        !Object.is(schema, ProjectSpecSchema)
-      ) {
+      const raw = path.endsWith("agentcore.json") && !Object.is(schema, ProjectSpecSchema);
+      if (counter.refuseRawSpecRead && raw) {
         throw new Error(`the test refuses the read of ${path}`);
       }
-      return real.read(path, schema);
+      const read = real.read(path, schema);
+      if (!(counter.breakRawSpec && raw)) return read;
+      return read.then(
+        (value) => ({ ...(value as object), name: "not a valid name!" }) as typeof value,
+      );
     },
     write: (path, data) => {
       if (path.endsWith("agentcore.json")) {
@@ -569,6 +576,23 @@ describe("build writes the Box network of the box profile", () => {
 
     await expect(build(manager, root)).rejects.toThrow("the test refuses the read of");
 
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("keeps the record of its targets as it was when the patched agentcore.json fails the schema", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.breakRawSpec = true;
+
+    await expect(build(manager, root)).rejects.toThrow(ProjectStateError);
+
+    expect(counter.specWrites).toBe(0);
     expect(await text(root, SPEC)).toBe(spec);
     expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
   });
