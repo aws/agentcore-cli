@@ -29,7 +29,7 @@ import {
   boxMemoryPolicy,
 } from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
-import { boxGatewayTargetsText } from "./boxGatewayTargets";
+import { boxGatewayTargetsText, readBoxGatewayTargets } from "./boxGatewayTargets";
 import {
   boxKeyVariables,
   planBoxProfileCredentials,
@@ -261,14 +261,16 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
     ...networks.map(({ gateway }) => ({ kind: "gatewayTargets" as const, gateway })),
     ...(networks.length > 0 ? [{ kind: "file" as const, path: BOX_GATEWAY_TARGETS_FILE }] : []),
   ],
-  edits: (networks) => {
+  edits: (networks, { projectRoot }) => {
     if (networks.length === 0) return {};
+    // readBoxNetworks has refused a record that is not valid, so this one reads.
+    const before = readBoxGatewayTargets(projectRoot) ?? {};
     return {
       spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
       filesAfter: (written) => [
         {
           path: BOX_GATEWAY_TARGETS_FILE,
-          text: boxGatewayTargetsText(recordOf(written, networks)),
+          text: boxGatewayTargetsText(recordOf(written, networks, before)),
         },
       ],
     };
@@ -276,18 +278,26 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
 };
 
 /**
- * The record of the targets build writes: for each Box gateway, the targets of the gateway in
- * `spec`, agentcore.json as the writers changed it, that the model owns (`managedTargets`).
+ * The record of the targets build writes: for each Box gateway of a model, the targets of the
+ * gateway in `spec`, agentcore.json as the writers changed it, that the model owns
+ * (`managedTargets`). The entry of each other gateway of `before` stays while `spec` has the
+ * gateway, so a runtime with no model in one build keeps what build owns.
  */
-function recordOf(spec: ProjectSpec, networks: readonly BoxNetwork[]): Record<string, string[]> {
-  return Object.fromEntries(
-    networks.map((network) => [
-      network.gateway,
-      (boxGatewayOf(spec, network.runtime)?.targets ?? []).flatMap(({ name }) =>
-        network.managedTargets.has(name) ? [name] : [],
-      ),
-    ]),
+function recordOf(
+  spec: ProjectSpec,
+  networks: readonly BoxNetwork[],
+  before: Readonly<Record<string, readonly string[]>>,
+): Record<string, readonly string[]> {
+  const gateways = new Set(spec.agentCoreGateways.map(({ name }) => name));
+  const record: Record<string, readonly string[]> = Object.fromEntries(
+    Object.entries(before).filter(([gateway]) => gateways.has(gateway)),
   );
+  for (const network of networks) {
+    record[network.gateway] = (boxGatewayOf(spec, network.runtime)?.targets ?? []).flatMap(
+      ({ name }) => (network.managedTargets.has(name) ? [name] : []),
+    );
+  }
+  return record;
 }
 
 /**

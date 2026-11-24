@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getBoxGatewayAgentCoreTargetSpec } from "../../handlers/project/shortcuts";
-import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
+import { AgentCoreGatewaySchema, type AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
 import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
@@ -218,6 +221,37 @@ describe("gatewayTargetsWriter", () => {
         text: `${JSON.stringify({ "agent-box-egress": ["egress-httpbin-org"] }, undefined, 2)}\n`,
       },
     ]);
+  });
+
+  test("keeps the record entry of a Box gateway that no model of this build has, and drops one whose gateway is gone", () => {
+    const root = mkdtempSync(join(tmpdir(), "box-record-"));
+    try {
+      mkdirSync(join(root, "agentcore"));
+      writeFileSync(
+        join(root, BOX_GATEWAY_TARGETS_FILE),
+        JSON.stringify({
+          "agent-box-egress": ["egress-old"],
+          "search-box-egress": ["egress-search"],
+          "gone-box-egress": ["egress-gone"],
+        }),
+      );
+      const project = spec([passthrough("egress-old", "https://old.example.com")]);
+      project.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec("search")));
+      const models = [network({ hosts: [host("api.example.com", "egress-api")] })];
+
+      const edits = boxNetworkEdits([gatewayTargetsWriter], models, {
+        ...contextFor(project),
+        projectRoot: root,
+      });
+
+      const record = edits.files.find(({ path }) => path === BOX_GATEWAY_TARGETS_FILE);
+      expect(JSON.parse((record as { text: string }).text)).toEqual({
+        "agent-box-egress": ["egress-api"],
+        "search-box-egress": ["egress-search"],
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("records no file for a project with no box runtime", () => {
