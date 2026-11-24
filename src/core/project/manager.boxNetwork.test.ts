@@ -1458,15 +1458,25 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     include: ["trace"],
     secret: { ref: "env://LANGSMITH_KEY" },
   };
-  /** The default target of the Runtime profile, as the box profile has no cloudwatch_logs target. */
+  /**
+   * The default target of the Runtime profile, as the box profile has no cloudwatch_logs target:
+   * the runtime's own log group and log stream, which box reads when the run starts.
+   */
   const DEFAULT_TARGET = {
     kind: "cloudwatch_logs",
-    region: "us-west-2",
-    log_group: "/aws/bedrock-agentcore/box/demo/agent_python_strands",
-    log_stream: "box",
+    region: "${{ inputs.aws.region }}",
+    log_group: "${{ inputs.runtime.log_group }}",
+    log_stream: "${{ inputs.runtime.log_stream }}",
     include: ["deny", "permit", "trace"],
     secret: { ref: "aws://" },
   };
+
+  /** {@link strandsProject} with OTEL off, so its Runtime profile gets no default X-Ray target. */
+  async function otelOffProject(options?: Parameters<typeof strandsProject>[0]) {
+    const created = await strandsProject(options);
+    await setOtel(created.root, false);
+    return created;
+  }
 
   const showsTelemetry = (telemetry: Record<string, unknown>) => {
     const answer = shows();
@@ -1474,7 +1484,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
   };
 
   test("names the secret in the Runtime profile, and lets the execution role read it alone", async () => {
-    const { manager, root, box } = await strandsProject({
+    const { manager, root, box } = await otelOffProject({
       env: { ...ON, LANGSMITH_KEY: KEY },
       template: "agent-python-strands-box-container",
     });
@@ -1518,12 +1528,12 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
       expect(await text(root, file)).not.toContain(KEY);
     }
     // The target declares no credential: deploy writes a secret, not an Identity provider.
-    expect(spec.credentials).toEqual([]);
+    expect(spec.credentials ?? []).toEqual([]);
     expect(warnings).toEqual([]);
   });
 
   test("keeps today's Runtime profile with the switch off, and says why", async () => {
-    const { manager, root, box } = await strandsProject({
+    const { manager, root, box } = await otelOffProject({
       env: { LANGSMITH_KEY: KEY },
       template: "agent-python-strands-box-container",
     });
@@ -1548,7 +1558,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
   });
 
   test("leaves out a target whose key the Runtime has no source for, and says so", async () => {
-    const { manager, root, box } = await strandsProject({ env: ON });
+    const { manager, root, box } = await otelOffProject({ env: ON });
     const collector = {
       kind: "otlp",
       destination: "https://collector.example.com",
@@ -1567,7 +1577,6 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     );
   });
 });
-
 describe("build writes the Bedrock and Memory targets for the region it builds for", () => {
   const bedrockTarget = (region: string) => ({
     name: "bedrock",
