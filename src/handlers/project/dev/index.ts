@@ -7,6 +7,12 @@ import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
+import {
+  HookPortReserver,
+  type HttpFetch,
+  planWarmup,
+  waitUntilReady,
+} from "../../../core/dev/readiness";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   AgentCoreCLIError,
@@ -19,6 +25,7 @@ import {
   SilentCLIError,
 } from "../../../errors";
 import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
+import { waitForPort } from "../../../io";
 import { createHandler, flag, ProjectKey, type Context, type Middleware } from "../../../router";
 import { withUserCancellation } from "../../../runnable";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
@@ -57,6 +64,8 @@ export type DevProjectHandlerConfig = {
   harness: Pick<CoreHarnessClient, "getHarness" | "invokeHarness">;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
+  /** HTTP client for the `/ping` check and warmup hook calls; defaults to the global fetch. */
+  fetch?: HttpFetch;
   /** Runs the final v0 deployer when harness dev is opened from a v0 project. */
   runV0Deploy?: V0DeployRunner;
 };
@@ -431,6 +440,9 @@ async function runRuntimeDev({
           input.mode === "headless"
             ? await resolveDevPorts(runtimes, input.port, config.checkPort, signal)
             : undefined;
+        // Container warmup hooks on their own port get host ports that can't collide with a dev
+        // port or each other, including agents the Inspector starts later.
+        const hookPorts = new HookPortReserver(config.checkPort, signal, assignedPorts?.values());
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
@@ -446,10 +458,19 @@ async function runRuntimeDev({
               }
               return assignedPort;
             }
-            return (await resolveDevPort(runtime.protocol, input.port, config.checkPort, signal))
-              .port;
+            const { port } = await resolveDevPort(
+              runtime.protocol,
+              input.port,
+              async (candidate, checkSignal) =>
+                !hookPorts.isReserved(candidate) && config.checkPort(candidate, checkSignal),
+              signal,
+            );
+            hookPorts.add(port);
+            return port;
           },
+          reserveHookPort: (_runtime, hookPort) => hookPorts.reserve(hookPort),
           waitReady: config.waitReady,
+          fetch: config.fetch,
           signal,
         });
 
@@ -622,17 +643,58 @@ async function runWithoutUi({
     });
   }
 
+  // Resolved before the agent starts, so an unreachable hook fails without launching it.
+  const { hookPort, target: warmup } = await planWarmup(runtime, devPort.port, (preferred) =>
+    new HookPortReserver(config.checkPort, signal, [devPort.port]).reserve(preferred),
+  );
   const env = await options.environment(runtime);
   signal.throwIfAborted();
 
-  const runner = config.runners[isContainerBuild(runtime) ? "Container" : "CodeZip"];
-  for await (const event of runner.run({
-    runtime,
-    projectRoot: project.rootPath,
-    port: devPort.port,
-    env,
-    signal,
-  })) {
-    renderAgentEvent({ io: config.io, event, agent: runtime.name, json });
+  // A failed warmup stops the agent and fails the command, the way it fails a V2 deploy.
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", onParentAbort, { once: true });
+  let lastActivityAt = Date.now();
+  let warmupError: Error | undefined;
+  if (warmup) {
+    void waitUntilReady({
+      name: runtime.name,
+      devPort: devPort.port,
+      warmup,
+      waitForPort: () =>
+        (config.waitReady ?? waitForPort)(devPort.port, controller.signal, () => lastActivityAt),
+      signal: controller.signal,
+      fetchImpl: config.fetch ?? fetch,
+      onStatus: (message) => renderStatus({ io: config.io, message, json }),
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      warmupError = error instanceof Error ? error : new Error(String(error));
+      controller.abort(warmupError);
+    });
   }
+
+  const runner = config.runners[isContainerBuild(runtime) ? "Container" : "CodeZip"];
+  try {
+    for await (const event of runner.run({
+      runtime,
+      projectRoot: project.rootPath,
+      port: devPort.port,
+      ...(hookPort !== undefined && { hookPort }),
+      env,
+      signal: controller.signal,
+    })) {
+      lastActivityAt = Date.now();
+      renderAgentEvent({ io: config.io, event, agent: runtime.name, json });
+    }
+  } catch (error) {
+    if (warmupError)
+      throw new AgentCoreCLIError(
+        `Agent '${runtime.name}' failed to start: ${warmupError.message}`,
+      );
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onParentAbort);
+  }
+  if (warmupError)
+    throw new AgentCoreCLIError(`Agent '${runtime.name}' failed to start: ${warmupError.message}`);
 }

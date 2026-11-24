@@ -223,6 +223,28 @@ export const LifecycleConfigurationSchema = z
     }
   });
 export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema>;
+
+// Shape only, and loose: the service validates sizes, paths, ports and the V2 requirement, and
+// fields it adds later pass through to it without a CLI release.
+export const ResourceConfigurationSchema = z.looseObject({
+  minimumMemoryInMiB: z.number().int().positive(),
+});
+export type ResourceConfiguration = z.infer<typeof ResourceConfigurationSchema>;
+
+export const LifecycleHookSchema = z.looseObject({
+  action: z.looseObject({
+    httpPost: z.looseObject({
+      path: z.string().min(1),
+      port: z.number().int().optional(),
+    }),
+  }),
+});
+export type LifecycleHook = z.infer<typeof LifecycleHookSchema>;
+
+export const RuntimeHooksConfigurationSchema = z.looseObject({
+  build: z.looseObject({ warmup: LifecycleHookSchema.optional() }).optional(),
+});
+export type RuntimeHooksConfiguration = z.infer<typeof RuntimeHooksConfigurationSchema>;
 export const RuntimeEndpointNameSchema = z
   .string()
   .min(1, "Endpoint name is required")
@@ -328,6 +350,10 @@ export const ProjectRuntimeSchema = z
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),
     lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
+    /** Each update replaces this, so removing it returns sessions to consumption-based pricing. */
+    resourceConfigurations: z.array(ResourceConfigurationSchema).optional(),
+    /** Each update replaces this, so removing it removes the hooks. */
+    hooksConfiguration: RuntimeHooksConfigurationSchema.optional(),
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),

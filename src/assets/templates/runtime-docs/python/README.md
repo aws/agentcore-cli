@@ -198,23 +198,32 @@ Every protocol also shares these:
 
 ### Platform version V2
 
-`--platform-version V2` (`platformVersion` in `agentcore.json`) starts each
-instance from a snapshot of your initialized code, so cold starts stay fast
-as images and traffic grow. V1 is the default, and V2 is offered in
+`--platform-version V2` (`platformVersion` in `agentcore.json`) prepares your
+agent once and starts each session from a snapshot of it, so cold starts stay
+fast as images and traffic grow. V1 is the default, and V2 is offered in
 [some Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html#runtime-platform-versions).
 On V2:
 
-- Startup work (imports, loading models, building clients) is captured once
-  in the snapshot and shared by every instance. Finish it within 120 seconds,
-  or creating the runtime fails its health check.
-- Produce anything that must differ per request, or can expire, in your
-  request handler: random values and IDs, the current time, the reference
-  point for elapsed time, and credentials.
-- Get random values from the operating system on each request
-  (`secrets`, `os.urandom()`, `uuid.uuid4()`). The `random` module is seeded
-  at startup, so restored instances repeat its sequence.
-- Every instance reports the same hostname and PID, so don't use either as
-  an instance or worker ID.
+- The snapshot is taken when your health check (`GET /ping`) first passes,
+  so report healthy only after your agent has loaded what sessions need.
+  `BedrockAgentCoreApp` does this for you: code at module scope (imports,
+  models, clients) runs before `app.run()` starts the server.
+  If the health check doesn't pass in time, the create or update fails.
+- Build reusable clients before the snapshot. Refresh credentials when they
+  expire, and create a new boto3 `Session` in the handler only for
+  clients that need the session's context keys.
+- Create random values, IDs, tokens and timestamps in the request handler,
+  from the operating system (`secrets`, `os.urandom()`, `uuid.uuid4()`). The
+  `random` module repeats the same sequence in every session.
+- In a container, use a snapshot-safe OpenSSL. On Amazon Linux 2023:
+  `RUN dnf swap -y openssl-libs openssl-snapsafe-libs`. Direct code deploys
+  already use it; OpenSSL builds that libraries bundle can repeat values.
+- Every session reports the same hostname and PID, so don't use either as an
+  ID.
+- `--hooks-configuration` adds a build warmup hook that loads memory and warms
+  files before sessions start; its two calls share 120 seconds.
+  `--resource-configurations` sets a committed memory baseline per session.
+  Each update replaces both, so keep them set in `agentcore.json`.
 - Creating or updating a V2 runtime takes several minutes. Keep
   `platformVersion` set: removing it doesn't move the runtime back, and a
   later replacement of the runtime would start on V1. Set `V1` to move back.
@@ -379,14 +388,19 @@ Requirements for the image:
 A starting point:
 
 ```dockerfile
-FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-RUN pip install --no-cache-dir uv
+# Snapshot-safe OpenSSL, so platform version V2 sessions don't repeat random values.
+RUN dnf upgrade -y \
+ && dnf swap -y openssl-libs openssl-snapsafe-libs \
+ && dnf install -y python3.12 python3.12-pip shadow-utils \
+ && dnf clean all
+RUN python3.12 -m pip install --no-cache-dir uv
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX
 ENV UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=1 PYTHONUNBUFFERED=1 \
     UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX} UV_INDEX=${UV_INDEX} \
-    PATH="/app/.venv/bin:$PATH"
+    UV_PYTHON=python3.12 PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 RUN useradd -m -u 1000 bedrock_agentcore

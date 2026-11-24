@@ -138,23 +138,34 @@ Every protocol also shares these:
 
 ### Platform version V2
 
-`--platform-version V2` (`platformVersion` in `agentcore.json`) starts each
-instance from a snapshot of your initialized code, so cold starts stay fast
-as images and traffic grow. V1 is the default, and V2 is offered in
+`--platform-version V2` (`platformVersion` in `agentcore.json`) prepares your
+agent once and starts each session from a snapshot of it, so cold starts stay
+fast as images and traffic grow. V1 is the default, and V2 is offered in
 [some Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html#runtime-platform-versions).
 On V2:
 
-- Startup work (imports, loading models, building clients) is captured once
-  in the snapshot and shared by every instance. Finish it within 120 seconds,
-  or creating the runtime fails its health check.
-- Produce anything that must differ per request, or can expire, in your
-  request handler: random values and IDs, the current time, the reference
-  point for elapsed time, and credentials.
-- Read random bytes from `/dev/urandom` on each request. Node's `crypto`
-  module (`randomBytes`, `randomUUID`, `getRandomValues`, and packages such
-  as `uuid`) can repeat values across instances, even inside the handler.
-- Every instance reports the same hostname and PID, so don't use either as
-  an instance or worker ID.
+- The snapshot is taken when your health check (`GET /ping`) first passes,
+  so report healthy only after your agent has loaded what sessions need.
+  `BedrockAgentCoreApp` does this for you: top-level code (imports, models,
+  clients) runs before `app.run()` starts the server.
+  If the health check doesn't pass in time, the create or update fails.
+- Build reusable clients before the snapshot. Refresh credentials when they
+  expire.
+- Create random values, IDs, tokens and timestamps in the request handler.
+  `Math.random()` repeats the same sequence in every session. Call
+  `crypto.randomUUID({ disableEntropyCache: true })`; if
+  `node -p process.config.variables.node_shared_openssl` prints `false`, your
+  Node.js bundles its own OpenSSL and every `crypto` random function can
+  repeat, so read `/dev/urandom` instead.
+- In a container, use a snapshot-safe OpenSSL. On Amazon Linux 2023:
+  `RUN dnf swap -y openssl-libs openssl-snapsafe-libs`. Direct code deploys
+  already use it.
+- Every session reports the same hostname and PID, so don't use either as an
+  ID.
+- `--hooks-configuration` adds a build warmup hook that loads memory and warms
+  files before sessions start; its two calls share 120 seconds.
+  `--resource-configurations` sets a committed memory baseline per session.
+  Each update replaces both, so keep them set in `agentcore.json`.
 - Creating or updating a V2 runtime takes several minutes. Keep
   `platformVersion` set: removing it doesn't move the runtime back, and a
   later replacement of the runtime would start on V1. Set `V1` to move back.

@@ -213,6 +213,21 @@ describe("runtime templates", () => {
     expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
   });
 
+  test.each<[ModelProvider, string, string]>([
+    ["Bedrock", "agui_agent = _build_agui_agent()", "_LazyAguiAgent"],
+    ["Anthropic", "agui_agent = _LazyAguiAgent()", "agui_agent = _build_agui_agent()"],
+  ])(
+    "agui-python-strands with %s builds the agent at the right time for a V2 snapshot",
+    async (modelProvider, expected, unexpected) => {
+      const { appDir } = await addTemplate("my_agent", "agui-python-strands", {
+        model: { modelProvider, ...(modelProvider !== "Bedrock" && { apiKey: "test-api-key" }) },
+      });
+      const main = await Bun.file(join(appDir, "main.py")).text();
+      expect(main).toContain(expected);
+      expect(main).not.toContain(unexpected);
+    },
+  );
+
   test("an API base is refused with a provider other than OpenAICompatible", () => {
     expect(() =>
       resolveRuntimeTemplateShortcut("agent-python-strands", {

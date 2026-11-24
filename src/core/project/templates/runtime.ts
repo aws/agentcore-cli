@@ -128,6 +128,8 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(infra.protocol && { protocol: infra.protocol }),
     ...(infra.requestHeaderAllowlist && { requestHeaderAllowlist: infra.requestHeaderAllowlist }),
     ...(lifecycleConfiguration && { lifecycleConfiguration }),
+    ...(infra.resourceConfigurations && { resourceConfigurations: infra.resourceConfigurations }),
+    ...(infra.hooksConfiguration && { hooksConfiguration: infra.hooksConfiguration }),
     ...(infra.filesystemConfigurations && {
       filesystemConfigurations: infra.filesystemConfigurations,
     }),

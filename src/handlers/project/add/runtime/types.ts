@@ -20,6 +20,8 @@ const RuntimeInfraConfigSchema = z.object({
   protocol: ProjectRuntimeSchema.shape.protocol,
   requestHeaderAllowlist: ProjectRuntimeSchema.shape.requestHeaderAllowlist,
   lifecycleConfiguration: ProjectRuntimeSchema.shape.lifecycleConfiguration,
+  resourceConfigurations: ProjectRuntimeSchema.shape.resourceConfigurations,
+  hooksConfiguration: ProjectRuntimeSchema.shape.hooksConfiguration,
   filesystemConfigurations: ProjectRuntimeSchema.shape.filesystemConfigurations,
   tags: ProjectRuntimeSchema.shape.tags,
   build: ProjectRuntimeSchema.shape.build.optional(),

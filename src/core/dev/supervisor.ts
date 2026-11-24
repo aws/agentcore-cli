@@ -3,6 +3,7 @@ import { waitForPort } from "../../io";
 import type { DevEvent, DevRunner } from "../../handlers/project/dev/types";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { isContainerBuild } from "../../projectSchemas/constants";
+import { type HttpFetch, planWarmup, waitUntilReady } from "./readiness";
 
 export type AgentPhase = "idle" | "starting" | "running" | "failed";
 
@@ -30,11 +31,18 @@ export type SupervisorConfig = {
   /** Resolves the port a runtime should serve on. */
   resolvePort: (runtime: ProjectRuntime) => Promise<number>;
   /**
+   * Reserves a free host port for a container warmup hook on its own port, preferring the hook's
+   * own number, so it can't collide with a dev port or another agent's hook. Defaults to that number.
+   */
+  reserveHookPort?: (runtime: ProjectRuntime, hookPort: number) => Promise<number>;
+  /**
    * Resolves once a started agent accepts connections on its port. `lastActivityAt`
    * returns the time of the agent's most recent output, so a build that keeps
    * logging is not timed out mid-flight.
    */
   waitReady?: (port: number, signal: AbortSignal, lastActivityAt: () => number) => Promise<void>;
+  /** HTTP client for the `/ping` check and warmup hook calls; defaults to the global fetch. */
+  fetch?: HttpFetch;
   signal: AbortSignal;
 };
 
@@ -195,17 +203,36 @@ export class DevSupervisor {
 
     try {
       const port = await this.config.resolvePort(entry.runtime);
+      // Resolved before the agent starts, so an unreachable hook fails without launching it.
+      const reserveHookPort =
+        this.config.reserveHookPort ?? (async (_runtime, preferred) => preferred);
+      const { hookPort, target: warmup } = await planWarmup(entry.runtime, port, (preferred) =>
+        reserveHookPort(entry.runtime, preferred),
+      );
       const env = await this.config.getDevEnvVarsForRuntime(entry.runtime);
       const runner = this.config.runners[isContainerBuild(entry.runtime) ? "Container" : "CodeZip"];
 
       let ready = false;
       const activity = { at: Date.now() };
-      const readiness = this.waitReady(port, controller.signal, () => activity.at).then(() => {
+      const readiness = waitUntilReady({
+        name,
+        devPort: port,
+        warmup,
+        waitForPort: () => this.waitReady(port, controller.signal, () => activity.at),
+        signal: controller.signal,
+        fetchImpl: this.config.fetch ?? fetch,
+        onStatus: (message) => this.push(name, { type: "status", message }),
+      }).then(() => {
         ready = true;
       });
-      const pump = this.pump(entry, runner, { port, env, signal: controller.signal }, () => {
-        activity.at = Date.now();
-      });
+      const pump = this.pump(
+        entry,
+        runner,
+        { port, hookPort, env, signal: controller.signal },
+        () => {
+          activity.at = Date.now();
+        },
+      );
       entry.running = pump;
       const earlyExit = pump.finally(unchain).then(() => {
         if (!ready)
@@ -238,7 +265,7 @@ export class DevSupervisor {
   private async pump(
     entry: AgentEntry,
     runner: DevRunner,
-    input: { port: number; env: Record<string, string>; signal: AbortSignal },
+    input: { port: number; hookPort?: number; env: Record<string, string>; signal: AbortSignal },
     onActivity: () => void,
   ): Promise<void> {
     const name = entry.runtime.name;
@@ -247,6 +274,7 @@ export class DevSupervisor {
         runtime: entry.runtime,
         projectRoot: this.config.projectRoot,
         port: input.port,
+        ...(input.hookPort !== undefined && { hookPort: input.hookPort }),
         env: input.env,
         signal: input.signal,
       })) {
