@@ -261,6 +261,7 @@ describe("performCdkOperation", () => {
 });
 
 describe("Toolkit loading", () => {
+  // The cold import of @aws-cdk/toolkit-lib takes over 5 s on GitHub-hosted Windows runners.
   test("constructs the real Toolkit without resolving credentials", async () => {
     const ioHost = createCdkIoHost(createSilentLogger());
     const provider = await resolveCdkCredentials(ioHost, "us-west-2");
@@ -269,7 +270,7 @@ describe("Toolkit loading", () => {
     expect(typeof provider).toBe("function");
     expect(typeof loaded.toolkit.bootstrap).toBe("function");
     expect(typeof loaded.toolkit.deploy).toBe("function");
-  });
+  }, 30_000);
 
   test("loads the Toolkit with the target region and deployment credentials", async () => {
     const { loaded } = loadedToolkit();
