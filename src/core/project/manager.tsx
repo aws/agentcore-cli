@@ -82,7 +82,7 @@ import {
   startsInBoxOnCodeZip,
 } from "./templates/boxProfile";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
-import { assertBoxRegionSupported, validateBoxRuntimes } from "./boxValidation";
+import { assertRuntimeV2RegionSupported, validateBoxRuntimes } from "./boxValidation";
 import { BOX_INSTALL_HINT, BOX_RELEASE } from "./backends/boxRelease";
 import { getRuntimeTemplateResolver } from "./templates/runtime";
 import {
@@ -112,7 +112,7 @@ import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
-import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
+import { BOX_PLATFORM_VERSION, RuntimeEndpointSchema } from "../../projectSchemas/runtime";
 import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
@@ -1839,7 +1839,7 @@ export class FsProjectManager implements ProjectManager {
     // typo'd --target into a deployment somewhere unintended.
     if (!target && input.target === DEFAULT_TARGET_NAME) {
       // Box runs only on AgentCore Runtime V2, so stop before STS or aws-targets.json.
-      assertBoxRegionSupported(
+      assertRuntimeV2RegionSupported(
         project.spec,
         { name: DEFAULT_TARGET_NAME, region: input.region },
         { provisioning: true, otherTargets: targets.length > 0 },
@@ -1873,7 +1873,7 @@ export class FsProjectManager implements ProjectManager {
     }
 
     // Box runs only on AgentCore Runtime V2, so stop before the sync rewrites agentcore.json.
-    assertBoxRegionSupported(project.spec, target);
+    assertRuntimeV2RegionSupported(project.spec, target);
 
     // Synth reads agentcore.json, so it is brought up to date with the code
     // first; only once the target is known, so a bad --target rewrites nothing.
@@ -2191,6 +2191,8 @@ export class FsProjectManager implements ProjectManager {
     const runtime = projectSpec.runtimes.find((candidate) => candidate.name === name)!;
     // The box release build and deploy ship, as create pins it.
     runtime.box = { version: BOX_RELEASE.version };
+    // Box runs only on AgentCore Runtime V2, as create pins it.
+    runtime.platformVersion = BOX_PLATFORM_VERSION;
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));

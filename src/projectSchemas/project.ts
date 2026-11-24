@@ -1,5 +1,10 @@
 import { isReservedProjectName } from "./constants";
-import { PRIVATE_VPC_LIMIT, ProjectRuntimeSchema, type Containment } from "./runtime";
+import {
+  BOX_PLATFORM_VERSION,
+  PRIVATE_VPC_LIMIT,
+  ProjectRuntimeSchema,
+  type Containment,
+} from "./runtime";
 import { AgentCoreGatewaySchema, REAL_KB_ID_PATTERN, ToolRuntimeSchema } from "./gateway";
 import { ConfigBundleSchema } from "./config-bundle";
 import { CredentialSchema, credentialEnvironmentVariableNames } from "./credential";
@@ -153,6 +158,26 @@ export const ProjectSpecSchema = z
           code: "custom",
           message: `Gateway "${gateway.name}" has boundRuntime "${gateway.boundRuntime}" in a Box project and authorizerType "NONE". Anyone with its URL could call it and use its credentials. Use "AWS_IAM".`,
           path: ["agentCoreGateways"],
+        });
+      }
+    }
+    // Box runs only on AgentCore Runtime V2, and without the field the service picks the platform,
+    // which can be V1. `agentcore create` and `add runtime` write it, so every command stops on a
+    // Box runtime without it.
+    if (isBoxProject(spec)) {
+      for (const runtime of spec.runtimes) {
+        if (runtime.platformVersion === BOX_PLATFORM_VERSION) continue;
+        const actual =
+          runtime.platformVersion === undefined
+            ? "has no platformVersion"
+            : `has "platformVersion": "${runtime.platformVersion}"`;
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtime "${runtime.name}" ${actual}, but every runtime of a Box project runs on ` +
+            `AgentCore Runtime ${BOX_PLATFORM_VERSION}. Set "platformVersion": ` +
+            `"${BOX_PLATFORM_VERSION}" on the runtime in agentcore.json.`,
+          path: ["runtimes"],
         });
       }
     }
