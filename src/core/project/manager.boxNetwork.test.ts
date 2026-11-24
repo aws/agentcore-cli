@@ -17,6 +17,7 @@ import { BOX_RELEASE } from "./backends/boxRelease";
 import { FS_RECORD_FILES, type RecordFiles } from "./boxGatewayTargets";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
+import { ProjectSpecSchema } from "../../projectSchemas/project";
 import { renderAwsMetadataPolicy } from "./templates/boxProfile";
 import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
@@ -134,10 +135,27 @@ async function drain<T>(generator: AsyncGenerator<{ type: string; message?: stri
 /** A JSON reader and writer that counts its writes of agentcore.json. */
 function countingJson() {
   const real = new FsReadWriteJson({ logger: createSilentLogger() });
-  /** `refuseSpec` and `refuseRecord` make the next writes of agentcore.json or the record fail. */
-  const counter = { specWrites: 0, refuseSpec: false, refuseRecord: false };
+  /**
+   * `refuseSpec` and `refuseRecord` make the next writes of agentcore.json or the record fail, and
+   * `refuseRawSpecRead` each read of agentcore.json as a plain object, which build patches.
+   */
+  const counter = {
+    specWrites: 0,
+    refuseSpec: false,
+    refuseRecord: false,
+    refuseRawSpecRead: false,
+  };
   const json: ReadWriteJson = {
-    read: (path, schema) => real.read(path, schema),
+    read: (path, schema) => {
+      if (
+        counter.refuseRawSpecRead &&
+        path.endsWith("agentcore.json") &&
+        !Object.is(schema, ProjectSpecSchema)
+      ) {
+        throw new Error(`the test refuses the read of ${path}`);
+      }
+      return real.read(path, schema);
+    },
     write: (path, data) => {
       if (path.endsWith("agentcore.json")) {
         if (counter.refuseSpec) throw new Error(`the test refuses the write of ${path}`);
@@ -531,6 +549,22 @@ describe("build writes the Box network of the box profile", () => {
     counter.refuseRecord = true;
 
     await expect(build(manager, root)).rejects.toThrow("the test refuses the write of");
+
+    expect(await text(root, SPEC)).toBe(spec);
+    expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);
+  });
+
+  test("keeps the record of its targets as it was when build cannot read agentcore.json to patch it", async () => {
+    const { manager, root, box, counter } = await strandsProject({
+      env: { GITHUB_TOKEN: "ghp_123" },
+    });
+    await editProfile(root, { tables: GITHUB_ROUTE });
+    box.answer = shows({ github: GITHUB });
+    const spec = await text(root, SPEC);
+    const record = await text(root, "agentcore/box-gateway-targets.json");
+    counter.refuseRawSpecRead = true;
+
+    await expect(build(manager, root)).rejects.toThrow("the test refuses the read of");
 
     expect(await text(root, SPEC)).toBe(spec);
     expect(await text(root, "agentcore/box-gateway-targets.json")).toBe(record);

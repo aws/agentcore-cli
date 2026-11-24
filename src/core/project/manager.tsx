@@ -1894,20 +1894,14 @@ export class FsProjectManager implements ProjectManager {
         messages.push(`writing ${file.path}`);
       }
     }
-    // The record of the targets build owns changes with the gateway targets: it is written first,
-    // and goes back when agentcore.json cannot take the targets.
-    const record = edits.files.find(
-      (file): file is Extract<BoxNetworkFile, { text: string }> =>
-        file.path === BOX_GATEWAY_TARGETS_FILE && "text" in file,
-    );
-    const files = edits.files.filter((file) => file !== record);
-    const restoreRecord = record && replaceRecord(project.rootPath, record.text, this.recordFiles);
-    let result = project;
+    // agentcore.json is read and patched first, so a read or a schema failure writes nothing.
+    // Only the fields a writer changed are set, so every other field keeps its value and place.
+    // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
+    // their changed fields, so schema defaults are not written into the user's other entries.
+    const specPath = this.getProjectSpecPath(project);
+    let patched:
+      { updated: Record<string, unknown>; spec: z.infer<typeof ProjectSpecSchema> } | undefined;
     if (edits.specChanged) {
-      // Only the fields a writer changed are set, so every other field keeps its value and place.
-      // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
-      // their changed fields, so schema defaults are not written into the user's other entries.
-      const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const changes = edits.changedFields.map((field) => [
         field,
@@ -1917,16 +1911,28 @@ export class FsProjectManager implements ProjectManager {
       ]);
       const updated = { ...raw, ...Object.fromEntries(changes) };
       const parsed = ProjectSpecSchema.safeParse(updated);
+      if (!parsed.success) {
+        throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
+      }
+      patched = { updated, spec: parsed.data };
+    }
+    // The record of the targets build owns changes with the gateway targets: it is written just
+    // before agentcore.json, and goes back when agentcore.json cannot take the targets.
+    const record = edits.files.find(
+      (file): file is Extract<BoxNetworkFile, { text: string }> =>
+        file.path === BOX_GATEWAY_TARGETS_FILE && "text" in file,
+    );
+    const files = edits.files.filter((file) => file !== record);
+    const restoreRecord = record && replaceRecord(project.rootPath, record.text, this.recordFiles);
+    let result = project;
+    if (patched) {
       try {
-        if (!parsed.success) {
-          throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
-        }
-        await this.json.write(specPath, updated);
+        await this.json.write(specPath, patched.updated);
       } catch (err) {
         this.restoreRecord(restoreRecord);
         throw err;
       }
-      result = { ...project, spec: parsed.data };
+      result = { ...project, spec: patched.spec };
     }
     writeBoxNetworkFiles(project.rootPath, files);
     if (edits.envLocal.length > 0) {
