@@ -996,6 +996,31 @@ describe("build routes the other gateways of the project for the boxed agent", (
     expect(await targetNames(root)).not.toContain("egress-gateway-tools");
   });
 
+  test("lets remove gateway keep an egress- target of the user that names the gateway and is not in the record", async () => {
+    const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
+    await addToolsGateway(root);
+    await build(manager, root);
+    const record = JSON.parse(await text(root, "agentcore/box-gateway-targets.json"));
+    expect(record[GATEWAY]).toContain("egress-gateway-tools");
+    // The user's own target names the gateway too, and has the egress- prefix, but build did not
+    // write it, so the record leaves it out.
+    const mine = {
+      name: "egress-mine",
+      targetType: "passthrough",
+      passthrough: { gateway: "tools", protocolType: "CUSTOM" },
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore" },
+    };
+    await editGateway(root, (gateway) => gateway.targets.push(mine));
+    expect(record[GATEWAY]).not.toContain("egress-mine");
+
+    const project = (await manager.resolve({ filePath: root })) as Project;
+    await manager.removeResource(project, { resourceType: "gateway", name: "tools" });
+
+    const names = await targetNames(root);
+    expect(names).not.toContain("egress-gateway-tools");
+    expect(names).toContain("egress-mine");
+  });
+
   test("reads the project and removes the target after a build when the gateway gets boundRuntime", async () => {
     const { manager, root } = await strandsProject({ acceptsPassthroughGateway: true });
     await addToolsGateway(root);
