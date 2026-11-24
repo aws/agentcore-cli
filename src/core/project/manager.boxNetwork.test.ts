@@ -1492,7 +1492,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
         secret: { ref: `aws-secretsmanager://${SECRET}#telemetry.langsmith` },
       },
     });
-    expect(profile.plugins).toEqual(["box/aws-secrets-manager"]);
+    expect(profile.plugins).toEqual(["@box/aws-secrets-manager"]);
     // The image installs the AWS CLI, which box runs to read the key.
     expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).toContain(
       "AWS_CLI_URL=https://awscli.amazonaws.com/awscli-exe-linux-aarch64-",
