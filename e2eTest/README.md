@@ -26,11 +26,9 @@ The `box` tests cover the Strands Box templates, which run their agent in a box.
 invoke each one on AgentCore Runtime, and run `agentcore dev` with one local invoke for each. They
 are optional and need a `box` on your PATH: `create` checks for one for a CodeZip box template, and
 `build` and `deploy` run `box profile show` for every Box template, the container one too. Without
-one, they skip. box ships only arm64 builds, so in CI only the Linux arm64 runner
-(`ubuntu-24.04-arm`) has one: it installs the box that `src/core/project/backends/boxRelease.json`
-pins. The macOS runner (Apple silicon) is left out for now: there the macOS box
-(`v0.3.0-preview.1`, validly signed) was killed as soon as it started after the workflow's install
-(`Killed: 9`), so the Box tests skip on macOS until a run shows the pinned build starts there. `create` also installs the agent's dependencies
+one, they skip. box ships only arm64 builds, so in CI only the macOS runner (Apple silicon) and the
+Linux arm64 runner (`ubuntu-24.04-arm`) have one: each installs the box that
+`src/core/project/backends/boxRelease.json` pins. `create` also installs the agent's dependencies
 and the CDK app's, which `dev` and `deploy` use, so the tests don't pass `--skip-install`.
 
 The tests that deploy also need `AGENTCORE_E2E_BOX_CDK`: the pinned `@aws/agentcore-cdk` release
@@ -38,8 +36,8 @@ cannot deploy a Box project yet. Set it to an `@aws/agentcore-cdk` version or a 
 that can, for example one packed from the `box-integration` branch of
 [agentcore-l3-cdk-constructs](https://github.com/aws/agentcore-l3-cdk-constructs) with
 `npm run build && npm pack --ignore-scripts`. The tests install it in the `agentcore/cdk` of each
-Box project that deploys. Without it, they skip. In CI, the Linux arm64 runner sets it to a
-tarball they build from agentcore-l3-cdk-constructs at the workflow's `l3Ref` input (default
+Box project that deploys. Without it, they skip. In CI, the macOS and Linux arm64 runners set it to
+a tarball they build from agentcore-l3-cdk-constructs at the workflow's `l3Ref` input (default
 `box-integration`), checked out with a read-only token from the repository's GitHub App. Remove
 those steps once a released `@aws/agentcore-cdk` deploys Box projects and the pin is bumped. CI
 also skips `agent_python_langchain_box` in the deploy tests: its AgentCore Runtime logs hold
@@ -65,8 +63,8 @@ The `box-egress` tests check that box lets the agent reach the host its profile 
 on AgentCore Runtime, where the allowed host's calls go through the runtime's Box gateway. The
 second deploys, so it also needs `AGENTCORE_E2E_BOX_CDK`. They reach public hosts, so the network
 can make them fail: the dev test retries twice, and the deployed one retries only its invoke.
-`--tagsFilter='box'` leaves them out. A full run includes them; in CI they run on the Linux arm64
-runner:
+`--tagsFilter='box'` leaves them out. A full run includes them; in CI they run on the macOS and Linux
+arm64 runners:
 
 ```sh
 bun run test:e2e -- --tagsFilter='box-egress'

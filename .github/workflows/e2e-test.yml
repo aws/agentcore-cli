@@ -137,12 +137,9 @@ jobs:
           aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
-      # the Box tests. They skip on a runner with no box on PATH. macOS is left out for now: there the
-      # macOS box (v0.3.0-preview.1, validly signed) was killed as soon as it started after this
-      # install (`Killed: 9` on `box --version`), so on macOS the Box tests skip and the rest of the
-      # suite still runs. Re-enable it once a run shows the pinned build starts here.
+      # the Box tests. They skip on a runner with no box on PATH.
       - name: Install box
-        if: matrix.name == 'Linux-arm64'
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         env:
           # The build's key in boxRelease.json, which pins its archive and SHA-256.
           BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
@@ -166,10 +163,25 @@ jobs:
           SUM=$(command -v sha256sum || echo "shasum -a 256")
           echo "${SHA}  ${WORK}/${ASSET}" | $SUM -c -
           # box reads its packs from resources/ beside it, so keep the release together.
-          sudo mkdir -p /opt/box
-          sudo tar --no-same-owner -xzf "${WORK}/${ASSET}" -C /opt/box
-          sudo ln -sf /opt/box/box /usr/local/bin/box
-          box --version
+          if [[ "$BUILD" == darwin ]]; then
+            # On macOS, unpack as the runner user into a folder it owns, as a developer does: the
+            # signed box was killed at start (Killed: 9) after a sudo unpack into /opt/box.
+            DIR="${RUNNER_TEMP}/box"
+            mkdir -p "$DIR"
+            tar -xzf "${WORK}/${ASSET}" -C "$DIR"
+            echo "$DIR" >> "$GITHUB_PATH"
+            # If macOS refuses box, say why before running it.
+            codesign --verify --strict --verbose=2 "$DIR/box" || codesign -dv --verbose=4 "$DIR/box" || true
+            if ! "$DIR/box" --version; then
+              log show --last 2m --predicate 'eventMessage CONTAINS "box"' --style compact 2>/dev/null | tail -40 || true
+              exit 1
+            fi
+          else
+            sudo mkdir -p /opt/box
+            sudo tar --no-same-owner -xzf "${WORK}/${ASSET}" -C /opt/box
+            sudo ln -sf /opt/box/box /usr/local/bin/box
+            box --version
+          fi
       # Ubuntu 24.04 lets AppArmor stop an unprivileged process from making a user namespace, which
       # `box run` needs for its sandbox. The runner is a throwaway VM.
       - name: Allow user namespaces for box
@@ -180,7 +192,7 @@ jobs:
       # repository is private and this job's GITHUB_TOKEN reads only this one, so the token comes
       # from the repository's GitHub App, scoped to the L3 repository and read-only.
       - name: Generate a read token for the L3 constructs
-        if: matrix.name == 'Linux-arm64'
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         id: l3-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -190,7 +202,7 @@ jobs:
           repositories: agentcore-l3-cdk-constructs
           permission-contents: read
       - name: Check out the L3 constructs
-        if: matrix.name == 'Linux-arm64'
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aws/agentcore-l3-cdk-constructs
@@ -202,7 +214,7 @@ jobs:
       # Packed onto the runner only: nothing is published. The Box tests install it into each Box
       # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates.test.ts).
       - name: Pack the L3 constructs for the Box tests
-        if: matrix.name == 'Linux-arm64'
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         working-directory: .l3-cdk
         run: |
           npm ci --no-audit --no-fund
