@@ -519,17 +519,6 @@ export const ProjectRuntimeSchema = z
           path: ["filesystemConfigurations"],
         });
       }
-      // The service mounts only on V2. Its default when the field is unset depends on partition and
-      // account rollout, and an update without the field keeps the current version; the CLI sees
-      // neither, so it requires V2 explicitly.
-      if (fcs.some((fc) => "s3BucketMount" in fc) && data.platformVersion !== "V2") {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "s3BucketMount filesystem mounts require platformVersion: V2 (--platform-version V2)",
-          path: ["platformVersion"],
-        });
-      }
       const mountPaths = fcs.map((fc) =>
         ("sessionStorage" in fc
           ? fc.sessionStorage.mountPath
