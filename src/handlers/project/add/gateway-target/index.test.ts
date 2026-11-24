@@ -118,8 +118,8 @@ describe("project add gateway-target", () => {
           ...["--outbound-auth", "none"],
         ]),
         `the gateway target name '${name}' is reserved on Box gateway '${box.name}': build ` +
-          `writes the targets 'bedrock', 'agentcore', 'egress-*' for the agent's model, Memory, ` +
-          `and egress calls. Choose another name.`,
+          `owns the names 'bedrock', 'agentcore', 'egress-*' for the agent's model calls, Memory ` +
+          `route, and egress targets. Choose another name.`,
         InputValidationError,
       );
       // The same name is the user's on a gateway that is not a Box gateway.

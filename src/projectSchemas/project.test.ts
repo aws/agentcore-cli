@@ -1,8 +1,5 @@
 import { describe, expect, it, test } from "bun:test";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockTargetSpec,
-} from "../handlers/project/shortcuts";
+import { getBoxGatewayBedrockTargetSpec } from "../handlers/project/shortcuts";
 import { boxGatewaySpec, ProjectSpecSchema, ProjectNameSchema } from "./project";
 
 const minimalProject = { name: "project", version: 2 };
@@ -764,7 +761,7 @@ describe("Box project gateways", () => {
     };
     const box = {
       ...boxGatewaySpec("agent"),
-      targets: [getBoxGatewayBedrockTargetSpec(), getBoxGatewayAgentCoreTargetSpec(), egress],
+      targets: [getBoxGatewayBedrockTargetSpec(), egress],
     };
     expect(messages(parse(["agent"], [box]))).toEqual([]);
   });

@@ -147,8 +147,11 @@ export function boxGatewayBedrockHost(region: string): string {
   return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
 }
 
-/** The AgentCore data-plane host of `region`, which the Box gateway's AgentCore target fronts. */
-export function boxGatewayAgentCoreHost(region: string): string {
+/**
+ * The AgentCore data-plane host of `region`. A boxed agent's Memory calls go to it directly, signed
+ * with the execution role, and not through the Box gateway.
+ */
+export function agentCoreDataPlaneHost(region: string): string {
   return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
 }
 

@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getBoxGatewayAgentCoreTargetSpec } from "../../handlers/project/shortcuts";
 import { AgentCoreGatewaySchema, type AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
-import { BOX_BEDROCK_POLICY_FILE, BOX_MEMORY_POLICY_FILE } from "./boxMemory";
+import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
   boxNetworkEdits,
@@ -31,7 +30,24 @@ class EgressTargets extends Set<string> {
 }
 
 /** A hand-built model of runtime `agent`, which each test changes as it needs. */
+/**
+ * A network of the runtime `agent`. Its Runtime profile routes each host with a target through the
+ * gateway, as the gateway rule writes it, unless `overrides` gives another profile.
+ */
 function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
+  const routes = (overrides.hosts ?? []).flatMap((each) =>
+    each.target === undefined
+      ? []
+      : [
+          [
+            each.target,
+            {
+              destinations: [each.authority],
+              backends: [{ url: `\${{ inputs.gateway.url }}/${each.target}` }],
+            },
+          ],
+        ],
+  );
   return {
     runtime: "agent",
     gateway: "agent-box-egress",
@@ -40,7 +56,11 @@ function network(overrides: Partial<BoxNetwork> = {}): BoxNetwork {
     envRoutes: [],
     managedTargets: new EgressTargets(),
     policyFiles: [],
-    runtimeProfile: { packs: ["@box/base", "@box/agentcore"], profile: { name: "demo" } },
+    runtimeProfile: {
+      packs: ["@box/base", "@box/agentcore"],
+      profile: { name: "demo" },
+      ...(routes.length > 0 && { egress: Object.fromEntries(routes) }),
+    },
     runtimeProfileHeader: ["Derived from .box/agent/local/profile.toml."],
     grantedActions: [],
     warnings: [],
@@ -256,6 +276,44 @@ describe("gatewayTargetsWriter", () => {
 
   test("records no file for a project with no box runtime", () => {
     expect(run([gatewayTargetsWriter], []).files).toEqual([]);
+  });
+
+  test("writes no target for a host that the Runtime profile sends directly, and removes a managed one it holds", () => {
+    const MEMORY_HOST = "bedrock-agentcore.us-west-2.amazonaws.com";
+    // The additions rule sends a route to the AgentCore host directly when the runtime has its
+    // default Memory, so the route has no backend to the host's target.
+    const direct = (targets: AgentCoreGatewayTarget[]) =>
+      run(
+        [gatewayTargetsWriter],
+        [
+          network({
+            hosts: [host(MEMORY_HOST, "egress-tools"), host("httpbin.org", "egress-httpbin-org")],
+            runtimeProfile: {
+              egress: {
+                tools: { destinations: [MEMORY_HOST], secret: { ref: "aws://" } },
+                "egress-httpbin-org": {
+                  destinations: ["httpbin.org"],
+                  backends: [{ url: "${{ inputs.gateway.url }}/egress-httpbin-org" }],
+                },
+              },
+            },
+          }),
+        ],
+        spec(targets),
+      );
+
+    const first = direct([MINE]);
+    expect(targetNames(first.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(first.messages).toEqual([
+      "adding gateway target 'egress-httpbin-org' to 'agent-box-egress' for httpbin.org",
+    ]);
+
+    const held = direct([MINE, passthrough("egress-tools", `https://${MEMORY_HOST}`)]);
+    expect(targetNames(held.spec)).toEqual(["mine", "egress-httpbin-org"]);
+    expect(held.messages).toContain(
+      "removing gateway target 'egress-tools' from 'agent-box-egress': on AgentCore Runtime the " +
+        `box sends the calls to ${MEMORY_HOST} directly, not through the gateway`,
+    );
   });
 
   test("adds a host's target, rewrites a managed one, removes a stale one, and keeps the user's", () => {
@@ -557,7 +615,7 @@ describe("credentialsWriter", () => {
 });
 
 describe("defaultTargetsWriter", () => {
-  test("adds the model and Memory targets and writes the role policies, as addBoxGatewayTargets does", () => {
+  test("adds the model target and writes its role policy, and none for the default Memory, as addBoxGatewayTargets does", () => {
     const project = spec();
     project.memories.push({
       name: "agentMemory",
@@ -567,34 +625,9 @@ describe("defaultTargetsWriter", () => {
 
     const edits = run([defaultTargetsWriter], [network()], project);
 
-    expect(targetNames(edits.spec)).toEqual(["mine", "bedrock", "agentcore"]);
-    expect(edits.files.map(({ path }) => path)).toEqual([
-      BOX_BEDROCK_POLICY_FILE,
-      BOX_MEMORY_POLICY_FILE,
-    ]);
-  });
-
-  test("writes the Memory policy for the region of the agentcore target it writes", () => {
-    const project = spec();
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
-
-    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
-
-    const agentcore = edits.spec.agentCoreGateways[0]!.targets.find(
-      ({ name }) => name === "agentcore",
-    );
-    expect(agentcore?.outboundAuth?.region).toBe("eu-central-1");
-    const memory = edits.files.find(({ path }) => path === BOX_MEMORY_POLICY_FILE);
-    expect(JSON.parse((memory as { text: string }).text).Statement).toEqual([
-      expect.objectContaining({
-        Resource: ["arn:aws:bedrock-agentcore:eu-central-1:*:memory/demo_*agentMemory-*"],
-        Condition: { StringEquals: { "aws:ResourceAccount": "${aws:PrincipalAccount}" } },
-      }),
-    ]);
+    // The agent's Memory calls go to Memory directly, so they take no target and no gateway policy.
+    expect(targetNames(edits.spec)).toEqual(["mine", "bedrock"]);
+    expect(edits.files.map(({ path }) => path)).toEqual([BOX_BEDROCK_POLICY_FILE]);
   });
 
   test("writes the Bedrock policy for the region of the bedrock target it writes", () => {
@@ -613,40 +646,24 @@ describe("defaultTargetsWriter", () => {
     ]);
   });
 
-  test("writes the model and Memory targets for the region of the build", () => {
-    const project = spec();
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
-
-    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })], project);
+  test("writes the model target for the region of the build", () => {
+    const edits = run([defaultTargetsWriter], [network({ region: "eu-central-1" })]);
 
     const regions = edits.spec.agentCoreGateways[0]!.targets.map(
       ({ name, outboundAuth }) => `${name}:${outboundAuth?.region}`,
     );
-    expect(regions).toEqual(["mine:undefined", "bedrock:eu-central-1", "agentcore:eu-central-1"]);
+    expect(regions).toEqual(["mine:undefined", "bedrock:eu-central-1"]);
   });
 
   test("adds no default target for an endpoint a target serves already", () => {
     const project = spec([
-      { ...getBoxGatewayAgentCoreTargetSpec(), name: "mem" },
       passthrough("egress-models", "https://bedrock-runtime.us-west-2.amazonaws.com"),
     ]);
-    project.memories.push({
-      name: "agentMemory",
-      eventExpiryDuration: 30,
-      strategies: [],
-    } as never);
 
     const edits = run([defaultTargetsWriter], [network()], project);
 
-    expect(targetNames(edits.spec)).toEqual(["mem", "egress-models"]);
-    expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([
-      BOX_BEDROCK_POLICY_FILE,
-      BOX_MEMORY_POLICY_FILE,
-    ]);
+    expect(targetNames(edits.spec)).toEqual(["egress-models"]);
+    expect(edits.spec.agentCoreGateways[0]!.additionalPolicies).toEqual([BOX_BEDROCK_POLICY_FILE]);
   });
 });
 

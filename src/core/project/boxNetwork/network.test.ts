@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockTargetSpec,
-} from "../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockTargetSpec } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -971,18 +968,14 @@ describe("HTTP MCP servers", () => {
 });
 
 describe("the default targets", () => {
-  test("gives the Memory endpoint to the agentcore target build adds, and no egress- target", () => {
-    const r = model(
-      "",
-      {
-        memory: {
-          destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
-          secret: { ref: "aws://default" },
-        },
+  test("gives the Memory endpoint of an entry an egress- target: build adds no target for Memory", () => {
+    const r = model("", {
+      memory: {
+        destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+        secret: { ref: "aws://default" },
       },
-      { targets: [getBoxGatewayAgentCoreTargetSpec()] },
-    );
-    expect(r.targets()).toEqual(["bedrock-agentcore.us-west-2.amazonaws.com -> agentcore"]);
+    });
+    expect(r.targets()).toEqual(["bedrock-agentcore.us-west-2.amazonaws.com -> egress-memory"]);
     expect(r.failures()).toEqual([]);
   });
 
@@ -1007,14 +1000,14 @@ describe("the default targets", () => {
     const r = model(
       "",
       {
-        memory: {
-          destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+        models: {
+          destinations: ["bedrock-runtime.us-west-2.amazonaws.com"],
           secret: { ref: "env://KEY" },
         },
       },
-      { targets: [getBoxGatewayAgentCoreTargetSpec()] },
+      { targets: [getBoxGatewayBedrockTargetSpec()] },
     );
-    expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "memory"]]);
+    expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "models"]]);
   });
 });
 
@@ -1109,9 +1102,11 @@ describe("warnings", () => {
     const control = passthrough("egress-control", "https://bedrock.us-west-2.amazonaws.com", {
       outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region: "us-west-2" },
     });
-    const memory = getBoxGatewayAgentCoreTargetSpec();
-    const r = model("", egress, { targets: [control, memory] });
-    r.spec.agentCoreGateways[0]!.additionalPolicies = ["agentcore/box-memory-policy.json"];
+    // A Memory target of the user: build writes no policy file for one.
+    const memory = passthrough("agentcore", "https://bedrock-agentcore.us-west-2.amazonaws.com", {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock-agentcore", region: "us-west-2" },
+    });
+    const r = model("", egress, { targets: [control] });
     expect(boxGatewayIamWarnings(r.spec, r.network)).toEqual([
       "Target 'egress-control' calls bedrock with the gateway's role, which has no bedrock " +
         "permissions. Add an IAM policy file to additionalPolicies of the 'agent-box-egress' gateway.",
@@ -1144,7 +1139,6 @@ describe("warnings", () => {
 
   describe("the grant each endpoint of a target needs", () => {
     const BEDROCK_FILE = "agentcore/box-bedrock-policy.json";
-    const MEMORY_FILE = "agentcore/box-memory-policy.json";
     const signed = (name: string, host: string, service: string) =>
       passthrough(name, `https://${host}`, {
         outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "us-west-2" },
@@ -1231,21 +1225,21 @@ describe("warnings", () => {
       expect(warningsFor(functionUrl, ["bedrock:*"])).toEqual([forService("egress-fn", "lambda")]);
     });
 
-    test("an AgentCore target needs an AgentCore grant, and the Memory file covers only Memory", () => {
-      expect(warningsFor(getBoxGatewayAgentCoreTargetSpec(), [], [MEMORY_FILE])).toEqual([]);
-      expect(warningsFor(agentcoreControl, [], [MEMORY_FILE])).toEqual([
-        forHost("egress-agentcore-control", AGENTCORE_CONTROL_HOST, "bedrock-agentcore"),
-      ]);
-      expect(warningsFor(agentcoreControl, ["bedrock-agentcore:*"], [MEMORY_FILE])).toEqual([]);
-      expect(warningsFor(getBoxGatewayAgentCoreTargetSpec("us-east-1"), [], [MEMORY_FILE])).toEqual(
-        [forHost("agentcore", "bedrock-agentcore.us-east-1.amazonaws.com", "bedrock-agentcore")],
+    test("an AgentCore target needs an AgentCore grant", () => {
+      const memory = signed(
+        "agentcore",
+        "bedrock-agentcore.us-west-2.amazonaws.com",
+        "bedrock-agentcore",
       );
+      expect(warningsFor(memory)).toEqual([forService("agentcore", "bedrock-agentcore")]);
+      expect(warningsFor(memory, ["bedrock-agentcore:*"])).toEqual([]);
+      expect(warningsFor(agentcoreControl, ["bedrock-agentcore:*"])).toEqual([]);
       expect(warningsFor(agentcoreControl)).toEqual([
         forService("egress-agentcore-control", "bedrock-agentcore"),
       ]);
     });
 
-    test("the Bedrock and Memory files grant the amazonaws.com.cn hosts of a build for China", () => {
+    test("the Bedrock file grants the amazonaws.com.cn host of a build for China", () => {
       const china = (name: string, host: string, service: string) =>
         passthrough(name, `https://${host}`, {
           outboundAuth: { type: "GATEWAY_IAM_ROLE", service, region: "cn-north-1" },
@@ -1256,15 +1250,10 @@ describe("warnings", () => {
         {
           targets: [
             china("egress-models", "bedrock-runtime.cn-north-1.amazonaws.com.cn", "bedrock"),
-            china(
-              "egress-memory",
-              "bedrock-agentcore.cn-north-1.amazonaws.com.cn",
-              "bedrock-agentcore",
-            ),
           ],
         },
       );
-      r.spec.agentCoreGateways[0]!.additionalPolicies = [BEDROCK_FILE, MEMORY_FILE];
+      r.spec.agentCoreGateways[0]!.additionalPolicies = [BEDROCK_FILE];
 
       expect(boxGatewayIamWarnings(r.spec, { ...r.network, region: "cn-north-1" })).toEqual([]);
     });
@@ -1520,13 +1509,15 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
               },
             }),
           ],
-          additionalPolicies: ["agentcore/box-memory-policy.json"],
         },
       ],
     } as unknown as ProjectSpec;
     const network = { runtime: "agent", gateway: "agent-box-egress", region: "us-west-2" };
 
-    expect(boxGatewayIamWarnings(spec, { ...network, grantedActions: [] })).toEqual([
+    // The role holds an AgentCore grant, but not InvokeGateway on that gateway.
+    expect(
+      boxGatewayIamWarnings(spec, { ...network, grantedActions: ["bedrock-agentcore:ListEvents"] }),
+    ).toEqual([
       `Target 'mine' calls ${GATEWAY_HOST} with the gateway's role, which has no bedrock-agentcore ` +
         "permissions for that host. Add an IAM policy file to additionalPolicies of the " +
         "'agent-box-egress' gateway.",

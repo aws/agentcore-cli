@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import { InputValidationError } from "../../../../errors/errors";
-import {
-  getBoxGatewayAgentCoreTargetSpec,
-  getBoxGatewayBedrockTargetSpec,
-} from "../../../../handlers/project/shortcuts";
+import { getBoxGatewayBedrockTargetSpec } from "../../../../handlers/project/shortcuts";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
@@ -347,7 +344,7 @@ describe("the gateway rule", () => {
     const targets = [
       passthrough("orders", "https://orders.example.com/v2"),
       getBoxGatewayBedrockTargetSpec(),
-      getBoxGatewayAgentCoreTargetSpec(),
+      passthrough("tickets", "https://tickets.example.com"),
       // An earlier build wrote this target, and no host of the profile takes it now.
       passthrough("egress-old", "https://old.example.com"),
       { name: "lambda", targetType: "lambda" } as unknown as AgentCoreGatewayTarget,
@@ -370,8 +367,8 @@ describe("the gateway rule", () => {
           backendText("egress.bedrock", "bedrock") +
           '[egress.orders]\ndestinations = ["orders.example.com"]\n' +
           backendText("egress.orders", "orders") +
-          '[egress.agentcore]\ndestinations = ["bedrock-agentcore.us-west-2.amazonaws.com"]\n' +
-          backendText("egress.agentcore", "agentcore") +
+          '[egress.tickets]\ndestinations = ["tickets.example.com"]\n' +
+          backendText("egress.tickets", "tickets") +
           '[egress.egress-httpbin-org]\ndestinations = ["httpbin.org"]\n' +
           backendText("egress.egress-httpbin-org", "egress-httpbin-org"),
       ).egress,
@@ -547,6 +544,21 @@ const withEntryKeys = (egress: unknown, bedrockPack = true) =>
     ]),
   );
 
+/**
+ * `withEntryKeys(egress)`, with the Memory route that the old renderer sent through the gateway's
+ * `agentcore` target as the additions rule now writes it: to Memory directly, with no backend.
+ */
+const withDirectMemory = (egress: unknown) => {
+  const result = withEntryKeys(egress);
+  if (Object.hasOwn(result, "agentcore")) {
+    result.agentcore = {
+      destinations: ["bedrock-agentcore.us-west-2.amazonaws.com"],
+      secret: { ref: "aws://" },
+    };
+  }
+  return result;
+};
+
 describe("the gateway rule and the Runtime renderer it replaced", () => {
   const TEXT = [
     'packs = ["@box/base", "@box/bedrock"]',
@@ -714,10 +726,10 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
       "orders",
     ]);
     expect(Object.keys(http(old.mcp))).toEqual(["docs"]);
-    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
+    expect(derived.profile.egress).toEqual(withDirectMemory(old.egress));
     expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
     // The model that build keeps holds the same derived profile.
-    expect(network.runtimeProfile?.egress).toEqual(withEntryKeys(old.egress));
+    expect(network.runtimeProfile?.egress).toEqual(withDirectMemory(old.egress));
     expect(http(network.runtimeProfile?.mcp)).toEqual(http(old.mcp));
   });
 
@@ -728,7 +740,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
 
     expect(network.failures).toEqual([]);
     expect(first.agentCoreGateways[0]!.targets.map(({ name }) => name)).toContain("egress-github");
-    expect(derived.profile.egress).toEqual(withEntryKeys(old.egress));
+    expect(derived.profile.egress).toEqual(withDirectMemory(old.egress));
     expect(http(derived.profile.mcp)).toEqual(http(old.mcp));
   });
 

@@ -20,14 +20,9 @@ import {
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
+import { agentCoreDataPlaneHost } from "./boxNetwork/egress";
 import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
-import {
-  addBoxGatewayTargets,
-  BOX_BEDROCK_POLICY_FILE,
-  BOX_MEMORY_POLICY_FILE,
-  boxBedrockPolicy,
-  boxMemoryPolicy,
-} from "./boxMemory";
+import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
 import { boxGatewayTargetsText, readBoxGatewayTargets } from "./boxGatewayTargets";
 import {
@@ -316,8 +311,17 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
       ? []
       : [{ ...host, target: host.target }],
   );
-  const sent = served.filter((host) => undeclaredKey(spec, host) === undefined);
-  const unsent = served.filter((host) => undeclaredKey(spec, host) !== undefined);
+  // The AgentCore host takes no target when the Runtime profile sends its calls directly: with the
+  // default Memory, every call of the box to that host goes there (runtimeProfile/rules/additions.ts).
+  // Only that host, so a rule that drops another route never removes its target with this message.
+  const routed = gatewayRoutedTargets(network.runtimeProfile);
+  const agentCoreHost = agentCoreDataPlaneHost(network.region);
+  const direct = served.filter(
+    (host) => host.host === agentCoreHost && routed !== undefined && !routed.has(host.target),
+  );
+  const used = served.filter((host) => !direct.includes(host));
+  const sent = used.filter((host) => undeclaredKey(spec, host) === undefined);
+  const unsent = used.filter((host) => undeclaredKey(spec, host) !== undefined);
   const existing = gateway.targets;
   const messages: string[] = [];
   const targets: AgentCoreGatewayTarget[] = [];
@@ -343,6 +347,14 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     const host = sent.find((candidate) => candidate.target === target.name);
     if (!host) {
       if (unsent.some((candidate) => candidate.target === target.name)) continue;
+      const directHost = direct.find((candidate) => candidate.target === target.name);
+      if (directHost) {
+        messages.push(
+          `removing gateway target '${target.name}' from ${gatewayName}: on AgentCore Runtime the ` +
+            `box sends the calls to ${directHost.authority} directly, not through the gateway`,
+        );
+        continue;
+      }
       const named = target.passthrough?.gateway;
       const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
       messages.push(
@@ -432,6 +444,29 @@ function unsentTargetWarnings(
   return warnings;
 }
 
+/**
+ * The names of the gateway targets that a route or MCP server of `profile` sends calls to, through
+ * a backend at `${{ inputs.gateway.url }}/<target>`; `undefined` when build has no Runtime profile
+ * for the network.
+ */
+function gatewayRoutedTargets(profile: Readonly<TomlTable> | undefined): Set<string> | undefined {
+  if (profile === undefined) return undefined;
+  const prefix = `${RUNTIME_INPUTS.gatewayUrl}/`;
+  const names = new Set<string>();
+  for (const key of ["egress", "mcp"]) {
+    const table = profile[key];
+    if (!isTable(table)) continue;
+    for (const entry of Object.values(table)) {
+      if (!isTable(entry) || !Array.isArray(entry.backends)) continue;
+      for (const backend of entry.backends) {
+        const url = isTable(backend) ? backend.url : undefined;
+        if (typeof url === "string" && url.startsWith(prefix)) names.add(url.slice(prefix.length));
+      }
+    }
+  }
+  return names;
+}
+
 /** The API key that a host's target sends, when agentcore.json declares no credential for it. */
 function undeclaredKey(
   spec: ProjectSpec,
@@ -446,16 +481,12 @@ function undeclaredKey(
 }
 
 /**
- * The `bedrock` and `agentcore` targets that each box runtime's model and Memory calls take, and
- * the Bedrock and Memory policies of the gateways' role, as `addBoxGatewayTargets` adds them.
+ * The `bedrock` target that each box runtime's model calls take, and the Bedrock policy of the
+ * gateways' role, as `addBoxGatewayTargets` adds them.
  */
 export const defaultTargetsWriter: BoxNetworkWriter = {
   name: "default targets",
-  writes: () => [
-    { kind: "defaultTargets" },
-    { kind: "file", path: BOX_BEDROCK_POLICY_FILE },
-    { kind: "file", path: BOX_MEMORY_POLICY_FILE },
-  ],
+  writes: () => [{ kind: "defaultTargets" }, { kind: "file", path: BOX_BEDROCK_POLICY_FILE }],
   edits: (networks, { spec }) => {
     // Every network of one build has the region build builds for.
     const region = networks[0]?.region;
@@ -466,11 +497,7 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
           path: BOX_BEDROCK_POLICY_FILE,
           policy: region === undefined ? undefined : boxBedrockPolicy(spec, region),
         },
-        {
-          path: BOX_MEMORY_POLICY_FILE,
-          policy: region === undefined ? undefined : boxMemoryPolicy(spec, region),
-        },
-      ].flatMap(({ path, policy }) =>
+      ].flatMap(({ path, policy }): BoxNetworkFile[] =>
         policy ? [{ path, text: `${JSON.stringify(policy, undefined, 2)}\n` }] : [],
       ),
     };
