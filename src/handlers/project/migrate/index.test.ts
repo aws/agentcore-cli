@@ -685,6 +685,7 @@ describe("agentcore migrate, applying", () => {
     );
   });
 
+  // On GitHub-hosted Windows runners this takes 4 to 5 s or more, past bun's 5 s default.
   test("--yes never applies a plan that isn't ready", async () => {
     await inCommittedV0Project();
     const subject = scriptedCli({ ready: false });
@@ -692,8 +693,9 @@ describe("agentcore migrate, applying", () => {
     await expect(subject.run("--yes")).rejects.toBeInstanceOf(SilentCLIError);
     expect(subject.calls.apply).toBe(0);
     expect(subject.io.stderr()).toContain(MIGRATION_FAILURE_GUIDANCE);
-  });
+  }, 30_000);
 
+  // On GitHub-hosted Windows runners this takes 4 to 5 s or more, past bun's 5 s default.
   test("on a terminal, asks first and applies on yes", async () => {
     await inCommittedV0Project();
     const subject = scriptedCli({ isTTY: true, stdin: "y\n" });
@@ -709,7 +711,7 @@ describe("agentcore migrate, applying", () => {
     const err = subject.io.stderr();
     expect(err.indexOf(CONFIRM_QUESTION.trim())).toBeGreaterThan(err.indexOf("Reading stack S"));
     expect(err.indexOf(CONFIRM_QUESTION.trim())).toBeLessThan(err.indexOf("Refactoring stack S"));
-  });
+  }, 30_000);
 
   test("on a terminal, anything but yes cancels", async () => {
     await inCommittedV0Project();
