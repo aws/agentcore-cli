@@ -6,12 +6,18 @@ import {
 } from "../../../handlers/project/shortcuts";
 import type { ModelProvider } from "../../../handlers/project/types";
 import { type ProjectSpec } from "../../../projectSchemas/project";
+import { boxReachRules } from "../boxProfileResolver-test-support";
+import { parsePolicy } from "../boxNetwork/dogwood";
+import { buildHostMap } from "../boxNetwork/hostMap";
 import {
+  AWS_METADATA_POLICY_FILE,
+  AWS_METADATA_RULE_IDS,
   boxProfileWarnings,
   boxStartFolder,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
   renderAgentCorePack,
+  renderAwsMetadataPolicy,
   renderBoxProfile,
   runtimeAgentTemplate,
   startsInBoxOnCodeZip,
@@ -70,6 +76,7 @@ describe("renderBoxProfile", () => {
   test("runs the Strands agent from the project's venv, reached through ingress", () => {
     expect(parse(renderBoxProfile("V3Demo", STRANDS, REGION)!) as unknown).toEqual({
       packs: ["@box/base", "@box/bedrock"],
+      policies: ["aws-metadata-block.dw"],
       profile: { name: "V3Demo-agent" },
       project: { access: "write" },
       options: { bedrock: { region: "us-west-2" } },
@@ -329,6 +336,61 @@ describe("renderBoxProfile", () => {
     expect(hasBoxProfile(runtime)).toBe(false);
     expect(renderBoxProfile("V3Demo", runtime, REGION)).toBeUndefined();
   });
+});
+
+describe("renderAwsMetadataPolicy", () => {
+  test.each([
+    "agent-python-strands-box",
+    "agent-python-strands-box-container",
+    "agent-python-minimal-box",
+    "agent-python-langchain-box",
+  ] as const)("is the policy file that the %s profile names, beside it", (name) => {
+    expect(profile(name).policies).toEqual([AWS_METADATA_POLICY_FILE]);
+  });
+
+  // The host map leaves these ids out of the limits it reports, so the file holds exactly them.
+  test("holds only forbids, under the ids of AWS_METADATA_RULE_IDS", () => {
+    const { statements, errors } = parsePolicy(renderAwsMetadataPolicy());
+    expect(errors).toEqual([]);
+    expect(statements.map(({ effect, annotations }) => [effect, annotations.id])).toEqual(
+      [...AWS_METADATA_RULE_IDS].map((id) => ["forbid", id]),
+    );
+  });
+
+  // Box adds no metadata rule of its own, so the routes here get only Box's permits for them.
+  test.each([
+    ["169.254.169.254", "aws_metadata_addresses"],
+    ["instance-data", "aws_metadata_hosts"],
+    ["instance-data.ec2.internal", "aws_metadata_hosts"],
+  ])("denies %s even when a route permits it, by %s", (destination, rule) => {
+    const egress = { imds: { destinations: [destination] } };
+    const { statements } = parsePolicy(
+      renderAwsMetadataPolicy() + boxReachRules("route", "imds", [destination]),
+    );
+    const host = buildHostMap({ statements, egress, mcp: {} }).hosts.find(
+      ({ authority }) => authority === destination,
+    );
+    expect(host?.reachable).toBe(false);
+    expect(host?.forbiddenBy).toContain(rule);
+  });
+
+  // A neighbouring link-local address stays open, so a rule widened to a pattern fails here. The
+  // address rule could hold for any host before DNS resolution; build reports it for none.
+  test.each(["api.example.com", "169.254.169.253"])(
+    "leaves %s to the routes, and reports no limit on it",
+    (destination) => {
+      const egress = { other: { destinations: [destination] } };
+      const { statements } = parsePolicy(
+        renderAwsMetadataPolicy() + boxReachRules("route", "other", [destination]),
+      );
+      const host = buildHostMap({ statements, egress, mcp: {} }).hosts.find(
+        ({ authority }) => authority === destination,
+      );
+      expect(host?.reachable).toBe(true);
+      expect(host?.forbiddenBy).toEqual([]);
+      expect(host?.enforcedByBox).toEqual([]);
+    },
+  );
 });
 
 describe("runtimeAgentTemplate", () => {

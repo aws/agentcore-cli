@@ -13,6 +13,7 @@ import { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  AWS_METADATA_POLICY_FILE,
   BOX_BEDROCK_API_KEY_ROUTE,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_ROUTE,
@@ -231,6 +232,16 @@ const OLD_RENDERER = JSON.parse(
   gateway: Record<string, TomlTable>;
 };
 
+/**
+ * A profile the old renderer wrote, which named no file of create's under `policies`, with the
+ * policy file create now lists first, then the files of the recording. A case that adds a policy
+ * file of its own appends it to create's list, as a user does, and the derived profile keeps both.
+ */
+const withCreatePolicy = (old: TomlTable): TomlTable => ({
+  ...old,
+  policies: [AWS_METADATA_POLICY_FILE, ...((old.policies as string[] | undefined) ?? [])],
+});
+
 /** The tables that the additions rule owns, which the old renderer wrote. */
 const OWNED = [
   "packs",
@@ -276,7 +287,7 @@ describe("deriveRuntimeProfile on the created templates", () => {
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -289,11 +300,14 @@ describe("deriveRuntimeProfile on the created templates", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded = OLD_RENDERER.templates[
-        `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
-      ] as TomlTable;
-      const signedIn = withApiKeySignIn(recorded);
-      const expected = otel ? withOtel(signedIn, build) : signedIn;
+      const recorded = withApiKeySignIn(
+        withCreatePolicy(
+          OLD_RENDERER.templates[
+            `${build} ${protocol} ${provider} memories=${memories.length} telemetry=${telemetryCase}`
+          ] as TomlTable,
+        ),
+      );
+      const expected = otel ? withOtel(recorded, build) : recorded;
       expect(problems).toEqual([]);
       for (const key of OWNED)
         expect([key, profile[key]]).toEqual([key, expected[key] ?? undefined]);
@@ -349,7 +363,7 @@ describe("deriveRuntimeProfile on each box template of create", () => {
       const tables = TELEMETRY_CASES[telemetryCase];
       const extras = tables !== undefined;
       if (extras) {
-        local.policies = ["policy.dw"];
+        local.policies = [...(local.policies as string[]), "policy.dw"];
         local.telemetry = structuredClone(tables);
       }
       const telemetry = withDeployRegion(
@@ -363,10 +377,11 @@ describe("deriveRuntimeProfile on each box template of create", () => {
         contextOf(runtime, { memories, telemetry }),
       );
 
-      const recorded =
+      const recorded = withCreatePolicy(
         OLD_RENDERER.boxTemplates[
           `${template} provider=${provider} memories=${memories.length} telemetry=${telemetryCase}`
-        ]!;
+        ]!,
+      );
       expect(problems).toEqual([]);
       const signedIn = withApiKeySignIn(recorded);
       expect(profile).toEqual(otel ? withOtel(signedIn, input.build as Build) : signedIn);
