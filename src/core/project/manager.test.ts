@@ -2173,7 +2173,7 @@ describe("FsProjectManager.build", () => {
   }
 
   // build() requires the CDK app's node_modules; create() with skipInstall
-  // never produces them, so tests stub the directory in.
+  // never produces them, so tests stub in the library at the pin create() vends.
   async function scaffolded(
     subject: FsProjectManager,
     directory: string,
@@ -2186,9 +2186,16 @@ describe("FsProjectManager.build", () => {
       skipGit: true,
     });
     if (withDependencies) {
-      await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-        recursive: true,
-      });
+      const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+      const library = join(cdkDirectory, "node_modules", "@aws", "agentcore-cdk");
+      const { dependencies } = JSON.parse(
+        await readFile(join(cdkDirectory, "package.json"), "utf8"),
+      );
+      await mkdir(library, { recursive: true });
+      await writeFile(
+        join(library, "package.json"),
+        JSON.stringify({ version: dependencies["@aws/agentcore-cdk"] }),
+      );
     }
     return project;
   }
@@ -2286,13 +2293,34 @@ describe("FsProjectManager.build", () => {
     expect(commands.map(({ command }) => command[0])).toEqual(["curl"]);
   });
 
-  test("fails actionably when the CDK dependencies are missing", async () => {
+  test("installs the CDK dependencies when node_modules is missing", async () => {
+    const directory = await inTempDirectory();
+    const { manager: subject, commands } = manager(await boxHome());
+    const project = await scaffolded(subject, directory, false);
+    commands.length = 0;
+    const cdkDirectory = join(directory, "example", "agentcore", "cdk");
+
+    const events = await drain(subject.build(project));
+
+    expect(events).toContainEqual({
+      type: "step",
+      message: "installing CDK dependencies (node_modules missing)",
+    });
+    expect(commands.map(({ command, cwd }) => [command.slice(0, 2), cwd])).toEqual([
+      [["npm", "install"], cdkDirectory],
+      [["npm", "run"], cdkDirectory],
+    ]);
+  });
+
+  test("fails actionably when node_modules is missing and dependency management is off", async () => {
     const directory = await inTempDirectory();
     const { manager: subject, commands } = manager();
     const project = await scaffolded(subject, directory, false);
     commands.length = 0;
 
-    await expect(drain(subject.build(project))).rejects.toThrow(/npm install/);
+    await expect(
+      drain(subject.build(project, { disableDependencyManagement: true })),
+    ).rejects.toThrow(/Run 'npm install'/);
     expect(commands).toEqual([]);
   });
 
@@ -2314,15 +2342,7 @@ describe("FsProjectManager.build", () => {
   test("routes a boxed agent's default Memory through the Box gateway before synth", async () => {
     const directory = await inTempDirectory();
     const { manager: subject } = manager(await boxHome());
-    const { project } = await runCreate(subject, {
-      name: "example",
-      scaffoldRuntimeInput: AGENT_PYTHON_STRANDS_BOX,
-      skipInstall: true,
-      skipGit: true,
-    });
-    await mkdir(join(directory, "example", "agentcore", "cdk", "node_modules"), {
-      recursive: true,
-    });
+    const project = await scaffolded(subject, directory);
 
     const events = await drain(subject.build(project));
 

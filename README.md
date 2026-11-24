@@ -149,6 +149,12 @@ Global flags, available on every command:
 (`transformAgentCoreJson`). All three come from `@aws/agentcore-cdk`, so that
 logic is updated through the library rather than changes to your CDK app.
 
+`agentcore build` and `agentcore deploy` keep the dependencies `agentcore create`
+wrote to `agentcore/cdk/package.json` at the versions this CLI vends, and run
+`npm install` when they change or are not installed, so both commands may need
+network access to npm. Dependencies you add yourself are left alone. To manage
+the CDK dependencies yourself, run `agentcore config disableDependencyManagement true`.
+
 `lib/cdk-stack.ts` instantiates one `AgentCoreApplication`. This is the file you
 edit to add your own resources. Runtimes and harnesses implement `iam.IGrantable`,
 so you can pass them to a resource's CDK grant methods to give your agents access.

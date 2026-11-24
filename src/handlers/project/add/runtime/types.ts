@@ -21,6 +21,10 @@ const RuntimeInfraConfigSchema = z.object({
   lifecycleConfiguration: ProjectRuntimeSchema.shape.lifecycleConfiguration,
   filesystemConfigurations: ProjectRuntimeSchema.shape.filesystemConfigurations,
   tags: ProjectRuntimeSchema.shape.tags,
+  build: ProjectRuntimeSchema.shape.build.optional(),
+  dockerfile: z.string().min(1).optional(),
+  buildContextPath: ProjectRuntimeSchema.shape.buildContextPath,
+  customDockerBuildArgs: ProjectRuntimeSchema.shape.customDockerBuildArgs,
 });
 
 export const RuntimeResourceConfigSchema = RuntimeInfraConfigSchema.extend({
@@ -38,6 +42,24 @@ export type RuntimeResourceConfig = z.infer<typeof RuntimeResourceConfigSchema>;
  */
 export const RuntimeDocsConfigSchema = RuntimeInfraConfigSchema.extend({
   language: z.enum(["Python", "TypeScript"]),
+}).superRefine((data, ctx) => {
+  const container = data.build === "Container" || data.build === "ContainerLocal";
+  if (container && data.dockerfile === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: "dockerfile is required for a Container or ContainerLocal build",
+      path: ["dockerfile"],
+    });
+  }
+  for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    if (!container && data[field] !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${field} requires build Container or ContainerLocal`,
+        path: [field],
+      });
+    }
+  }
 });
 export type RuntimeDocsConfig = z.infer<typeof RuntimeDocsConfigSchema>;
 

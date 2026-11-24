@@ -290,6 +290,58 @@ describe("Toolkit loading", () => {
     expect(providers).toEqual([credentials]);
   });
 
+  test("sets CDK_DOCKER to the container executable only for the operation", async () => {
+    const { loaded } = loadedToolkit();
+    const previous = process.env.CDK_DOCKER;
+    process.env.CDK_DOCKER = "configured";
+    let during: string | undefined;
+    loaded.toolkit.destroy = async () => {
+      during = process.env.CDK_DOCKER;
+      return { stacks: [] } as never;
+    };
+    const runner = createCdkRunner(createSilentLogger(), async () => loaded);
+    try {
+      await runner(
+        { kind: "destroy", stackArtifactId: "AgentCore-orders-default" },
+        runOptions({ containerExecutable: "finch" }),
+      );
+      expect(during).toBe("finch");
+      expect(process.env.CDK_DOCKER).toBe("configured");
+    } finally {
+      if (previous === undefined) delete process.env.CDK_DOCKER;
+      else process.env.CDK_DOCKER = previous;
+    }
+  });
+
+  test("sets BUILDX_BUILDER only for the operation and restores the caller's value", async () => {
+    const { loaded } = loadedToolkit();
+    const previous = process.env.BUILDX_BUILDER;
+    process.env.BUILDX_BUILDER = "ci";
+    let during: string | undefined;
+    loaded.toolkit.destroy = async () => {
+      during = process.env.BUILDX_BUILDER;
+      return { stacks: [] } as never;
+    };
+    const runner = createCdkRunner(createSilentLogger(), async () => loaded);
+    try {
+      await runner(
+        { kind: "destroy", stackArtifactId: "AgentCore-orders-default" },
+        runOptions({ containerExecutable: "docker", buildxBuilder: "default" }),
+      );
+      expect(during).toBe("default");
+      expect(process.env.BUILDX_BUILDER).toBe("ci");
+      delete process.env.BUILDX_BUILDER;
+      await runner(
+        { kind: "destroy", stackArtifactId: "AgentCore-orders-default" },
+        runOptions({ containerExecutable: "docker" }),
+      );
+      expect(during).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.BUILDX_BUILDER;
+      else process.env.BUILDX_BUILDER = previous;
+    }
+  });
+
   test("routes the operation's ioHost messages into its onOutput sink", async () => {
     const { loaded } = loadedToolkit();
     const lines: string[] = [];
