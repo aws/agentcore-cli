@@ -190,6 +190,33 @@ describe("planBoxProfileCredentials", () => {
     },
   );
 
+  test("warns when two variables of one credential hold different keys, and stores the first", () => {
+    // [egress.github] reads env://GH_A and [mcp.github] reads env://GITHUB_TOKEN: one credential.
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("github", "GH_A"), GITHUB],
+      shell({ GH_A: "ghp_a", GITHUB_TOKEN: "ghp_rotated" }),
+    );
+
+    expect(plan.entries).toEqual([expect.objectContaining({ key: RESERVED, value: "ghp_a" })]);
+    expect(plan.warnings).toEqual([
+      "box egress 'github': env://GITHUB_TOKEN holds a different key than env://GH_A, which " +
+        `build stored as ${RESERVED} for credential 'github', so deploy provisions the key in ` +
+        "GH_A for both. Set GITHUB_TOKEN and GH_A to the same key",
+    ]);
+  });
+
+  test("does not warn when two variables of one credential hold the same key", () => {
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("github", "GH_A"), GITHUB],
+      shell({ GH_A: "ghp_a", GITHUB_TOKEN: "ghp_a" }),
+    );
+
+    expect(plan.entries).toHaveLength(1);
+    expect(plan.warnings).toEqual([]);
+  });
+
   test("keeps an earlier build's credential and says what to set when its key has gone", () => {
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
 

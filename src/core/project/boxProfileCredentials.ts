@@ -132,6 +132,8 @@ export function planBoxProfileCredentials(
   const added: Credential[] = [];
   const entries: EnvLocalEntry[] = [];
   const unprovisioned = new Map<string, string>();
+  /** The route variable whose key each stored entry holds, by the credential's variable. */
+  const seededFrom = new Map<string, string>();
   /**
    * Stores the route's key under `credential`'s reserved variable, as `agentcore dev` reads it: the
    * route's variable from the environment, else from `.env.local`. A stored key that differs is
@@ -153,7 +155,20 @@ export function planBoxProfileCredentials(
       }
       return true;
     }
-    if (entries.some((entry) => entry.key === key)) return true;
+    // An earlier route of the same credential stored its key. Deploy provisions one key for the
+    // credential, so a different key in this route's variable is not used.
+    const earlier = entries.find((entry) => entry.key === key);
+    if (earlier !== undefined) {
+      const first = seededFrom.get(key);
+      if (hasValue(value) && value !== earlier.value && first !== undefined) {
+        warnings.push(
+          `box egress '${route}': env://${variable} holds a different key than env://${first}, ` +
+            `which build stored as ${key} for credential '${credential}', so deploy provisions ` +
+            `the key in ${first} for both. Set ${variable} and ${first} to the same key`,
+        );
+      }
+      return true;
+    }
     const stored = sources.envLocal[key];
     if (!hasValue(value)) return hasValue(stored);
     if (value === stored) return true;
@@ -173,6 +188,7 @@ export function planBoxProfileCredentials(
       value,
       comment: `API key for box egress 'env://${variable}', provisioned to AgentCore Identity on deploy`,
     });
+    seededFrom.set(key, variable);
     return true;
   };
   const toSet = (variable: string, credential: string) => {
