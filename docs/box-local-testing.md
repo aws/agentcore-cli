@@ -692,8 +692,9 @@ gateway target for a telemetry host.
 
 Limits:
 
-- **CodeZip:** the CodeZip Runtime has no AWS CLI, so build stops for a third-party target with a
-  key on a CodeZip runtime. Use a container runtime.
+- **CodeZip:** box reads the keys with its `@box/aws-secrets-manager` plugin, which runs the `aws`
+  program. The CodeZip image of the Runtime does not have `aws`. Build keeps the target and shows a
+  warning. Put `aws` on `PATH` in `start.py` before `box run`, or use a container runtime.
 - **PRIVATE_VPC:** the private VPC has no internet path. Build keeps the target and shows a warning:
   box tries each send, and no send succeeds until you give the VPC a path to the host, or remove
   `--containment private-vpc`. Build also sets `"secretsManagerEndpoint": true` in the `network` of
