@@ -643,16 +643,16 @@ describe("two routes of one profile to one host", () => {
   test.each([
     [
       "two open routes",
-      '[egress.a]\ndestinations = ["api.example.com"]\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: open, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: open, beta: open },
       ".box/agent/local/profile.toml:3:1",
     ],
     [
       "a route with a secret and an open route",
-      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: keyed, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: keyed, beta: open },
       ".box/agent/local/profile.toml:4:1",
     ],
   ])(
@@ -663,7 +663,7 @@ describe("two routes of one profile to one host", () => {
       expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
         [
           "EGRESS_DESTINATION_OVERLAP",
-          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
+          "[egress.beta] names api.example.com, and [egress.alpha] names it too, but one host has only " +
             "one entry. Keep api.example.com in only one of the two.",
           place,
         ],
@@ -675,20 +675,20 @@ describe("two routes of one profile to one host", () => {
   test("gives an entry that names its host twice one target and one route", async () => {
     const twice = { destinations: ["api.example.com", "api.example.com:443"] };
     const network = await networkOf(
-      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+      '[egress.alpha]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
         'secret.ref = "env://A_TOKEN"\n',
-      { a: { ...twice, secret: keyed.secret } },
+      { alpha: { ...twice, secret: keyed.secret } },
     );
 
     expect(network.failures).toEqual([]);
     expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
-      ["api.example.com", "egress-a"],
+      ["api.example.com", "egress-alpha"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
       ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["a", ["api.example.com"]],
+      ["alpha", ["api.example.com"]],
     ]);
   });
 });

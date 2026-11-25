@@ -200,6 +200,12 @@ This adds an `[egress]` entry for `api.github.com` with a `github` API key crede
 needs `destinations`. Build declares the credential from the `env://` secret, adds the
 `egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
+The credential takes the name of the entry, so the name of an entry with an `env://` secret must be
+a valid credential name: 3 to 128 characters, and only letters, digits, hyphens, and underscores.
+The name must not end in a credential field suffix, such as `_client_secret`. It must not give
+the same variable as a credential of the project or the credential of another entry, as
+`git-hub` and `git_hub` do, or `GitHub` and `github`. Build stops on an entry such as `[egress.w]`, and names its line.
+
 The `destinations` key lists the hosts the credential may reach. The box blocks the credential's
 egress to any host not in the list. Each entry is a `<host>` or `<host>:<port>` string. The default
 port is 443. A port must be 1 to 65535.
@@ -261,8 +267,9 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
   `openai`, and deploy provisions your key in AgentCore Identity.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
-  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
-  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  host, a plain-HTTP-only host, an unsupported secret, an `env://` entry whose name is not a valid
+  credential name, an MCP server that names more than one host, a path, or a port other than 443,
+  and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
   number of problems, then gives one line for each problem: its `file:line:column` in your
   profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
   by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as

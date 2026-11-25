@@ -55,6 +55,59 @@ export function boxEgressCredentialName(
   return holder?.name ?? route;
 }
 
+/** The rule for a credential name, as {@link CredentialNameSchema} checks it. */
+export const CREDENTIAL_NAME_RULE =
+  "A credential name has 3 to 128 characters, and only letters, digits, hyphens (-), and " +
+  "underscores (_)";
+
+/**
+ * Why the box egress `route` cannot get the API key credential named `route` in a project with
+ * `credentials`, as `agentcore credentials add` would refuse it: a name that is not a valid
+ * credential name, that ends in a credential field suffix, that derives the same variable as a
+ * credential of `credentials`, or that names a credential which is not an API key credential.
+ * `undefined` when the credential can hold the route's key. The reason is one clause, with no
+ * capital letter at its start and no full stop at its end.
+ */
+export function boxRouteCredentialProblem(
+  credentials: readonly Credential[],
+  route: string,
+): string | undefined {
+  const existing = credentials.find((credential) => credential.name === route);
+  if (existing !== undefined) {
+    if (existing.authorizerType === "ApiKeyCredentialProvider") return undefined;
+    const article = /^[AEIOU]/.test(existing.authorizerType) ? "an" : "a";
+    return `credential '${route}' is ${article} ${existing.authorizerType} credential, not an API key`;
+  }
+  if (!CredentialNameSchema.safeParse(route).success) {
+    return `'${route}' is not a valid credential name. ${CREDENTIAL_NAME_RULE}`;
+  }
+  const suffix = credentialNameFieldSuffix(route);
+  if (suffix !== undefined) {
+    return (
+      `'${route}' ends in '${suffix}', the suffix of a credential field, so its variable ` +
+      `${credentialEnvVarName(route)} would read as a field of another credential`
+    );
+  }
+  const wanted = credentialEnvironmentVariableNames({
+    authorizerType: "ApiKeyCredentialProvider",
+    name: route,
+  });
+  // A credential that keeps its secret elsewhere reserves no variable, but its name still derives
+  // one that a new credential must not take.
+  const clash = credentials.find(
+    (credential) =>
+      credentialEnvironmentVariableNames(credential).some((name) => wanted.includes(name)) ||
+      wanted.includes(credentialEnvVarName(credential.name)),
+  );
+  if (clash !== undefined) {
+    return (
+      `credential '${route}' would derive the same variable, ${credentialEnvVarName(route)}, ` +
+      `as credential '${clash.name}'`
+    );
+  }
+  return undefined;
+}
+
 /**
  * Whether {@link planBoxProfileCredentials} skips `route` before it looks up any key, because
  * something else holds the key: a credential whose variables `reserved` holds reserves the route's
@@ -104,10 +157,8 @@ export function boxKeyVariables(
  *   - a route whose key something else holds ({@link boxRouteKeyHeldElsewhere});
  *   - a route named for an API key credential that keeps its key in Secrets Manager.
  *
- * It skips, with a warning, a route whose name `agentcore credentials add` would refuse: a name
- * that is not a valid credential name, that ends in a credential field suffix, that derives the
- * same variable as an existing credential, or that names a credential which is not an API key
- * credential.
+ * It skips, with a warning, a route that {@link boxRouteCredentialProblem} refuses. The Box
+ * network model already stops build and deploy for such a route, so this is only a backstop.
  */
 export function planBoxProfileCredentials(
   spec: ProjectSpec,
@@ -121,11 +172,6 @@ export function planBoxProfileCredentials(
     }
   };
   for (const credential of spec.credentials) reserve(credential);
-  // A credential that keeps its secret elsewhere reserves no variable, but its name still derives
-  // one that a new credential must not take.
-  const derivedVars = new Map(
-    spec.credentials.map((credential) => [credentialEnvVarName(credential.name), credential.name]),
-  );
 
   const messages: string[] = [];
   const warnings: string[] = [];
@@ -204,14 +250,16 @@ export function planBoxProfileCredentials(
       warnings.push(`skipping box egress '${route}' (env://${variable}): ${reason}`);
       unprovisioned.set(route, `${reason[0]!.toUpperCase()}${reason.slice(1)}. ${fix}`);
     };
+    const problem = boxRouteCredentialProblem(spec.credentials, route);
+    if (problem !== undefined) {
+      skip(problem);
+      continue;
+    }
     const existing = spec.credentials.find((credential) => credential.name === route);
     if (existing !== undefined) {
-      if (existing.authorizerType !== "ApiKeyCredentialProvider") {
-        const article = /^[AEIOU]/.test(existing.authorizerType) ? "an" : "a";
-        skip(
-          `credential '${route}' is ${article} ${existing.authorizerType} credential, not an API key`,
-        );
-      } else if (credentialEnvironmentVariableNames(existing).length > 0 && !seed(entry, route)) {
+      // An API key credential named for the route. One that keeps its key in Secrets Manager
+      // reserves no variable, so build stores no key for it.
+      if (credentialEnvironmentVariableNames(existing).length > 0 && !seed(entry, route)) {
         warnings.push(
           `box egress '${route}' reads env://${variable}, which is not set here or in ` +
             `${ENV_LOCAL_RELATIVE_PATH}: set ${toSet(variable, route)} before deploy`,
@@ -219,29 +267,7 @@ export function planBoxProfileCredentials(
       }
       continue;
     }
-    if (!CredentialNameSchema.safeParse(route).success) {
-      skip(`'${route}' is not a valid credential name`);
-      continue;
-    }
-    const suffix = credentialNameFieldSuffix(route);
-    if (suffix !== undefined) {
-      skip(
-        `'${route}' ends in '${suffix}', the suffix of a credential field, so its variable ` +
-          `${credentialEnvVarName(route)} would read as a field of another credential`,
-      );
-      continue;
-    }
     const credential: Credential = { authorizerType: "ApiKeyCredentialProvider", name: route };
-    const clash = credentialEnvironmentVariableNames(credential)
-      .map((name) => reservedVars.get(name) ?? derivedVars.get(name))
-      .find((owner) => owner !== undefined);
-    if (clash !== undefined) {
-      skip(
-        `credential '${route}' would derive the same variable, ${credentialEnvVarName(route)}, ` +
-          `as credential '${clash}'`,
-      );
-      continue;
-    }
     if (!seed(entry, route)) {
       warnings.push(
         `not adding credential '${route}' for box egress 'env://${variable}': ${variable} is not ` +
@@ -258,7 +284,6 @@ export function planBoxProfileCredentials(
 
     spec.credentials.push(credential);
     reserve(credential);
-    derivedVars.set(credentialEnvVarName(route), route);
     added.push(credential);
     messages.push(
       `adding API key credential '${route}' to agentcore.json for box egress 'env://${variable}', ` +
