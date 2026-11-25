@@ -13,7 +13,7 @@ import {
   boxDevTelemetryProfile,
   type BoxDevTelemetryOptions,
 } from "./boxDevTelemetry";
-import { findOtelSitecustomizeDir } from "./codezip";
+import { findOtelSitecustomizeDir, NO_AUTO_INSTRUMENTATION } from "./codezip";
 import {
   boxIngressPort,
   boxLocalProfileFile,
@@ -167,10 +167,6 @@ export class BoxDevRunner implements DevRunner {
     });
   }
 }
-
-/** Why dev collects no traces of an agent whose venv lacks the OTEL auto-instrumentation. */
-export const NO_AUTO_INSTRUMENTATION =
-  "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.";
 
 /**
  * Writes the dev-time box profile of agent `agentName` (boxDevTelemetryProfile) and a copy of each

@@ -13,7 +13,8 @@ import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
 import { renderBoxProfile } from "../project/templates/boxProfile";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
-import { BoxDevRunner, NO_AUTO_INSTRUMENTATION } from "./box";
+import { BoxDevRunner } from "./box";
+import { NO_AUTO_INSTRUMENTATION } from "./codezip";
 
 /** The line of a CodeZip profile that names its runtime's folder. */
 const PROFILE = 'read = ["${{ workspace }}/app/agent"]\n';

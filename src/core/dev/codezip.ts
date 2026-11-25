@@ -73,16 +73,16 @@ export class CodeZipDevRunner implements DevRunner {
           PYTHONPATH: existing ? `${sitecustomizeDir}${delimiter}${existing}` : sitecustomizeDir,
         };
       } else {
-        yield {
-          type: "status",
-          message:
-            "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.",
-        };
+        yield { type: "status", message: NO_AUTO_INSTRUMENTATION };
       }
     }
     yield* this.streamProcess(serverProcess.command, serverProcess.options);
   }
 }
+
+/** Why dev collects no traces of an agent whose venv lacks the OTEL auto-instrumentation. */
+export const NO_AUTO_INSTRUMENTATION =
+  "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.";
 
 /**
  * Locate the auto-instrumentation sitecustomize.py directory inside the agent's
