@@ -138,11 +138,11 @@ function withBoxContainerBoxVersion(template: Template): void {
 }
 
 /**
- * Records in a box runtime that calls a Bedrock model the model ID its code renders (--model-id, or
- * the template default), so build lets its Box gateway call only that model. A runtime with no
+ * Records in a box runtime that calls a Bedrock model the model ID its code renders (the template
+ * default, or the scaffold input's modelId), so build lets its Box gateway call only that model. A runtime with no
  * model provider, such as the minimal template, calls no model and gets none.
  */
-export function recordBoxModelId(
+function recordBoxModelId(
   runtime: { modelProvider?: string; modelId?: string },
   input: Pick<ScaffoldRuntimeInput, "modelId" | "modelProvider">,
 ): void {

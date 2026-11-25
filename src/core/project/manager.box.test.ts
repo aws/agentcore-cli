@@ -241,15 +241,19 @@ describe("agentcore create", () => {
     expect(warnings.includes(boxGatewayLogsNotice("agent-box-egress"))).toBe(projectType === "box");
   });
 
+  const DEFAULT_MODEL = "global.anthropic.claude-sonnet-5-5";
   test.each([
-    ["agent-python-strands-box", "global.anthropic.claude-sonnet-5-5"],
-    ["agent-python-langchain-box", "global.anthropic.claude-sonnet-5-5"],
-    ["agent-python-strands-box-container", "global.anthropic.claude-sonnet-5-5"],
-    ["agent-python-minimal-box", undefined],
-    ["agent-python-strands", undefined],
+    ["agent-python-strands-box", undefined, DEFAULT_MODEL],
+    ["agent-python-strands-box", "us.amazon.nova-pro-v1:0", "us.amazon.nova-pro-v1:0"],
+    ["agent-python-langchain-box", "us.amazon.nova-pro-v1:0", "us.amazon.nova-pro-v1:0"],
+    ["agent-python-strands-box-container", undefined, DEFAULT_MODEL],
+    ["a2a-python-strands-box", undefined, DEFAULT_MODEL],
+    ["agui-python-strands-box", undefined, DEFAULT_MODEL],
+    ["agent-python-minimal-box", undefined, undefined],
+    ["agent-python-strands", undefined, undefined],
   ] as const)(
-    "create --template %s records modelId %p, the model its code calls, for its Box gateway's Bedrock policy",
-    async (template, modelId) => {
+    "create --template %s with model %p records modelId %p, the model its code calls",
+    async (template, inputModelId, modelId) => {
       const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
       tempDirectories.push(directory);
       process.chdir(directory);
@@ -257,19 +261,23 @@ describe("agentcore create", () => {
         name: "example",
         skipInstall: true,
         skipGit: true,
-        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, {
+          runtimeName: "agent",
+          ...(inputModelId && { modelId: inputModelId }),
+        }),
       });
       let next = await generator.next();
       while (!next.done) next = await generator.next();
 
       const [runtime] = (await specOnDisk(next.value)).runtimes as { modelId?: string }[];
       expect(runtime?.modelId).toBe(modelId);
-      if (template === "agent-python-langchain-box") {
+      if (modelId !== undefined && template.endsWith("-box") && !template.includes("container")) {
+        // The code calls the same model that agentcore.json records.
         const load = await readFile(
           join(directory, "example", "app", "agent", "model", "load.py"),
           "utf8",
         );
-        expect(load).toContain(`MODEL_ID = "${modelId}"`);
+        expect(load).toContain(`"${modelId}"`);
       }
     },
   );

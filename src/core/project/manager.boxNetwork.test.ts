@@ -1061,6 +1061,50 @@ describe("build routes the other gateways of the project for the boxed agent", (
   });
 });
 
+describe("build scopes the Box gateways' Bedrock policy to the runtime's modelId", () => {
+  const policyResources = async (root: string) =>
+    JSON.parse(await text(root, "agentcore/box-bedrock-policy.json")).Statement.map(
+      ({ Resource }: { Resource: string[] }) => Resource[0],
+    );
+  const setModelId = async (root: string, modelId: string | undefined) => {
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.runtimes[0].modelId = modelId;
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+  };
+
+  test("rewrites the policy to a changed modelId, with no grant of the old model left", async () => {
+    const { manager, root } = await strandsProject();
+    await build(manager, root);
+    expect(await policyResources(root)).toContain(
+      "arn:aws:bedrock:us-west-2:*:inference-profile/global.anthropic.claude-sonnet-5-5",
+    );
+
+    await setModelId(root, "us.amazon.nova-pro-v1:0");
+    const { warnings } = await build(manager, root);
+
+    const resources = await policyResources(root);
+    expect(resources).toContain(
+      "arn:aws:bedrock:us-west-2:*:inference-profile/us.amazon.nova-pro-v1:0",
+    );
+    expect(JSON.stringify(resources)).not.toContain("claude-sonnet-5-5");
+    expect(warnings.some((warning) => warning.includes("no modelId"))).toBe(false);
+  });
+
+  test("keeps every model, and warns, when the runtime has no modelId", async () => {
+    const { manager, root } = await strandsProject();
+    await setModelId(root, undefined);
+
+    const { warnings } = await build(manager, root);
+
+    expect(await policyResources(root)).toEqual([
+      "arn:aws:bedrock:us-west-2:*:inference-profile/*",
+      "arn:aws:bedrock:us-west-2::foundation-model/*",
+      "arn:aws:bedrock:*::foundation-model/*",
+    ]);
+    expect(warnings).toContainEqual(expect.stringContaining("has no modelId in agentcore.json"));
+  });
+});
+
 describe("build sets box.version to the pinned box", () => {
   // The box features and the profiles that the CLI writes change together, so a project created
   // by an earlier CLI builds with the box this one ships, and agentcore.json says so.
@@ -1654,6 +1698,7 @@ describe("deploy writes the Box network before the backend deploys", () => {
     const bedrockFor = (region: string) => [
       [`arn:aws:bedrock:${region}:*:inference-profile/global.anthropic.claude-sonnet-5-5`],
       ["arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5*"],
+      [`arn:aws:bedrock:${region}::foundation-model/global.anthropic.claude-sonnet-5-5`],
     ];
     await build(manager, root);
     expect(await authOf("agentcore")).toBeUndefined();

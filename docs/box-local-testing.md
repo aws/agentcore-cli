@@ -483,6 +483,11 @@ Local checks, in `agentcore/agentcore.json`:
 - `"projectType": "box"`.
 - A gateway named `agent-box-egress` with a `bedrock` passthrough target in the deploy region, and
   an `egress-github` target for `https://api.github.com`.
+- The runtime's `"modelId"`, the Bedrock model its code calls. Build writes
+  `agentcore/box-bedrock-policy.json` for the Box gateways' roles with that model only. To use
+  another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock
+  denies the call. Without a `modelId` build can scope to, the policy allows every model of the
+  account and build warns.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 
 Live checks, after deploy. Deploy names each AWS resource after the project and the deploy target

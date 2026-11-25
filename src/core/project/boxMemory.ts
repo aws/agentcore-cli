@@ -61,88 +61,127 @@ function boxedRuntimesCallingBedrock(spec: ProjectSpec): ProjectRuntime[] {
   return boxedRuntimes(spec).filter(callsBedrock);
 }
 
+/** A Bedrock model a Box gateway may call: its ID, and the region its ARN names, if any. */
+interface ScopedModel {
+  readonly id: string;
+  /** The region of the ARN the runtime names; the build region when the runtime names a plain ID. */
+  readonly region?: string;
+  /** What the ARN names, when the runtime names an ARN. */
+  readonly kind?: "inference-profile" | "foundation-model";
+}
+
+/** A Bedrock model ID or system inference profile ID: `provider.model` or `geo.provider.model`. */
+const MODEL_ID_PATTERN = /^[a-z0-9-]+\.[A-Za-z0-9._:-]+$/;
+
+/** An ARN of a system inference profile or a foundation model: the two a Box gateway can scope. */
+const SCOPED_ARN_PATTERN =
+  /^arn:[a-z-]+:bedrock:([a-z0-9-]*):[0-9]*:(inference-profile|foundation-model)\/(.+)$/;
+
 /**
- * The Bedrock model ID or inference profile ID that `runtime`'s code calls, from its `modelId` in
- * agentcore.json: the ID itself for the Bedrock provider, the ID after `bedrock/` for LiteLLM.
- * Undefined when agentcore.json names no model.
+ * The Bedrock model that `runtime`'s code calls, from its `modelId` in agentcore.json, or undefined
+ * when build cannot scope a policy to it: no `modelId`, a LiteLLM model that does not route to
+ * Bedrock, or an ID or ARN of another kind (application inference profile, provisioned, custom or
+ * imported model). LiteLLM's `bedrock/`, `bedrock/converse/` and `bedrock/invoke/` routes give the ID
+ * after them. A system inference profile ARN or a foundation model ARN gives its ID and region.
  */
-export function bedrockModelIdOf(runtime: ProjectRuntime): string | undefined {
-  if (runtime.modelId === undefined) return undefined;
+export function bedrockModelOf(runtime: ProjectRuntime): ScopedModel | undefined {
+  let id = runtime.modelId;
+  if (id === undefined) return undefined;
   if (runtime.modelProvider === "LiteLLM") {
-    return runtime.modelId.startsWith("bedrock/")
-      ? runtime.modelId.slice("bedrock/".length)
-      : undefined;
+    if (!id.startsWith("bedrock/")) return undefined;
+    id = id.slice("bedrock/".length).replace(/^(converse|invoke)\//, "");
   }
-  return runtime.modelId;
-}
-
-/** The geographic prefixes of a cross-region inference profile ID, as in `global.anthropic...`. */
-const INFERENCE_PROFILE_PREFIXES = ["global", "us", "eu", "apac", "us-gov", "jp", "au", "ca"];
-
-/** The foundation model behind inference profile `id`, or undefined when `id` is a model ID. */
-function modelBehindProfile(id: string): string | undefined {
-  const [prefix, ...rest] = id.split(".");
-  return INFERENCE_PROFILE_PREFIXES.includes(prefix!) && rest.length > 1
-    ? rest.join(".")
-    : undefined;
+  const arn = SCOPED_ARN_PATTERN.exec(id);
+  if (arn) {
+    const [, region, kind, rest] = arn;
+    if (!MODEL_ID_PATTERN.test(rest!)) return undefined;
+    return {
+      id: rest!,
+      ...(region && { region }),
+      kind: kind as "inference-profile" | "foundation-model",
+    };
+  }
+  return MODEL_ID_PATTERN.test(id) ? { id } : undefined;
 }
 
 /**
- * The statements that let the Box gateway's role call only `modelIds` in `region`: for an inference
- * profile, the profile of the role's own account and its foundation model in any region, only
- * through that profile (a cross-region profile sends the call to another region); for a model ID,
- * that foundation model in `region`.
+ * The statements that let the Box gateway's role call only `models`. A call through an inference
+ * profile is authorized twice: on the profile, and on the foundation model in the region the
+ * profile sends it to, so for a profile the role gets the profile of its own account and the model
+ * behind it in any region, only through that profile. A plain ID gets all three statements, with
+ * no list of geographic prefixes to keep current: for a model ID the profile statements name a
+ * profile that cannot exist, and for a profile ID the in-region model statement a model that cannot
+ * exist, so nothing widens. An ARN gets only the statements of its kind, in its region.
  */
-function scopedBedrockStatements(modelIds: readonly string[], region: string): unknown[] {
-  const bedrock = `arn:${partition(region).name}:bedrock`;
+function scopedBedrockStatements(models: readonly ScopedModel[], buildRegion: string): unknown[] {
+  const bedrock = `arn:${partition(buildRegion).name}:bedrock`;
   // A Sid is unique in a policy, so each model's statements end in its number when there are more.
-  const sid = (name: string, index: number) => (modelIds.length > 1 ? `${name}${index + 1}` : name);
-  return modelIds.flatMap((id, index) => {
-    const model = modelBehindProfile(id);
-    if (model === undefined) {
-      return [
+  const sid = (name: string, index: number) => (models.length > 1 ? `${name}${index + 1}` : name);
+  return models.flatMap(({ id, region = buildRegion, kind }, index) => {
+    const statements: unknown[] = [];
+    if (kind !== "foundation-model") {
+      // The model ID behind a profile ID: the ID without its geographic prefix, as `global.`.
+      const model = id.split(".").slice(1).join(".");
+      statements.push(
         {
-          Sid: sid("BoxedAgentModelThroughGateway", index),
+          Sid: sid("BoxedAgentInferenceProfileThroughGateway", index),
           Effect: "Allow",
           Action: BEDROCK_INVOKE_ACTIONS,
-          Resource: [`${bedrock}:${region}::foundation-model/${id}`],
+          Resource: [`${bedrock}:${region}:*:inference-profile/${id}`],
+          Condition: { StringEquals: { "aws:ResourceAccount": PRINCIPAL_ACCOUNT } },
         },
-      ];
+        {
+          Sid: sid("BoxedAgentModelThroughItsInferenceProfile", index),
+          Effect: "Allow",
+          Action: BEDROCK_INVOKE_ACTIONS,
+          // The foundation model's ID carries a version that the profile's does not
+          // (`anthropic.claude-sonnet-5-5` serves `anthropic.claude-sonnet-5-5-<date>-v1:0`), so the
+          // ID ends in `*`. The condition holds it to the one profile, so the prefix widens nothing.
+          Resource: [`${bedrock}:*::foundation-model/${model}*`],
+          Condition: {
+            StringEquals: {
+              "bedrock:InferenceProfileArn": `${bedrock}:${region}:${PRINCIPAL_ACCOUNT}:inference-profile/${id}`,
+            },
+          },
+        },
+      );
     }
-    const profile = `${bedrock}:${region}:${PRINCIPAL_ACCOUNT}:inference-profile/${id}`;
-    return [
-      {
-        Sid: sid("BoxedAgentInferenceProfileThroughGateway", index),
+    if (kind !== "inference-profile") {
+      statements.push({
+        Sid: sid("BoxedAgentModelThroughGateway", index),
         Effect: "Allow",
         Action: BEDROCK_INVOKE_ACTIONS,
-        Resource: [`${bedrock}:${region}:*:inference-profile/${id}`],
-        Condition: { StringEquals: { "aws:ResourceAccount": PRINCIPAL_ACCOUNT } },
-      },
-      {
-        Sid: sid("BoxedAgentModelThroughItsInferenceProfile", index),
-        Effect: "Allow",
-        Action: BEDROCK_INVOKE_ACTIONS,
-        Resource: [`${bedrock}:*::foundation-model/${model}*`],
-        Condition: { StringEquals: { "bedrock:InferenceProfileArn": profile } },
-      },
-    ];
+        Resource: [`${bedrock}:${region}::foundation-model/${id}`],
+      });
+    }
+    return statements;
   });
 }
 
+/** The boxed runtimes that call Bedrock with no model build can scope the Box gateways' policy to. */
+function unscopedRuntimes(spec: ProjectSpec): ProjectRuntime[] {
+  return boxedRuntimesCallingBedrock(spec).filter(
+    (runtime) => bedrockModelOf(runtime) === undefined,
+  );
+}
+
 /**
- * The warning build gives when the Box gateway's role can call every Bedrock model: a boxed runtime
- * that calls a model has no `modelId` in agentcore.json. Undefined when every one has it.
+ * The warning build gives when the Box gateways can call every Bedrock model of the account, as
+ * {@link boxBedrockPolicy} falls back: a boxed runtime that calls Bedrock has no `modelId` that build
+ * can scope to. Undefined when the policy is scoped.
  */
 export function boxBedrockScopeWarning(spec: ProjectSpec): string | undefined {
-  const unnamed = boxedRuntimesCallingBedrock(spec).filter(
-    (runtime) => runtime.modelProvider !== undefined && bedrockModelIdOf(runtime) === undefined,
-  );
-  if (unnamed.length === 0) return undefined;
-  const names = unnamed.map(({ name }) => `"${name}"`).join(", ");
+  const unscoped = unscopedRuntimes(spec).map(({ name }) => `"${name}"`);
+  if (unscoped.length === 0) return undefined;
+  const names =
+    unscoped.length === 1
+      ? `runtime ${unscoped[0]} has`
+      : `runtimes ${unscoped.slice(0, -1).join(", ")} and ${unscoped.at(-1)} have`;
   return (
-    `runtime ${names} has no modelId in agentcore.json, so its Box gateway can call every Bedrock ` +
-    `model of the account. Set "modelId" to the model ID or inference profile ID its code calls, ` +
-    "to let the gateway call only that model."
+    `${names} no modelId in agentcore.json that build can scope to (a Bedrock model ID or ` +
+    "inference profile ID, or the ARN of a foundation model or system inference profile), so the " +
+    'Box gateways of this project can call every Bedrock model of the account. Set "modelId" ' +
+    "to the model its code calls, then build again."
   );
 }
 
@@ -162,11 +201,14 @@ export function boxBedrockPolicy(
   const runtimes = boxedRuntimesCallingBedrock(spec);
   if (runtimes.length === 0) return undefined;
   // When agentcore.json names the model of each runtime, the role can call only those models.
-  const modelIds = runtimes.map(bedrockModelIdOf);
-  if (modelIds.every((id) => id !== undefined)) {
+  if (unscopedRuntimes(spec).length === 0) {
+    const models = new Map<string, ScopedModel>();
+    for (const model of runtimes.map(bedrockModelOf)) {
+      models.set(JSON.stringify([model!.id, model!.region, model!.kind]), model!);
+    }
     return {
       Version: "2012-10-17",
-      Statement: scopedBedrockStatements([...new Set(modelIds)], region),
+      Statement: scopedBedrockStatements([...models.values()], region),
     };
   }
   const bedrock = `arn:${partition(region).name}:bedrock`;

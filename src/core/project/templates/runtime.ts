@@ -287,6 +287,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
+      // The README says that the Box gateway calls only the model in modelId.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
     };
