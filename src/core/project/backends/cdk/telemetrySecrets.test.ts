@@ -265,13 +265,25 @@ describe("provisionTelemetrySecrets", () => {
     },
   );
 
-  test("puts every key in a secret that exists, with no read", async () => {
+  test("reads a secret that exists, and puts every key when its object is not equal", async () => {
     const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false } });
 
     const { value } = await drain(provisionTelemetrySecrets(stub, await project(), [SECRET], KEYS));
 
-    expect(calls).toEqual([`put ${ARN} ${OBJECT}`]);
+    expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${OBJECT}`]);
     expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+  });
+
+  test("keeps a secret whose object is equal, when deploy has each key", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: OBJECT } });
+    const root = await project(`${LANGSMITH}=${KEYS[LANGSMITH]}\n${LANGFUSE}=${KEYS[LANGFUSE]}\n`);
+
+    for (const env of [{}, KEYS]) {
+      const { value } = await drain(provisionTelemetrySecrets(stub, root, [SECRET], env));
+
+      expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+    }
+    expect(calls).toEqual([`read ${ARN}`, `read ${ARN}`]);
   });
 
   test("keeps a secret that holds each field when deploy has no key", async () => {
@@ -359,6 +371,7 @@ describe("provisionTelemetrySecrets", () => {
 
     expect(error).toBe(failure);
     expect(calls).toEqual([
+      "read arn:existing",
       `create ${NAME} ${OBJECT}`,
       `put arn:existing ${OBJECT}`,
       `delete ${ARN}1`,

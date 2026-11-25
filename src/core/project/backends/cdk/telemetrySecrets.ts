@@ -171,10 +171,7 @@ type Plan = { readonly secret: BoxTelemetrySecret } & (
     }
 );
 
-/**
- * The string fields of the JSON object `text`, or an empty object when it is not one. Deploy
- * reads the secret back only to keep the value of a field whose key it does not have.
- */
+/** The string fields of the JSON object `text`, or an empty object when it is not one. */
 function stringFields(text: string | undefined): Record<string, string> {
   try {
     const parsed: unknown = JSON.parse(text ?? "");
@@ -190,9 +187,9 @@ function stringFields(text: string | undefined): Record<string, string> {
 }
 
 /**
- * Decides what to write to one secret. With every key, deploy writes the whole object. Without
- * one, it reads the secret back and keeps the value its field holds, and keeps the secret as it
- * is when nothing changes. A key that neither deploy nor the secret holds fails the deploy. A
+ * Decides what to write to one secret. Deploy reads a secret that exists and is not scheduled for
+ * deletion, takes the value of a field whose key it lacks from it, and keeps the secret as it is
+ * when the object is equal. A key that neither deploy nor the secret holds fails the deploy. A
  * secret of that name that deploy did not create also stops the deploy.
  */
 async function plan(
@@ -210,10 +207,7 @@ async function plan(
     throw notCreatedByDeploy(secret, project.spec.name);
   }
   // A secret scheduled for deletion cannot be read until a write restores it.
-  let held: Record<string, string> = {};
-  if (existing && !existing.deleted && given.some(({ value }) => value === undefined)) {
-    held = stringFields(await calls.read(existing.arn));
-  }
+  const held = existing && !existing.deleted ? stringFields(await calls.read(existing.arn)) : {};
   const object: Record<string, string> = {};
   const missing: typeof given = [];
   for (const field of given) {
@@ -224,9 +218,9 @@ async function plan(
   if (missing.length > 0) throw missingKeys(secret, missing, project.rootPath);
   const value = JSON.stringify(object);
   if (existing === undefined) return { secret, kind: "create", value };
-  const unchanged =
-    given.every(({ value }) => value === undefined) && isDeepStrictEqual(object, held);
-  if (unchanged && !existing.deleted) return { secret, kind: "keep", arn: existing.arn };
+  if (!existing.deleted && isDeepStrictEqual(object, held)) {
+    return { secret, kind: "keep", arn: existing.arn };
+  }
   return { secret, kind: "update", arn: existing.arn, restore: existing.deleted, value };
 }
 
