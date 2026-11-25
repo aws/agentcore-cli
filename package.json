@@ -50,7 +50,7 @@
     "*.{json,md}": "prettier --write"
   },
   "devDependencies": {
-    "@secretlint/secretlint-rule-preset-recommend": "^12.2.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.1.0",
     "@types/bun": "latest",
     "@types/cross-spawn": "^6.0.6",
     "@types/react": "^19.2.17",
@@ -59,11 +59,11 @@
     "husky": "^9.1.7",
     "ink-testing-library": "^4.0.0",
     "lint-staged": "^17.0.8",
-    "oxlint": "^1.73.0",
-    "prettier": "^3.8.4",
-    "secretlint": "^12.2.0",
+    "oxlint": "^1.94.0",
+    "prettier": "^3.10.1",
+    "secretlint": "^14.1.0",
     "typescript": "^5",
-    "vitest": "^4.1.12"
+    "vitest": "^5.1.1"
   },
   "dependencies": {
     "@aws-cdk/cloudformation-diff": "2.187.4",
