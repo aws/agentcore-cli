@@ -140,8 +140,17 @@ describe("boxTelemetrySecretEnvEntries", () => {
     { runtime: "other", thirdPartyTelemetry: [LANGFUSE] },
   ]);
 
+  const entry = (value: string) => ({
+    key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
+    value,
+    comment:
+      "Key for box telemetry [telemetry.langsmith] of 'agent' (env://LANGSMITH_KEY), " +
+      "stored in AWS Secrets Manager on deploy",
+  });
+
   test("copies the value of the profile's variable to the variable deploy reads", () => {
-    expect(boxTelemetrySecretEnvEntries(secrets, { LANGSMITH_KEY: "dummy-key" })).toEqual([
+    const sources = { env: { LANGSMITH_KEY: "dummy-key" }, envLocal: {} };
+    expect(boxTelemetrySecretEnvEntries(secrets, sources)).toEqual([
       {
         key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
         value: "dummy-key",
@@ -152,8 +161,30 @@ describe("boxTelemetrySecretEnvEntries", () => {
     ]);
   });
 
+  test("reads the variable from .env.local when the shell has no value for it, as dev does", () => {
+    const envLocal = { LANGSMITH_KEY: "dummy-file-key" };
+
+    expect(boxTelemetrySecretEnvEntries(secrets, { env: {}, envLocal })).toEqual([
+      entry("dummy-file-key"),
+    ]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, { env: { LANGSMITH_KEY: " " }, envLocal }),
+    ).toEqual([entry("dummy-file-key")]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, {
+        env: { LANGSMITH_KEY: "dummy-shell-key" },
+        envLocal,
+      }),
+    ).toEqual([entry("dummy-shell-key")]);
+  });
+
   test("writes nothing for a variable that is not set or is blank", () => {
-    expect(boxTelemetrySecretEnvEntries(secrets, {})).toEqual([]);
-    expect(boxTelemetrySecretEnvEntries(secrets, { LANGSMITH_KEY: "  " })).toEqual([]);
+    expect(boxTelemetrySecretEnvEntries(secrets, { env: {}, envLocal: {} })).toEqual([]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, {
+        env: { LANGSMITH_KEY: "  " },
+        envLocal: { LANGSMITH_KEY: "" },
+      }),
+    ).toEqual([]);
   });
 });

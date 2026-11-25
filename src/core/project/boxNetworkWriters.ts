@@ -214,7 +214,10 @@ export const credentialsWriter: BoxNetworkWriter = {
       ],
       envLocal: [
         ...plan.entries,
-        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), env),
+        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), {
+          env,
+          envLocal,
+        }),
       ],
       warnings: plan.warnings,
       warningsAfter: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
@@ -223,10 +226,11 @@ export const credentialsWriter: BoxNetworkWriter = {
 };
 
 /**
- * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it: only
- * the variables its routes use, and none that `env` sets to a value, because a value set in `env`
- * wins. An entry that is not read is not decrypted, so it cannot stop the build. With no routes,
- * no entry is read.
+ * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it. Build
+ * reads only the variables of its routes and of the keys of its third-party telemetry targets. It
+ * reads none that `env` sets to a value, because a value set in `env` wins. An entry that is not
+ * read is not decrypted, so it cannot stop the build. With no routes and no such key, no entry is
+ * read.
  */
 export function boxKeyReads(
   networks: readonly BoxNetwork[],
@@ -234,6 +238,9 @@ export function boxKeyReads(
   env: NodeJS.ProcessEnv,
 ): ReadEnvFileOptions {
   const variables = boxKeyVariables(spec.credentials, uniqueRoutes(networks));
+  for (const { fields } of boxTelemetrySecrets(spec.name, networks)) {
+    for (const { source } of fields) variables.add(source);
+  }
   return {
     select: (name) => variables.has(name),
     // A blank value in `env` does not win, so build reads that variable from the file instead.

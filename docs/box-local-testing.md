@@ -651,6 +651,8 @@ gateway target for a telemetry host.
    export LANGSMITH_API_KEY='lsv2_...'
    ```
 
+   You can also put these variables in `agentcore/.env.local`. Dev and build use the value of the
+   shell when it is set. If it is not set, they use the value of `agentcore/.env.local`.
    With `agentcore dev`, box reads each key from its environment variable, for CodeZip and container agents.
 
 4. Build and deploy. AgentCore Runtime does not have these environment variables. Thus:
