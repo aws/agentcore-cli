@@ -15,7 +15,7 @@ import { MemorySchema } from "./memory";
 import { OnlineEvalConfigSchema } from "./online-eval-config";
 import { PaymentManagerSchema } from "./payment";
 import { PolicyEngineSchema } from "./policy";
-import { TagsSchema } from "./tags";
+import { TagsSchema, TEMPLATE_TAG_KEY, type Tags } from "./tags";
 import { uniqueBy } from "./zod-util";
 import { z } from "zod";
 export const ManagedBySchema = z.enum(["CDK"]).default("CDK");
@@ -97,11 +97,29 @@ export const BOX_GATEWAY_DISCOVERY_PREFIX = "AGENTCORE_GATEWAY_BOX";
  */
 export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
+/** The value of the {@link TEMPLATE_TAG_KEY} tag on each runtime and Box gateway of a Box project. */
+export const BOX_TEMPLATE_TAG_VALUE = "strands-box";
+/**
+ * The tags `create` and `add runtime` write on each runtime and Box gateway they add to a Box
+ * project, as the BMA template writes `agentcore:template=BedrockManagedAgents` on its runtime.
+ * Build never adds them, so a runtime or gateway made before the CLI wrote them has none.
+ */
+export const BOX_TEMPLATE_TAGS: Readonly<Record<string, string>> = {
+  [TEMPLATE_TAG_KEY]: BOX_TEMPLATE_TAG_VALUE,
+};
+/**
+ * The tags of a box runtime: the user's `tags` with {@link BOX_TEMPLATE_TAGS} added. A value the
+ * user set for the key stays on the runtime; its Box gateway keeps `strands-box`.
+ */
+export const withBoxTemplateTags = (tags: Tags | undefined): Tags => ({
+  ...BOX_TEMPLATE_TAGS,
+  ...tags,
+});
 /**
  * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
- * variable prefix, `AWS_IAM` auth, `protocolType: "None"` and its `APPLICATION_LOGS` on. The CDK
- * library binds it from `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a
- * user's `enableApplicationLogs: false` stays.
+ * variable prefix, `AWS_IAM` auth, `protocolType: "None"`, its `APPLICATION_LOGS` on, and
+ * {@link BOX_TEMPLATE_TAGS}. The CDK library binds it from `boundRuntime` and `discoveryPrefix`.
+ * Build changes only its targets, so a user's `enableApplicationLogs: false` and tags stay.
  */
 export const boxGatewaySpec = (runtimeName: string) => ({
   name: boxGatewayName(runtimeName),
@@ -110,6 +128,7 @@ export const boxGatewaySpec = (runtimeName: string) => ({
   boundRuntime: runtimeName,
   discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
   enableApplicationLogs: true,
+  tags: { ...BOX_TEMPLATE_TAGS },
   targets: [],
 });
 /**

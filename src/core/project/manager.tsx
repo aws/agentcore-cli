@@ -108,7 +108,9 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
+  BOX_TEMPLATE_TAG_VALUE,
   boxGatewaySpec,
+  withBoxTemplateTags,
   isBoundGateway,
   isBoxProject,
   isBuildOwnedTarget,
@@ -116,6 +118,7 @@ import {
   type ManagedBy,
 } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
+import { MAX_TAGS, TEMPLATE_TAG_KEY } from "../../projectSchemas/tags";
 import {
   type AgentCoreGateway,
   AgentCoreGatewaySchema,
@@ -2382,6 +2385,8 @@ export class FsProjectManager implements ProjectManager {
     runtime.platformVersion = BOX_PLATFORM_VERSION;
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
+    // A key the user passed with --tags overrides the Box template tag, as on create.
+    runtime.tags = withBoxTemplateTags(runtime.tags);
     projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
 
     // start.py and an empty .venv, as create writes them. A file or folder the user has stays.
@@ -2719,6 +2724,17 @@ function boxRuntimeInput(
     throw new InputValidationError(
       `cannot add runtime '${config.name}': its Box gateway needs the name '${gateway}', and a ` +
         "gateway with that name already exists. Choose a different --name.",
+    );
+  }
+  // Checked here, before add runtime writes anything, as the Box template tag is one more tag than
+  // the user passed.
+  const tags = Object.keys(withBoxTemplateTags(config.tags)).length;
+  if (tags > MAX_TAGS) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project: it would have ${tags} tags, over the ` +
+        `limit of ${MAX_TAGS}. Every runtime of a Box project gets the tag ` +
+        `${TEMPLATE_TAG_KEY}=${BOX_TEMPLATE_TAG_VALUE}, so pass at most ${MAX_TAGS - 1} tags with ` +
+        `--tags, or set ${TEMPLATE_TAG_KEY} yourself.`,
     );
   }
   return {

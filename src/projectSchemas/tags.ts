@@ -14,7 +14,14 @@ export const TagValueSchema = z
   .string()
   .max(256, "Tag value must be 256 characters or less")
   .regex(TAG_CHAR_PATTERN, "Tag value contains invalid characters");
+/** The most tags AWS takes on one resource. */
+export const MAX_TAGS = 50;
 export const TagsSchema = z
   .record(TagKeySchema, TagValueSchema)
-  .refine((tags) => Object.keys(tags).length <= 50, "Maximum 50 tags per resource");
+  .refine((tags) => Object.keys(tags).length <= MAX_TAGS, `Maximum ${MAX_TAGS} tags per resource`);
 export type Tags = z.infer<typeof TagsSchema>;
+/**
+ * The tag key that names the family of CLI templates a resource was made from: `strands-box` for a
+ * Box template, `BedrockManagedAgents` for the BMA template. `isBmaRuntime` reads it.
+ */
+export const TEMPLATE_TAG_KEY = "agentcore:template";

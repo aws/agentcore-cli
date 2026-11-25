@@ -31,4 +31,17 @@ describe("resolveRuntimeTemplateProfile", () => {
       }),
     ).toBe(profile);
   });
+
+  test("adds the Box template tag to a Box template's profile, and keeps the rest of it", () => {
+    expect(
+      resolveRuntimeTemplateProfile({
+        framework: "strands",
+        boxTemplate: true,
+        templateProfile: { modelProviderOverride: true, runtime: { tags: { team: "ml" } } },
+      }),
+    ).toEqual({
+      modelProviderOverride: true,
+      runtime: { tags: { "agentcore:template": "strands-box", team: "ml" } },
+    });
+  });
 });
