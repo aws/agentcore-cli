@@ -17,6 +17,7 @@ import {
   BOX_BEDROCK_API_KEY_ROUTE,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_ROUTE,
+  BOX_TRACES_LOG_GROUP_VERSION,
   renderAgentCorePack,
   renderBoxProfile,
   tracesToRuntimeLogGroup,
@@ -31,7 +32,6 @@ import {
   agentStartsUnderOtel,
   apply,
   DEFAULT_TELEMETRY_TARGET,
-  DEFAULT_TRACES_TARGET,
   defaultTracesTelemetry,
   MEMORY_ROUTE,
   runtimeProfileHeader,
@@ -1462,21 +1462,15 @@ describe("the additions rule", () => {
       (version, routed) => {
         const context = contextOf(OTEL_CONTAINER, { boxVersion: version });
         const traces = tableOf(apply({}, context).table).agentcore_traces;
-        const { log_group, log_stream, ...rest } = DEFAULT_TRACES;
 
-        expect(traces).toEqual(routed ? DEFAULT_TRACES : rest);
+        expect(traces).toEqual(routed ? DEFAULT_TRACES : PLAIN_TRACES);
         expect(defaultTracesTelemetry(apply({}, context).table, BUILD_REGION)).toEqual([
           {
             name: "agentcore_traces",
             kind: "cloudwatch_traces",
             region: BUILD_REGION,
-            include: rest.include,
+            include: PLAIN_TRACES.include,
           },
-        ]);
-        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(rest);
-        expect([log_group, log_stream]).toEqual([
-          "${{ inputs.runtime.traces_log_group }}",
-          "${{ inputs.runtime.traces_log_stream }}",
         ]);
       },
     );
@@ -1496,6 +1490,26 @@ describe("the additions rule", () => {
         tracesToRuntimeLogGroup(BOX_RELEASE.version) ? DEFAULT_TRACES : PLAIN_TRACES,
       );
     });
+
+    test.each(BUILDS)(
+      "declares in @box/agentcore each traces input that the Runtime profile names, for the same box (%s)",
+      (build) => {
+        const runtime = otelRuntime(build);
+        const context = contextOf(runtime, { boxVersion: BOX_TRACES_LOG_GROUP_VERSION });
+        const { profile } = deriveRuntimeProfile(createdProfile(runtime), context);
+        const named = [
+          ...serializeRuntimeProfile(profile).matchAll(
+            /\$\{\{ inputs\.runtime\.(traces_\w+) \}\}/g,
+          ),
+        ].map(([, name]) => name);
+        const { inputs } = parse(
+          renderAgentCorePack(context.spec, runtime, [], BOX_TRACES_LOG_GROUP_VERSION),
+        ) as { inputs: { runtime: TomlTable } };
+
+        expect(named).not.toEqual([]);
+        expect(Object.keys(inputs.runtime)).toEqual(expect.arrayContaining(named));
+      },
+    );
 
     test("adds the default X-Ray target beside a cloudwatch_logs target of the user", () => {
       const local = { telemetry: { logs: CLOUDWATCH.logs } };
