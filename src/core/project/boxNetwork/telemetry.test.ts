@@ -214,9 +214,9 @@ describe("thirdPartyTelemetry", () => {
         {
           name: "langsmith",
           reason:
-            "its `secret.ref` names no `env://` or `secret://` variable, and build moves only " +
-            "such a key to AWS Secrets Manager",
-          fix: "Set `secret.ref` to an `env://` or `secret://` variable",
+            "reads its key from a secret.ref that is not an env:// or secret:// variable, and " +
+            "on AgentCore Runtime build can pass on only such a key",
+          fix: "Set secret.ref to env://<VARIABLE>, or remove [telemetry.langsmith]",
         },
       ],
     });
@@ -233,8 +233,10 @@ describe("thirdPartyTelemetry", () => {
 
       expect(targets).toEqual([]);
       expect(leftOut.map((target) => target.name)).toEqual([name]);
-      expect(leftOut[0]?.reason).toContain("cannot name the variable deploy reads its key from");
-      expect(leftOut[0]?.fix).toBe("Rename the target");
+      expect(leftOut[0]?.reason).toBe("has a name that deploy cannot use for its key");
+      expect(leftOut[0]?.fix).toBe(
+        "Use only letters, digits, _ and -, at most 128 characters, in the name of the table",
+      );
     },
   );
 
@@ -242,7 +244,13 @@ describe("thirdPartyTelemetry", () => {
     const telemetry = { langsmith: { ...LANGSMITH, include: [1] } };
 
     expect(thirdPartyTelemetry({ telemetry }).leftOut).toEqual([
-      { name: "langsmith", reason: "Box resolves its `include` to a value build cannot copy" },
+      {
+        name: "langsmith",
+        reason: "sets 'include' to a value that build cannot copy to AgentCore Runtime",
+        fix:
+          "Set 'include' to a string, a list of strings, or a table of strings, or remove " +
+          "[telemetry.langsmith]",
+      },
     ]);
   });
 

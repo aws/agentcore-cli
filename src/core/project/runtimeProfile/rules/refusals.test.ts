@@ -403,9 +403,8 @@ describe("the refusals rule", () => {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "collector", "kind"],
           reason:
-            '[telemetry.collector] kind is "otlp", and build cannot carry it to AgentCore ' +
-            'Runtime. Remove [telemetry.collector], or change its kind to "cloudwatch_logs" or ' +
-            '"cloudwatch_traces".',
+            "[telemetry.collector] is a target that build cannot copy to AgentCore Runtime. " +
+            "Remove [telemetry.collector].",
           place: `${PROFILE}:7:1`,
         },
         {
@@ -446,8 +445,9 @@ describe("the refusals rule", () => {
       const leftOut = {
         name: "langfuse",
         reason:
-          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime does not have",
-        fix: "Use a container runtime",
+          "reads its key from a secret.ref that is not an env:// or secret:// variable, and on " +
+          "AgentCore Runtime build can pass on only such a key",
+        fix: "Set secret.ref to env://<VARIABLE>, or remove [telemetry.langfuse]",
       };
 
       expect(problems({ thirdPartyTelemetry: [], leftOutTelemetry: [leftOut] })).toEqual([
@@ -455,10 +455,9 @@ describe("the refusals rule", () => {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "langfuse", "kind"],
           reason:
-            '[telemetry.langfuse] kind is "langfuse", and build cannot carry it to AgentCore ' +
-            "Runtime: Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip " +
-            "runtime does not have. Use a container runtime, remove [telemetry.langfuse], or " +
-            'change its kind to "cloudwatch_logs" or "cloudwatch_traces".',
+            "[telemetry.langfuse] reads its key from a secret.ref that is not an env:// or " +
+            "secret:// variable, and on AgentCore Runtime build can pass on only such a key. Set " +
+            "secret.ref to env://<VARIABLE>, or remove [telemetry.langfuse].",
           place: `${PROFILE}:2:1`,
         },
       ]);
@@ -470,9 +469,8 @@ describe("the refusals rule", () => {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "langfuse", "kind"],
           reason:
-            '[telemetry.langfuse] kind is "langfuse", and build cannot carry it to AgentCore ' +
-            'Runtime. Remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
-            '"cloudwatch_traces".',
+            "[telemetry.langfuse] is a target that build cannot copy to AgentCore Runtime. " +
+            "Remove [telemetry.langfuse].",
           place: `${PROFILE}:2:1`,
         },
       ]);
