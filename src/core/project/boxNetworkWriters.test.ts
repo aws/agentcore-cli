@@ -13,6 +13,7 @@ import {
   credentialsWriter,
   defaultTargetsWriter,
   gatewayTargetsWriter,
+  placeSecretsManagerEndpoint,
   runtimeProfileWriter,
   telemetryPolicyWriter,
   type BoxNetworkWriteContext,
@@ -869,6 +870,34 @@ describe("the secrets of third-party telemetry targets", () => {
     expect(reads.select?.("LANGSMITH_KEY")).toBe(true);
     expect(reads.select?.("OTHER")).toBe(false);
     expect(reads.overrides).toMatchObject({ LANGSMITH_KEY: "dummy-shell-key" });
+  });
+});
+
+describe("placeSecretsManagerEndpoint", () => {
+  /** A project whose runtime `agent` uses a private VPC, with `network` when it is given. */
+  const privateVpc = (network?: Record<string, unknown>) => {
+    const project = spec();
+    Object.assign(project.runtimes[0]!, { containment: "PRIVATE_VPC" }, network && { network });
+    return project;
+  };
+
+  test("deletes the network of a runtime when the endpoint was its only field", () => {
+    const project = privateVpc();
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    expect(project.runtimes[0]!.network).toEqual({ secretsManagerEndpoint: true });
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]).not.toHaveProperty("network");
+  });
+
+  test("keeps the other fields of the network when it removes the endpoint", () => {
+    const project = privateVpc({ mode: "CONTAINED" });
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]!.network).toEqual({ mode: "CONTAINED" });
   });
 });
 
