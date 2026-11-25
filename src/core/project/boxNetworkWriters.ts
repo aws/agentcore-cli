@@ -62,6 +62,7 @@ export type BoxNetworkOutput =
   | { readonly kind: "defaultTargets" }
   | { readonly kind: "credentials" }
   | { readonly kind: "runtimePolicies" }
+  | { readonly kind: "runtimeNetworks" }
   | { readonly kind: "boxVersions" }
   | { readonly kind: "envLocal" }
   | { readonly kind: "file"; readonly path: string };
@@ -523,6 +524,7 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
   writes: (_networks, { spec }) => [
     { kind: "runtimePolicies" },
+    { kind: "runtimeNetworks" },
     ...spec.runtimes.map(({ name }) => ({
       kind: "file" as const,
       path: boxTelemetryPolicyFile(name),
@@ -548,9 +550,50 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
         files.push({ path, remove: true });
       }
     }
-    return { spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)], files };
+    const readers = networks.flatMap(({ runtime, thirdPartyTelemetry }) =>
+      (thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined) ? [runtime] : [],
+    );
+    return {
+      spec: [
+        (copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed),
+        (copy) => placeSecretsManagerEndpoint(copy, readers),
+      ],
+      files,
+    };
   },
 };
+
+/**
+ * Sets `network.secretsManagerEndpoint` on each PRIVATE_VPC runtime of `readers`, whose box reads a
+ * telemetry key from AWS Secrets Manager, and removes it from every other runtime. The private VPC
+ * has no internet path, so without the endpoint the read fails and the box does not start. Changes
+ * `spec` in place, and returns the step messages; none when nothing changed.
+ */
+export function placeSecretsManagerEndpoint(
+  spec: ProjectSpec,
+  readers: readonly string[],
+): string[] {
+  const messages: string[] = [];
+  for (const runtime of spec.runtimes) {
+    const has = runtime.network?.secretsManagerEndpoint === true;
+    const wanted = runtime.containment === "PRIVATE_VPC" && readers.includes(runtime.name);
+    if (wanted && !has) {
+      runtime.network = { ...runtime.network, secretsManagerEndpoint: true };
+      messages.push(
+        `adding an AWS Secrets Manager endpoint to the private VPC of '${runtime.name}', so its ` +
+          "box can read its telemetry keys",
+      );
+    } else if (!wanted && runtime.network?.secretsManagerEndpoint !== undefined) {
+      const { secretsManagerEndpoint: _removed, ...rest } = runtime.network;
+      runtime.network = rest;
+      messages.push(
+        `removing the AWS Secrets Manager endpoint from the private VPC of '${runtime.name}': ` +
+          "its box reads no telemetry key",
+      );
+    }
+  }
+  return messages;
+}
 
 /**
  * Writes a copy of `files`, what the runtime profile writer wrote into the staged folder `dist` of

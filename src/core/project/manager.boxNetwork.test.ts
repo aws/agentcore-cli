@@ -1781,7 +1781,65 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     }
     // The target declares no credential: deploy writes a secret, not an Identity provider.
     expect(spec.credentials ?? []).toEqual([]);
+    // A runtime on the default network reaches AWS Secrets Manager without an endpoint.
+    expect(spec.runtimes[0].network).toBeUndefined();
     expect(warnings).toEqual([]);
+  });
+
+  test("keeps the target of a PRIVATE_VPC runtime, gives its VPC an AWS Secrets Manager endpoint, and warns", async () => {
+    const { manager, root, box } = await otelOffProject({
+      env: { LANGFUSE_AUTH: "dummy-pk:dummy-sk" },
+      template: "agent-python-strands-box-container",
+    });
+    const before = JSON.parse(await text(root, SPEC));
+    before.runtimes[0].containment = "PRIVATE_VPC";
+    before.runtimes[0].network = { mode: "CONTAINED" };
+    await writeFile(path(root, SPEC), JSON.stringify(before, undefined, 2));
+    const langfuse = {
+      kind: "langfuse",
+      destination: "https://us.cloud.langfuse.com",
+      secret: { ref: "env://LANGFUSE_AUTH" },
+    };
+    box.answer = showsTelemetry({ langfuse });
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toMatchObject({
+      langfuse: {
+        kind: "langfuse",
+        destination: "https://us.cloud.langfuse.com",
+        secret: { ref: `aws-secretsmanager://${SECRET}#telemetry.langfuse` },
+      },
+    });
+    expect(profile.plugins).toEqual(["@box/aws-secrets-manager"]);
+    expect(JSON.parse(await text(root, TELEMETRY_POLICY)).Statement).toContainEqual(
+      expect.objectContaining({ Sid: "BoxTelemetrySecrets" }),
+    );
+    expect(await text(root, "agentcore/.env.local")).toMatch(
+      /^AGENTCORE_CREDENTIAL_AGENT_PYTHON_STRANDS_TELEMETRY_LANGFUSE=./m,
+    );
+    const spec = JSON.parse(await text(root, SPEC));
+    expect(spec.runtimes[0].network).toEqual({ mode: "CONTAINED", secretsManagerEndpoint: true });
+    expect(steps).toContain(
+      "adding an AWS Secrets Manager endpoint to the private VPC of 'agent_python_strands', so " +
+        "its box can read its telemetry keys",
+    );
+    expect(warnings).toContain(
+      ".box/agent_python_strands/local/profile.toml: [telemetry.langfuse] sends to " +
+        "us.cloud.langfuse.com, but runtime agent_python_strands uses a private VPC, which has no " +
+        "internet path. Box tries to send, and each send fails until you give the VPC a path to " +
+        "us.cloud.langfuse.com, or remove `--containment private-vpc`.",
+    );
+
+    // Without a third-party target the endpoint goes again.
+    box.answer = showsTelemetry({});
+    const again = await build(manager, root);
+    expect(JSON.parse(await text(root, SPEC)).runtimes[0].network).toEqual({ mode: "CONTAINED" });
+    expect(again.steps).toContain(
+      "removing the AWS Secrets Manager endpoint from the private VPC of 'agent_python_strands': " +
+        "its box reads no telemetry key",
+    );
   });
 
   test("leaves out a target whose key the Runtime has no source for, and says so", async () => {

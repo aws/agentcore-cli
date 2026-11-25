@@ -347,7 +347,8 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
  * Manager. A CodeZip runtime carries no target with a key, because its
  * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
  * the variable deploy reads its key from is a variable that a credential reads, or that another
- * target of the profile reads, so deploy never sends one key to the wrong destination.
+ * target of the profile reads, so deploy never sends one key to the wrong destination. A target of
+ * a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path until its owner adds one.
  */
 function runtimeTelemetry(
   profile: ParsedProfile,
@@ -391,9 +392,36 @@ function runtimeTelemetry(
       }
       taken.add(variable);
     }
+    if (project.runtime.containment === "PRIVATE_VPC") {
+      const host = thirdPartyHost(target);
+      warnings.push(
+        `${profile.path}: [telemetry.${target.name}] sends to ${host}, but runtime ` +
+          `${project.runtime.name} uses a private VPC, which has no internet path. Box tries to ` +
+          `send, and each send fails until you give the VPC a path to ${host}, or remove ` +
+          "`--containment private-vpc`.",
+      );
+    }
     targets.push(target);
   }
   return { targets, warnings };
+}
+
+/** The address a box sends a vendor's spans to when its `[telemetry]` table names no destination. */
+const VENDOR_DESTINATIONS: Readonly<Record<string, string>> = {
+  langfuse: "https://cloud.langfuse.com",
+  langsmith: "https://api.smith.langchain.com",
+};
+
+/** The host that `target` sends to: its destination, else its vendor's default. */
+function thirdPartyHost(target: ThirdPartyTelemetry): string {
+  const named = target.keys.find(([key]) => key === "destination")?.[1];
+  const destination = typeof named === "string" ? named : VENDOR_DESTINATIONS[target.kind];
+  if (destination === undefined) return "its destination";
+  try {
+    return new URL(destination).host;
+  } catch {
+    return destination;
+  }
 }
 
 /**
