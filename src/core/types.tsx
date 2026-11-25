@@ -5,6 +5,7 @@ import type { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import type { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import type { XRayClient } from "@aws-sdk/client-xray";
 import type { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
+import type { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from "@smithy/types";
 
 // AwsCredentials is an explicit credential source for a call: either resolved
@@ -54,6 +55,7 @@ export type CreateLogsClient = (config: ClientConfig) => CloudWatchLogsClient;
 export type CreateXrayClient = (config: ClientConfig) => XRayClient;
 export type CreateApplicationSignalsClient = (config: ClientConfig) => ApplicationSignalsClient;
 export type CreateCloudFormationClient = (config: CredentialedClientConfig) => CloudFormationClient;
+export type CreateSecretsManagerClient = (config: CredentialedClientConfig) => SecretsManagerClient;
 export type CoreFetch = (
   ...args: Parameters<typeof globalThis.fetch>
 ) => ReturnType<typeof globalThis.fetch>;

@@ -9,7 +9,13 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
 import { isTable } from "../runtimeProfile/projectPaths";
 import type { TomlTable } from "../runtimeProfile/types";
-import { cloudWatchTelemetry, type ProfileCloudWatchTelemetry } from "./telemetry";
+import {
+  cloudWatchTelemetry,
+  thirdPartyTelemetry,
+  type LeftOutTelemetry,
+  type ProfileCloudWatchTelemetry,
+  type ThirdPartyTelemetry,
+} from "./telemetry";
 
 /** Where the profile's own text sets a key, as `<profile path>:line:column`. */
 export interface ProfilePlaces {
@@ -29,6 +35,10 @@ export interface ParsedProfile {
   readonly policyFiles: readonly string[];
   /** The CloudWatch targets of `[telemetry]` as Box resolves it; absent means none. */
   readonly telemetry?: readonly ProfileCloudWatchTelemetry[];
+  /** The third-party targets of `[telemetry]` as Box resolves it; absent means none. */
+  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  /** The third-party targets that the AgentCore Runtime profile leaves out; absent means none. */
+  readonly leftOutTelemetry?: readonly LeftOutTelemetry[];
   /** Where the profile's own text sets each entry; absent when build has no profile text. */
   readonly places?: ProfilePlaces;
   /**
@@ -70,6 +80,7 @@ export function parseResolvedProfile(
   }
   const egress: Record<string, unknown> = isTable(boxToml.egress) ? { ...boxToml.egress } : {};
   const telemetry = cloudWatchTelemetry(boxToml);
+  const thirdParty = thirdPartyTelemetry(boxToml);
   for (const { route, destinations } of openRoutes) {
     if (!Object.hasOwn(egress, route)) egress[route] = { destinations };
   }
@@ -80,6 +91,8 @@ export function parseResolvedProfile(
       mcp: isTable(boxToml.mcp) ? boxToml.mcp : {},
       policyFiles,
       ...(telemetry.length > 0 && { telemetry }),
+      ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
+      ...(thirdParty.leftOut.length > 0 && { leftOutTelemetry: thirdParty.leftOut }),
     },
     failures: [],
   };

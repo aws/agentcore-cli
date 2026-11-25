@@ -62,6 +62,7 @@ export async function readBoxNetworks(
   region: string = DEFAULT_EGRESS_BEDROCK_REGION,
   /** What the check of the @aws/agentcore-cdk of the project gives for `passthrough.gateway`. */
   projectGatewayCheck?: PassthroughGatewayCheck,
+  secretsManager = false,
 ): Promise<BoxNetwork[]> {
   const runtimes = spec.runtimes.filter((runtime) => runtimeRunsInBox(spec, runtime));
   if (runtimes.length === 0) return [];
@@ -93,6 +94,7 @@ export async function readBoxNetworks(
       targets: entry.targets,
       grantedActions: granted.actions,
       ...(projectGatewayCheck && { projectGatewayCheck }),
+      secretsManager,
       ...(record &&
         Object.hasOwn(record, entry.name) && { ownedTargets: new Set(record[entry.name]) }),
     });

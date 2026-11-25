@@ -9,6 +9,7 @@ import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
+import { thirdPartyTelemetry } from "./telemetry";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -49,6 +50,10 @@ interface Options {
   readonly runtime?: Partial<ProjectRuntime>;
   /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
+  /** The `[telemetry]` tables, as Box resolves them. */
+  readonly telemetry?: Record<string, unknown>;
+  /** Whether the Runtime profile reads telemetry keys from AWS Secrets Manager. */
+  readonly secretsManager?: boolean;
   /** The targets that agentcore/box-gateway-targets.json names for the gateway. */
   readonly ownedTargets?: ReadonlySet<string>;
 }
@@ -84,6 +89,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");
+  const telemetry = thirdPartyTelemetry({ telemetry: options.telemetry });
   const { parsed, failures } = parseResolvedPolicy(
     {
       path: PROFILE,
@@ -91,6 +97,8 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
       mcp,
       policyFiles: policy ? ["policy.dw"] : [],
       places: profilePlaces(profile, PROFILE),
+      thirdPartyTelemetry: telemetry.targets,
+      leftOutTelemetry: telemetry.leftOut,
     },
     `${options.boxFirst ?? ""}${policy}\n${options.packRules ?? ""}${boxNetworkRules(egress, mcp)}`,
     policy ? [{ file: ".box/agent/local/policy.dw", text: policy }] : [],
@@ -103,6 +111,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
     projectGatewayCheck: options.projectGatewayCheck ?? { accepts: true },
+    secretsManager: options.secretsManager ?? false,
     ...(options.ownedTargets && { ownedTargets: options.ownedTargets }),
   });
   return {
@@ -1528,5 +1537,87 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
         grantedActions: ["bedrock-agentcore:InvokeGateway"],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("third-party telemetry", () => {
+  const LANGSMITH = { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } };
+  const COLLECTOR = { kind: "otlp", destination: "https://collector.example.com" };
+  const CONTAINER = { build: "Container", entrypoint: "main.py" } as const;
+  /** The model of a container runtime with the switch on, unless `options` says otherwise. */
+  const telemetryOf = (options: Options) => {
+    const { network } = model("", {}, { secretsManager: true, runtime: CONTAINER, ...options });
+    return {
+      names: (network.thirdPartyTelemetry ?? []).map(({ name }) => name),
+      warnings: network.warnings,
+    };
+  };
+
+  test("carries no third-party target with the switch off, as before, and warns for each with a key", () => {
+    const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };
+
+    expect(telemetryOf({ telemetry, secretsManager: false })).toEqual({
+      names: [],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: on ` +
+          "AgentCore Runtime, Box reads its key from AWS Secrets Manager, and no Box release for " +
+          "Linux can do that yet. To try a box build that can, set AGENTCORE_BOX_SECRETS_MANAGER=1.",
+      ],
+    });
+  });
+
+  test("carries no target with a key for a CodeZip runtime, which has no AWS CLI", () => {
+    const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry, runtime: {} });
+
+    expect(names).toEqual(["collector"]);
+    expect(warnings).toEqual([
+      `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: Box reads its ` +
+        "key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime does not have. Use a " +
+        "container runtime.",
+    ]);
+  });
+
+  test("carries each target the Runtime can send to, and says why it leaves out each other one", () => {
+    const telemetry = {
+      langsmith: LANGSMITH,
+      collector: COLLECTOR,
+      signed: { ...COLLECTOR, secret: { ref: "aws://my-profile" } },
+    };
+
+    expect(telemetryOf({ telemetry })).toEqual({
+      names: ["langsmith", "collector"],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.signed]: its ` +
+          "`secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
+          "key to AWS Secrets Manager.",
+      ],
+    });
+  });
+
+  test("leaves out a target whose deploy variable a credential reads, so no key goes to the wrong place", () => {
+    const credentials = [
+      { authorizerType: "ApiKeyCredentialProvider" as const, name: "agent_telemetry_langsmith" },
+    ];
+
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH }, credentials })).toEqual({
+      names: [],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: deploy reads ` +
+          "its key from AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH, and a credential or " +
+          "another target reads that variable too. Rename the target.",
+      ],
+    });
+  });
+
+  test("leaves out the second of two targets with one deploy variable, and keeps one with no key", () => {
+    const telemetry = { "my-key": LANGSMITH, my_key: LANGSMITH, "my-collector": COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry });
+
+    expect(names).toEqual(["my-key", "my-collector"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("leaves out [telemetry.my_key]: deploy reads its key from");
   });
 });
