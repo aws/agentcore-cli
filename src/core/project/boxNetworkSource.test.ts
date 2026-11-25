@@ -241,6 +241,50 @@ describe("readBoxNetworks", () => {
     );
   });
 
+  test.each([
+    ["git-hub", "git_hub", "AGENTCORE_CREDENTIAL_GIT_HUB"],
+    ["github", "GitHub", "AGENTCORE_CREDENTIAL_GITHUB"],
+  ])(
+    "refuses an entry whose new credential derives the variable of another runtime's, %s and %s",
+    async (first, second, variable) => {
+      const root = await project([]);
+      const entry = (name: string, variable: string, host: string) => ({
+        [name]: { destinations: [host], secret: { ref: `env://${variable}` } },
+      });
+      const profiles: Record<string, ReturnType<typeof entry>> = {
+        ".box/agent/local/profile.toml": entry(first, "A_TOKEN", "a.example.com"),
+        ".box/second/local/profile.toml": entry(second, "B_TOKEN", "b.example.com"),
+      };
+      for (const [file, egress] of Object.entries(profiles)) {
+        const [[name, { destinations, secret }]] = Object.entries(egress) as [
+          [string, { destinations: string[]; secret: { ref: string } }],
+        ];
+        await mkdir(join(root, file, ".."), { recursive: true });
+        await writeFile(
+          join(root, file),
+          `# ${file}\n[egress.${name}]\ndestinations = ${JSON.stringify(destinations)}\n` +
+            `secret.ref = "${secret.ref}"\n`,
+        );
+      }
+      const resolver: BoxProfileResolver = {
+        resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+      };
+
+      const networks = await readBoxNetworks(specWith("second"), root, resolver);
+
+      expect(
+        networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+      ).toEqual([[], [["CREDENTIAL_NAME_INVALID", ".box/second/local/profile.toml:2:1"]]]);
+      expect(networks[1]!.failures[0]!.reason).toBe(
+        `[egress.${second}] reads its key from env://B_TOKEN, which build keeps in an API key ` +
+          `credential named after the entry, and credential '${second}' would derive the same ` +
+          `variable, ${variable}, as credential '${first}', which build adds for runtime ` +
+          "'agent'. Rename the entry in one of the two profiles.",
+      );
+      expect(boxNetworkFailureMessage(networks, "build")).toStartWith("Build stopped: 1 problem");
+    },
+  );
+
   test("refuses a telemetry target whose key variable a target of another runtime reads", async () => {
     // The two names of each pair give one variable: AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK.
     const runtimes = { agent: "nested_TELEMETRY_sink", agent_TELEMETRY_nested: "sink" };

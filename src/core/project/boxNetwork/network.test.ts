@@ -548,6 +548,16 @@ describe("outbound auth", () => {
     ]);
   });
 
+  test("gives an entry with an invalid name and two destinations one failure", () => {
+    const r = model("", {
+      w: {
+        destinations: ["a.example.com", "b.example.com"],
+        secret: { ref: "env://MISSING_TOKEN" },
+      },
+    });
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "w"]]);
+  });
+
   test("stops build for an env:// [mcp] server whose name is not a valid credential name", () => {
     const r = model(
       "",
@@ -568,6 +578,20 @@ describe("outbound auth", () => {
       "git-hub",
       {},
       [{ authorizerType: "ApiKeyCredentialProvider", name: "git_hub" }],
+    ],
+    [
+      // The credential keeps its key in Secrets Manager, so it reserves no variable, but its name
+      // still derives AGENTCORE_CREDENTIAL_MY_KEY.
+      "a name that derives the variable of a credential that keeps its key elsewhere",
+      "my-key",
+      {},
+      [
+        {
+          authorizerType: "ApiKeyCredentialProvider",
+          name: "my_key",
+          secretRef: { secretId: "my-secret", jsonKey: "key" },
+        },
+      ],
     ],
     [
       "a name of a credential that is not an API key",

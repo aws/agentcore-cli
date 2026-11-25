@@ -157,8 +157,10 @@ export function boxKeyVariables(
  *   - a route whose key something else holds ({@link boxRouteKeyHeldElsewhere});
  *   - a route named for an API key credential that keeps its key in Secrets Manager.
  *
- * It skips, with a warning, a route that {@link boxRouteCredentialProblem} refuses. The Box
- * network model already stops build and deploy for such a route, so this is only a backstop.
+ * It skips, with a warning, a route that {@link boxRouteCredentialProblem} refuses. Build and
+ * deploy stop before this for such a route: the Box network model of each runtime refuses it, and
+ * `readBoxNetworks` refuses a new credential that derives the variable of another runtime's. So
+ * this skip is only a backstop.
  */
 export function planBoxProfileCredentials(
   spec: ProjectSpec,
