@@ -12,6 +12,10 @@ The main entrypoint to your app is defined in `main.py`. Using the AgentCore SDK
 file defines a Starlette ASGI app with the Strands Agent SDK running within.
 
 `model/load.py` instantiates the chosen model provider.
+{{#if box}}
+
+On AgentCore Runtime the Box gateway may call only the Bedrock model in this runtime's `modelId` in `agentcore/agentcore.json`. To use another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock denies the call.
+{{/if}}
 
 ## Memory
 
