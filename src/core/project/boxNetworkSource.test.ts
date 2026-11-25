@@ -241,6 +241,99 @@ describe("readBoxNetworks", () => {
     );
   });
 
+  test("refuses a telemetry target whose key variable a target of another runtime reads", async () => {
+    // The two names of each pair give one variable: AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK.
+    const runtimes = { agent: "nested_TELEMETRY_sink", agent_TELEMETRY_nested: "sink" };
+    const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
+    directories.push(root);
+    for (const [runtime, target] of Object.entries(runtimes)) {
+      await mkdir(join(root, ".box", runtime, "local"), { recursive: true });
+      await writeFile(
+        join(root, ".box", runtime, "local", "profile.toml"),
+        `[telemetry.${target}]\nkind = "langsmith"\nsecret.ref = "env://KEY_OF_${runtime}"\n`,
+      );
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        const [runtime] = Object.entries(runtimes).filter(([name]) =>
+          profilePath.startsWith(`.box/${name}/`),
+        );
+        const shown = boxShowOf({});
+        const telemetry = {
+          [runtime![1]]: { kind: "langsmith", secret: { ref: `env://KEY_OF_${runtime![0]}` } },
+        };
+        return { ...shown, boxToml: { ...shown.boxToml, telemetry } };
+      },
+    };
+    const container = { ...SPEC.runtimes[0]!, build: "Container", entrypoint: "main.py" };
+    const spec = {
+      ...SPEC,
+      runtimes: Object.keys(runtimes).map((name) => ({
+        ...container,
+        name,
+        codeLocation: `app/${name}`,
+      })),
+      agentCoreGateways: Object.keys(runtimes).map((name) => boxGatewaySpec(name)),
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(
+      networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+    ).toEqual([
+      [],
+      [["TELEMETRY_KEY_VARIABLE_SHARED", ".box/agent_TELEMETRY_nested/local/profile.toml"]],
+    ]);
+    expect(networks[1]!.failures[0]!.reason).toBe(
+      "[telemetry.sink] reads its key at deploy from " +
+        "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK, and " +
+        "[telemetry.nested_TELEMETRY_sink] of runtime 'agent' reads its key from that variable " +
+        "too. Change the name of one of the two targets.",
+    );
+  });
+
+  test("refuses a telemetry target whose key variable the credential of another runtime reads", async () => {
+    const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
+    directories.push(root);
+    const egress = {
+      agent_TELEMETRY_sink: { destinations: ["api.example.com"], secret: { ref: "env://TOKEN" } },
+    };
+    const telemetry = { sink: { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } } };
+    for (const runtime of ["agent", "second"]) {
+      await mkdir(join(root, ".box", runtime, "local"), { recursive: true });
+      await writeFile(join(root, ".box", runtime, "local", "profile.toml"), "# profile\n");
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        if (profilePath.startsWith(".box/second/")) return boxShowOf({ egress });
+        const shown = boxShowOf({});
+        return { ...shown, boxToml: { ...shown.boxToml, telemetry } };
+      },
+    };
+    const container = { ...SPEC.runtimes[0]!, build: "Container", entrypoint: "main.py" };
+    const spec = {
+      ...SPEC,
+      runtimes: ["agent", "second"].map((name) => ({
+        ...container,
+        name,
+        codeLocation: `app/${name}`,
+      })),
+      agentCoreGateways: [boxGatewaySpec("agent"), boxGatewaySpec("second")],
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ failures }) => failures.map(({ code }) => code))).toEqual([
+      ["TELEMETRY_KEY_VARIABLE_SHARED"],
+      [],
+    ]);
+    expect(networks[0]!.failures[0]!.reason).toBe(
+      "[telemetry.sink] reads its key at deploy from AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_SINK, " +
+        "and the API key credential 'agent_TELEMETRY_sink' of runtime 'second' reads that " +
+        "variable too. Change the name of the target.",
+    );
+  });
+
   test("takes the credential of another runtime for the credential's own variable", async () => {
     const root = await project([]);
     const profiles: Record<string, { variable: string; host: string }> = {

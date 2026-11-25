@@ -9,7 +9,13 @@ import type { ScaffoldRuntimeInput } from "../../../../handlers/project/types";
 import type { AgentCoreGatewayTarget } from "../../../../projectSchemas/gateway";
 import { boxGatewaySpec, type ProjectSpec } from "../../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
-import { cloudWatchTelemetry, withDeployRegion, type CloudWatchTelemetry } from "../../boxNetwork";
+import {
+  cloudWatchTelemetry,
+  thirdPartyTelemetry,
+  withDeployRegion,
+  type CloudWatchTelemetry,
+  type ThirdPartyTelemetry,
+} from "../../boxNetwork";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -120,6 +126,7 @@ function contextOf(
   options: {
     memories?: readonly string[];
     telemetry?: readonly CloudWatchTelemetry[];
+    thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
     boxVersion?: string;
   } = {},
 ) {
@@ -136,9 +143,29 @@ function contextOf(
     },
     hosts: [],
     telemetry: options.telemetry ?? [],
+    ...(options.thirdPartyTelemetry && { thirdPartyTelemetry: options.thirdPartyTelemetry }),
     ruleIds: new Set(),
     places: new Map(),
   });
+}
+
+/**
+ * `profile`, a table of the renderer that the derivation replaced, with the one change that the
+ * derivation makes on purpose: the agent gets the region of the Runtime, `AWS_DEFAULT_REGION`, and
+ * `AWS_REGION` when the profile imports no @box/bedrock, which sets it. The renderer of
+ * box-integration-development gave the agent no region.
+ */
+function withRuntimeRegion(profile: TomlTable): TomlTable {
+  const result = structuredClone(profile) as TomlTable;
+  const agent = result.agent as { env?: Record<string, string> } | undefined;
+  if (agent === undefined) return result;
+  const bedrock = Array.isArray(result.packs) && result.packs.includes("@box/bedrock");
+  agent.env = {
+    ...agent.env,
+    ...(!bedrock && { AWS_REGION: "${{ inputs.aws.region }}" }),
+    AWS_DEFAULT_REGION: "${{ inputs.aws.region }}",
+  };
+  return result;
 }
 
 /** The local profile that `agentcore create` writes for `runtime`, as a table. */
@@ -264,7 +291,9 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the `@box/` pack names. Their read and exec grants of the Runtime's Python name its standard
  * library, `${{ inputs.python.stdlib }}`, where that renderer named its prefix,
  * `${{ inputs.python.prefix }}`: the prefix is /usr on the Runtime, which box refuses as a system
- * root.
+ * root. The `secretsManager` set comes from renderRuntimeBoxProfile of box-integration-development
+ * (da8df856), with AGENTCORE_BOX_SECRETS_MANAGER=1, for six inputs with an otlp or langfuse
+ * target. Its tests compare only `telemetry` and `plugins`.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
@@ -272,6 +301,7 @@ const OLD_RENDERER = JSON.parse(
   templates: Record<string, TomlTable>;
   boxTemplates: Record<string, TomlTable>;
   gateway: Record<string, TomlTable>;
+  secretsManager: Record<string, { local: TomlTable; old: TomlTable }>;
 };
 
 /**
@@ -518,6 +548,125 @@ describe("the Runtime profile of each CodeZip box template of create", () => {
       }
     },
   );
+});
+
+describe("deriveRuntimeProfile on a third-party target", () => {
+  // box-integration has no box template for an MCP server, so its fixture cases do not apply.
+  const cases = Object.entries(OLD_RENDERER.secretsManager)
+    .filter(([label]) => Object.hasOwn(RUNTIME_TEMPLATE_SHORTCUTS, label.split(" ")[0]!))
+    .map(([label, { local, old }]) => ({ label, local, old }));
+
+  test("covers a CodeZip and a container template, with and without a key", () => {
+    expect(cases.map(({ label }) => label)).toEqual([
+      "agent-python-strands-box telemetry=langfuse and otlp",
+      "agent-python-strands-box telemetry=otlp only",
+      "agent-python-strands-box-container telemetry=langfuse and otlp",
+      "agent-python-strands-box-container telemetry=otlp only",
+    ]);
+  });
+
+  test.each(cases)(
+    "gives the profile that the old renderer wrote, with the Secrets Manager plugin and refs ($label)",
+    ({ label, local, old }) => {
+      const template = label.split(" ")[0] as RuntimeTemplateShortcutName;
+      const runtime = createdRuntime(resolveRuntimeTemplateShortcut(template, {}), false);
+      // As the Box network model carries them with the switch on: a CodeZip runtime carries no
+      // target with a key, because its Runtime has no AWS CLI for box to read the key with.
+      const carried = thirdPartyTelemetry(local).targets.filter(
+        ({ secret }) => runtime.build !== "CodeZip" || secret === undefined,
+      );
+
+      const { profile, problems } = deriveRuntimeProfile(
+        local,
+        contextOf(runtime, { thirdPartyTelemetry: carried }),
+      );
+
+      const expected = withApiKeySignIn(withRuntimeRegion(old));
+      const refused = thirdPartyTelemetry(local).targets.filter(
+        ({ name }) => !carried.some((target) => target.name === name),
+      );
+      // The old renderer left out a target that the model does not carry. The derivation keeps
+      // it, and the refusals rule stops build for it: nothing is dropped with no message.
+      expect(problems.map(({ code, key }) => [code, key])).toEqual(
+        refused.map(({ name }) => [
+          "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+          ["telemetry", name, "kind"],
+        ]),
+      );
+      const kept = structuredClone(profile) as TomlTable;
+      for (const { name } of refused) delete (kept.telemetry as TomlTable)[name];
+      // This feature owns the telemetry targets and the plugin. The other keys of the old renderer
+      // predate box-integration's derivation rules, whose own tests compare them.
+      for (const key of ["telemetry", "plugins"])
+        expect([key, kept[key]]).toEqual([key, expected[key] ?? undefined]);
+    },
+  );
+
+  test("names the plugin once, after the user's own plugins", () => {
+    const { local } =
+      OLD_RENDERER.secretsManager[
+        "agent-python-strands-box-container telemetry=langfuse and otlp"
+      ]!;
+    const runtime = createdRuntime(
+      resolveRuntimeTemplateShortcut("agent-python-strands-box-container", {}),
+      false,
+    );
+    const thirdParty = thirdPartyTelemetry(local).targets;
+
+    for (const own of [[], ["@acme/plugin"], ["@acme/plugin", "@box/aws-secrets-manager"]]) {
+      const { profile } = deriveRuntimeProfile(
+        { ...local, plugins: own },
+        contextOf(runtime, { thirdPartyTelemetry: thirdParty }),
+      );
+      expect(profile.plugins).toEqual([
+        ...own.filter((plugin) => plugin !== "@box/aws-secrets-manager"),
+        "@box/aws-secrets-manager",
+      ]);
+    }
+    const { profile } = deriveRuntimeProfile(
+      local,
+      contextOf(runtime, {
+        thirdPartyTelemetry: thirdParty.filter(({ secret }) => secret === undefined),
+      }),
+    );
+    expect(profile.plugins).toBeUndefined();
+  });
+
+  test("gives each of two targets of the same kind its own field of the secret", () => {
+    const { local } =
+      OLD_RENDERER.secretsManager[
+        "agent-python-strands-box-container telemetry=langfuse and otlp"
+      ]!;
+    const runtime = createdRuntime(
+      resolveRuntimeTemplateShortcut("agent-python-strands-box-container", {}),
+      false,
+    );
+    const langfuse = (destination: string, ref: string) => ({
+      kind: "langfuse",
+      destination,
+      secret: { ref },
+    });
+    const twoTargets = {
+      ...local,
+      telemetry: {
+        langfuse_staging: langfuse("https://us.cloud.langfuse.com", "env://LANGFUSE_STAGING_AUTH"),
+        langfuse_prod: langfuse("https://cloud.langfuse.com", "env://LANGFUSE_PROD_AUTH"),
+      },
+    };
+
+    const { profile, problems } = deriveRuntimeProfile(
+      twoTargets,
+      contextOf(runtime, { thirdPartyTelemetry: thirdPartyTelemetry(twoTargets).targets }),
+    );
+
+    const secret = `aws-secretsmanager://agentcore/demo/${runtime.name}/box#telemetry`;
+    const telemetry = profile.telemetry as TomlTable;
+    expect(problems).toEqual([]);
+    expect([telemetry.langfuse_staging, telemetry.langfuse_prod]).toEqual([
+      langfuse("https://us.cloud.langfuse.com", `${secret}.langfuse_staging`),
+      langfuse("https://cloud.langfuse.com", `${secret}.langfuse_prod`),
+    ]);
+  });
 });
 
 describe("the additions rule", () => {

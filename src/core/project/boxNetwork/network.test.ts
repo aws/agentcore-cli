@@ -11,6 +11,7 @@ import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
 import { targetOutboundAuth } from "./projectSpec";
+import { thirdPartyTelemetry } from "./telemetry";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -51,6 +52,8 @@ interface Options {
   readonly runtime?: Partial<ProjectRuntime>;
   /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
+  /** The `[telemetry]` tables, as Box resolves them. */
+  readonly telemetry?: Record<string, unknown>;
   /** The targets that agentcore/box-gateway-targets.json names for the gateway. */
   readonly ownedTargets?: ReadonlySet<string>;
 }
@@ -86,6 +89,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");
+  const telemetry = thirdPartyTelemetry({ telemetry: options.telemetry });
   const { parsed, failures } = parseResolvedPolicy(
     {
       path: PROFILE,
@@ -93,6 +97,8 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
       mcp,
       policyFiles: policy ? ["policy.dw"] : [],
       places: profilePlaces(profile, PROFILE),
+      thirdPartyTelemetry: telemetry.targets,
+      leftOutTelemetry: telemetry.leftOut,
     },
     `${options.boxFirst ?? ""}${policy}\n${options.packRules ?? ""}${boxNetworkRules(egress, mcp)}`,
     policy ? [{ file: ".box/agent/local/policy.dw", text: policy }] : [],
@@ -1705,5 +1711,109 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
         grantedActions: ["bedrock-agentcore:InvokeGateway"],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("third-party telemetry", () => {
+  const LANGSMITH = { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } };
+  const COLLECTOR = { kind: "otlp", destination: "https://collector.example.com" };
+  const CONTAINER = { build: "Container", entrypoint: "main.py" } as const;
+  /** The model of a container runtime, unless `options` says otherwise. */
+  const telemetryOf = (options: Options) => {
+    const { network } = model("", {}, { runtime: CONTAINER, ...options });
+    return {
+      names: (network.thirdPartyTelemetry ?? []).map(({ name }) => name),
+      warnings: network.warnings,
+    };
+  };
+
+  test("carries no target with a key for a CodeZip runtime, which has no AWS CLI", () => {
+    const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry, runtime: {} });
+
+    expect(names).toEqual(["collector"]);
+    expect(warnings).toEqual([
+      `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: Box reads its ` +
+        "key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime does not have. Use a " +
+        "container runtime.",
+    ]);
+  });
+
+  test("keeps each target of a PRIVATE_VPC runtime, and warns that the VPC has no path to its host", () => {
+    const langfuse = {
+      kind: "langfuse",
+      destination: "https://us.cloud.langfuse.com",
+      secret: { ref: "env://LANGFUSE_AUTH" },
+    };
+    const telemetry = { langfuse, langsmith: LANGSMITH };
+    const runtime = {
+      ...CONTAINER,
+      containment: "PRIVATE_VPC",
+      network: { mode: "CONTAINED" },
+    } as const;
+
+    expect(telemetryOf({ telemetry, runtime })).toEqual({
+      names: ["langfuse", "langsmith"],
+      warnings: [
+        `${PROFILE}: [telemetry.langfuse] sends to us.cloud.langfuse.com, but runtime agent uses ` +
+          "a private VPC, which has no internet path. Box tries to send, and each send fails " +
+          "until you give the VPC a path to us.cloud.langfuse.com, or remove " +
+          "`--containment private-vpc`.",
+        `${PROFILE}: [telemetry.langsmith] sends to api.smith.langchain.com, but runtime agent ` +
+          "uses a private VPC, which has no internet path. Box tries to send, and each send " +
+          "fails until you give the VPC a path to api.smith.langchain.com, or remove " +
+          "`--containment private-vpc`.",
+      ],
+    });
+  });
+
+  test("gives no private-VPC warning for a runtime on the default network", () => {
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH } })).toEqual({
+      names: ["langsmith"],
+      warnings: [],
+    });
+  });
+
+  test("carries each target the Runtime can send to, and says why it leaves out each other one", () => {
+    const telemetry = {
+      langsmith: LANGSMITH,
+      collector: COLLECTOR,
+      signed: { ...COLLECTOR, secret: { ref: "aws://my-profile" } },
+    };
+
+    expect(telemetryOf({ telemetry })).toEqual({
+      names: ["langsmith", "collector"],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.signed]: its ` +
+          "`secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
+          "key to AWS Secrets Manager.",
+      ],
+    });
+  });
+
+  test("leaves out a target whose deploy variable a credential reads, so no key goes to the wrong place", () => {
+    const credentials = [
+      { authorizerType: "ApiKeyCredentialProvider" as const, name: "agent_telemetry_langsmith" },
+    ];
+
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH }, credentials })).toEqual({
+      names: [],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: deploy reads ` +
+          "its key from AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH, and a credential or " +
+          "another target reads that variable too. Rename the target.",
+      ],
+    });
+  });
+
+  test("leaves out the second of two targets with one deploy variable, and keeps one with no key", () => {
+    const telemetry = { "my-key": LANGSMITH, my_key: LANGSMITH, "my-collector": COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry });
+
+    expect(names).toEqual(["my-key", "my-collector"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("leaves out [telemetry.my_key]: deploy reads its key from");
   });
 });

@@ -4,7 +4,10 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { credentialEnvVarName } from "../../../projectSchemas/credential";
+import {
+  credentialEnvironmentVariableNames,
+  credentialEnvVarName,
+} from "../../../projectSchemas/credential";
 import type {
   AgentCoreGateway,
   AgentCoreGatewayTarget,
@@ -16,6 +19,7 @@ import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
+import { boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
@@ -34,7 +38,8 @@ import { runtimeProfileContext } from "../runtimeProfile/context";
 import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
-import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
+import type { ParsedProfile } from "./profileParser";
+import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -156,6 +161,11 @@ export interface BoxNetwork {
   /** The comment lines above {@link runtimeProfile} in the staged file. */
   readonly runtimeProfileHeader?: readonly string[];
   /**
+   * The third-party targets of the profile's `[telemetry]` that the AgentCore Runtime profile
+   * carries; absent means none.
+   */
+  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
    */
@@ -236,6 +246,7 @@ export function buildBoxNetwork(
   );
   const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);
+  const thirdParty = runtimeTelemetry(parsed.profile, project, targets.hosts);
   const telemetry =
     parsed.profile.telemetry &&
     withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
@@ -251,6 +262,7 @@ export function buildBoxNetwork(
       hosts: targets.hosts,
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
+      thirdPartyTelemetry: thirdParty.targets,
       ruleIds: new Set(
         parsed.statements
           .filter(
@@ -285,8 +297,10 @@ export function buildBoxNetwork(
         runtimeProfile: derived.profile,
         runtimeProfileHeader: runtimeProfileHeader(context, derived.profile),
       }),
+    ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
     grantedActions: project.grantedActions,
     warnings: [
+      ...thirdParty.warnings,
       ...map.hosts.flatMap(({ authority, uncheckedBy }) =>
         uncheckedBy.map((ruleId) => {
           const { place, subject } = describeRule(parsed, ruleId);
@@ -331,6 +345,89 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
     routes.push({ route, variable });
   }
   return routes;
+}
+
+/**
+ * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
+ * each one it leaves out. Box reads the key of a target on AgentCore Runtime from AWS Secrets
+ * Manager. A CodeZip runtime carries no target with a key, because its
+ * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
+ * the variable deploy reads its key from is a variable that a credential reads, or that another
+ * target of the profile reads, so deploy never sends one key to the wrong destination. A target of
+ * a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path until its owner adds one.
+ */
+function runtimeTelemetry(
+  profile: ParsedProfile,
+  project: BoxNetworkProject,
+  hosts: readonly BoxNetworkHost[],
+): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
+  const leftOut = (name: string, reason: string) =>
+    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
+  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
+    leftOut(name, reason),
+  );
+  const taken = new Set([
+    ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
+    ...hosts.flatMap(({ outboundAuth }) =>
+      outboundAuth.kind === "apiKey" ? [credentialEnvVarName(outboundAuth.credentialName)] : [],
+    ),
+  ]);
+  const targets: ThirdPartyTelemetry[] = [];
+  for (const target of profile.thirdPartyTelemetry ?? []) {
+    if (target.secret !== undefined && project.runtime.build === "CodeZip") {
+      warnings.push(
+        leftOut(
+          target.name,
+          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
+            "does not have. Use a container runtime",
+        ),
+      );
+      continue;
+    }
+    if (target.secret !== undefined) {
+      const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
+      if (taken.has(variable)) {
+        warnings.push(
+          leftOut(
+            target.name,
+            `deploy reads its key from ${variable}, and a credential or another target reads ` +
+              "that variable too. Rename the target",
+          ),
+        );
+        continue;
+      }
+      taken.add(variable);
+    }
+    if (project.runtime.containment === "PRIVATE_VPC") {
+      const host = thirdPartyHost(target);
+      warnings.push(
+        `${profile.path}: [telemetry.${target.name}] sends to ${host}, but runtime ` +
+          `${project.runtime.name} uses a private VPC, which has no internet path. Box tries to ` +
+          `send, and each send fails until you give the VPC a path to ${host}, or remove ` +
+          "`--containment private-vpc`.",
+      );
+    }
+    targets.push(target);
+  }
+  return { targets, warnings };
+}
+
+/** The address a box sends a vendor's spans to when its `[telemetry]` table names no destination. */
+const VENDOR_DESTINATIONS: Readonly<Record<string, string>> = {
+  langfuse: "https://cloud.langfuse.com",
+  langsmith: "https://api.smith.langchain.com",
+};
+
+/** The host that `target` sends to: its destination, else its vendor's default. */
+function thirdPartyHost(target: ThirdPartyTelemetry): string {
+  const named = target.keys.find(([key]) => key === "destination")?.[1];
+  const destination = typeof named === "string" ? named : VENDOR_DESTINATIONS[target.kind];
+  if (destination === undefined) return "its destination";
+  try {
+    return new URL(destination).host;
+  } catch {
+    return destination;
+  }
 }
 
 /**

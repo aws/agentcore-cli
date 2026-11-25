@@ -42,6 +42,11 @@ import {
   placeBoxTelemetryPolicy,
 } from "./boxTelemetry";
 import {
+  boxTelemetrySecretEnvEntries,
+  boxTelemetrySecrets,
+  boxTelemetrySecretsStatement,
+} from "./boxTelemetrySecrets";
+import {
   AGENTCORE_CODEZIP_PACK_PATH,
   AGENTCORE_PACK_PATH,
   boxAwsDir,
@@ -62,6 +67,7 @@ export type BoxNetworkOutput =
   | { readonly kind: "defaultTargets" }
   | { readonly kind: "credentials" }
   | { readonly kind: "runtimePolicies" }
+  | { readonly kind: "runtimeNetworks" }
   | { readonly kind: "boxVersions" }
   | { readonly kind: "envLocal" }
   | { readonly kind: "file"; readonly path: string };
@@ -192,7 +198,8 @@ export function writeBoxNetworkFiles(projectRoot: string, files: readonly BoxNet
 
 /**
  * The API key credential of each `env://` route that a target sends, and its key in `.env.local`,
- * as {@link planBoxProfileCredentials} plans them. It runs before the gateway targets writer, which
+ * as {@link planBoxProfileCredentials} plans them, and the `.env.local` key of each third-party
+ * telemetry target's secret. It runs before the gateway targets writer, which
  * writes a target that sends an API key only when its credential is in agentcore.json.
  */
 export const credentialsWriter: BoxNetworkWriter = {
@@ -210,7 +217,13 @@ export const credentialsWriter: BoxNetworkWriter = {
           return plan.messages;
         },
       ],
-      envLocal: plan.entries,
+      envLocal: [
+        ...plan.entries,
+        ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), {
+          env,
+          envLocal,
+        }),
+      ],
       warnings: plan.warnings,
       warningsAfter: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
     };
@@ -218,10 +231,11 @@ export const credentialsWriter: BoxNetworkWriter = {
 };
 
 /**
- * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it: only
- * the variables its routes use, and none that `env` sets to a value, because a value set in `env`
- * wins. An entry that is not read is not decrypted, so it cannot stop the build. With no routes,
- * no entry is read.
+ * How build reads `.env.local` for {@link credentialsWriter}, the only writer that reads it. Build
+ * reads only the variables of its routes and of the keys of its third-party telemetry targets. It
+ * reads none that `env` sets to a value, because a value set in `env` wins. An entry that is not
+ * read is not decrypted, so it cannot stop the build. With no routes and no such key, no entry is
+ * read.
  */
 export function boxKeyReads(
   networks: readonly BoxNetwork[],
@@ -229,6 +243,9 @@ export function boxKeyReads(
   env: NodeJS.ProcessEnv,
 ): ReadEnvFileOptions {
   const variables = boxKeyVariables(spec.credentials, uniqueRoutes(networks));
+  for (const { fields } of boxTelemetrySecrets(spec.name, networks)) {
+    for (const { source } of fields) variables.add(source);
+  }
   return {
     select: (name) => variables.has(name),
     // A blank value in `env` does not win, so build reads that variable from the file instead.
@@ -514,13 +531,15 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
 
 /**
  * For each box runtime, the policy that lets its execution role send the CloudWatch telemetry of
- * its own box profile, and the entry in that runtime's `additionalPolicies`. Every other runtime,
- * and a runtime with no CloudWatch target, gets neither, and loses the file and the entry it had.
+ * its own box profile and read the secrets of its third-party targets, and the entry in that
+ * runtime's `additionalPolicies`. A runtime with neither gets no policy, and loses the file and
+ * the entry it had.
  */
 export const telemetryPolicyWriter: BoxNetworkWriter = {
   name: "telemetry policy",
   writes: (_networks, { spec }) => [
     { kind: "runtimePolicies" },
+    { kind: "runtimeNetworks" },
     ...spec.runtimes.map(({ name }) => ({
       kind: "file" as const,
       path: boxTelemetryPolicyFile(name),
@@ -533,7 +552,11 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
     const boxed: string[] = [];
     for (const { name } of spec.runtimes) {
       const network = networks.find(({ runtime }) => runtime === name);
-      const policy = boxTelemetryPolicy(network?.telemetry ?? []);
+      const policy = withStatement(
+        boxTelemetryPolicy(network?.telemetry ?? []),
+        network &&
+          boxTelemetrySecretsStatement(boxTelemetrySecrets(spec.name, [network]), network.region),
+      );
       const path = boxTelemetryPolicyFile(name);
       if (policy) {
         boxed.push(name);
@@ -542,9 +565,51 @@ export const telemetryPolicyWriter: BoxNetworkWriter = {
         files.push({ path, remove: true });
       }
     }
-    return { spec: [(copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed)], files };
+    const readers = networks.flatMap(({ runtime, thirdPartyTelemetry }) =>
+      (thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined) ? [runtime] : [],
+    );
+    return {
+      spec: [
+        (copy) => placeBoxTelemetryPolicy(copy, projectRoot, boxed),
+        (copy) => placeSecretsManagerEndpoint(copy, readers),
+      ],
+      files,
+    };
   },
 };
+
+/**
+ * Sets `network.secretsManagerEndpoint` on each PRIVATE_VPC runtime of `readers`, whose box reads a
+ * telemetry key from AWS Secrets Manager, and removes it from every other runtime. The private VPC
+ * has no internet path, so without the endpoint the read fails and the box does not start. Changes
+ * `spec` in place, and returns the step messages; none when nothing changed.
+ */
+export function placeSecretsManagerEndpoint(
+  spec: ProjectSpec,
+  readers: readonly string[],
+): string[] {
+  const messages: string[] = [];
+  for (const runtime of spec.runtimes) {
+    const has = runtime.network?.secretsManagerEndpoint === true;
+    const wanted = runtime.containment === "PRIVATE_VPC" && readers.includes(runtime.name);
+    if (wanted && !has) {
+      runtime.network = { ...runtime.network, secretsManagerEndpoint: true };
+      messages.push(
+        `adding an AWS Secrets Manager endpoint to the private VPC of '${runtime.name}', so its ` +
+          "box can read its telemetry keys",
+      );
+    } else if (!wanted && runtime.network?.secretsManagerEndpoint !== undefined) {
+      const { secretsManagerEndpoint: _removed, ...rest } = runtime.network;
+      if (Object.keys(rest).length > 0) runtime.network = rest;
+      else delete runtime.network;
+      messages.push(
+        `removing the AWS Secrets Manager endpoint from the private VPC of '${runtime.name}': ` +
+          "its box reads no telemetry key",
+      );
+    }
+  }
+  return messages;
+}
 
 /**
  * Writes a copy of `files`, what the runtime profile writer wrote into the staged folder `dist` of
@@ -563,6 +628,16 @@ export function writeRenderedBoxFiles(
     projectRoot,
     files.map((file) => ({ ...file, path: `${aws}/${file.path.slice(dist.length + 1)}` })),
   );
+}
+
+/** `policy` with `statement` after its own statements, or a policy of `statement` alone. */
+function withStatement(
+  policy: Record<string, unknown> | undefined,
+  statement: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (statement === undefined) return policy;
+  const statements = (policy?.Statement as unknown[] | undefined) ?? [];
+  return { Version: "2012-10-17", ...policy, Statement: [...statements, statement] };
 }
 
 /** One runtime's staged folder, from the project root, which holds its AgentCore Runtime profile. */

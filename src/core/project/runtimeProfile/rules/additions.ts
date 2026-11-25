@@ -14,6 +14,8 @@
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
+ * | `[telemetry.<name>]`, third party | each target that the Box network model carries (`context.thirdPartyTelemetry`) keeps its keys, and reads its key from its field of the runtime's AWS Secrets Manager secret |
+ * | `plugins` | the user's plugins, then @box/aws-secrets-manager when a carried target has a key |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region, to the runtime's own log group and spans stream when the box takes them |
  * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
@@ -40,7 +42,13 @@ import {
   RUNTIME_TRACES_HEADERS_ENV,
   tracesToRuntimeLogGroup,
 } from "../../templates/boxProfile";
-import type { CloudWatchTelemetry } from "../../boxNetwork";
+import type { CloudWatchTelemetry, ThirdPartyTelemetry } from "../../boxNetwork";
+import {
+  BOX_SECRETS_MANAGER_PLUGIN,
+  boxTelemetrySecretField,
+  boxTelemetrySecretName,
+  boxTelemetrySecretRef,
+} from "../../boxTelemetrySecrets";
 import { isTable, isVenvPython } from "../projectPaths";
 import { FILE_TELEMETRY_KIND } from "./refusals";
 import {
@@ -262,6 +270,8 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   const routes = memoryRoutes(result, context, problems);
   if (routes.egress !== undefined) result.egress = routes.egress;
   if (routes.mcp !== undefined) result.mcp = routes.mcp;
+  const plugins = runtimePlugins(result.plugins, context);
+  if (plugins !== undefined) result.plugins = plugins;
   return { table: result, problems, warnings };
 }
 
@@ -417,6 +427,43 @@ function hasDestination(destinations: unknown, host: string): boolean {
       ? name.startsWith("*.") && host.endsWith(name.slice(1))
       : name === host;
   });
+}
+
+/**
+ * `plugins` for the Runtime: the user's plugins in their order, then {@link BOX_SECRETS_MANAGER_PLUGIN}
+ * when a third-party target of `context.thirdPartyTelemetry` reads its key from AWS Secrets Manager.
+ * Only the profile may list a plugin: box stops a run whose pack lists one.
+ */
+function runtimePlugins(plugins: unknown, context: RuntimeProfileContext): unknown {
+  const keyed = (context.thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined);
+  // box refuses `plugins` that is not a list before build gets the profile.
+  if (!keyed || (plugins !== undefined && !Array.isArray(plugins))) return plugins;
+  const own = (plugins ?? []) as unknown[];
+  return own.includes(BOX_SECRETS_MANAGER_PLUGIN) ? own : [...own, BOX_SECRETS_MANAGER_PLUGIN];
+}
+
+/**
+ * A third-party target that the Box network model carries, on the Runtime: the table `entry` of
+ * the local profile, or the target as box resolves it when the local profile does not declare it.
+ * Its key comes from its field of the runtime's AWS Secrets Manager secret, which deploy writes,
+ * and not from the variable that the local profile names.
+ */
+function runtimeThirdPartyTarget(
+  entry: Readonly<TomlTable> | undefined,
+  target: ThirdPartyTelemetry,
+  context: RuntimeProfileContext,
+): TomlTable {
+  const table: TomlTable = entry
+    ? (structuredClone(entry) as TomlTable)
+    : {
+        kind: target.kind,
+        ...Object.fromEntries(target.keys.map(([key, value]) => [key, structuredClone(value)])),
+        ...(target.secret && { secret: Object.fromEntries(target.secret.keys) }),
+      };
+  if (target.secret === undefined) return table;
+  const name = boxTelemetrySecretName(context.spec.name, context.runtime.name);
+  const ref = boxTelemetrySecretRef(name, boxTelemetrySecretField(target.name));
+  return { ...table, secret: { ...(isTable(table.secret) ? table.secret : {}), ref } };
 }
 
 /** The user's packs in their order, then each Runtime pack that they do not import. */
@@ -731,8 +778,16 @@ function runtimeTelemetry(
   if (telemetry !== undefined && !isTable(telemetry)) return telemetry;
   const local: TomlTable = telemetry ?? {};
   const resolved = new Map(context.telemetry.map((target) => [target.name, target]));
+  const carried = new Map(
+    (context.thirdPartyTelemetry ?? []).map((target) => [target.name, target]),
+  );
   const result: TomlTable = {};
   for (const [name, entry] of Object.entries(local)) {
+    const thirdParty = carried.get(name);
+    if (thirdParty !== undefined && isTable(entry)) {
+      result[name] = runtimeThirdPartyTarget(entry, thirdParty, context);
+      continue;
+    }
     if (isTable(entry) && entry.kind === FILE_TELEMETRY_KIND) {
       warnings.push(
         `[telemetry.${name}] writes its records to a file. On AgentCore Runtime that file is in ` +
@@ -769,6 +824,10 @@ function runtimeTelemetry(
       ...(target.include && { include: [...target.include] }),
       secret: { ref: RUNTIME_AWS_SIGNER },
     };
+  }
+  for (const target of carried.values()) {
+    if (Object.hasOwn(local, target.name)) continue;
+    result[target.name] = runtimeThirdPartyTarget(undefined, target, context);
   }
   const has = (kind: string) =>
     Object.entries(result).some(
