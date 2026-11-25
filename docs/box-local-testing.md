@@ -674,6 +674,9 @@ gateway target for a telemetry host.
    The agent does not see the keys. A new deploy without the environment variables keeps the keys in
    the secret.
    When no runtime has a key, deploy schedules the deletion of the secret.
+   Each deployment target in one account and region uses the same secret. Thus the keys of the
+   last deploy go to each of these targets. If you deploy a target for tests with a different key,
+   the production target also gets that key.
 
 5. Check the result:
 
