@@ -109,6 +109,28 @@ describe("boxDevTelemetryProfile", () => {
     ]);
   });
 
+  test("drops the one-word --reload-dir=<dir> from a container command too", () => {
+    const profile =
+      '[agent]\ncommand = ["${{ workspace }}/.venv/bin/python", "-m", "uvicorn", "main:app", ' +
+      '"--reload", "--reload-dir=/app", "--port", "8081"]\n';
+
+    const dev = boxDevTelemetryProfile(profile, {
+      destination: "http://host.docker.internal:1",
+      serviceName: "agent",
+      instrumentCommand: true,
+    });
+
+    expect((parse(dev.text) as Doc).agent.command).toEqual([
+      "${{ workspace }}/.venv/bin/opentelemetry-instrument",
+      "${{ workspace }}/.venv/bin/python",
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--port",
+      "8081",
+    ]);
+  });
+
   test("leaves a command that is not the venv's Python alone, and says so", () => {
     const dev = boxDevTelemetryProfile('[agent]\ncommand = ["node", "server.js"]\n', {
       destination: "http://host.docker.internal:1",

@@ -97,7 +97,8 @@ export function boxDevTelemetryProfile(
 
 /**
  * `command` with the venv's Python started under `opentelemetry-instrument`, and without uvicorn's
- * `--reload` and `--reload-dir <dir>`, or undefined when its program is not the venv's Python.
+ * `--reload`, `--reload-dir <dir>`, and `--reload-dir=<dir>`, or undefined when its program is not
+ * the venv's Python.
  */
 function instrumented(command: unknown): string[] | undefined {
   if (!Array.isArray(command) || !command.every((word) => typeof word === "string")) return;
@@ -106,7 +107,7 @@ function instrumented(command: unknown): string[] | undefined {
   const instrument = `${posix.dirname(program)}/opentelemetry-instrument`;
   const args: string[] = [];
   for (let index = 0; index < rest.length; index++) {
-    if (rest[index] === "--reload") continue;
+    if (rest[index] === "--reload" || rest[index]!.startsWith("--reload-dir=")) continue;
     if (rest[index] === "--reload-dir") {
       index++;
       continue;
