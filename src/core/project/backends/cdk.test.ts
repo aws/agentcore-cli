@@ -2822,7 +2822,17 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
   };
   const ENV = { AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH: KEY };
 
-  /** A stub Secrets Manager: it holds `existing` ARNs, and records each client and each command. */
+  /** The tags deploy gives the secret of runtime `runtime` of project example. */
+  const tagsOf = (runtime: string) => [
+    { Key: "agentcore:created-by", Value: "agentcore-cli" },
+    { Key: "agentcore:project-name", Value: "example" },
+    { Key: "agentcore:runtime-name", Value: runtime },
+  ];
+
+  /**
+   * A stub Secrets Manager: it holds `existing` ARNs, each with the tags deploy gives it, and
+   * records each client and each command.
+   */
   function secretsManager(existing: readonly string[] = []) {
     const configs: CredentialedClientConfig[] = [];
     const sent: { command: string; input: Record<string, unknown> }[] = [];
@@ -2840,7 +2850,7 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
             if (!existing.includes(id)) {
               throw new ResourceNotFoundException({ message: "absent", $metadata: {} });
             }
-            return { ARN: id };
+            return { ARN: id, Tags: tagsOf(id.split("/")[2] ?? "") };
           }
           if (name === "CreateSecretCommand") return { ARN };
           return {};
@@ -2888,6 +2898,7 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
         input: expect.objectContaining({
           Name: NAME,
           SecretString: JSON.stringify({ "telemetry.langsmith": KEY }),
+          Tags: tagsOf("agent"),
         }),
       },
     ]);

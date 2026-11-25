@@ -660,6 +660,9 @@ gateway target for a telemetry host.
    - deploy writes the keys into one AWS Secrets Manager secret for each runtime,
      `agentcore/<project>/<runtime>/box`, with one field for each target, `telemetry.<target>`. The
      secret is not in the CloudFormation stack. Thus, no key goes into a template;
+   - deploy gives the secret that it creates the tags `agentcore:created-by`,
+     `agentcore:project-name`, and `agentcore:runtime-name`. Deploy does not write or delete a
+     secret of that name that does not have these tags;
    - the Runtime profile lists the `@box/aws-secrets-manager` plugin, and each target reads
      `aws-secretsmanager://agentcore/<project>/<runtime>/box#telemetry.<target>`;
    - the execution role gets `secretsmanager:GetSecretValue` on that secret only, in

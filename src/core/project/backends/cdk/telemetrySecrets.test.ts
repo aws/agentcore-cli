@@ -22,10 +22,13 @@ import {
   removeTelemetrySecrets,
   secretsManagerCalls,
   telemetrySecretsOfOtherTargets,
+  telemetrySecretTags,
   type TelemetrySecretCalls,
 } from "./telemetrySecrets";
 
 const NAME = "agentcore/demo/agent/box";
+/** The name of the secret of runtime `runtime` of project demo. */
+const nameOf = (runtime: string) => `agentcore/demo/${runtime}/box`;
 const ARN = `arn:aws:secretsmanager:us-west-2:111122223333:secret:${NAME}-AbCdEf`;
 const LANGSMITH = "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH";
 const LANGFUSE = "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGFUSE";
@@ -70,7 +73,8 @@ async function project(envLocal?: string): Promise<Project> {
   return { name: "demo", rootPath, spec: ProjectSpecSchema.parse({ name: "demo", version: 2 }) };
 }
 
-type Stored = { arn: string; deleted: boolean; value?: string };
+/** A secret in the stub. Its tags are the tags deploy gives it, unless `tags` gives others. */
+type Stored = { arn: string; deleted: boolean; value?: string; tags?: Record<string, string> };
 
 /** Stub calls that answer from `secrets`, by name or ARN, and record every call but describe. */
 function stubCalls(
@@ -79,15 +83,18 @@ function stubCalls(
 ) {
   const calls: string[] = [];
   let created = 0;
-  const find = (id: string) => secrets[id] ?? Object.values(secrets).find(({ arn }) => arn === id);
+  const find = (id: string) =>
+    Object.entries(secrets).find(([name, { arn }]) => name === id || arn === id);
   const stub: TelemetrySecretCalls = {
     describe: async (id) => {
-      const found = find(id);
-      return found && { arn: found.arn, deleted: found.deleted };
+      const [name, found] = find(id) ?? [];
+      if (name === undefined || found === undefined) return undefined;
+      const tags = found.tags ?? telemetrySecretTags("demo", name.split("/")[2] ?? "");
+      return { arn: found.arn, deleted: found.deleted, tags };
     },
     read: async (arn) => {
       calls.push(`read ${arn}`);
-      return find(arn)?.value;
+      return find(arn)?.[1].value;
     },
     create: async ({ name, value }) => {
       calls.push(`create ${name} ${value}`);
@@ -112,10 +119,12 @@ function stubCalls(
 
 async function drain<T>(generator: AsyncGenerator<ProjectEvent, T>) {
   const steps: string[] = [];
+  const warnings: string[] = [];
   while (true) {
     const next = await generator.next();
-    if (next.done) return { steps, value: next.value };
+    if (next.done) return { steps, warnings, value: next.value };
     if (next.value.type === "step") steps.push(next.value.message);
+    if (next.value.type === "warning") warnings.push(next.value.message);
   }
 }
 
@@ -125,12 +134,14 @@ describe("secretsManagerCalls", () => {
     return { send, calls: secretsManagerCalls({ send } as unknown as SecretsManagerClient) };
   };
 
-  test("describes a secret by its name, and reads a scheduled deletion", async () => {
+  test("describes a secret by its name, and reads a scheduled deletion and the tags", async () => {
     const { send, calls } = client((command) =>
-      command instanceof DescribeSecretCommand ? { ARN, DeletedDate: new Date(0) } : undefined,
+      command instanceof DescribeSecretCommand
+        ? { ARN, DeletedDate: new Date(0), Tags: [{ Key: "team", Value: "a" }, { Value: "b" }] }
+        : undefined,
     );
 
-    expect(await calls.describe(NAME)).toEqual({ arn: ARN, deleted: true });
+    expect(await calls.describe(NAME)).toEqual({ arn: ARN, deleted: true, tags: { team: "a" } });
     expect((send.mock.calls[0]![0] as DescribeSecretCommand).input).toEqual({ SecretId: NAME });
   });
 
@@ -151,7 +162,8 @@ describe("secretsManagerCalls", () => {
           : {},
     );
 
-    expect(await calls.create({ name: NAME, value: OBJECT, description: "d" })).toBe(ARN);
+    const tags = telemetrySecretTags("demo", "agent");
+    expect(await calls.create({ name: NAME, value: OBJECT, description: "d", tags })).toBe(ARN);
     expect(await calls.read(ARN)).toBe(OBJECT);
     await calls.put(ARN, OBJECT);
     await calls.restore(ARN);
@@ -166,7 +178,16 @@ describe("secretsManagerCalls", () => {
       DeleteSecretCommand,
     ]);
     expect(sent.map((command) => (command as { input: unknown }).input)).toEqual([
-      { Name: NAME, SecretString: OBJECT, Description: "d" },
+      {
+        Name: NAME,
+        SecretString: OBJECT,
+        Description: "d",
+        Tags: [
+          { Key: "agentcore:created-by", Value: "agentcore-cli" },
+          { Key: "agentcore:project-name", Value: "demo" },
+          { Key: "agentcore:runtime-name", Value: "agent" },
+        ],
+      },
       { SecretId: ARN },
       { SecretId: ARN, SecretString: OBJECT },
       { SecretId: ARN },
@@ -188,6 +209,61 @@ describe("provisionTelemetrySecrets", () => {
     expect(value).toEqual({ [NAME]: { secretArn: `${ARN}1` } });
     expect(steps).toEqual([`preparing secret '${NAME}' for the box telemetry of 'agent'`]);
   });
+
+  test("tags the secret it creates with the project and the runtime", async () => {
+    const { stub } = stubCalls();
+    const created: unknown[] = [];
+    const create = stub.create;
+    stub.create = async (input) => {
+      created.push(input.tags);
+      return create(input);
+    };
+
+    await drain(provisionTelemetrySecrets(stub, await project(), [SECRET], KEYS));
+
+    expect(created).toEqual([
+      {
+        "agentcore:created-by": "agentcore-cli",
+        "agentcore:project-name": "demo",
+        "agentcore:runtime-name": "agent",
+      },
+    ]);
+  });
+
+  test.each([
+    ["no tags", false, {}],
+    ["scheduled for deletion, with no tags", true, {}],
+    ["the tags of another runtime", false, telemetrySecretTags("demo", "other")],
+    [
+      "the tags of another tool",
+      false,
+      { ...telemetrySecretTags("demo", "agent"), "agentcore:created-by": "someone" },
+    ],
+  ])(
+    "stops before any read or write for a secret of that name with %s, and names it",
+    async (_label, deleted, tags) => {
+      const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted, tags } });
+      const root = await project();
+
+      // With no key, deploy would read the secret; with each key, it would write it.
+      for (const env of [{}, KEYS]) {
+        const error = await drain(provisionTelemetrySecrets(stub, root, [SECRET], env)).catch(
+          (caught: unknown) => caught,
+        );
+
+        expect(error).toBeInstanceOf(ProjectStateError);
+        expect((error as Error).message).toBe(
+          `Deploy stopped before it wrote a secret. AWS Secrets Manager has secret '${NAME}', ` +
+            "but that secret does not have the tags that deploy gives to the secret of runtime " +
+            "'agent' (agentcore:created-by=agentcore-cli, agentcore:project-name=demo, " +
+            "agentcore:runtime-name=agent). Deploy does not write or delete a secret that it did " +
+            "not create. If no project uses that secret, delete it with no recovery window, or " +
+            "change the name of the runtime. Then deploy again.",
+        );
+      }
+      expect(calls).toEqual([]);
+    },
+  );
 
   test("puts every key in a secret that exists, with no read", async () => {
     const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false } });
@@ -269,10 +345,10 @@ describe("provisionTelemetrySecrets", () => {
   );
 
   test("removes the secrets it created when a later write fails, and keeps the error", async () => {
-    const existing: BoxTelemetrySecret = { ...SECRET, runtime: "other", name: "existing" };
+    const existing: BoxTelemetrySecret = { ...SECRET, runtime: "other", name: nameOf("other") };
     const failure = new Error("put refused");
     const { stub, calls } = stubCalls(
-      { existing: { arn: "arn:existing", deleted: false } },
+      { [nameOf("other")]: { arn: "arn:existing", deleted: false } },
       { put: failure },
     );
 
@@ -301,19 +377,19 @@ describe("provisionTelemetrySecrets", () => {
 describe("removeTelemetrySecrets", () => {
   test("deletes each secret, except one that another target records or that is gone", async () => {
     const { stub, calls } = stubCalls({
-      a: { arn: "arn:a", deleted: false },
-      shared: { arn: "arn:shared", deleted: false },
-      scheduled: { arn: "arn:scheduled", deleted: true },
+      [nameOf("a")]: { arn: "arn:a", deleted: false },
+      [nameOf("shared")]: { arn: "arn:shared", deleted: false },
+      [nameOf("scheduled")]: { arn: "arn:scheduled", deleted: true },
     });
 
     const { value, steps } = await drain(
       removeTelemetrySecrets(
         stub,
         {
-          a: { secretArn: "arn:a" },
-          shared: { secretArn: "arn:shared" },
-          scheduled: { secretArn: "arn:scheduled" },
-          gone: { secretArn: "arn:gone" },
+          [nameOf("a")]: { secretArn: "arn:a" },
+          [nameOf("shared")]: { secretArn: "arn:shared" },
+          [nameOf("scheduled")]: { secretArn: "arn:scheduled" },
+          [nameOf("gone")]: { secretArn: "arn:gone" },
         },
         new Set(["arn:shared"]),
       ),
@@ -322,23 +398,40 @@ describe("removeTelemetrySecrets", () => {
     expect(calls).toEqual(["delete arn:a"]);
     expect(value).toEqual({});
     expect(steps).toEqual([
-      "deleting secret 'a'",
-      "keeping secret 'shared': another deployment target records it",
+      `deleting secret '${nameOf("a")}'`,
+      `keeping secret '${nameOf("shared")}': another deployment target records it`,
     ]);
   });
 
   test("reports a secret it cannot delete, and returns it so its record stays", async () => {
     const { stub } = stubCalls(
-      { a: { arn: "arn:a", deleted: false } },
+      { [NAME]: { arn: ARN, deleted: false } },
       { delete: new Error("AccessDenied") },
     );
 
     const { value, steps } = await drain(
-      removeTelemetrySecrets(stub, { a: { secretArn: "arn:a" } }, new Set()),
+      removeTelemetrySecrets(stub, { [NAME]: { secretArn: ARN } }, new Set()),
     );
 
-    expect(value).toEqual({ a: { secretArn: "arn:a" } });
-    expect(steps).toContain("Could not delete secret 'a' (arn:a): AccessDenied.");
+    expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+    expect(steps).toContain(`Could not delete secret '${NAME}' (${ARN}): AccessDenied.`);
+  });
+
+  test("does not delete a secret without the tags that deploy gives, warns, and drops its record", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, tags: {} } });
+
+    const { value, steps, warnings } = await drain(
+      removeTelemetrySecrets(stub, { [NAME]: { secretArn: ARN } }, new Set()),
+    );
+
+    expect(calls).toEqual([]);
+    expect(value).toEqual({});
+    expect(steps).toEqual([]);
+    expect(warnings).toEqual([
+      `Deploy did not delete AWS Secrets Manager secret '${NAME}' (${ARN}), because that ` +
+        "secret does not have the tags that deploy gives to the secrets that it creates. Deploy " +
+        "removes its record of that secret. If no project uses it, delete it.",
+    ]);
   });
 });
 
