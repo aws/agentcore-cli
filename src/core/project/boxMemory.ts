@@ -75,7 +75,7 @@ const MODEL_ID_PATTERN = /^[a-z0-9-]+\.[A-Za-z0-9._:-]+$/;
 
 /** An ARN of a system inference profile or a foundation model: the two a Box gateway can scope. */
 const SCOPED_ARN_PATTERN =
-  /^arn:[a-z-]+:bedrock:([a-z0-9-]*):[0-9]*:(inference-profile|foundation-model)\/(.+)$/;
+  /^arn:([a-z-]+):bedrock:([a-z0-9-]*):[0-9]*:(inference-profile|foundation-model)\/(.+)$/;
 
 /**
  * The Bedrock model that `runtime`'s code calls, from its `modelId` in agentcore.json, or undefined
@@ -84,7 +84,10 @@ const SCOPED_ARN_PATTERN =
  * imported model). LiteLLM's `bedrock/`, `bedrock/converse/` and `bedrock/invoke/` routes give the ID
  * after them. A system inference profile ARN or a foundation model ARN gives its ID and region.
  */
-export function bedrockModelOf(runtime: ProjectRuntime): ScopedModel | undefined {
+export function bedrockModelOf(
+  runtime: ProjectRuntime,
+  buildPartition?: string,
+): ScopedModel | undefined {
   let id = runtime.modelId;
   if (id === undefined) return undefined;
   if (runtime.modelProvider === "LiteLLM") {
@@ -93,7 +96,9 @@ export function bedrockModelOf(runtime: ProjectRuntime): ScopedModel | undefined
   }
   const arn = SCOPED_ARN_PATTERN.exec(id);
   if (arn) {
-    const [, region, kind, rest] = arn;
+    const [, arnPartition, region, kind, rest] = arn;
+    // An ARN of another partition names a model the gateway's role can never call.
+    if (buildPartition !== undefined && arnPartition !== buildPartition) return undefined;
     if (!MODEL_ID_PATTERN.test(rest!)) return undefined;
     return {
       id: rest!,
@@ -159,9 +164,10 @@ function scopedBedrockStatements(models: readonly ScopedModel[], buildRegion: st
 }
 
 /** The boxed runtimes that call Bedrock with no model build can scope the Box gateways' policy to. */
-function unscopedRuntimes(spec: ProjectSpec): ProjectRuntime[] {
+function unscopedRuntimes(spec: ProjectSpec, region?: string): ProjectRuntime[] {
+  const buildPartition = region === undefined ? undefined : partition(region).name;
   return boxedRuntimesCallingBedrock(spec).filter(
-    (runtime) => bedrockModelOf(runtime) === undefined,
+    (runtime) => bedrockModelOf(runtime, buildPartition) === undefined,
   );
 }
 
@@ -170,8 +176,8 @@ function unscopedRuntimes(spec: ProjectSpec): ProjectRuntime[] {
  * {@link boxBedrockPolicy} falls back: a boxed runtime that calls Bedrock has no `modelId` that build
  * can scope to. Undefined when the policy is scoped.
  */
-export function boxBedrockScopeWarning(spec: ProjectSpec): string | undefined {
-  const unscoped = unscopedRuntimes(spec).map(({ name }) => `"${name}"`);
+export function boxBedrockScopeWarning(spec: ProjectSpec, region?: string): string | undefined {
+  const unscoped = unscopedRuntimes(spec, region).map(({ name }) => `"${name}"`);
   if (unscoped.length === 0) return undefined;
   const names =
     unscoped.length === 1
@@ -181,7 +187,8 @@ export function boxBedrockScopeWarning(spec: ProjectSpec): string | undefined {
     `${names} no modelId in agentcore.json that build can scope to (a Bedrock model ID or ` +
     "inference profile ID, or the ARN of a foundation model or system inference profile), so the " +
     'Box gateways of this project can call every Bedrock model of the account. Set "modelId" ' +
-    "to the model its code calls, then build again."
+    "to the model its code calls, then build again. A runtime whose code calls no model needs " +
+    "no modelId; for it, the warning only says that the policy is not scoped."
   );
 }
 
@@ -201,9 +208,10 @@ export function boxBedrockPolicy(
   const runtimes = boxedRuntimesCallingBedrock(spec);
   if (runtimes.length === 0) return undefined;
   // When agentcore.json names the model of each runtime, the role can call only those models.
-  if (unscopedRuntimes(spec).length === 0) {
+  if (unscopedRuntimes(spec, region).length === 0) {
     const models = new Map<string, ScopedModel>();
-    for (const model of runtimes.map(bedrockModelOf)) {
+    const buildPartition = partition(region).name;
+    for (const model of runtimes.map((runtime) => bedrockModelOf(runtime, buildPartition))) {
       models.set(JSON.stringify([model!.id, model!.region, model!.kind]), model!);
     }
     return {

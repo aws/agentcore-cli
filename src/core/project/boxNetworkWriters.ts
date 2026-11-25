@@ -395,7 +395,9 @@ export const defaultTargetsWriter: BoxNetworkWriter = {
     const region = networks[0]?.region;
     return {
       spec: [(copy) => addBoxGatewayTargets(copy, region)],
-      warnings: [boxBedrockScopeWarning(spec)].flatMap((warning) => (warning ? [warning] : [])),
+      warnings: [boxBedrockScopeWarning(spec, region)].flatMap((warning) =>
+        warning ? [warning] : [],
+      ),
       files: [
         {
           path: BOX_BEDROCK_POLICY_FILE,

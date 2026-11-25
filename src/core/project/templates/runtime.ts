@@ -486,6 +486,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       sessionStorageMountPath,
       efsMounts,
       s3Mounts,
+      // The README says that the Box gateway calls only the model in modelId.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
       // container launches main.py as the `main` module under
@@ -530,6 +532,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       // memory's env var so adding a memory later needs no code edit.
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
+      // The README says that the Box gateway calls only the model in modelId.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.
       enableOtel: true,

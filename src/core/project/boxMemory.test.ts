@@ -225,10 +225,18 @@ describe("boxBedrockPolicy with the runtime's modelId", () => {
     ],
     ["a provisioned model ARN", "arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123"],
     ["an ID that is not provider.model", "my-model"],
+    ["a foundation model ARN with a wildcard", "arn:aws:bedrock:us-west-2::foundation-model/*"],
+    ["a wildcard model ID", "anthropic.*"],
+    [
+      "an ARN of another partition",
+      "arn:aws-cn:bedrock:cn-north-1::foundation-model/amazon.nova-pro-v1:0",
+    ],
   ])("keeps every model, and warns, for %s", (_kind, modelId) => {
     const project = bedrock(modelId);
     expect(resources(project)).toEqual(EVERY_MODEL);
-    expect(boxBedrockScopeWarning(project)).toContain('runtime "agent0" has no modelId');
+    expect(boxBedrockScopeWarning(project, "us-west-2")).toContain(
+      'runtime "agent0" has no modelId',
+    );
   });
 
   test("allows the model of each runtime once, each statement with its own Sid", () => {
@@ -241,6 +249,8 @@ describe("boxBedrockPolicy with the runtime's modelId", () => {
     );
     const sids = statements.map(({ Sid }) => Sid);
     expect(new Set(sids).size).toBe(sids.length);
+    // Two models, three statements each: the repeated profile is written once.
+    expect(statements).toHaveLength(6);
     expect(statements.filter(({ Sid }) => String(Sid).endsWith("1"))).toHaveLength(3);
     expect(statements.filter(({ Sid }) => String(Sid).endsWith("2"))).toHaveLength(3);
   });

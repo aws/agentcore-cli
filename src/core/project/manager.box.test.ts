@@ -282,6 +282,36 @@ describe("agentcore create", () => {
     },
   );
 
+  test.each([
+    "agent-python-strands-box",
+    "agent-python-langchain-box",
+    "a2a-python-strands-box",
+    "agui-python-strands-box",
+  ] as const)(
+    "create --template %s writes a README that ties the model to modelId",
+    async (template) => {
+      const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+      tempDirectories.push(directory);
+      process.chdir(directory);
+      const generator = subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut(template, { runtimeName: "agent" }),
+      });
+      let next = await generator.next();
+      while (!next.done) next = await generator.next();
+
+      const readme = await readFile(
+        join(directory, "example", "app", "agent", "README.md"),
+        "utf8",
+      );
+      expect(readme).toContain(
+        "the Box gateway may call only the Bedrock model in this runtime's `modelId`",
+      );
+    },
+  );
+
   test('a Box template writes "projectType": "box" and a Box gateway for each runtime', () => {
     const runtime = (name: string) =>
       ({ name, build: "CodeZip", entrypoint: "main.py", codeLocation: `app/${name}` }) as never;
