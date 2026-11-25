@@ -58,10 +58,13 @@ async function writeRejectedRuntimeResponse(
 ): Promise<never> {
   try {
     await output.beforeOutput?.();
-    await pipeline([summary(response, 0, false, `HTTP ${response.statusCode}`)], output.stderr, {
-      end: false,
-      signal: output.signal,
-    });
+    const { errorType, message } = response.error;
+    const detail = [errorType, message].filter(Boolean).join(": ");
+    await pipeline(
+      [summary(response, 0, false, `HTTP ${response.statusCode}${detail ? ` ${detail}` : ""}`)],
+      output.stderr,
+      { end: false, signal: output.signal },
+    );
   } catch (error) {
     failure(error, output.signal);
   }
