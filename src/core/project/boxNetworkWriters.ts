@@ -592,7 +592,8 @@ export function placeSecretsManagerEndpoint(
       );
     } else if (!wanted && runtime.network?.secretsManagerEndpoint !== undefined) {
       const { secretsManagerEndpoint: _removed, ...rest } = runtime.network;
-      runtime.network = rest;
+      if (Object.keys(rest).length > 0) runtime.network = rest;
+      else delete runtime.network;
       messages.push(
         `removing the AWS Secrets Manager endpoint from the private VPC of '${runtime.name}': ` +
           "its box reads no telemetry key",
