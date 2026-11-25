@@ -4,7 +4,6 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { boxGatewayBedrockHost } from "../../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
 import {
   credentialEnvironmentVariableNames,
@@ -12,6 +11,7 @@ import {
 } from "../../../projectSchemas/credential";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
+import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
@@ -20,6 +20,7 @@ import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
   awsEndpoint,
+  boxGatewayBedrockHost,
   outboundAuthFor,
   parseEndpoint,
   targetNameFor,
@@ -50,6 +51,8 @@ export type { BoxNetworkFailure } from "./types";
 
 /** Where a failure of a target in agentcore.json is. */
 const PROJECT_SPEC_PLACE = "agentcore/agentcore.json";
+
+export { BOX_GATEWAY_TARGETS_FILE };
 
 /** How the gateway authenticates its requests to a host. */
 export type BoxEgressAuth =
@@ -128,6 +131,11 @@ export interface BoxNetwork {
    */
   readonly projectGateways?: readonly BoxProjectGateway[];
   /**
+   * The targets of the gateway that build owns, which it adds, rewrites, and removes: each one it
+   * wrote before, and the new target of each host. Build keeps every other target as it is.
+   */
+  readonly managedTargets: ReadonlySet<string>;
+  /**
    * The policy files, relative to the agent's local box folder, to copy beside the AgentCore
    * Runtime profile.
    */
@@ -186,6 +194,12 @@ export interface BoxNetworkProject {
    * Manager ({@link BOX_SECRETS_MANAGER_ENV}). Off, it carries no third-party target.
    */
   readonly secretsManager?: boolean;
+  /**
+   * The targets that {@link BOX_GATEWAY_TARGETS_FILE} names for the gateway. Absent when the file
+   * does not name the gateway, which build last built before it kept the file: then build owns each
+   * target whose name starts with `egress-` and that has the shape build writes.
+   */
+  readonly ownedTargets?: ReadonlySet<string>;
 }
 
 /** The Box gateway of `runtime`: the gateway bound to it. */
@@ -243,12 +257,20 @@ export function buildBoxNetwork(
       runtime: project.runtime,
       profileFile: parsed.profile.path,
       region: project.region,
-      gateway: { name: project.gateway, targets: project.targets },
+      gateway: { name: project.gateway, targets: project.targets, managed: targets.managed },
       hosts: targets.hosts,
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
       thirdPartyTelemetry: thirdParty.targets,
       secretsManager: project.secretsManager ?? false,
+      ruleIds: new Set(
+        parsed.statements
+          .filter(
+            ({ id, span }) =>
+              placeOf(parsed, span) !== undefined || ruleOrigin(parsed, id).by !== "box",
+          )
+          .map(({ id }) => id),
+      ),
       places: source.places,
     });
   const derived = source && context && deriveRuntimeProfile(source.table, context);
@@ -267,6 +289,7 @@ export function buildBoxNetwork(
     hosts: targets.hosts,
     envRoutes: envRoutesOf(targets.hosts),
     projectGateways: reached.gateways,
+    managedTargets: targets.managed,
     policyFiles: parsed.profile.policyFiles,
     ...(sent && { telemetry: sent }),
     ...(derived &&
@@ -278,6 +301,17 @@ export function buildBoxNetwork(
     grantedActions: project.grantedActions,
     warnings: [
       ...thirdParty.warnings,
+      ...map.hosts.flatMap(({ authority, uncheckedBy }) =>
+        uncheckedBy.map((ruleId) => {
+          const { place, subject } = describeRule(parsed, ruleId);
+          return (
+            `${place}: ${subject} has more path conditions than build can check together, so ` +
+            `build cannot tell whether your policy allows a request to ${authority}. Build gives ` +
+            "the host a gateway target, and Box still applies the rule."
+          );
+        }),
+      ),
+      ...targets.warnings,
       ...hostWarnings(targets.hosts),
       ...map.websocketOnly.map(({ ruleId, span }) => {
         const { place, subject } = describeRule(parsed, ruleId, span);
@@ -295,8 +329,10 @@ export function buildBoxNetwork(
 }
 
 /**
- * The `env://` route of each host whose target sends an API key, once for each route. An HTTP MCP
- * server's route has the server's name.
+ * The `env://` route of each host whose target sends an API key, once for each route and variable:
+ * an `[egress]` entry and an `[mcp]` server of one name can read one credential from its own
+ * variable and from one other, and build copies the other's key. An HTTP MCP server's route has
+ * the server's name.
  */
 function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];
@@ -304,8 +340,9 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
     const entry = sources.find((source): source is EntrySource => source.kind !== "rule");
     if (target === undefined || outboundAuth.kind !== "apiKey" || !entry) continue;
     const route = entry.kind === "entry" ? entry.egressEntry : entry.mcpEntry;
-    if (routes.some((other) => other.route === route)) continue;
-    routes.push({ route, variable: outboundAuth.variable });
+    const { variable } = outboundAuth;
+    if (routes.some((other) => other.route === route && other.variable === variable)) continue;
+    routes.push({ route, variable });
   }
   return routes;
 }
@@ -378,9 +415,12 @@ function runtimeTelemetry(
   return { targets, warnings };
 }
 
-/** Whether build manages `target`: it adds, changes, and removes each target with the prefix. */
-export function isManagedTarget(target: Pick<AgentCoreGatewayTarget, "name">): boolean {
-  return target.name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+/**
+ * Whether build owns `target` of a gateway that {@link BOX_GATEWAY_TARGETS_FILE} does not name: its
+ * name starts with `egress-`, and it has the shape build writes.
+ */
+export function isManagedTarget(target: AgentCoreGatewayTarget): boolean {
+  return target.name.startsWith(BOX_EGRESS_TARGET_PREFIX) && unmanagedShape(target) === undefined;
 }
 
 /** The host map key of a passthrough target's endpoint, or `undefined` for another target. */
@@ -437,20 +477,41 @@ function hostTargets(
   gateways: readonly BoxProjectGateway[],
   located: (failure: ConversionFailure) => BoxNetworkFailure,
   profilePath: string,
-): { hosts: BoxNetworkHost[]; failures: BoxNetworkFailure[] } {
+): {
+  hosts: BoxNetworkHost[];
+  failures: BoxNetworkFailure[];
+  managed: ReadonlySet<string>;
+  warnings: string[];
+} {
   const existing = project.targets;
   const failures: BoxNetworkFailure[] = [];
+  const recorded = project.ownedTargets;
+  const isManaged = (target: AgentCoreGatewayTarget) =>
+    recorded ? recorded.has(target.name) : isManagedTarget(target);
+  const warnings: string[] = [];
   for (const target of existing) {
-    const changed = isManagedTarget(target) ? unmanagedShape(target) : undefined;
+    // The one build that takes a gateway's old egress- targets names each one it keeps.
+    const kept =
+      recorded === undefined && target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)
+        ? unmanagedShape(target)
+        : undefined;
+    if (kept !== undefined) {
+      warnings.push(
+        `${PROJECT_SPEC_PLACE}: build keeps the gateway target '${target.name}' as yours, ` +
+          `because it ${kept}, which build does not write. Build does not change or remove it. ` +
+          "Remove the target if build wrote it before and you do not use it.",
+      );
+    }
+    const changed = recorded?.has(target.name) ? unmanagedShape(target) : undefined;
     if (changed === undefined) continue;
     failures.push({
       code: "MANAGED_TARGET_CHANGED",
       target: target.name,
       reason:
-        `The gateway target '${target.name}' ${changed}, which build does not write for a ` +
-        `target whose name starts with "${BOX_EGRESS_TARGET_PREFIX}", so build does not change ` +
-        `or remove it. Rename it without "${BOX_EGRESS_TARGET_PREFIX}" to keep it as yours, or ` +
-        "remove it so build writes it again.",
+        `The gateway target '${target.name}' ${changed}, which build does not write, and ` +
+        `${BOX_GATEWAY_TARGETS_FILE} names it as a target that build writes, so build does not ` +
+        `change or remove it. Remove '${target.name}' from that file to keep the target as ` +
+        "yours, or remove the target so build writes it again.",
       place: PROJECT_SPEC_PLACE,
     });
   }
@@ -470,7 +531,11 @@ function hostTargets(
 
   const claimed = new Set<string>();
   const reused = new Set<number>();
-  /** The variable and the entry of each API key credential an entry takes. */
+  /**
+   * The variable and the entry of each API key credential an entry takes for a variable that is
+   * not the credential's own. Build copies the key of that variable to the credential's own, so an
+   * entry that reads the credential's own variable takes the same key.
+   */
   const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
@@ -481,17 +546,21 @@ function hostTargets(
       );
       if (result.ok) auth = result.auth;
       else failAt(host, result.code, result.reason);
-      const holder = auth.kind === "apiKey" ? keys.get(auth.credentialName) : undefined;
-      if (auth.kind === "apiKey" && holder && holder.variable !== auth.variable) {
+      const alias =
+        auth.kind === "apiKey" && auth.variable !== credentialEnvVarName(auth.credentialName)
+          ? auth
+          : undefined;
+      const holder = alias && keys.get(alias.credentialName);
+      if (alias && holder && holder.variable !== alias.variable) {
         failAt(
           host,
           "API_KEY_CREDENTIAL_SHARED",
-          `needs the API key credential '${auth.credentialName}' for env://${auth.variable}, ` +
+          `needs the API key credential '${alias.credentialName}' for env://${alias.variable}, ` +
             `and ${holder.entry} takes that credential for env://${holder.variable}. One ` +
             "credential holds one key. Rename the entry.",
         );
-      } else if (auth.kind === "apiKey" && !holder) {
-        keys.set(auth.credentialName, { variable: auth.variable, entry: entryLabel(entry) });
+      } else if (alias && !holder) {
+        keys.set(alias.credentialName, { variable: alias.variable, entry: entryLabel(entry) });
       }
     }
     let target: string | undefined;
@@ -502,7 +571,7 @@ function hostTargets(
       if (held) {
         claimed.add(held.name);
         reused.add(index);
-        const conflict = isManagedTarget(held)
+        const conflict = isManaged(held)
           ? undefined
           : targetConflict(held, host, auth, profilePath);
         if (conflict) {
@@ -556,7 +625,7 @@ function hostTargets(
   // A target that build does not manage keeps its name, and two hosts take no one name.
   const owners = new Map<string, string>();
   for (const target of existing) {
-    if (!isManagedTarget(target)) owners.set(target.name, `the gateway target '${target.name}'`);
+    if (!isManaged(target)) owners.set(target.name, `the gateway target '${target.name}'`);
   }
   const gatewayOf = new Map<string, string>();
   for (const gateway of gateways) {
@@ -573,6 +642,18 @@ function hostTargets(
       continue;
     }
     gatewayOf.set(gateway.target, gateway.name);
+    const owner = owners.get(gateway.target);
+    if (owner !== undefined) {
+      failures.push({
+        code: "TARGET_NAME_COLLISION",
+        target: gateway.target,
+        reason:
+          `The gateway '${gateway.name}' of this project would get the gateway target ` +
+          `'${gateway.target}', and ${owner} has that name. Rename that target.`,
+        place: PROJECT_SPEC_PLACE,
+      });
+      continue;
+    }
     owners.set(gateway.target, `the target that build adds for the gateway '${gateway.name}'`);
   }
   const describeHost = (host: MappedHost) =>
@@ -612,7 +693,7 @@ function hostTargets(
   });
 
   const served = hosts.filter((host) => host.target !== undefined).length;
-  const kept = existing.filter((target) => !isManagedTarget(target) && !claimed.has(target.name));
+  const kept = existing.filter((target) => !isManaged(target) && !claimed.has(target.name));
   const needed = served + gateways.length + kept.length;
   if (needed > MAX_GATEWAY_TARGETS) {
     const builds =
@@ -629,7 +710,29 @@ function hostTargets(
       place: profilePath,
     });
   }
-  return { hosts, failures };
+  const managed = managedTargetsOf(existing.filter(isManaged), hosts, reused);
+  // The target of each gateway of the project is build's too, so the record lists it and a later
+  // build can remove it.
+  for (const gateway of gateways) managed.add(gateway.target);
+  return { hosts, failures, managed, warnings };
+}
+
+/**
+ * The targets of a Box gateway that build owns (`BoxNetwork.managedTargets`), which the writers
+ * change and remove and the record lists: each target of `owned`, and the new target of each host
+ * that takes no target the gateway has (`reused`). Each other kind of target that build writes
+ * belongs in this set too.
+ */
+function managedTargetsOf(
+  owned: readonly AgentCoreGatewayTarget[],
+  hosts: readonly BoxNetworkHost[],
+  reused: ReadonlySet<number>,
+): Set<string> {
+  const managed = new Set(owned.map(({ name }) => name));
+  hosts.forEach(({ target }, index) => {
+    if (target !== undefined && !reused.has(index)) managed.add(target);
+  });
+  return managed;
 }
 
 /** The source of the entry that names a host. */

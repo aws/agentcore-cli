@@ -1,6 +1,38 @@
 import { readFileSync } from "node:fs";
 import { ProjectStateError } from "../../../errors/errors";
+import type { Project } from "../../../handlers/project/types";
+import type { BoxNetwork } from "../boxNetwork";
+import {
+  boxNetworkEdits,
+  runtimeProfileWriter,
+  writeBoxNetworkFiles,
+  writeRenderedBoxFiles,
+  type StagedRuntime,
+} from "../boxNetworkWriters";
 import { boxLocalProfileFile } from "../templates/boxProfile";
+
+/**
+ * What the runtime profile writer writes from each runtime's Box network model for the runtimes of
+ * `staged`, with the function that writes one runtime's files into its staged folder and a copy
+ * into its `.box/<name>/aws/`.
+ */
+export function stagedRuntimeProfiles(
+  project: Project,
+  networks: readonly BoxNetwork[],
+  staged: readonly StagedRuntime[],
+): (runtime: StagedRuntime) => void {
+  const { files } = boxNetworkEdits([runtimeProfileWriter(staged)], networks, {
+    spec: project.spec,
+    projectRoot: project.rootPath,
+    env: {},
+    envLocal: {},
+  });
+  return ({ runtime, dist }) => {
+    const own = files.filter(({ path }) => path.startsWith(`${dist}/`));
+    writeBoxNetworkFiles(project.rootPath, own);
+    writeRenderedBoxFiles(project.rootPath, runtime, dist, own);
+  };
+}
 
 /** A `COPY` of the whole staged folder, which takes the policy files in with the profile. */
 const COPIES_WHOLE_DIST = /^\s*COPY\s+(?:--\S+\s+)*(?:\.box-dist|\$\{BOX_DIST\})\/?\s/m;

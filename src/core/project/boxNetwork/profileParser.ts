@@ -5,8 +5,9 @@
  * entry, `packs`, and `policies` for a message.
  */
 import { posix } from "node:path";
-import { parse as parseToml } from "smol-toml";
+import { parse as parseToml, TomlError } from "smol-toml";
 import type { ResolvedBoxProfile } from "../boxProfileResolver";
+import { isTable } from "../runtimeProfile/projectPaths";
 import type { TomlTable } from "../runtimeProfile/types";
 import {
   cloudWatchTelemetry,
@@ -77,7 +78,7 @@ export function parseResolvedProfile(
       };
     }
   }
-  const egress: Record<string, unknown> = { ...(boxToml.egress as object | undefined) };
+  const egress: Record<string, unknown> = isTable(boxToml.egress) ? { ...boxToml.egress } : {};
   const telemetry = cloudWatchTelemetry(boxToml);
   const thirdParty = thirdPartyTelemetry(boxToml);
   for (const { route, destinations } of openRoutes) {
@@ -87,7 +88,7 @@ export function parseResolvedProfile(
     profile: {
       path: profilePath,
       egress,
-      mcp: (boxToml.mcp as Record<string, unknown> | undefined) ?? {},
+      mcp: isTable(boxToml.mcp) ? boxToml.mcp : {},
       policyFiles,
       ...(telemetry.length > 0 && { telemetry }),
       ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
@@ -114,13 +115,12 @@ export function profilePolicyFiles(
     ok: false as const,
     failure: { code, reason, place },
   });
-  let table: Record<string, unknown>;
+  let table: TomlTable;
   try {
-    table = parseToml(text) as Record<string, unknown>;
+    table = parseToml(text);
   } catch (error) {
-    const at = error as { line?: number; column?: number };
     const place =
-      at.line !== undefined ? `${profilePath}:${at.line}:${at.column ?? 1}` : profilePath;
+      error instanceof TomlError ? `${profilePath}:${error.line}:${error.column}` : profilePath;
     return fail(`This is not valid TOML (${tomlProblem(error)}). Correct the syntax.`, place);
   }
   if (table.policy !== undefined) {
@@ -134,14 +134,17 @@ export function profilePolicyFiles(
   const named = table.policies ?? [];
   const place = placeOfKey(text, profilePath, "policies");
   const folder = posix.dirname(profilePath);
-  if (!Array.isArray(named) || !named.every((file) => typeof file === "string" && file !== "")) {
+  if (
+    !Array.isArray(named) ||
+    !named.every((file): file is string => typeof file === "string" && file !== "")
+  ) {
     return fail(
       '`policies` must be a list of policy file paths, such as ["policy.dw"]. Correct it.',
       place,
     );
   }
   const files: string[] = [];
-  for (const file of named as string[]) {
+  for (const file of named) {
     const normal = posix.normalize(file.replace(/\\/g, "/"));
     if (posix.isAbsolute(normal) || normal === ".." || normal.startsWith("../")) {
       return fail(
@@ -209,10 +212,6 @@ function placeOfKey(text: string, profilePath: string, key: string): string {
 
 /** The TOML reader's message, without its "Invalid TOML document:" start and its excerpt. */
 function tomlProblem(error: unknown): string {
-  const message = ((error as { message?: string }).message ?? String(error)).split("\n")[0]!;
+  const message = (error instanceof Error ? error.message : String(error)).split("\n")[0]!;
   return message.replace(/^Invalid TOML document:\s*/, "");
-}
-
-function isTable(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

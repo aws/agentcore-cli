@@ -1,4 +1,3 @@
-import { partition } from "@aws-sdk/util-endpoints";
 import z from "zod";
 import {
   DEFAULT_EPISODIC_REFLECTION_NAMESPACE_TEMPLATES,
@@ -6,6 +5,10 @@ import {
   defaultMemoryName,
   type Memory,
 } from "../../projectSchemas/memory";
+import {
+  agentCoreDataPlaneHost,
+  boxGatewayBedrockHost as bedrockHostOf,
+} from "../../core/project/boxNetwork/egress";
 import { InputValidationError } from "../../errors";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
@@ -41,7 +44,7 @@ export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
 
 /** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
 export function boxGatewayBedrockHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
+  return bedrockHostOf(region);
 }
 
 /** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
@@ -56,13 +59,7 @@ export function getBoxGatewayBedrockTargetSpec(
   };
 }
 
-/**
- * The AgentCore data-plane host of `region`. A boxed agent's Memory calls go to it directly, signed
- * with the execution role, and not through the Box gateway.
- */
-export function agentCoreDataPlaneHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
-  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
-}
+export { agentCoreDataPlaneHost };
 
 /**
  * Whether the scaffolded agent calls Bedrock for its model: the Bedrock

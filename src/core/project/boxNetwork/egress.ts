@@ -1,3 +1,4 @@
+import { partition } from "@aws-sdk/util-endpoints";
 import { z } from "zod";
 import { BOX_EGRESS_TARGET_PREFIX } from "../../../projectSchemas/project";
 import type { BoxEgressAuth } from "./network";
@@ -140,6 +141,19 @@ const AWS_ENDPOINTS = [
     service: "bedrock-agentcore",
   },
 ] as const;
+
+/** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
+export function boxGatewayBedrockHost(region: string): string {
+  return `bedrock-runtime.${region}.${partition(region).dnsSuffix}`;
+}
+
+/**
+ * The AgentCore data-plane host of `region`. A boxed agent's Memory calls go to it directly, signed
+ * with the execution role, and not through the Box gateway.
+ */
+export function agentCoreDataPlaneHost(region: string): string {
+  return `bedrock-agentcore.${region}.${partition(region).dnsSuffix}`;
+}
 
 /** The API of an AWS endpoint that the gateway signs for. */
 export type AwsEndpointApi = (typeof AWS_ENDPOINTS)[number]["api"];

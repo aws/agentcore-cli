@@ -5,6 +5,7 @@
  * into the AgentCore Runtime profile. It also reads the targets that send to a third party, whose
  * key build moves to AWS Secrets Manager for the Runtime.
  */
+import { isTable } from "../runtimeProfile/projectPaths";
 
 /** A CloudWatch target of the box profile, as Box sends to it. */
 export type CloudWatchTelemetry = CloudWatchTarget & {
@@ -59,12 +60,11 @@ const SIGNAL_GROUPS: ReadonlySet<string> = new Set(["deny", "permit", "trace", "
 function includeOf(value: unknown): readonly string[] | undefined | null {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length === 0) return null;
-  const known = value.every((word) => typeof word === "string" && SIGNAL_GROUPS.has(word));
-  return known && new Set(value).size === value.length ? (value as string[]) : null;
+  const known = value.every(
+    (word): word is string => typeof word === "string" && SIGNAL_GROUPS.has(word),
+  );
+  return known && new Set(value).size === value.length ? value : null;
 }
-
-const isTable = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The trimmed string `value`, or undefined when it is not a string. */
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : undefined);

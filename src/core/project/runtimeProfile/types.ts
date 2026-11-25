@@ -73,7 +73,12 @@ export interface RuntimeProfileContext {
   /** The region build builds for: of the Box gateway, its `bedrock` target, and the Memory route. */
   readonly region: string;
   /** The runtime's Box gateway: its name, and its targets with the ones build adds. */
-  readonly gateway: { readonly name: string; readonly targets: readonly AgentCoreGatewayTarget[] };
+  readonly gateway: {
+    readonly name: string;
+    readonly targets: readonly AgentCoreGatewayTarget[];
+    /** The targets build owns (`BoxNetwork.managedTargets`); absent: each `egress-` target. */
+    readonly managed?: ReadonlySet<string>;
+  };
   /** The hosts of the Box network model, each with the gateway target it gets. */
   readonly hosts: readonly BoxNetworkHost[];
   /** The gateways of the project that the agent calls through the Box gateway; absent means none. */
@@ -87,6 +92,12 @@ export interface RuntimeProfileContext {
   readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
   /** Whether AGENTCORE_BOX_SECRETS_MANAGER is `1` for this build (boxTelemetrySecrets.ts). */
   readonly secretsManager?: boolean;
+  /**
+   * The `@id` of each rule of the local policy that box does not add for a route or a server. Box
+   * adds `route_<name>_connect` and `route_<name>_request` for each route, and refuses a second
+   * rule with the same `@id`.
+   */
+  readonly ruleIds: ReadonlySet<string>;
   readonly paths: RuntimePaths;
   /**
    * The profile that `agentcore create` writes for this runtime, `local`, and its Runtime form,

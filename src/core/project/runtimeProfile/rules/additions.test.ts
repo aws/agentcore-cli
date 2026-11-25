@@ -139,6 +139,7 @@ function contextOf(
       thirdPartyTelemetry: options.thirdPartyTelemetry,
       secretsManager: true,
     }),
+    ruleIds: new Set(),
     places: new Map(),
   });
 }

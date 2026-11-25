@@ -56,11 +56,12 @@ interface GatewayRoute {
 
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const routes = gatewayRoutes(context);
+  const keys = routeKeys(routes, context);
   const written = new Set<string>();
   const bedrockPack = Array.isArray(table.packs) && table.packs.includes(BOX_BEDROCK_PACK);
   // The route of @box/bedrock that the Runtime profile signs in with merges with this one.
   const keyOf = (route: GatewayRoute) => {
-    const key = routeKey(route, routes, context);
+    const key = keys.get(route.target)!;
     return bedrockPack && key === BOX_BEDROCK_ROUTE ? BOX_BEDROCK_API_KEY_ROUTE : key;
   };
 
@@ -144,12 +145,14 @@ function projectGatewayServer(gateway: BoxProjectGateway): TomlTable {
 /**
  * The routes of the runtime: one for each passthrough target of its Box gateway, in the order of
  * the gateway's targets once build writes them. Build keeps each target it does not manage where
- * it is, keeps each `egress-` target that a host takes, removes the other `egress-` targets, and
+ * it is, keeps each target it manages that a host takes, removes the other targets it manages, and
  * adds the target of each other host at the end. Throws for two targets for one host, which would
  * give the box two routes to that host.
  */
 function gatewayRoutes(context: RuntimeProfileContext): GatewayRoute[] {
-  const managed = (name: string) => name.startsWith(BOX_EGRESS_TARGET_PREFIX);
+  const owned = context.gateway.managed;
+  const managed = (name: string) =>
+    owned ? owned.has(name) : name.startsWith(BOX_EGRESS_TARGET_PREFIX);
   const served = context.hosts.filter(
     (host): host is BoxNetworkHost & { readonly target: string } =>
       host.target !== undefined && managed(host.target),
@@ -222,6 +225,31 @@ function routeKey(
   if (first?.target !== route.target) return route.target;
   if (name !== route.target && routes.some(({ target }) => target === name)) return route.target;
   return name;
+}
+
+/**
+ * The `[egress]` key of each route that serves no HTTP MCP server, by its target: its
+ * {@link routeKey}, or that key with `-2`, `-3`, and so on after it when box would add a route rule
+ * with the `@id` of a rule of the policy. A key that another route has stays that route's.
+ */
+function routeKeys(
+  routes: readonly GatewayRoute[],
+  context: RuntimeProfileContext,
+): Map<string, string> {
+  const named = routes
+    .filter((route) => route.server === undefined)
+    .map((route) => ({ route, key: routeKey(route, routes, context) }));
+  const used = new Set(named.map(({ key }) => key));
+  const taken = (key: string) =>
+    context.ruleIds.has(`route_${key}_connect`) || context.ruleIds.has(`route_${key}_request`);
+  const keys = new Map<string, string>();
+  for (const { route, key } of named) {
+    let free = key;
+    for (let n = 2; taken(free) || (free !== key && used.has(free)); n++) free = `${key}-${n}`;
+    used.add(free);
+    keys.set(route.target, free);
+  }
+  return keys;
 }
 
 /** The routes of `hosts`, in the order of the hosts; a host with no route has none. */

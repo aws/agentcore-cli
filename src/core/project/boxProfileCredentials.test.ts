@@ -190,6 +190,33 @@ describe("planBoxProfileCredentials", () => {
     },
   );
 
+  test("warns when two variables of one credential hold different keys, and stores the first", () => {
+    // [egress.github] reads env://GH_A and [mcp.github] reads env://GITHUB_TOKEN: one credential.
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("github", "GH_A"), GITHUB],
+      shell({ GH_A: "ghp_a", GITHUB_TOKEN: "ghp_rotated" }),
+    );
+
+    expect(plan.entries).toEqual([expect.objectContaining({ key: RESERVED, value: "ghp_a" })]);
+    expect(plan.warnings).toEqual([
+      "box egress 'github': env://GITHUB_TOKEN holds a different key than env://GH_A, which " +
+        `build stored as ${RESERVED} for credential 'github', so deploy provisions the key in ` +
+        "GH_A for both. Set GITHUB_TOKEN and GH_A to the same key",
+    ]);
+  });
+
+  test("does not warn when two variables of one credential hold the same key", () => {
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("github", "GH_A"), GITHUB],
+      shell({ GH_A: "ghp_a", GITHUB_TOKEN: "ghp_a" }),
+    );
+
+    expect(plan.entries).toHaveLength(1);
+    expect(plan.warnings).toEqual([]);
+  });
+
   test("keeps an earlier build's credential and says what to set when its key has gone", () => {
     const plan = planBoxProfileCredentials(spec([API_KEY]), [GITHUB], shell({}));
 
@@ -216,20 +243,30 @@ describe("planBoxProfileCredentials", () => {
       warnings: [],
       added: [],
       entries: [],
+      unprovisioned: new Map(),
     });
   });
 
-  test("skips, with no message, the model-provider routes create writes", () => {
+  test("adds a credential for a model-provider route create writes, from the provider's variable", () => {
     const s = spec();
 
     const plan = planBoxProfileCredentials(
       s,
       [route("openai", "OPENAI_API_KEY"), route("anthropic", "ANTHROPIC_API_KEY")],
-      shell({ OPENAI_API_KEY: "sk-x", ANTHROPIC_API_KEY: "sk-ant-x" }),
+      shell({ OPENAI_API_KEY: "sk-x" }),
     );
 
-    expect(plan).toEqual({ messages: [], warnings: [], added: [], entries: [] });
-    expect(s.credentials).toEqual([]);
+    expect(plan.added).toEqual([{ authorizerType: "ApiKeyCredentialProvider", name: "openai" }]);
+    expect(plan.entries).toMatchObject([{ key: "AGENTCORE_CREDENTIAL_OPENAI", value: "sk-x" }]);
+    expect(plan.unprovisioned).toEqual(
+      new Map([
+        [
+          "anthropic",
+          `ANTHROPIC_API_KEY is not set here or in ${ENV_LOCAL_RELATIVE_PATH}. Set ` +
+            "ANTHROPIC_API_KEY, or AGENTCORE_CREDENTIAL_ANTHROPIC, and build again.",
+        ],
+      ]),
+    );
   });
 
   test("skips, with no message, a route whose variable an existing credential reserves", () => {
@@ -241,23 +278,36 @@ describe("planBoxProfileCredentials", () => {
       shell({}),
     );
 
-    expect(plan).toEqual({ messages: [], warnings: [], added: [], entries: [] });
+    expect(plan).toEqual({
+      messages: [],
+      warnings: [],
+      added: [],
+      entries: [],
+      unprovisioned: new Map(),
+    });
   });
 
-  test("reports a route that uses a model-provider name or variable in another way", () => {
+  test("adds a credential for a route that uses a model-provider name or variable in another way", () => {
     const plan = planBoxProfileCredentials(
       spec(),
       [route("openai", "MY_KEY"), route("my-llm", "GEMINI_API_KEY")],
       shell({ MY_KEY: "k", GEMINI_API_KEY: "k" }),
     );
 
-    expect(plan.added).toEqual([]);
-    expect(plan.warnings).toEqual([
-      "skipping box egress 'openai' (env://MY_KEY): 'openai' is a model-provider route; " +
-        "agentcore create declares its key",
-      "skipping box egress 'my-llm' (env://GEMINI_API_KEY): GEMINI_API_KEY is a model provider's " +
-        "key variable; agentcore create declares its key",
-    ]);
+    expect(plan.added.map(({ name }) => name)).toEqual(["openai", "my-llm"]);
+    expect(plan.unprovisioned.size).toBe(0);
+  });
+
+  test("says why a route gets no credential, and what to do, beside its warning", () => {
+    const plan = planBoxProfileCredentials(
+      spec(),
+      [route("bad name!", "SOME_KEY")],
+      shell({ SOME_KEY: "k" }),
+    );
+
+    expect(plan.unprovisioned.get("bad name!")).toBe(
+      "'bad name!' is not a valid credential name. Rename the entry.",
+    );
   });
 
   test.each<{
@@ -349,7 +399,7 @@ describe("boxKeyVariables", () => {
     expect(boxKeyVariables([], [GITHUB])).toEqual(new Set(["GITHUB_TOKEN", RESERVED]));
   });
 
-  test("skips a model-provider route and a route whose variable a credential reserves", () => {
+  test("skips a route whose variable a credential reserves, and keeps a model-provider route", () => {
     const reserved = credentialEnvVarName("agentOpenAIApiKey");
 
     const variables = boxKeyVariables(
@@ -357,6 +407,6 @@ describe("boxKeyVariables", () => {
       [route("openai", "OPENAI_API_KEY"), route("my-llm", reserved)],
     );
 
-    expect(variables).toEqual(new Set());
+    expect(variables).toEqual(new Set(["OPENAI_API_KEY", "AGENTCORE_CREDENTIAL_OPENAI"]));
   });
 });

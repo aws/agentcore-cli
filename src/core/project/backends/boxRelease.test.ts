@@ -268,16 +268,13 @@ describe("the pinned releases", () => {
     );
   });
 
-  test("the install hint names the box-cli archive of the pinned release, and the macOS release", () => {
-    // The macOS build of 0.3.0 does not run, so macOS gets the darwin pin's release.
+  test("the install hint names the box-cli archive of the pinned release", () => {
+    // macOS and Linux come from the same release, so the hint names no other macOS release.
     expect(BOX_INSTALL_HINT).toBe(
       "Install box: download box-cli-v0.3.0-<target>.tar.gz for your machine from " +
         "https://github.com/strands-agents/box/releases/tag/v0.3.0 (not a box-v0.3.0-* archive, " +
         "which has no packs), unpack it into a folder (tar -xzf <archive> -C <folder>), and add " +
-        "that folder to your PATH. On macOS, use " +
-        "box-cli-v0.3.0-preview.1-aarch64-apple-darwin.tar.gz from " +
-        "https://github.com/strands-agents/box/releases/tag/v0.3.0-preview.1 instead: the macOS " +
-        "build of 0.3.0 does not run.",
+        "that folder to your PATH.",
     );
   });
 });

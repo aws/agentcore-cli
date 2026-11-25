@@ -37,14 +37,17 @@ export const ProjectTypeSchema = z.enum(["box"]);
 /** Whether the project is a Box project, so the CLI keeps a Box gateway for each runtime. */
 export const isBoxProject = (spec: { projectType?: string }) => spec.projectType === "box";
 /**
- * The start of the name of each target that build adds to a Box gateway. Build manages every
- * target whose name has it, and no other.
+ * The start of the name of each target that build adds to a Box gateway. Build writes no target
+ * without it, but a target of the user can have it too: `agentcore/box-gateway-targets.json`
+ * lists the targets that build wrote.
  */
 export const BOX_EGRESS_TARGET_PREFIX = "egress-";
 /**
- * Whether build writes and removes `target` of `gateway`: a target whose name starts with
+ * Whether build can own `target` of `gateway`: a target whose name starts with
  * {@link BOX_EGRESS_TARGET_PREFIX}, on the Box gateway of a runtime (a gateway with
- * `boundRuntime`), in a project with `"projectType": "box"`.
+ * `boundRuntime`), in a project with `"projectType": "box"`. Build owns such a target when the
+ * record in `agentcore/box-gateway-targets.json` lists it, or when the record has no entry for its
+ * gateway.
  */
 export function isBuildOwnedTarget(
   spec: { projectType?: string },
@@ -57,6 +60,29 @@ export function isBuildOwnedTarget(
     target.name.startsWith(BOX_EGRESS_TARGET_PREFIX)
   );
 }
+
+/**
+ * The folder, from the project root, that build stages the box of a box runtime in: the code
+ * folder of a CodeZip runtime, and the build context of a container runtime.
+ */
+function boxFolderOf(runtime: {
+  readonly build: string;
+  readonly codeLocation: string;
+  readonly buildContextPath?: string;
+}): string {
+  const folder =
+    runtime.build === "Container"
+      ? (runtime.buildContextPath ?? runtime.codeLocation)
+      : runtime.codeLocation;
+  const parts: string[] = [];
+  for (const part of folder.replace(/\\/g, "/").split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.length > 0 ? parts.join("/") : ".";
+}
+
 /** The suffix of each Box gateway name: the runtime `agent` gets the gateway `agent-box-egress`. */
 export const BOX_GATEWAY_SUFFIX = "-box-egress";
 /**
@@ -229,6 +255,27 @@ export const ProjectSpecSchema = z
     // A Box project keeps one Box gateway for each runtime. Without it, a deploy would delete the
     // deployed gateway, so every command stops here and prints the entry to add back.
     if (isBoxProject(spec)) {
+      // Build stages the box of each box runtime in .box-dist of its folder, so two in one folder
+      // would write one file twice.
+      const byFolder = new Map<string, string>();
+      for (const runtime of spec.runtimes) {
+        if (runtime.box === undefined) continue;
+        const folder = boxFolderOf(runtime);
+        const other = byFolder.get(folder);
+        if (other === undefined) {
+          byFolder.set(folder, runtime.name);
+          continue;
+        }
+        ctx.addIssue({
+          code: "custom",
+          message:
+            `Runtimes "${other}" and "${runtime.name}" both run in a box from the folder ` +
+            `${folder}, and build stages the box of each in ` +
+            `${folder === "." ? "" : `${folder}/`}.box-dist. ` +
+            "Give each runtime its own folder.",
+          path: ["runtimes"],
+        });
+      }
       const bound = new Set(spec.agentCoreGateways.map((gateway) => gateway.boundRuntime));
       for (const runtime of spec.runtimes) {
         if (bound.has(runtime.name)) continue;

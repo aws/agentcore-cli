@@ -9,6 +9,7 @@ import type { AddResourceInput, Project } from "../../handlers/project/types";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 import { BOX_RELEASE } from "./backends/boxRelease";
+import type { RecordFiles } from "./boxGatewayTargets";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { newProjectSpec } from "./templates/project";
 import { defaultLogTargetNotice } from "./runtimeProfile/rules/additions";
@@ -34,7 +35,7 @@ afterEach(async () => {
   );
 });
 
-function subject(json?: ReadWriteJson): FsProjectManager {
+function subject(json?: ReadWriteJson, recordFiles?: RecordFiles): FsProjectManager {
   return new FsProjectManager({
     logger: createSilentLogger(),
     identity: new TestIdentityClient(),
@@ -42,8 +43,19 @@ function subject(json?: ReadWriteJson): FsProjectManager {
     runner: async () => {},
     checkTool: async () => {},
     ...(json && { json }),
+    ...(recordFiles && { recordFiles }),
   });
 }
+
+/** A writer of the record of build's targets that refuses each write and each removal. */
+const refusingRecordWrites: RecordFiles = {
+  write: (path) => {
+    throw new Error(`the test refuses the write of ${path}`);
+  },
+  remove: (path) => {
+    throw new Error(`the test refuses the removal of ${path}`);
+  },
+};
 
 /** A JSON reader and writer that refuses each write of `specFile`, for each user, root too. */
 function refusingSpecWrites(specFile: string): ReadWriteJson {
@@ -157,6 +169,9 @@ async function existingProject(manager: FsProjectManager): Promise<Project> {
   return project;
 }
 
+/** The record of the gateway targets that build writes, `agentcore/box-gateway-targets.json`. */
+const recordOf = (project: Project) =>
+  join(project.rootPath, "agentcore", "box-gateway-targets.json");
 const specText = (project: Project) =>
   readFile(join(project.rootPath, "agentcore", "agentcore.json"), "utf8");
 /** The spec on disk, parsed, for a test that reads runtimes or gateway bindings. */
@@ -289,6 +304,26 @@ describe("agentcore create", () => {
     }[];
     expect(runtime?.containment).toBe(value);
     expect(runtime?.network).toEqual(network);
+  });
+
+  test("a Box template writes an empty entry for each Box gateway in the record of build's targets", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const project = await drain(
+      subject().create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": [],
+    });
   });
 
   test("templates that are not Box templates write no projectType and no gateway", () => {
@@ -457,6 +492,24 @@ describe("gateway targets in a Box project", () => {
     ]);
   });
 
+  test("add runtime adds an empty entry for its Box gateway to the record of build's targets", async () => {
+    const manager = subject();
+    const project = await createdProject(manager);
+    await writeFile(recordOf(project), '{\n  "agent-box-egress": ["egress-x"]\n}\n');
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-x"],
+      "search-box-egress": [],
+    });
+  });
+
   test("add runtime says that the new Box gateway sends its logs, and how to stop them", async () => {
     const manager = subject();
     const project = await createdProject(manager);
@@ -571,6 +624,32 @@ describe("gateway targets in a Box project", () => {
       "agent",
       "search",
     ]);
+  });
+
+  test("remove runtime drops its Box gateway from the record, so add runtime again writes an empty entry", async () => {
+    const manager = subject();
+    let project = await createdProject(manager, ["agent", "search"]);
+    await writeFile(
+      recordOf(project),
+      '{\n  "agent-box-egress": ["egress-a"],\n  "search-box-egress": ["egress-old"]\n}\n',
+    );
+
+    project = (await manager.removeResource(project, { resourceType: "runtime", name: "search" }))
+      .project;
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-a"],
+    });
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": ["egress-a"],
+      "search-box-egress": [],
+    });
   });
 
   test("add runtime replaces a policy file already beside the new profile with the CLI's", async () => {
@@ -748,6 +827,7 @@ describe("gateway targets in a Box project", () => {
     expect(messages).toContain(`writing box profile ${profile}`);
     expect(messages).not.toContain(boxGatewayLogsNotice(boxGatewaySpec("search").name));
     expect(await specText(project)).toBe(before);
+    expect(existsSync(recordOf(project))).toBe(false);
   });
 
   test("add runtime warns when the kept box profile is for another protocol", async () => {
@@ -961,7 +1041,9 @@ describe("gateway targets in a Box project", () => {
   test("remove all, then add runtime, adds a box runtime, as the project is still a Box project", async () => {
     const manager = subject();
     let project = await createdProject(manager);
+    await writeFile(recordOf(project), '{\n  "agent-box-egress": ["egress-old"]\n}\n');
     project = (await manager.removeAllResources(project)).project;
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({});
 
     await drain(
       manager.addResource(project, {
@@ -975,6 +1057,110 @@ describe("gateway targets in a Box project", () => {
       ["agent", { version: BOX_RELEASE.version }],
     ]);
     expect(spec.agentCoreGateways.map(({ boundRuntime }) => boundRuntime)).toEqual(["agent"]);
+    expect(JSON.parse(await readFile(recordOf(project), "utf8"))).toEqual({
+      "agent-box-egress": [],
+    });
+  });
+});
+
+describe("the record of build's targets and agentcore.json, when a write fails", () => {
+  const RECORD = '{\n  "agent-box-egress": ["egress-a"],\n  "search-box-egress": ["egress-s"]\n}\n';
+  const addSearch = (manager: FsProjectManager, project: Project) =>
+    drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+  const flows: [
+    string,
+    string[],
+    (manager: FsProjectManager, project: Project) => Promise<unknown>,
+  ][] = [
+    ["add runtime", ["agent"], addSearch],
+    [
+      "remove runtime",
+      ["agent", "search"],
+      (manager, project) =>
+        manager.removeResource(project, { resourceType: "runtime", name: "search" }),
+    ],
+    ["remove all", ["agent", "search"], (manager, project) => manager.removeAllResources(project)],
+  ];
+
+  test.each(flows)(
+    "%s keeps the record as it was when the write of agentcore.json fails",
+    async (_, runtimes, flow) => {
+      const project = await createdProject(subject(), runtimes);
+      const record = runtimes.length === 1 ? '{\n  "agent-box-egress": ["egress-a"]\n}\n' : RECORD;
+      await writeFile(recordOf(project), record);
+      const before = await specText(project);
+      const specFile = join(project.rootPath, "agentcore", "agentcore.json");
+
+      await expect(flow(subject(refusingSpecWrites(specFile)), project)).rejects.toThrow(
+        `the test refuses the write of ${specFile}`,
+      );
+
+      expect(await specText(project)).toBe(before);
+      expect(await readFile(recordOf(project), "utf8")).toBe(record);
+    },
+  );
+
+  test.each(flows)(
+    "%s keeps agentcore.json as it was when the write of the record fails",
+    async (_, runtimes, flow) => {
+      const project = await createdProject(subject(), runtimes);
+      const record = runtimes.length === 1 ? '{\n  "agent-box-egress": ["egress-a"]\n}\n' : RECORD;
+      await writeFile(recordOf(project), record);
+      const before = await specText(project);
+
+      await expect(flow(subject(undefined, refusingRecordWrites), project)).rejects.toThrow(
+        `the test refuses the write of ${recordOf(project)}`,
+      );
+
+      expect(await specText(project)).toBe(before);
+      expect(await readFile(recordOf(project), "utf8")).toBe(record);
+    },
+  );
+
+  test("remove all keeps the record and agentcore.json as they were when it cannot remove a key", async () => {
+    const project = await createdProject(subject(), ["agent", "search"]);
+    const spec = JSON.parse(await specText(project)) as { credentials?: unknown[] };
+    spec.credentials = [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }];
+    await writeFile(join(project.rootPath, "agentcore", "agentcore.json"), JSON.stringify(spec));
+    await writeFile(recordOf(project), RECORD);
+    // A folder in the place of .env.local makes the removal of the credential's key fail.
+    const envLocal = join(project.rootPath, "agentcore", ".env.local");
+    await rm(envLocal, { force: true });
+    await mkdir(envLocal);
+    const before = await specText(project);
+
+    await expect(subject().removeAllResources(project)).rejects.toThrow();
+
+    expect(await specText(project)).toBe(before);
+    expect(await readFile(recordOf(project), "utf8")).toBe(RECORD);
+  });
+
+  test("create writes the record before agentcore.json, so a failed record write leaves no project", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    await mkdir(join(directory, "example", "agentcore"), { recursive: true });
+    await writeFile(join(directory, "example", "agentcore", "box-gateway-targets.json"), "{}\n");
+
+    await expect(
+      drain(
+        subject().create({
+          name: "example",
+          skipInstall: true,
+          skipGit: true,
+          scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+            runtimeName: "agent",
+          }),
+        }),
+      ),
+    ).rejects.toThrow("File already exists");
+
+    expect(existsSync(join(directory, "example", "agentcore", "agentcore.json"))).toBe(false);
   });
 });
 

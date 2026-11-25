@@ -109,7 +109,7 @@ const ABSOLUTE_PATH_PATTERN = "(/[.]{0,2}[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)+";
 /**
  * The tools of @box/base that get the project's write grant: box gives each one its own grant,
  * so each lists the agent's `deny_write` folders as well. Taken from @box/base in the box release
- * that `boxRelease.json` pins (0.3.0, and 0.3.0-preview.1 for macOS), which has no tools: it
+ * that `boxRelease.json` pins (0.3.0), which has no tools: it
  * dropped `uname`, and refuses a
  * `[tool.uname]` table with no `command`. When the pin moves, check the tools of @box/base: box
  * refuses a CodeZip box profile if a tool it misses gets the project write grant.
@@ -364,25 +364,6 @@ const GEMINI: ApiKeyRoute = {
   providerVariable: "GEMINI_API_KEY",
 };
 const OPENAI_COMPATIBLE_ROUTE = "openai-compatible";
-
-/**
- * The `[egress.<name>]` routes `agentcore create` writes for a model provider's API key. Their key
- * is the project's model-provider credential, which `create` declares when it is given a key, or
- * else a provider variable that LiteLLM reads; build does not declare a credential for them.
- */
-export const MODEL_PROVIDER_EGRESS_ROUTES: ReadonlySet<string> = new Set([
-  OPENAI.name,
-  ANTHROPIC.name,
-  GEMINI.name,
-  OPENAI_COMPATIBLE_ROUTE,
-]);
-
-/** The provider variables a model-provider route reads its key from when `create` had no key. */
-export const MODEL_PROVIDER_KEY_VARIABLES: ReadonlySet<string> = new Set(
-  [OPENAI, ANTHROPIC, GEMINI].flatMap(({ providerVariable }) =>
-    providerVariable === undefined ? [] : [providerVariable],
-  ),
-);
 
 /**
  * The route the agent's model calls take when they carry an API key, or

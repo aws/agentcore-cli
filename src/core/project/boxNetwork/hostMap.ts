@@ -24,6 +24,7 @@ import {
   type BoxEgressSecret,
   type Destination,
 } from "./egress";
+import { findPath, pathTest, type PathTest } from "./pathSolver";
 import { AWS_METADATA_RULE_IDS } from "../templates/boxProfile";
 import { BOX_METADATA_RULE_IDS } from "./places";
 import {
@@ -86,7 +87,12 @@ export interface MappedHost {
   readonly forbiddenBy: readonly string[];
   /** The rules that limit what Box allows to the host, which Box enforces and a gateway does not. */
   readonly enforcedByBox: readonly string[];
-  /** Whether Box allows at least one sample request to the host. */
+  /**
+   * The permits whose path tests are too many for build to check together. They keep an otherwise
+   * unreachable host reachable.
+   */
+  readonly uncheckedBy: readonly string[];
+  /** Whether Box allows at least one sample request to the host, or a permit of `uncheckedBy` can. */
   readonly reachable: boolean;
 }
 
@@ -200,10 +206,6 @@ class HostMapBuilder {
     const hosts = [...this.nodes.values()].map((node) => decide(node, live));
     return { hosts, failures: this.failures, websocketOnly: this.websocketOnly };
   }
-
-  // ---------------------------------------------------------------------------
-  // Sources
-  // ---------------------------------------------------------------------------
 
   /** Adds the entry's nodes, or records why it fails and returns the destinations it names. */
   private addEgressEntry(name: string, raw: unknown): Destination[] | undefined {
@@ -356,6 +358,15 @@ class HostMapBuilder {
           let port: number;
           if (typeof pinned === "number") {
             if (!atoms("port").every((a) => holds(a, pinned)) || pinned === 80) continue;
+            if (!Number.isInteger(pinned) || pinned < 1 || pinned > 65535) {
+              this.ruleFailure(
+                rule,
+                "INVALID_PORT",
+                `allows ${host} on port ${pinned}, which is not a port. Name a port from 1 to ` +
+                  "65535, such as context.input.port == 443.",
+              );
+              continue;
+            }
             port = pinned;
           } else if (atoms("port").every((a) => holds(a, 443))) {
             port = 443;
@@ -387,10 +398,6 @@ class HostMapBuilder {
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Rules
-  // ---------------------------------------------------------------------------
 
   /** The statement's network clauses, or `undefined` for a rule that decides no host. */
   private classify(statement: Statement, order: number): Rule | undefined {
@@ -599,24 +606,44 @@ function decide(node: Node, policy: Policy): MappedHost {
   for (const c of policy.connectForbids) {
     if (c !== connectForbid && possible(c.clause, node)) enforced.set(c.ruleId, c.order);
   }
-  for (const sample of samples) {
+  const consider = (sample: SampleRequest) => {
     const permits = policy.requestPermits.filter((c) => possible(c.clause, node, sample));
-    if (permits.length === 0) continue;
+    if (permits.length === 0) return;
     if (connectForbid) {
       forbiddenBy.set(connectForbid.ruleId, connectForbid.order);
-      continue;
+      return;
     }
-    if (!connectPermit) continue;
+    if (!connectPermit) return;
     const forbid = policy.requestForbids.find((c) => definite(c.clause, node, sample));
     if (forbid) {
       forbiddenBy.set(forbid.ruleId, forbid.order);
-      continue;
+      return;
     }
     allowed.push({ ...sample, ruleId: permits[0]!.ruleId });
     for (const p of permits) if (limits(p.clause)) enforced.set(p.ruleId, p.order);
     for (const f of policy.requestForbids) {
       if (possible(f.clause, node, sample)) enforced.set(f.ruleId, f.order);
     }
+  };
+  for (const sample of samples) consider(sample);
+  let checked = samples.length;
+  const unchecked = new Map<string, number>();
+  if (allowed.length === 0 && !connectForbid && connectPermit) {
+    const solved = solvedSamples(node, policy);
+    checked += solved.samples.length;
+    for (const sample of solved.samples) consider(sample);
+    if (allowed.length === 0) {
+      for (const c of solved.undecided) unchecked.set(c.ruleId, c.order);
+      for (const [ruleId, order] of unchecked) enforced.set(ruleId, order);
+      for (const f of policy.requestForbids) {
+        if (possible(offPath(f.clause), node)) enforced.set(f.ruleId, f.order);
+      }
+    }
+  }
+  if (allowed.length > 0 || unchecked.size > 0) {
+    const connects = policy.connectPermits.filter((c) => possible(c.clause, node));
+    const open = new Set(connects.filter((c) => !limitsConnection(c.clause)).map((c) => c.ruleId));
+    for (const c of connects) if (!open.has(c.ruleId)) enforced.set(c.ruleId, c.order);
   }
   for (const [ruleId, order] of forbiddenBy) enforced.set(ruleId, order);
   // A metadata forbid on an address could hold for any host before DNS resolution, so it would
@@ -631,11 +658,67 @@ function decide(node: Node, policy: Policy): MappedHost {
     authority: hostKey(node.host, node.port),
     ...(node.entry && { entry: node.entry }),
     namedBy: node.namedBy,
-    decision: { samples: samples.length, allowed },
+    decision: { samples: checked, allowed },
     forbiddenBy: inOrder(forbiddenBy),
     enforcedByBox: inOrder(enforced),
-    reachable: allowed.length > 0,
+    uncheckedBy: inOrder(unchecked),
+    reachable: allowed.length > 0 || unchecked.size > 0,
   };
+}
+
+/** The clause without its path tests. */
+function offPath(clause: Clause): Clause {
+  return { ...clause, fields: clause.fields.filter((atom) => atom.field !== "path") };
+}
+
+/**
+ * A sample request for each routable method on which a permit allows a path that no forbid
+ * surely denies, found from the path tests of the rules, and each permit clause whose path tests
+ * are too many to search.
+ */
+function solvedSamples(
+  node: Node,
+  policy: Policy,
+): { samples: SampleRequest[]; undecided: RuleClause[] } {
+  const samples: SampleRequest[] = [];
+  const undecided: RuleClause[] = [];
+  const tests = (clause: Clause): PathTest[] | undefined => {
+    const found: PathTest[] = [];
+    for (const atom of clause.fields) {
+      if (atom.field !== "path") continue;
+      const test = pathTest(atom);
+      if (test === false) return undefined;
+      if (test !== true) found.push(test);
+    }
+    return found;
+  };
+  for (const method of ROUTABLE_METHODS) {
+    const on = { method, path: "/" };
+    const excluded = policy.requestForbids.flatMap(({ clause }) => {
+      if (!definite(offPath(clause), node, on)) return [];
+      const group = tests(clause);
+      return group === undefined ? [] : [group];
+    });
+    for (const permit of policy.requestPermits) {
+      if (!possible(offPath(permit.clause), node, on)) continue;
+      const required = tests(permit.clause);
+      if (required === undefined) continue;
+      const found = findPath(required, excluded, SENTINEL_SEGMENT);
+      if (found.kind === "undecided" && !undecided.includes(permit)) undecided.push(permit);
+      if (found.kind !== "path") continue;
+      samples.push({ method, path: found.path });
+      break;
+    }
+  }
+  return { samples, undecided };
+}
+
+/** Whether a connection permit clause allows only some connections to its host: by address, or more. */
+function limitsConnection(clause: Clause): boolean {
+  return (
+    clause.opaque.length > 0 ||
+    clause.fields.some((atom) => atom.field === "ip4" || atom.field === "ip6")
+  );
 }
 
 /** Whether a permit clause allows only some requests to its host: by method, path, or more. */

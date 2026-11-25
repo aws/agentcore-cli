@@ -8,21 +8,23 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync 
 import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { EnvLocalEntry } from "../../handlers/project/types";
+import { credentialEnvironmentVariableNames } from "../../projectSchemas/credential";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../projectSchemas/project";
 import {
+  BOX_GATEWAY_TARGETS_FILE,
   boxGatewayOf,
   gatewayTargetFor,
   hostKey,
-  isManagedTarget,
   parseEndpoint,
   type BoxNetwork,
   type BoxNetworkHost,
 } from "./boxNetwork";
-import { agentCoreDataPlaneHost } from "../../handlers/project/shortcuts";
+import { agentCoreDataPlaneHost } from "./boxNetwork/egress";
 import { projectGatewayTargetFor } from "./boxNetwork/projectGateways";
 import { addBoxGatewayTargets, BOX_BEDROCK_POLICY_FILE, boxBedrockPolicy } from "./boxMemory";
 import type { ReadEnvFileOptions } from "../../io/envFile";
+import { boxGatewayTargetsText, readBoxGatewayTargets } from "./boxGatewayTargets";
 import {
   boxKeyVariables,
   planBoxProfileCredentials,
@@ -78,10 +80,14 @@ export interface BoxNetworkEdits {
   /** Changes to the copy of agentcore.json, in order; each returns its step messages. */
   readonly spec?: readonly ((spec: ProjectSpec) => string[])[];
   readonly files?: readonly BoxNetworkFile[];
+  /** Files that depend on the copy of agentcore.json once every writer changed it. */
+  readonly filesAfter?: (spec: ProjectSpec) => readonly BoxNetworkFile[];
   /** Entries for `.env.local`; each replaces the value it holds under that key. */
   readonly envLocal?: readonly EnvLocalEntry[];
   /** Messages about what the writer could not do, for the user to act on. */
   readonly warnings?: readonly string[];
+  /** Warnings on the copy of agentcore.json once every writer changed it. */
+  readonly warningsAfter?: (spec: ProjectSpec) => readonly string[];
 }
 
 /** What a writer reads besides the models: the project, and where build looks for each key. */
@@ -142,12 +148,16 @@ export function boxNetworkEdits(
   const files: BoxNetworkFile[] = [];
   const envLocal: EnvLocalEntry[] = [];
   const warnings: string[] = [];
-  for (const writer of writers) {
-    const edits = writer.edits(networks, context);
+  const all = writers.map((writer) => writer.edits(networks, context));
+  for (const edits of all) {
     for (const change of edits.spec ?? []) messages.push(...change(spec));
     files.push(...(edits.files ?? []));
     envLocal.push(...(edits.envLocal ?? []));
     warnings.push(...(edits.warnings ?? []));
+  }
+  for (const edits of all) {
+    files.push(...(edits.filesAfter?.(spec) ?? []));
+    warnings.push(...(edits.warningsAfter?.(spec) ?? []));
   }
   const changedFields = (Object.keys(spec) as (keyof ProjectSpec)[]).filter(
     (field) => !isDeepStrictEqual(spec[field], context.spec[field]),
@@ -206,6 +216,7 @@ export const credentialsWriter: BoxNetworkWriter = {
         ...boxTelemetrySecretEnvEntries(boxTelemetrySecrets(spec.name, networks), env),
       ],
       warnings: plan.warnings,
+      warningsAfter: (written) => unsentTargetWarnings(written, networks, plan.unprovisioned),
     };
   },
 };
@@ -229,22 +240,69 @@ export function boxKeyReads(
   };
 }
 
+/**
+ * Each `env://` route of the networks once, by its name and its variable: two runtimes can read
+ * one credential from its own variable and from one other, and build copies the other's key.
+ */
 function uniqueRoutes(networks: readonly BoxNetwork[]): BoxEnvRoute[] {
   const routes: BoxEnvRoute[] = [];
   for (const route of networks.flatMap((network) => network.envRoutes)) {
-    if (!routes.some((other) => other.route === route.route)) routes.push(route);
+    const seen = routes.some(
+      (other) => other.route === route.route && other.variable === route.variable,
+    );
+    if (!seen) routes.push(route);
   }
   return routes;
 }
 
-/** The `egress-` targets of each Box gateway, which build adds, rewrites, and removes. */
+/**
+ * The targets of each Box gateway that build owns, which it adds, rewrites, and removes, and the
+ * record of the targets it writes ({@link BOX_GATEWAY_TARGETS_FILE}).
+ */
 export const gatewayTargetsWriter: BoxNetworkWriter = {
   name: "gateway targets",
-  writes: (networks) => networks.map(({ gateway }) => ({ kind: "gatewayTargets", gateway })),
-  edits: (networks) => ({
-    spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
-  }),
+  writes: (networks) => [
+    ...networks.map(({ gateway }) => ({ kind: "gatewayTargets" as const, gateway })),
+    ...(networks.length > 0 ? [{ kind: "file" as const, path: BOX_GATEWAY_TARGETS_FILE }] : []),
+  ],
+  edits: (networks, { projectRoot }) => {
+    if (networks.length === 0) return {};
+    // readBoxNetworks has refused a record that is not valid, so this one reads.
+    const before = readBoxGatewayTargets(projectRoot) ?? {};
+    return {
+      spec: networks.map((network) => (spec: ProjectSpec) => writeGatewayTargets(spec, network)),
+      filesAfter: (written) => [
+        {
+          path: BOX_GATEWAY_TARGETS_FILE,
+          text: boxGatewayTargetsText(recordOf(written, networks, before)),
+        },
+      ],
+    };
+  },
 };
+
+/**
+ * The record of the targets build writes: for each Box gateway of a model, the targets of the
+ * gateway in `spec`, agentcore.json as the writers changed it, that the model owns
+ * (`managedTargets`). The entry of each other gateway of `before` stays while `spec` has the
+ * gateway, so a runtime with no model in one build keeps what build owns.
+ */
+function recordOf(
+  spec: ProjectSpec,
+  networks: readonly BoxNetwork[],
+  before: Readonly<Record<string, readonly string[]>>,
+): Record<string, readonly string[]> {
+  const gateways = new Set(spec.agentCoreGateways.map(({ name }) => name));
+  const record: Record<string, readonly string[]> = Object.fromEntries(
+    Object.entries(before).filter(([gateway]) => gateways.has(gateway)),
+  );
+  for (const network of networks) {
+    record[network.gateway] = (boxGatewayOf(spec, network.runtime)?.targets ?? []).flatMap(
+      ({ name }) => (network.managedTargets.has(name) ? [name] : []),
+    );
+  }
+  return record;
+}
 
 /**
  * Sets the build-owned targets of the network's Box gateway: a managed target that a host or a
@@ -256,8 +314,9 @@ export const gatewayTargetsWriter: BoxNetworkWriter = {
 function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const gateway = boxGatewayOf(spec, network.runtime);
   if (!gateway) return [];
+  const managed = network.managedTargets;
   const served = network.hosts.flatMap((host) =>
-    host.target === undefined || !isManagedTarget({ name: host.target })
+    host.target === undefined || !managed.has(host.target)
       ? []
       : [{ ...host, target: host.target }],
   );
@@ -278,7 +337,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
   const gatewayName = `'${gateway.name}'`;
   const reached = network.projectGateways ?? [];
   for (const target of existing) {
-    if (!isManagedTarget(target)) {
+    if (!managed.has(target.name)) {
       targets.push(target);
       continue;
     }
@@ -338,17 +397,60 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
     );
   }
   for (const host of unsent) {
+    if (!existing.some(({ name }) => name === host.target)) continue;
     const auth = undeclaredKey(spec, host)!;
-    const removed = existing.some(({ name }) => name === host.target);
     messages.push(
-      `${removed ? "removing" : "not adding"} gateway target '${host.target}' of ${gatewayName} ` +
-        `for ${host.authority}: it sends the key of env://${auth.variable}, and agentcore.json ` +
-        `has no API key credential '${auth.credentialName}' to hold it`,
+      `removing gateway target '${host.target}' of ${gatewayName} for ${host.authority}: it ` +
+        `sends the key of env://${auth.variable}, and agentcore.json has no API key credential ` +
+        `'${auth.credentialName}' to hold it`,
     );
   }
   if (isDeepStrictEqual(targets, existing)) return messages;
   gateway.targets = targets;
   return messages;
+}
+
+/**
+ * A warning for each host of `networks` that gets no gateway target because no API key credential
+ * of `spec`, agentcore.json as the writers changed it, holds the key its target sends: the agent
+ * cannot reach the host on AgentCore Runtime. It says why, from the credential planner's
+ * `unprovisioned`, and what to do.
+ */
+function unsentTargetWarnings(
+  spec: ProjectSpec,
+  networks: readonly BoxNetwork[],
+  unprovisioned: ReadonlyMap<string, string>,
+): string[] {
+  const warnings: string[] = [];
+  for (const { hosts, managedTargets } of networks)
+    for (const host of hosts) {
+      if (host.target === undefined || !managedTargets.has(host.target)) continue;
+      const auth = undeclaredKey(spec, host);
+      const source = host.sources.find(
+        (candidate): candidate is Exclude<typeof candidate, { kind: "rule" }> =>
+          candidate.kind !== "rule",
+      );
+      if (auth === undefined || source === undefined) continue;
+      const [table, route] =
+        source.kind === "entry" ? ["egress", source.egressEntry] : ["mcp", source.mcpEntry];
+      // The model names a credential from agentcore.json before this build adds to it.
+      const holder = spec.credentials.find((credential) =>
+        credentialEnvironmentVariableNames(credential).includes(auth.variable),
+      );
+      const why =
+        unprovisioned.get(route) ??
+        (holder
+          ? `env://${auth.variable} is the variable of the credential '${holder.name}', which ` +
+            "this build adds to agentcore.json. Build again, and the next build gives the host " +
+            "its target."
+          : `agentcore.json has no API key credential '${auth.credentialName}' to hold the key ` +
+            `of env://${auth.variable}.`);
+      warnings.push(
+        `${host.authority}: build gives [${table}.${route}] no gateway target, so the agent ` +
+          `cannot reach this host on AgentCore Runtime. ${why}`,
+      );
+    }
+  return warnings;
 }
 
 /**

@@ -75,7 +75,10 @@ flags: for templates that take a model provider (`agent-python-strands` and its 
 variant, `a2a-python-strands`, `agui-python-strands`, `agent-typescript-strands`) the wizard asks
 for the provider (Amazon Bedrock, Anthropic, OpenAI, an OpenAI-compatible endpoint, Gemini, or
 LiteLLM, which is Python-only), the model id, and an API-key file. The API key is kept in
-`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy.
+`agentcore/.env.local` and provisioned as an AgentCore Identity credential on deploy. For a Box
+template created with no API key, build reads the provider's key (such as `OPENAI_API_KEY`) from
+your shell or `agentcore/.env.local`, adds a credential such as `openai`, and deploy provisions
+that key in AgentCore Identity.
 
 To bring your own code into a project instead, add a runtime for it:
 
@@ -217,8 +220,7 @@ box profile; build and deploy stop without them. Build derives the AgentCore Run
 each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
 release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
 or account is needed to download it. Use that release's build for your machine for `agentcore dev`
-and the profile checks of `build`: an older box cannot read the profiles that this CLI writes. On
-macOS, use the build of `v0.3.0-preview.1` instead: the macOS build of `v0.3.0` does not run.
+and the profile checks of `build`: an older box cannot read the profiles that this CLI writes.
 
 `src/core/project/backends/boxRelease.json` pins the Linux build of box that ships to AgentCore
 Runtime, with its repository, version and SHA-256. It also pins the macOS arm64 build, which the e2e

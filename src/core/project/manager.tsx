@@ -62,10 +62,21 @@ import { resolveRegion } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
 import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
 import {
+  addBoxGatewaysToRecord,
+  BOX_GATEWAY_TARGETS_FILE,
+  FS_RECORD_FILES,
+  readBoxGatewayTargets,
+  removeBoxGatewaysFromRecord,
+  replaceRecord,
+  type RecordFiles,
+  type RestoreRecord,
+} from "./boxGatewayTargets";
+import {
   BOX_NETWORK_WRITERS,
   boxKeyReads,
   boxNetworkEdits,
   writeBoxNetworkFiles,
+  type BoxNetworkFile,
 } from "./boxNetworkWriters";
 import { boxCodeZipFiles, createProjectTree } from "./templates/project";
 import {
@@ -106,7 +117,11 @@ import {
   type ManagedBy,
 } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
-import { AgentCoreGatewaySchema } from "../../projectSchemas/gateway";
+import {
+  type AgentCoreGateway,
+  AgentCoreGatewaySchema,
+  type AgentCoreGatewayTarget,
+} from "../../projectSchemas/gateway";
 import {
   CredentialSchema,
   credentialEnvVarName,
@@ -453,6 +468,8 @@ type ProjectManagerConfig = {
   runner?: ProcessRunner;
   checkTool?: typeof requireTool;
   json?: ReadWriteJson;
+  /** How the record of build's targets is written; the file on disk by default. */
+  recordFiles?: RecordFiles;
   /**
    * The environment the CDK backend reads HOME (the box cache) from, and build reads box `env://`
    * egress secrets from; process.env by default.
@@ -488,6 +505,7 @@ export class FsProjectManager implements ProjectManager {
   private readonly runner: ProcessRunner;
   private readonly checkTool: typeof requireTool;
   private readonly json: ReadWriteJson;
+  private readonly recordFiles: RecordFiles;
   private readonly backends: Partial<Record<ManagedBy, ProjectBackend>>;
   private readonly resolveAccount: (region: string) => Promise<string>;
   private readonly processEnv: NodeJS.ProcessEnv;
@@ -502,6 +520,7 @@ export class FsProjectManager implements ProjectManager {
     this.runner = config.runner ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.json = config.json ?? new FsReadWriteJson({ logger: config.logger });
+    this.recordFiles = config.recordFiles ?? FS_RECORD_FILES;
     this.backends = config.backends ?? {
       CDK: new CdkBackend({
         logger: config.logger,
@@ -1133,17 +1152,30 @@ export class FsProjectManager implements ProjectManager {
     yield { type: "step", message: `updating project spec file at '${agentCoreSpecPath}'` };
 
     let newProjectSpec: z.infer<typeof ProjectSpecSchema>;
+    let restoreRecord: RestoreRecord | undefined;
     try {
       const newSpecParseResult = ProjectSpecSchema.safeParse(projectSpec);
       if (!newSpecParseResult.success)
         throw new ProjectStateError(z.prettifyError(newSpecParseResult.error), {
           cause: newSpecParseResult.error,
         });
+      // Build owns no target of a new Box gateway yet: an empty entry in the record says so. The
+      // record changes first, and goes back when agentcore.json cannot take the gateway.
+      if (input.resourceType === "runtime") {
+        restoreRecord = addBoxGatewaysToRecord(
+          project.rootPath,
+          newSpecParseResult.data.agentCoreGateways.flatMap(({ name, boundRuntime }) =>
+            boundRuntime === input.resourceConfig.name ? [name] : [],
+          ),
+          this.recordFiles,
+        );
+      }
       newProjectSpec = await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
       this.logger.warn(
         `could not commit the spec update to ${agentCoreSpecPath}; attempting best-effort cleanup of staged changes`,
       );
+      this.restoreRecord(restoreRecord);
       await Promise.all([
         this.discardStaged(scaffoldedPaths),
         envFile?.rollback().catch((e) => {
@@ -1175,9 +1207,11 @@ export class FsProjectManager implements ProjectManager {
         newProjectSpec,
         newProjectSpec.runtimes.filter(({ name }) => name === added),
       );
-      yield* boxGatewayLogsWarnings(
-        newProjectSpec.agentCoreGateways.filter(({ boundRuntime }) => boundRuntime === added),
+      const boxGateways = newProjectSpec.agentCoreGateways.filter(
+        ({ boundRuntime }) => boundRuntime === added,
       );
+      yield* boxGatewayLogsWarnings(boxGateways);
+      if (restoreRecord) yield { type: "step", message: `writing ${BOX_GATEWAY_TARGETS_FILE}` };
       // A new boxed runtime cannot call a CUSTOM_JWT gateway that is in the project already.
       const runtime = newProjectSpec.runtimes.find(({ name }) => name === added);
       if (
@@ -1196,6 +1230,18 @@ export class FsProjectManager implements ProjectManager {
       ...project,
       spec: newProjectSpec,
     };
+  }
+
+  /** Puts the record of build's targets back after a failed spec write; a failure is logged. */
+  private restoreRecord(restore: RestoreRecord | undefined): void {
+    try {
+      restore?.();
+    } catch (e) {
+      const error = AgentCoreCLIError.fromError(e);
+      this.logger
+        .child({ errorName: error.name, errorMessage: error.message })
+        .warn(`failed to restore ${BOX_GATEWAY_TARGETS_FILE}`);
+    }
   }
 
   /** Best-effort removal of paths an add created; failures are logged, not thrown. */
@@ -1338,8 +1384,18 @@ export class FsProjectManager implements ProjectManager {
       removed = newResources.length !== existingResources.length;
       newSpec = { ...existingProjectSpec, [projectSpecKey]: newResources };
       // Build writes a target on each Box gateway for each other gateway of the project. Such a
-      // target goes with its gateway; a target of the user's that names it stays, and fails.
+      // target goes with its gateway. A target of the user's that names it stays: the schema does
+      // not check an egress- target on a Box gateway, so the next deploy stops at synth because
+      // the project has no gateway of that name.
+      // Build owns the targets that the record lists, or by the egress- rule with no record.
       if (input.resourceType === "gateway" && removed) {
+        const record = readBoxGatewayTargets(project.rootPath);
+        // The record, when it names the Box gateway, says which of its targets build owns.
+        const owns = (gateway: AgentCoreGateway, target: AgentCoreGatewayTarget) =>
+          isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
+          (record && Object.hasOwn(record, gateway.name)
+            ? record[gateway.name]!.includes(target.name)
+            : true);
         newSpec = {
           ...(newSpec as object),
           agentCoreGateways: existingProjectSpec.agentCoreGateways
@@ -1347,11 +1403,7 @@ export class FsProjectManager implements ProjectManager {
             .map((gateway) => ({
               ...gateway,
               targets: gateway.targets.filter(
-                (target) =>
-                  !(
-                    isBuildOwnedTarget(existingProjectSpec, gateway, target) &&
-                    target.passthrough?.gateway === input.name
-                  ),
+                (target) => !(owns(gateway, target) && target.passthrough?.gateway === input.name),
               ),
             })),
         };
@@ -1393,7 +1445,14 @@ export class FsProjectManager implements ProjectManager {
       }
     }
 
-    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    // A Box gateway that goes takes its entry in the record of build's targets with it.
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile, () =>
+      removeBoxGatewaysFromRecord(
+        project.rootPath,
+        removedGateways.map(({ name }) => name),
+        this.recordFiles,
+      ),
+    );
     // Build and deploy generate the runtime's .box/<name>/aws/ folder, so it goes with the runtime.
     // Its .box/<name>/local/ profile is the user's, as its code folder is, so it stays.
     if (input.resourceType === "runtime") {
@@ -1449,7 +1508,13 @@ export class FsProjectManager implements ProjectManager {
       payments: undefined,
     };
 
-    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile);
+    const newProjectSpec = await this.commitSpec(agentCoreSpecPath, newSpec, envFile, () =>
+      removeBoxGatewaysFromRecord(
+        project.rootPath,
+        existingProjectSpec.agentCoreGateways.map(({ name }) => name),
+        this.recordFiles,
+      ),
+    );
 
     return {
       project: { ...project, spec: newProjectSpec },
@@ -1457,21 +1522,27 @@ export class FsProjectManager implements ProjectManager {
     };
   }
 
-  // Validates and writes an updated spec; a failure rolls back any .env.local
-  // edit staged for the same removal so the two files stay consistent.
+  /**
+   * Writes `newSpec` to agentcore.json. `changeRecord` changes the record of build's targets just
+   * before the write. When either fails, the record and `envFile` go back to what they were.
+   */
   private async commitSpec(
     agentCoreSpecPath: string,
     newSpec: unknown,
     envFile: EnvLocalFile | undefined,
+    changeRecord?: () => RestoreRecord | undefined,
   ): Promise<z.infer<typeof ProjectSpecSchema>> {
+    let restoreRecord: RestoreRecord | undefined;
     try {
       const newSpecParseResult = ProjectSpecSchema.safeParse(newSpec);
       if (!newSpecParseResult.success)
         throw new InputValidationError(z.prettifyError(newSpecParseResult.error), {
           cause: newSpecParseResult.error,
         });
+      restoreRecord = changeRecord?.();
       return await this.json.write(agentCoreSpecPath, newSpecParseResult.data);
     } catch (err) {
+      this.restoreRecord(restoreRecord);
       await envFile?.rollback().catch((e) => {
         const error = AgentCoreCLIError.fromError(e);
         this.logger
@@ -1809,19 +1880,30 @@ export class FsProjectManager implements ProjectManager {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));
     }
     const envLocal = new EnvLocalFile(project.rootPath);
-    const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, {
+    const context = {
       spec: project.spec,
       projectRoot: project.rootPath,
       env: this.processEnv,
       envLocal: await envLocal.read(boxKeyReads(networks, project.spec, this.processEnv)),
-    });
+    };
+    const edits = boxNetworkEdits(BOX_NETWORK_WRITERS, networks, context);
     const messages = [...edits.messages];
-    let result = project;
+    for (const file of edits.files) {
+      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
+      if ("remove" in file) {
+        if (exists) messages.push(`removing ${file.path}`);
+      } else if (!exists) {
+        messages.push(`writing ${file.path}`);
+      }
+    }
+    // agentcore.json is read and patched first, so a read or a schema failure writes nothing.
+    // Only the fields a writer changed are set, so every other field keeps its value and place.
+    // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
+    // their changed fields, so schema defaults are not written into the user's other entries.
+    const specPath = this.getProjectSpecPath(project);
+    let patched:
+      { updated: Record<string, unknown>; spec: z.infer<typeof ProjectSpecSchema> } | undefined;
     if (edits.specChanged) {
-      // Only the fields a writer changed are set, so every other field keeps its value and place.
-      // In the gateways, credentials, and runtimes, only the entries a writer changed, and only
-      // their changed fields, so schema defaults are not written into the user's other entries.
-      const specPath = this.getProjectSpecPath(project);
       const raw = await this.json.read(specPath, z.record(z.string(), z.unknown()));
       const changes = edits.changedFields.map((field) => [
         field,
@@ -1834,18 +1916,27 @@ export class FsProjectManager implements ProjectManager {
       if (!parsed.success) {
         throw new ProjectStateError(z.prettifyError(parsed.error), { cause: parsed.error });
       }
-      await this.json.write(specPath, updated);
-      result = { ...project, spec: parsed.data };
+      patched = { updated, spec: parsed.data };
     }
-    for (const file of edits.files) {
-      const exists = existsSync(join(project.rootPath, ...file.path.split("/")));
-      if ("remove" in file) {
-        if (exists) messages.push(`removing ${file.path}`);
-      } else if (!exists) {
-        messages.push(`writing ${file.path}`);
+    // The record of the targets build owns changes with the gateway targets: it is written just
+    // before agentcore.json, and goes back when agentcore.json cannot take the targets.
+    const record = edits.files.find(
+      (file): file is Extract<BoxNetworkFile, { text: string }> =>
+        file.path === BOX_GATEWAY_TARGETS_FILE && "text" in file,
+    );
+    const files = edits.files.filter((file) => file !== record);
+    const restoreRecord = record && replaceRecord(project.rootPath, record.text, this.recordFiles);
+    let result = project;
+    if (patched) {
+      try {
+        await this.json.write(specPath, patched.updated);
+      } catch (err) {
+        this.restoreRecord(restoreRecord);
+        throw err;
       }
+      result = { ...project, spec: patched.spec };
     }
-    writeBoxNetworkFiles(project.rootPath, edits.files);
+    writeBoxNetworkFiles(project.rootPath, files);
     if (edits.envLocal.length > 0) {
       // Box credential keys follow their route's variable, so a rotated key replaces the stored one.
       const { written } = await envLocal.upsert([...edits.envLocal]);

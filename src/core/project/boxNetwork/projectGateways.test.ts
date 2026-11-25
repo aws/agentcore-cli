@@ -128,6 +128,7 @@ describe("the box on PATH", () => {
         hosts: [],
         projectGateways: [gateway],
         telemetry: [],
+        ruleIds: new Set(),
         places: profileKeyPlaces(local, ".box/profile.toml"),
       });
       const runtimeProfile = apply(parse(local) as TomlTable, context).table;

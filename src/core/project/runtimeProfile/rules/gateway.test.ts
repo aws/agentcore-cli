@@ -101,6 +101,7 @@ function contextOf(
   hosts: BoxNetworkHost[],
   targets: AgentCoreGatewayTarget[] = [],
   region = "us-west-2",
+  ruleIds: ReadonlySet<string> = new Set(),
 ) {
   return runtimeProfileContext({
     spec: project(targets),
@@ -110,6 +111,7 @@ function contextOf(
     gateway: { name: GATEWAY, targets },
     hosts,
     telemetry: [],
+    ruleIds,
     places: profileKeyPlaces(text, PROFILE),
   });
 }
@@ -120,8 +122,9 @@ function gateway(
   hosts: BoxNetworkHost[],
   targets: AgentCoreGatewayTarget[] = [],
   region?: string,
+  ruleIds?: ReadonlySet<string>,
 ) {
-  return apply(parse(text) as TomlTable, contextOf(text, hosts, targets, region));
+  return apply(parse(text) as TomlTable, contextOf(text, hosts, targets, region, ruleIds));
 }
 
 /**
@@ -262,6 +265,49 @@ describe("the gateway rule", () => {
     );
 
     expect(Object.keys(table.egress as TomlTable).sort()).toEqual(["egress-orders", "orders"]);
+  });
+
+  describe("names no route so that box adds a rule with the @id of a rule of the policy", () => {
+    test("for an entry whose route takes the name of its target", () => {
+      const { table } = gateway(
+        '[egress.api]\ndestinations = ["api.example.com"]\n',
+        [host("api.example.com", entry("api", "api.example.com"), "egress-api")],
+        [passthrough("api", "https://orders.example.com")],
+        undefined,
+        new Set(["route_egress-api_request"]),
+      );
+
+      // The user's own target `api` keeps the route `api`.
+      expect(Object.keys(table.egress as TomlTable)).toEqual(["egress-api-2", "api"]);
+      expect(table.egress).toMatchObject({
+        "egress-api-2": { backends: [{ url: "${{ inputs.gateway.url }}/egress-api" }] },
+      });
+    });
+
+    test("for each other host of an entry, and past a name that another route has", () => {
+      const { table } = gateway(
+        '[egress.models]\ndestinations = ["one.example.com", "two.example.com"]\n' +
+          '[egress.egress-models-two-2]\ndestinations = ["three.example.com"]\n',
+        [
+          host("one.example.com", entry("models", "one.example.com"), "egress-models-one"),
+          host("two.example.com", entry("models", "two.example.com"), "egress-models-two"),
+          host(
+            "three.example.com",
+            entry("egress-models-two-2", "three.example.com"),
+            "egress-egress-models-two-2",
+          ),
+        ],
+        [],
+        undefined,
+        new Set(["route_egress-models-two_connect"]),
+      );
+
+      expect(Object.keys(table.egress as TomlTable)).toEqual([
+        "models",
+        "egress-models-two-3",
+        "egress-models-two-2",
+      ]);
+    });
   });
 
   test("gives each host of an entry with several destinations its own route, signed for the Runtime's region and not the build region", () => {
@@ -635,6 +681,7 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         gateway: { name: GATEWAY, targets },
         hosts: network.hosts,
         telemetry: [],
+        ruleIds: new Set(),
         places: profileKeyPlaces(text, PROFILE),
       }),
     );
@@ -646,6 +693,22 @@ describe("the gateway rule and the Runtime renderer it replaced", () => {
         ([, entry]) => (entry as { type?: unknown }).type === "http",
       ),
     );
+
+  test("give a route a free name when a rule of the policy has the @id of its route rule", () => {
+    const own =
+      '@id("route_egress-models-api-two-example-com_request")\n' +
+      'permit (principal, action == Box::Action::"http:request", resource) when { ' +
+      'context.input.host == "api.two.example.com" };\n';
+    const { network } = bothProfiles(project(TARGETS, ["agentMemory"]), {
+      ...FIXTURE,
+      policy: FIXTURE.policy + own,
+    });
+
+    expect(network.failures).toEqual([]);
+    const keys = Object.keys(network.runtimeProfile?.egress as TomlTable);
+    expect(keys).toContain("egress-models-api-two-example-com-2");
+    expect(keys).not.toContain("egress-models-api-two-example-com");
+  });
 
   test("give the same [egress] and HTTP [mcp] tables on the first build", () => {
     const { network, derived } = bothProfiles(project(TARGETS, ["agentMemory"]));
