@@ -5,7 +5,11 @@
  * it.
  */
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
+import type {
+  AgentCoreGateway,
+  AgentCoreGatewayTarget,
+  OutboundAuth,
+} from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
@@ -52,7 +56,8 @@ export { BOX_GATEWAY_TARGETS_FILE };
 /** How the gateway authenticates its requests to a host. */
 export type BoxEgressAuth =
   | { readonly kind: "none" }
-  | { readonly kind: "iam"; readonly service: string; readonly region: string }
+  /** Absent `region` only for a target of the user's own that has no region. */
+  | { readonly kind: "iam"; readonly service: string; readonly region?: string }
   | {
       readonly kind: "apiKey";
       readonly credentialName: string;
@@ -451,13 +456,15 @@ function hostTargets(
   const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
+    let userTarget = false;
     const entry = host.entry;
     if (entry) {
       const result = outboundAuthFor(entry.secret, host.host, (variable) =>
         boxEgressCredentialName(project.spec.credentials, entry.name, variable),
       );
-      if (result.ok) auth = result.auth;
-      else failAt(host, result.code, result.reason);
+      if (!result.ok) failAt(host, result.code, result.reason);
+      else if (result.userTarget) userTarget = true;
+      else auth = result.auth;
       const alias =
         auth.kind === "apiKey" && auth.variable !== credentialEnvVarName(auth.credentialName)
           ? auth
@@ -477,15 +484,32 @@ function hostTargets(
     }
     let target: string | undefined;
     if (host.reachable) {
+      // Only a target of the user's own signs for a host that Box does not sign.
       const held = existing.find(
-        (candidate) => !claimed.has(candidate.name) && endpointKey(candidate) === host.authority,
+        (candidate) =>
+          !claimed.has(candidate.name) &&
+          endpointKey(candidate) === host.authority &&
+          !(userTarget && isManaged(candidate)),
       );
       if (held) {
         claimed.add(held.name);
         reused.add(index);
+        // The user's target names the service and the region, and build takes them as they are.
+        const signs = held.outboundAuth;
+        const signed = signs?.type === "GATEWAY_IAM_ROLE" ? signs : undefined;
+        if (userTarget && signed?.service !== undefined) {
+          auth = {
+            kind: "iam",
+            service: signed.service,
+            ...(signed.region !== undefined && { region: signed.region }),
+          };
+        }
+        const wanted: OutboundAuth | undefined = userTarget
+          ? (signed ?? { type: "GATEWAY_IAM_ROLE" })
+          : targetOutboundAuth(auth);
         const conflict = isManaged(held)
           ? undefined
-          : targetConflict(held, host, auth, profilePath);
+          : targetConflict(held, host, wanted, profilePath);
         if (conflict) {
           failures.push({
             code: "EXISTING_TARGET_CONFLICT",
@@ -496,6 +520,21 @@ function hostTargets(
           });
         }
         target = held.name;
+      } else if (userTarget && entry) {
+        const { place, reason } = located({
+          code: "UNSIGNABLE_HOST",
+          ...entryRef(entry),
+          reason:
+            `signs requests to ${host.host} with ${entry.secret!.ref}, and Box does not sign ` +
+            "for this host name, so build cannot find its service and its region and makes no " +
+            `gateway target for it. On AgentCore Runtime, the profile does not have this entry, ` +
+            `and nothing signs the requests to ${host.authority}. To sign them, add a passthrough target ` +
+            `for https://${host.authority} to the '${project.gateway}' gateway in ` +
+            "agentcore.json, with protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. " +
+            "Give it the service and the region of the host. Then add an IAM policy file with " +
+            "the permissions for the host to additionalPolicies of that gateway.",
+        });
+        warnings.push(`${place}: ${reason}`);
       } else {
         const proposed = entry
           ? entry.split
@@ -703,7 +742,7 @@ function unmanagedShape(target: AgentCoreGatewayTarget): string | undefined {
 function targetConflict(
   target: AgentCoreGatewayTarget,
   host: MappedHost,
-  auth: BoxEgressAuth,
+  wanted: OutboundAuth | undefined,
   profilePath: string,
 ): string | undefined {
   const endpoint = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
@@ -722,7 +761,6 @@ function targetConflict(
   }
   // A host that no entry names has no secret, so the target's own outbound auth stands.
   if (!host.entry) return undefined;
-  const wanted = targetOutboundAuth(auth);
   if (sameOutboundAuth(target.outboundAuth, wanted)) return undefined;
   return (
     `${named} sends ${outboundAuthWords(target.outboundAuth)}, and ` +
@@ -754,7 +792,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
       );
       continue;
     }
-    if (host.enforcedByBox.length === 0) continue;
+    if (host.enforcedByBox.length === 0 || host.target === undefined) continue;
     warnings.push(
       `${host.authority}: the gateway allows every request to this host; Box still applies ` +
         `${rules(host.enforcedByBox)}.` +

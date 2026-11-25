@@ -6,6 +6,7 @@ import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/projec
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
+import { boxSigningOf } from "./egress";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
@@ -564,17 +565,105 @@ describe("outbound auth", () => {
       "[egress.x] sends its secret as query_param, and a gateway target sends an API key only " +
         'in a header. Set `placement` to "header", if the host takes the key in a header.',
     ]);
-    expect(refused("api.example.com", { ref: "aws://default" })).toEqual([
-      ["UNSIGNABLE_HOST", "x"],
-      "[egress.x] signs requests to api.example.com with aws://default, and the gateway signs " +
-        "only for Bedrock, AgentCore, and Lambda function URL hosts. Use an env:// secret for " +
-        "this host, or remove the secret.",
-    ]);
     expect(refused("api.example.com/v1", { ref: "env://KEY" })).toEqual([
       ["PATH_SCOPED_SECRET", "x"],
       "[egress.x] sends its secret only under /v1, and a gateway target sends its credential " +
         "on every path of the host. Remove the path from the destination.",
     ]);
+  });
+
+  test("signs aws:// on an AWS host outside the managed endpoints with the service and region Box signs it with, and grants nothing", () => {
+    const host = "s3.us-west-2.amazonaws.com";
+    const r = model("", { s3: { destinations: [host], secret: { ref: "aws://" } } });
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(host)).toMatchObject({
+      target: "egress-s3",
+      outboundAuth: { kind: "iam", service: "s3", region: "us-west-2" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set(["egress-s3"]));
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+    expect(r.network.grantedActions).toEqual([]);
+  });
+
+  test("reads the service and region of a host by Box's own signing rule", () => {
+    const cases: [string, { service: string; region: string } | undefined][] = [
+      ["s3.us-east-1.amazonaws.com", { service: "s3", region: "us-east-1" }],
+      ["S3.US-WEST-2.AMAZONAWS.COM.", { service: "s3", region: "us-west-2" }],
+      ["iam.amazonaws.com", { service: "iam", region: "us-east-1" }],
+      [
+        "abc123.execute-api.eu-west-1.amazonaws.com",
+        { service: "execute-api", region: "eu-west-1" },
+      ],
+      ["bedrock-runtime.us-east-2.amazonaws.com", { service: "bedrock", region: "us-east-2" }],
+      [
+        "bedrock-agent-runtime.us-west-2.amazonaws.com",
+        { service: "bedrock", region: "us-west-2" },
+      ],
+      ["bedrock-runtime.us-east-1.api.aws", { service: "bedrock", region: "us-east-1" }],
+      ["amazonaws.com", undefined],
+      ["vpce-1234.s3.us-east-1.vpce.amazonaws.com", undefined],
+      ["my-bucket.s3.us-west-2.amazonaws.com", undefined],
+      ["s3.cn-north-1.amazonaws.com.cn", undefined],
+      ["s3..amazonaws.com", undefined],
+      ["api.example.com", undefined],
+    ];
+    for (const [host, signing] of cases)
+      expect([host, boxSigningOf(host)]).toEqual([host, signing]);
+  });
+
+  const BUCKET = "my-bucket.s3.us-west-2.amazonaws.com";
+
+  test("gives aws:// on a host Box does not sign no target, and warns with what to add", () => {
+    const r = model("", { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } });
+
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual([`${BUCKET} -> (none)`]);
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings).toContain(
+      `${PROFILE}:2:1: [egress.bucket] signs requests to ${BUCKET} with aws://, and Box does ` +
+        "not sign for this host name, so build cannot find its service and its region and " +
+        "makes no gateway target for it. On AgentCore Runtime, the profile does not have this " +
+        `entry, and nothing signs the requests to ${BUCKET}. To sign them, add a passthrough target for ` +
+        `https://${BUCKET} to the 'agent-box-egress' gateway in agentcore.json, with ` +
+        "protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. Give it the service and " +
+        "the region of the host. Then add an IAM policy file with the permissions for the host " +
+        "to additionalPolicies of that gateway.",
+    );
+  });
+
+  test("routes aws:// on a host with no signing service through the user's own IAM target", () => {
+    const mine = passthrough("my-bucket", `https://${BUCKET}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "s3" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(BUCKET)).toMatchObject({
+      target: "my-bucket",
+      outboundAuth: { kind: "iam", service: "s3" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+  });
+
+  test("refuses the user's own target with other auth for aws:// on a host with no signing service", () => {
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [passthrough("my-bucket", `https://${BUCKET}`)] },
+    );
+
+    expect(r.lines()).toEqual([
+      `agentcore/agentcore.json  The gateway target 'my-bucket' for ${BUCKET} sends no ` +
+        "credential, and [egress.bucket] sends requests signed with the gateway's role. Make the " +
+        `two the same, in agentcore.json or in ${PROFILE}.`,
+    ]);
+    expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "bucket"]]);
   });
 });
 
@@ -868,7 +957,7 @@ describe("HTTP MCP servers", () => {
     expect(r.network.envRoutes).toEqual([{ route: "tools", variable: "TOOLS_TOKEN" }]);
   });
 
-  test("signs an aws:// server on an AWS host with the gateway's role, and refuses one on another host", () => {
+  test("signs an aws:// server on an AWS host with the gateway's role, and gives one on another host no target", () => {
     const host = "abc123.lambda-url.us-west-2.on.aws";
     const signed = model("", {}, { mcp: { fn: server([host], { secret: { ref: "aws://" } }) } });
     expect(signed.failures()).toEqual([]);
@@ -881,11 +970,12 @@ describe("HTTP MCP servers", () => {
       {},
       { mcp: { tools: server(["tools.example.com"], { secret: { ref: "aws://default" } }) } },
     );
-    expect(unsigned.lines()).toEqual([
-      ".box/agent/local/profile.toml:2:1  [mcp.tools] signs requests to tools.example.com with " +
-        "aws://default, and the gateway signs only for Bedrock, AgentCore, and Lambda function " +
-        "URL hosts. Use an env:// secret for this host, or remove the secret.",
-    ]);
+    expect(unsigned.failures()).toEqual([]);
+    expect(unsigned.targets()).toEqual(["tools.example.com -> (none)"]);
+    expect(unsigned.network.warnings.join("\n")).toContain(
+      ".box/agent/local/profile.toml:2:1: [mcp.tools] signs requests to tools.example.com with " +
+        "aws://default, and Box does not sign for this host name",
+    );
   });
 
   test("stops on a server with two destinations, a path, or a wildcard, at its entry", () => {
@@ -1223,6 +1313,13 @@ describe("warnings", () => {
         forHost("egress-fn", URL_HOST, "lambda"),
       ]);
       expect(warningsFor(functionUrl, ["bedrock:*"])).toEqual([forService("egress-fn", "lambda")]);
+    });
+
+    test("an S3 target needs an S3 grant that the user adds, and build adds none", () => {
+      const bucket = signed("egress-s3", "s3.us-west-2.amazonaws.com", "s3");
+      expect(warningsFor(bucket)).toEqual([forService("egress-s3", "s3")]);
+      expect(warningsFor(bucket, [], [BEDROCK_FILE])).toEqual([forService("egress-s3", "s3")]);
+      expect(warningsFor(bucket, ["s3:GetObject"])).toEqual([]);
     });
 
     test("an AgentCore target needs an AgentCore grant", () => {
