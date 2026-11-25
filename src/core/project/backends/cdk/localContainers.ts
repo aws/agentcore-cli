@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { CONTAINER_URI_PATTERN } from "../../../../projectSchemas/constants";
 import { HarnessYamlSchema } from "../../../../projectSchemas/harness";
 import type {
   LocalWorkloadSources,
@@ -16,8 +17,9 @@ import { InputValidationError, ProjectStateError } from "../../../../errors";
  * Resolves every workload's build mode from agentcore.json and each harness.yaml,
  * and, for each ContainerLocal workload, where it is built from and its execution
  * role. It reads the harness files, so resolve once per command and pass the
- * result on. A Harness is Managed without a Dockerfile or image, ContainerUri with
- * an image.
+ * result on. A Runtime or Harness with a pre-built image (containerUri) is
+ * ContainerUri and is never built locally; a Harness with neither image nor
+ * Dockerfile is Managed.
  */
 export function resolveWorkloads(project: Project): {
   builds: WorkloadBuilds;
@@ -26,8 +28,8 @@ export function resolveWorkloads(project: Project): {
   const builds: WorkloadBuilds = {};
   const local: LocalWorkloadSources = new Map();
   for (const runtime of project.spec.runtimes) {
-    builds[`runtime/${runtime.name}`] = runtime.build;
-    if (runtime.build !== "ContainerLocal") continue;
+    builds[`runtime/${runtime.name}`] = runtime.containerUri ? "ContainerUri" : runtime.build;
+    if (runtime.containerUri || runtime.build !== "ContainerLocal") continue;
     local.set(`runtime/${runtime.name}`, {
       context: runtime.buildContextPath ?? runtime.codeLocation,
       dockerfile: runtime.dockerfile ?? "Dockerfile",
@@ -153,13 +155,44 @@ function deployedBuild(
   return undefined;
 }
 
+/** An ECR repository the deployed stack creates for a Container build. */
+export type ManagedRepository = { account: string; region: string; name: string };
+
+/**
+ * What the guard needs to protect a Runtime moving from Container to a pre-built
+ * image: each Runtime's containerUri by workload key, and the deployed stack's
+ * ECR repositories.
+ */
+export type PrebuiltImageContext = {
+  containerUris: Readonly<Record<string, string>>;
+  managedRepositories: readonly ManagedRepository[];
+};
+
+/** The deployed stack's repository that `containerUri` names, if any. */
+function managedRepositoryFor(
+  containerUri: string | undefined,
+  repositories: readonly ManagedRepository[],
+): ManagedRepository | undefined {
+  const match = containerUri === undefined ? null : CONTAINER_URI_PATTERN.exec(containerUri);
+  if (!match) return undefined;
+  const [, account, region, , repository] = match;
+  return repositories.find(
+    (managed) =>
+      managed.account === account && managed.region === region && managed.name === repository,
+  );
+}
+
 /**
  * Rejects switching a deployed workload into or out of ContainerLocal, and a
- * deployed Runtime between CodeZip and Container. AgentCore rejects an
+ * deployed Runtime between CodeZip and a container artifact (Container or a
+ * pre-built image, ContainerUri). AgentCore rejects an
  * artifact-type change in place ("Agent artifact type cannot be updated"), and
  * Container to ContainerLocal replaces how the image is built and published, so
- * only a new workload may use ContainerLocal. ContainerUri is left
- * to CloudFormation. The deployed template is authoritative: editing
+ * only a new workload may use ContainerLocal. A Runtime moving from Container to
+ * a containerUri in the ECR repository the stack created for its Container build
+ * is rejected too: that repository is created with RemovalPolicy.DESTROY and
+ * emptyOnDelete, so the deploy would delete the image the Runtime then points
+ * at. Other ContainerUri changes are left to CloudFormation. The deployed template is authoritative: editing
  * agentcore.json or deleting deployed-state.json must not permit a build-mode
  * migration.
  */
@@ -168,6 +201,7 @@ export function assertSupportedBuildTransitions(
   builds: WorkloadBuilds,
   projectName: string,
   targetName: string | undefined,
+  prebuilt?: PrebuiltImageContext,
 ): void {
   const recorded = template.Metadata?.["agentcore:builds"];
   if (
@@ -187,6 +221,19 @@ export function assertSupportedBuildTransitions(
       targetName,
     );
     if (deployed === undefined || deployed === desired) continue;
+    if (key.startsWith("runtime/") && deployed === "Container" && desired === "ContainerUri") {
+      const containerUri = prebuilt?.containerUris[key];
+      const repository = managedRepositoryFor(containerUri, prebuilt?.managedRepositories ?? []);
+      if (repository) {
+        throw new ProjectStateError(
+          `Cannot change ${key} from Container to ContainerUri with containerUri '${containerUri}': ` +
+            `that image is in the ECR repository '${repository.name}', which the CLI created for ` +
+            "the Container build. This deploy deletes that repository and its images, so the " +
+            "Runtime would point at a deleted image. Copy the image to an ECR repository you " +
+            "manage first, then set containerUri to the copy.",
+        );
+      }
+    }
     const pair = new Set([deployed, desired]);
     if (pair.has("ContainerLocal") && !pair.has("ContainerUri")) {
       throw new ProjectStateError(
@@ -199,11 +246,20 @@ export function assertSupportedBuildTransitions(
     }
     // The CLI flips a CodeZip Runtime to Container itself when a Dockerfile appears
     // (runtimeBuild.ts); on a deployed Runtime the service then fails the update.
-    if (key.startsWith("runtime/") && pair.has("CodeZip") && pair.has("Container")) {
+    // A pre-built image (ContainerUri) is a container artifact too.
+    if (
+      key.startsWith("runtime/") &&
+      pair.has("CodeZip") &&
+      (pair.has("Container") || pair.has("ContainerUri"))
+    ) {
       const keep =
-        deployed === "CodeZip"
-          ? 'delete the Dockerfile and set "build": "CodeZip" in agentcore.json'
-          : 'set "build": "Container" and its "dockerfile" in agentcore.json again';
+        deployed === "Container"
+          ? 'set "build": "Container" and its "dockerfile" in agentcore.json again'
+          : deployed === "ContainerUri"
+            ? 'set "build": "Container" and its "containerUri" in agentcore.json again'
+            : desired === "Container"
+              ? 'delete the Dockerfile and set "build": "CodeZip" in agentcore.json'
+              : 'remove "containerUri" and set "build": "CodeZip" in agentcore.json';
       throw new ProjectStateError(
         `Cannot change ${key} from ${deployed} to ${desired}. The service does not allow ` +
           "changing a Runtime's artifact type, so the deploy would fail and roll back. Add a " +

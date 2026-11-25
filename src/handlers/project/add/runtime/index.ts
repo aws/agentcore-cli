@@ -6,9 +6,11 @@ import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
 import {
   AgentNameSchema,
+  ProjectRuntimeSchema,
   type EnvVar,
   type ProjectRuntime,
 } from "../../../../projectSchemas/runtime";
+import { buildDocsRuntimeSpec } from "../../../../core/project/templates/runtimeDocs";
 import { hooksConfigurationWarning } from "../../../../core/dev/readiness";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
@@ -69,6 +71,13 @@ export function toAddRuntimeInput(input: RuntimeInput): AddResourceInput {
       : RuntimeDocsConfigSchema.safeParse(input);
   if (!result.success)
     throw new InputValidationError(z.prettifyError(result.error), { cause: result.error });
+  // A pre-built image adds the agentcore.json entry directly, so check that
+  // entry against the agentcore.json schema here rather than at the next load.
+  if (!("scaffoldRuntimeInput" in result.data) && result.data.containerUri !== undefined) {
+    const runtime = ProjectRuntimeSchema.safeParse(buildDocsRuntimeSpec(result.data));
+    if (!runtime.success)
+      throw new InputValidationError(z.prettifyError(runtime.error), { cause: runtime.error });
+  }
   return { resourceType: "runtime", resourceConfig: result.data };
 }
 
@@ -81,7 +90,15 @@ export function runtimeDocsAddedMessage(
   name: string,
   language: "Python" | "TypeScript",
   protocol: ProtocolMode,
+  containerUri?: string,
 ): string {
+  if (containerUri !== undefined)
+    return [
+      `added runtime "${name}" (${protocol}) from a pre-built ECR image`,
+      "",
+      "next steps:",
+      "  1. deploy it with agentcore deploy",
+    ].join("\n");
   const folder = `app/${name}`;
   return [
     `added runtime "${name}" (${language}, ${protocol})`,
@@ -103,7 +120,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       flag("name", "the name of the Runtime", AgentNameSchema, { group: CONFIGURATION }),
       flag(
         "language",
-        "language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)",
+        "language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent or --build-config sets containerUri)",
         z.enum(["python", "typescript"]).optional(),
         { group: CONFIGURATION },
       ),
@@ -212,13 +229,14 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         z.enum(["strands", "langgraph"]).optional(),
         { group: BEDROCK_AGENT_IMPORT },
       ),
-      buildConfigFlag("CodeZip, Container, or ContainerLocal"),
+      buildConfigFlag("CodeZip, Container, or ContainerLocal", "containerUri, "),
     ],
     handle: async (ctx, flags) => {
       const project = ctx.require(ProjectKey);
       const deploymentTargets = await config.projectManager.listTargets(project);
       requireDeployedNameFits("Runtime", project.name, flags.name, "_", 48, deploymentTargets);
 
+      const buildConfig = parseBuildConfig(flags["build-config"], RuntimeBuildConfigSchema);
       // Passing --agent-id is what selects a Bedrock Agent import.
       const isImport = flags["agent-id"] !== undefined;
 
@@ -240,7 +258,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
               `--${offending} cannot be combined with it`,
           );
         }
-      } else if (flags.language === undefined) {
+      } else if (flags.language === undefined && buildConfig?.containerUri === undefined) {
         throw new InputValidationError(
           "required option '--language <language>' not specified: pass python or typescript",
         );
@@ -289,7 +307,10 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
 
       const infra = {
         name: flags.name,
-        ...parseBuildConfig(flags["build-config"], RuntimeBuildConfigSchema),
+        ...buildConfig,
+        // A pre-built image deploys as a Container Runtime.
+        ...(buildConfig?.containerUri !== undefined &&
+          buildConfig.build === undefined && { build: "Container" as const }),
         description: flags.description,
         executionRoleArn: flags["role-arn"],
         additionalPolicies: flags["additional-policies"],
@@ -343,14 +364,15 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         return;
       }
 
-      const language = RUNTIME_LANGUAGES[flags.language!];
+      // The language only names the docs; a pre-built image writes none.
+      const language = RUNTIME_LANGUAGES[flags.language ?? "python"];
       const protocol = flags.protocol ?? "HTTP";
       await addProjectResource(
         ctx,
         config,
         project,
         toAddRuntimeInput({ ...infra, language, protocol }),
-        runtimeDocsAddedMessage(flags.name, language, protocol),
+        runtimeDocsAddedMessage(flags.name, language, protocol, buildConfig?.containerUri),
         { notes },
       );
     },

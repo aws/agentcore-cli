@@ -1,5 +1,5 @@
 import z from "zod";
-import { ProjectRuntimeSchema } from "../../../../projectSchemas/runtime";
+import { containerUriIssues, ProjectRuntimeSchema } from "../../../../projectSchemas/runtime";
 import { ScaffoldRuntimeInputSchema } from "../../types";
 import { BedrockAgentImportPlanSchema } from "../../../../core/project/bedrockAgentImport";
 
@@ -25,6 +25,7 @@ const RuntimeInfraConfigSchema = z.object({
   filesystemConfigurations: ProjectRuntimeSchema.shape.filesystemConfigurations,
   tags: ProjectRuntimeSchema.shape.tags,
   build: ProjectRuntimeSchema.shape.build.optional(),
+  containerUri: ProjectRuntimeSchema.shape.containerUri,
   dockerfile: z.string().min(1).optional(),
   buildContextPath: ProjectRuntimeSchema.shape.buildContextPath,
   customDockerBuildArgs: ProjectRuntimeSchema.shape.customDockerBuildArgs,
@@ -41,11 +42,16 @@ export type RuntimeResourceConfig = z.infer<typeof RuntimeResourceConfigSchema>;
  * A runtime added without code: the CLI writes README.md and AGENTS.md for the
  * language and protocol into app/<name>/, and the user (or their coding agent)
  * writes the code. The spec entry starts with default build settings, which
- * dev, build, and deploy update from the code.
+ * dev, build, and deploy update from the code. With containerUri it deploys an
+ * existing image instead, and no files are written.
  */
 export const RuntimeDocsConfigSchema = RuntimeInfraConfigSchema.extend({
   language: z.enum(["Python", "TypeScript"]),
 }).superRefine((data, ctx) => {
+  if (data.containerUri !== undefined) {
+    for (const issue of containerUriIssues(data)) ctx.addIssue({ code: "custom", ...issue });
+    return;
+  }
   const container = data.build === "Container" || data.build === "ContainerLocal";
   if (container && data.dockerfile === undefined) {
     ctx.addIssue({

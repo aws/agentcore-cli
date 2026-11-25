@@ -82,8 +82,10 @@ function otelEnvForRuntime(
 }
 
 function supportsLocalDev(runtime: ProjectRuntime): boolean {
-  return !isBmaRuntime(runtime);
+  return !isBmaRuntime(runtime) && runtime.containerUri === undefined;
 }
+
+const PREBUILT_DEV_GUIDANCE = "Deploy it with agentcore deploy, then use agentcore invoke.";
 
 /** An agent's own output, always tagged with the agent that produced it. */
 function renderAgentEvent({
@@ -242,6 +244,13 @@ function resolveAgentSelection(project: Project, agent?: string): AgentSelection
     );
   }
   const supportedRuntimes = selectedRuntimes.filter(supportsLocalDev);
+  const prebuilt = selectedRuntimes.find((runtime) => runtime.containerUri !== undefined);
+  if (!supportedRuntimes.length && prebuilt) {
+    throw new InputValidationError(
+      `Runtime '${prebuilt.name}' uses a pre-built containerUri. ${PREBUILT_DEV_GUIDANCE} ` +
+        "For local dev, select a runtime with local source using --agent <name>.",
+    );
+  }
   if (!supportedRuntimes.length) {
     throw new NotImplementedError(
       `Local dev is not supported for runtime '${selectedRuntimes[0]!.name}' (${BMA_TEMPLATE_NAME}). ` +
@@ -387,7 +396,10 @@ async function runRuntimeDev({
           )) {
             renderStatus({
               io: config.io,
-              message: `Skipping runtime '${runtime.name}': local dev is not supported for ${BMA_TEMPLATE_NAME}.`,
+              message:
+                runtime.containerUri !== undefined
+                  ? `Skipping runtime '${runtime.name}': it deploys a pre-built image. ${PREBUILT_DEV_GUIDANCE}`
+                  : `Skipping runtime '${runtime.name}': local dev is not supported for ${BMA_TEMPLATE_NAME}.`,
               json,
             });
           }
