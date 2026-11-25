@@ -293,10 +293,11 @@ export async function* provisionTelemetrySecrets(
         await calls.delete(arn);
       } catch (cause) {
         yield {
-          type: "step",
+          type: "warning",
           message:
-            `Could not remove secret ${arn}: ${(cause as Error).message}. It exists in AWS ` +
-            "but is not recorded, so the next deploy of this target adopts it.",
+            `Deploy did not remove secret ${arn}, which this deploy created: ` +
+            `${(cause as Error).message}. The secret stays in AWS Secrets Manager, and AWS bills ` +
+            "you for it. It is not recorded, thus the next deploy of this target uses it again.",
         };
       }
     }
@@ -343,8 +344,11 @@ export async function* removeTelemetrySecrets(
     } catch (error) {
       failed[name] = { secretArn };
       yield {
-        type: "step",
-        message: `Could not delete secret '${name}' (${secretArn}): ${(error as Error).message}.`,
+        type: "warning",
+        message:
+          `Deploy did not delete secret '${name}' (${secretArn}): ${(error as Error).message}. ` +
+          "The secret stays in AWS Secrets Manager, and AWS bills you for it. The next deploy of " +
+          "this target tries to delete it again.",
       };
     }
   }

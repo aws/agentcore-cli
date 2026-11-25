@@ -365,6 +365,38 @@ describe("provisionTelemetrySecrets", () => {
     ]);
   });
 
+  test("warns when it cannot remove a secret it created, and keeps the error", async () => {
+    const existing: BoxTelemetrySecret = { ...SECRET, runtime: "other", name: nameOf("other") };
+    const failure = new Error("put refused");
+    const { stub } = stubCalls(
+      { [nameOf("other")]: { arn: "arn:existing", deleted: false } },
+      { put: failure, delete: new Error("AccessDenied") },
+    );
+    const warnings: string[] = [];
+
+    const error = await (async () => {
+      try {
+        for await (const event of provisionTelemetrySecrets(
+          stub,
+          await project(),
+          [SECRET, existing],
+          KEYS,
+        )) {
+          if (event.type === "warning") warnings.push(event.message);
+        }
+      } catch (caught) {
+        return caught;
+      }
+    })();
+
+    expect(error).toBe(failure);
+    expect(warnings).toEqual([
+      `Deploy did not remove secret ${ARN}1, which this deploy created: AccessDenied. The ` +
+        "secret stays in AWS Secrets Manager, and AWS bills you for it. It is not recorded, thus " +
+        "the next deploy of this target uses it again.",
+    ]);
+  });
+
   test("does nothing for no secret", async () => {
     const { stub, calls } = stubCalls();
 
@@ -404,18 +436,23 @@ describe("removeTelemetrySecrets", () => {
     ]);
   });
 
-  test("reports a secret it cannot delete, and returns it so its record stays", async () => {
+  test("warns about a secret it cannot delete, and returns it so its record stays", async () => {
     const { stub } = stubCalls(
       { [NAME]: { arn: ARN, deleted: false } },
       { delete: new Error("AccessDenied") },
     );
 
-    const { value, steps } = await drain(
+    const { value, steps, warnings } = await drain(
       removeTelemetrySecrets(stub, { [NAME]: { secretArn: ARN } }, new Set()),
     );
 
     expect(value).toEqual({ [NAME]: { secretArn: ARN } });
-    expect(steps).toContain(`Could not delete secret '${NAME}' (${ARN}): AccessDenied.`);
+    expect(steps).toEqual([`deleting secret '${NAME}'`]);
+    expect(warnings).toEqual([
+      `Deploy did not delete secret '${NAME}' (${ARN}): AccessDenied. The secret stays in AWS ` +
+        "Secrets Manager, and AWS bills you for it. The next deploy of this target tries to " +
+        "delete it again.",
+    ]);
   });
 
   test("does not delete a secret without the tags that deploy gives, warns, and drops its record", async () => {
