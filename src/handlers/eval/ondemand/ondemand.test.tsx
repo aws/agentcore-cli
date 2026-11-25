@@ -4,7 +4,12 @@ import {
   GetEvaluatorCommand,
   type BedrockAgentCoreControlClient,
 } from "@aws-sdk/client-bedrock-agentcore-control";
-import { EvaluateCommand, type BedrockAgentCoreClient } from "@aws-sdk/client-bedrock-agentcore";
+import {
+  EvaluateCommand,
+  ValidationException,
+  type BedrockAgentCoreClient,
+  type EvaluateCommandOutput,
+} from "@aws-sdk/client-bedrock-agentcore";
 import {
   GetQueryResultsCommand,
   ResourceNotFoundException,
@@ -53,9 +58,11 @@ const RUNTIME_LOG_GROUP = "/aws/bedrock-agentcore/runtimes/runtime-1-DEFAULT";
 type QueryFailureStatus = "Failed" | "Cancelled" | "Timeout";
 
 type LogsOptions = {
-  malformedRows?: ResultField[][];
+  runtimeRows?: ResultField[][];
   missingRuntimeLogGroup?: boolean;
   status?: QueryFailureStatus;
+  evaluate?: (command: EvaluateCommand) => EvaluateCommandOutput;
+  lookback?: boolean;
 };
 
 async function run(args: string[], configure?: (core: TestCoreClient) => void) {
@@ -76,9 +83,9 @@ async function run(args: string[], configure?: (core: TestCoreClient) => void) {
 // through the actual Insights→Evaluate SDK translation, stubbing the `.send()` seam
 // inline rather than via the golden fixture harness. The fixture harness records
 // against a live account, and these are conditions it can't provoke there: a query
-// that resolves Failed/Cancelled/Timeout, a runtime log group missing while
-// aws/spans exists, and malformed telemetry rows (whose test also needs a capturing
-// logger the fixture `run()` helper doesn't expose). Inline stubs make them deterministic.
+// that resolves Failed/Cancelled/Timeout, missing runtime logs, malformed telemetry
+// rows, and Evaluate rejecting unsupported instrumentation. Inline stubs make
+// them deterministic.
 async function runWithRealCore(options: LogsOptions, logger = createSilentLogger()) {
   const control = {
     send: async (command: unknown) => {
@@ -86,7 +93,7 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
         return { agentRuntimeId: RUNTIME_ID, agentRuntimeName: "agent-1" };
       }
       if (command instanceof GetEvaluatorCommand) {
-        return { evaluatorId: "Builtin.Helpfulness", level: "SESSION" };
+        return { evaluatorId: command.input.evaluatorId, level: "TRACE" };
       }
       throw new Error(`unexpected control command: ${(command as object).constructor.name}`);
     },
@@ -94,7 +101,9 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
 
   const data = {
     send: async (command: unknown) => {
-      if (command instanceof EvaluateCommand) return { evaluationResults: [] };
+      if (command instanceof EvaluateCommand) {
+        return options.evaluate?.(command) ?? { evaluationResults: [] };
+      }
       throw new Error(`unexpected data command: ${(command as object).constructor.name}`);
     },
   } as unknown as BedrockAgentCoreClient;
@@ -114,7 +123,7 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
       if (command instanceof GetQueryResultsCommand) {
         return {
           status: options.status ?? "Complete",
-          results: command.input.queryId === "runtime-query" ? (options.malformedRows ?? []) : [],
+          results: command.input.queryId === "runtime-query" ? (options.runtimeRows ?? []) : [],
         };
       }
       throw new Error(`unexpected logs command: ${(command as object).constructor.name}`);
@@ -149,12 +158,13 @@ async function runWithRealCore(options: LogsOptions, logger = createSilentLogger
     "--agent",
     RUNTIME_ID,
     "--evaluators",
-    "Builtin.Helpfulness",
-    "--session-ids",
-    "session-1",
+    ...(options.lookback
+      ? ["Builtin.Helpfulness", "Builtin.Correctness", "--lookback-days", "1"]
+      : ["Builtin.Helpfulness", "--session-ids", "session-1"]),
     "--region",
     "us-west-2",
   ]);
+  return { stdout: io.stdout(), stderr: io.stderr() };
 }
 
 function telemetryRow(sessionId: string, message: string): ResultField[] {
@@ -441,8 +451,88 @@ describe("eval ondemand evaluate telemetry failures", () => {
       telemetryRow("session-1", "not-json"),
     ];
 
-    await runWithRealCore({ malformedRows: rows }, logger);
+    await runWithRealCore({ runtimeRows: rows }, logger);
 
     expect(warnings).toEqual(["skipping malformed telemetry records"]);
+  });
+});
+
+describe("eval ondemand evaluate unsupported instrumentation", () => {
+  const unsupportedTraceId = "1".repeat(32);
+  const runtimeRows = [
+    telemetryRow(
+      "unsupported",
+      JSON.stringify({
+        kind: "SERVER",
+        traceId: unsupportedTraceId,
+        scope: { name: "opentelemetry.instrumentation.starlette" },
+      }),
+    ),
+    telemetryRow(
+      "supported",
+      JSON.stringify({
+        kind: "SERVER",
+        traceId: "2".repeat(32),
+        scope: { name: "strands.telemetry.tracer" },
+      }),
+    ),
+  ];
+
+  test("keeps scores from supported sessions when a lookback includes an unsupported session", async () => {
+    const unsupportedCalls: string[] = [];
+    const { stdout, stderr } = await runWithRealCore({
+      runtimeRows,
+      lookback: true,
+      evaluate: (command) => {
+        if (command.input.evaluationTarget?.traceIds?.includes(unsupportedTraceId)) {
+          unsupportedCalls.push(command.input.evaluatorId!);
+          throw new ValidationException({
+            $metadata: {},
+            reason: undefined,
+            message: "Provided input has no spans with supported scope.",
+          });
+        }
+        return {
+          $metadata: {},
+          evaluationResults: [
+            {
+              evaluatorArn: undefined,
+              evaluatorId: command.input.evaluatorId,
+              evaluatorName: undefined,
+              context: undefined,
+              value: 0.9,
+            },
+          ],
+        };
+      },
+    });
+
+    expect(JSON.parse(stdout)).toEqual({
+      sessionsRequested: 2,
+      sessionsEvaluated: 1,
+      skippedSessionIds: ["unsupported"],
+      results: [
+        { evaluatorId: "Builtin.Helpfulness", value: 0.9 },
+        { evaluatorId: "Builtin.Correctness", value: 0.9 },
+      ],
+    });
+    expect(stderr).toContain("Skipped 1 session with no supported agent spans: unsupported");
+    expect(unsupportedCalls).toEqual(["Builtin.Helpfulness"]);
+  });
+
+  test("still reports other Evaluate validation failures", async () => {
+    const error = new ValidationException({
+      $metadata: {},
+      reason: undefined,
+      message: "Invalid evaluation reference input.",
+    });
+    const result = runWithRealCore({
+      runtimeRows,
+      lookback: true,
+      evaluate: () => {
+        throw error;
+      },
+    });
+    await expect(result).rejects.toBe(error);
   });
 });
