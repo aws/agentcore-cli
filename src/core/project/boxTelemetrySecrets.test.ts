@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ProjectStateError } from "../../errors/errors";
 import type { ThirdPartyTelemetry } from "./boxNetwork";
 import {
   boxTelemetrySecretEnvEntries,
@@ -176,6 +177,22 @@ describe("boxTelemetrySecretEnvEntries", () => {
         envLocal,
       }),
     ).toEqual([entry("dummy-shell-key")]);
+  });
+
+  test("stops for two targets that read their key from one variable, and names both", () => {
+    const shared = boxTelemetrySecrets("demo", [
+      { runtime: "agent", thirdPartyTelemetry: [{ ...LANGSMITH, name: "nested_TELEMETRY_sink" }] },
+      { runtime: "agent_TELEMETRY_nested", thirdPartyTelemetry: [{ ...LANGSMITH, name: "sink" }] },
+    ]);
+
+    expect(() => boxTelemetrySecretEnvEntries(shared, { env: {}, envLocal: {} })).toThrow(
+      new ProjectStateError(
+        "[telemetry.sink] of runtime 'agent_TELEMETRY_nested' reads its key at deploy from " +
+          "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK, and " +
+          "[telemetry.nested_TELEMETRY_sink] of runtime 'agent' reads its key from that variable " +
+          "too. Change the name of one of the two targets.",
+      ),
+    );
   });
 
   test("writes nothing for a variable that is not set or is blank", () => {
