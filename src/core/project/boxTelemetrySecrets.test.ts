@@ -68,6 +68,38 @@ describe("boxTelemetrySecrets", () => {
     ]);
   });
 
+  test("gives one field to each of two targets of the same kind", () => {
+    const staging = {
+      ...LANGFUSE,
+      name: "langfuse_staging",
+      secret: { variable: "STG", keys: [] },
+    };
+    const prod = { ...LANGFUSE, name: "langfuse_prod", secret: { variable: "PRD", keys: [] } };
+
+    expect(
+      boxTelemetrySecrets("demo", [{ runtime: "agent", thirdPartyTelemetry: [staging, prod] }]),
+    ).toEqual([
+      {
+        runtime: "agent",
+        name: "agentcore/demo/agent/box",
+        fields: [
+          {
+            target: "langfuse_staging",
+            field: "telemetry.langfuse_staging",
+            variable: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGFUSE_STAGING",
+            source: "STG",
+          },
+          {
+            target: "langfuse_prod",
+            field: "telemetry.langfuse_prod",
+            variable: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGFUSE_PROD",
+            source: "PRD",
+          },
+        ],
+      },
+    ]);
+  });
+
   test("refers to one field of the secret, in the scheme Box reads", () => {
     expect(boxTelemetrySecretRef("agentcore/demo/agent/box", "telemetry.langsmith")).toBe(
       "aws-secretsmanager://agentcore/demo/agent/box#telemetry.langsmith",

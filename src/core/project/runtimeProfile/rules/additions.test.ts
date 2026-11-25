@@ -611,6 +611,42 @@ describe("deriveRuntimeProfile on a third-party target", () => {
     );
     expect(profile.plugins).toBeUndefined();
   });
+
+  test("gives each of two targets of the same kind its own field of the secret", () => {
+    const { local } =
+      OLD_RENDERER.secretsManager[
+        "agent-python-strands-box-container telemetry=langfuse and otlp"
+      ]!;
+    const runtime = createdRuntime(
+      resolveRuntimeTemplateShortcut("agent-python-strands-box-container", {}),
+      false,
+    );
+    const langfuse = (destination: string, ref: string) => ({
+      kind: "langfuse",
+      destination,
+      secret: { ref },
+    });
+    const twoTargets = {
+      ...local,
+      telemetry: {
+        langfuse_staging: langfuse("https://us.cloud.langfuse.com", "env://LANGFUSE_STAGING_AUTH"),
+        langfuse_prod: langfuse("https://cloud.langfuse.com", "env://LANGFUSE_PROD_AUTH"),
+      },
+    };
+
+    const { profile, problems } = deriveRuntimeProfile(
+      twoTargets,
+      contextOf(runtime, { thirdPartyTelemetry: thirdPartyTelemetry(twoTargets).targets }),
+    );
+
+    const secret = `aws-secretsmanager://agentcore/demo/${runtime.name}/box#telemetry`;
+    const telemetry = profile.telemetry as TomlTable;
+    expect(problems).toEqual([]);
+    expect([telemetry.langfuse_staging, telemetry.langfuse_prod]).toEqual([
+      langfuse("https://us.cloud.langfuse.com", `${secret}.langfuse_staging`),
+      langfuse("https://cloud.langfuse.com", `${secret}.langfuse_prod`),
+    ]);
+  });
 });
 
 describe("the additions rule", () => {
