@@ -2875,7 +2875,11 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
    * A stub Secrets Manager: it holds `existing` ARNs, each with the tags deploy gives it, and
    * records each client and each command.
    */
-  function secretsManager(existing: readonly string[] = [], deleteError?: Error) {
+  function secretsManager(
+    existing: readonly string[] = [],
+    deleteError?: Error,
+    held?: { value: string },
+  ) {
     const configs: CredentialedClientConfig[] = [];
     const sent: { command: string; input: Record<string, unknown> }[] = [];
     const create: CreateSecretsManagerClient = (config) => {
@@ -2889,12 +2893,17 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
           sent.push({ command: name, input: command.input });
           if (name === "DescribeSecretCommand") {
             const id = command.input.SecretId as string;
+            if (held && (id === NAME || id === ARN)) return { ARN, Tags: tagsOf("agent") };
             if (!existing.includes(id)) {
               throw new ResourceNotFoundException({ message: "absent", $metadata: {} });
             }
             return { ARN: id, Tags: tagsOf(id.split("/")[2] ?? "") };
           }
           if (name === "CreateSecretCommand") return { ARN };
+          if (name === "GetSecretValueCommand" && held) return { SecretString: held.value };
+          if (name === "PutSecretValueCommand" && held) {
+            held.value = command.input.SecretString as string;
+          }
           if (name === "DeleteSecretCommand" && deleteError) throw deleteError;
           return {};
         },
@@ -2946,7 +2955,7 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
       },
     ]);
     expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
-      [NAME]: { secretArn: ARN },
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
     });
     const messages = stepMessages(deployed.events);
     expect(
@@ -2954,6 +2963,94 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
         "preparing secret 'agentcore/example/agent/box' for the box telemetry of 'agent'",
       ),
     ).toBeLessThan(messages.indexOf("synthesizing CloudFormation templates"));
+  });
+
+  /** The fields of a runtime that sent to LangSmith and to a Langfuse target that went since. */
+  const BOTH = ["telemetry.langsmith", "telemetry.langfuse"];
+  const HELD = JSON.stringify({
+    "telemetry.langsmith": KEY,
+    "telemetry.langfuse": "dummy-langfuse-key",
+  });
+  const REMOVED = `removing 'telemetry.langfuse' from secret '${NAME}': no deployed runtime reads it`;
+
+  async function recordFields(input: Project, target: string, fields: string[]) {
+    await updateTargetState(json, input.rootPath, target, {
+      stackArn: STACK_ARN,
+      resources: { boxTelemetrySecrets: { [NAME]: { secretArn: ARN, fields } } },
+    });
+  }
+
+  test("keeps the field of a removed target, and its record, when the stack deploy fails", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({
+      createSecretsManagerClient: stub.create,
+      processEnv: ENV,
+      failOperation: "deploy",
+    });
+
+    await expect(
+      collectDeploy(subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] }))),
+    ).rejects.toThrow("deploy failed");
+
+    expect(held.value).toBe(HELD);
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "GetSecretValueCommand",
+    ]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: BOTH },
+    });
+  });
+
+  test("removes the field of a removed target after the stack deploy, and records the fields the runtime reads", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(held.value).toBe(JSON.stringify({ "telemetry.langsmith": KEY }));
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf(REMOVED));
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
+    });
+  });
+
+  test("keeps the field of a removed target that the runtime of another deployment target reads", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    await recordFields(input, "staging", BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(held.value).toBe(HELD);
+    expect(stepMessages(deployed.events)).toContain(
+      `keeping 'telemetry.langfuse' in secret '${NAME}': another deployment target reads it`,
+    );
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
+    });
+    expect((await targetState(input, "staging")).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: BOTH },
+    });
   });
 
   test("deletes a recorded secret that no runtime needs, after the stack update, and forgets it", async () => {

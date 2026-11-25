@@ -49,10 +49,13 @@ const ResourceStateSchema = z
     /**
      * The AWS Secrets Manager secret of each third-party telemetry target of a box profile, by the
      * secret's name. Deploy writes each one outside the stack, so this is the only record of what
-     * a later deploy or a teardown deletes.
+     * a later deploy or a teardown deletes. `fields` names the fields the runtime can read.
      */
     boxTelemetrySecrets: z
-      .record(z.string(), z.object({ secretArn: z.string() }).passthrough())
+      .record(
+        z.string(),
+        z.object({ secretArn: z.string(), fields: z.array(z.string()).optional() }).passthrough(),
+      )
       .optional(),
     // The legacy deployer recorded the CloudFormation stack name
     // here. New deploys record the stack ARN instead. Keep this

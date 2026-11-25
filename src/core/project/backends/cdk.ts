@@ -90,8 +90,11 @@ import {
 import {
   orphanedTelemetrySecrets,
   provisionTelemetrySecrets,
+  pruneTelemetrySecrets,
   removeTelemetrySecrets,
   secretsManagerCalls,
+  telemetrySecretFieldsOfOtherTargets,
+  telemetrySecretRecords,
   telemetrySecretsOfOtherTargets,
   type DeployedTelemetrySecrets,
   type TelemetrySecretCalls,
@@ -573,7 +576,7 @@ export class CdkBackend implements ProjectBackend {
     );
     await this.recordTelemetrySecrets(project, target.name, secrets.recorded, {
       ...orphanedSecrets,
-      ...stored,
+      ...telemetrySecretRecords(stored, secrets.recorded),
     });
 
     yield* this.synthesize(project, false, builds, input.boxNetworks);
@@ -611,7 +614,10 @@ export class CdkBackend implements ProjectBackend {
         options,
         orphaned,
         recorded,
-        secrets: { ...secrets, recorded: { ...orphanedSecrets, ...stored } },
+        secrets: {
+          ...secrets,
+          recorded: { ...orphanedSecrets, ...telemetrySecretRecords(stored) },
+        },
       });
     }
     await assertPrivateVpcs(
@@ -734,11 +740,16 @@ export class CdkBackend implements ProjectBackend {
       providers: orphaned,
     });
     const undeleted = yield* removeTelemetrySecrets(secrets.calls, orphanedSecrets, secrets.kept);
+    yield* pruneTelemetrySecrets(
+      secrets.calls,
+      stored,
+      telemetrySecretFieldsOfOtherTargets(state, target.name),
+    );
     await this.recordTelemetrySecrets(
       project,
       target.name,
-      { ...orphanedSecrets, ...stored },
-      { ...undeleted, ...stored },
+      { ...orphanedSecrets, ...telemetrySecretRecords(stored) },
+      { ...undeleted, ...telemetrySecretRecords(stored) },
     );
 
     // Reported after the stack is up and its ARN recorded: a Quick Create
