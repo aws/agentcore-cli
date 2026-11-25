@@ -2833,7 +2833,7 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
    * A stub Secrets Manager: it holds `existing` ARNs, each with the tags deploy gives it, and
    * records each client and each command.
    */
-  function secretsManager(existing: readonly string[] = []) {
+  function secretsManager(existing: readonly string[] = [], deleteError?: Error) {
     const configs: CredentialedClientConfig[] = [];
     const sent: { command: string; input: Record<string, unknown> }[] = [];
     const create: CreateSecretsManagerClient = (config) => {
@@ -2853,6 +2853,7 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
             return { ARN: id, Tags: tagsOf(id.split("/")[2] ?? "") };
           }
           if (name === "CreateSecretCommand") return { ARN };
+          if (name === "DeleteSecretCommand" && deleteError) throw deleteError;
           return {};
         },
       } as unknown as SecretsManagerClient;
@@ -2970,6 +2971,46 @@ describe("CdkBackend.deploy and the box telemetry secrets", () => {
     expect(messages.indexOf("removing stack AgentCore-example-default-0")).toBeLessThan(
       messages.indexOf(`deleting secret '${NAME}'`),
     );
+  });
+
+  test("teardown keeps the record of a secret it cannot delete, and a later teardown deletes it", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    await recordSecrets(input, { [TARGET.name]: { [NAME]: ARN } });
+    const failing = harness({
+      createSecretsManagerClient: secretsManager([ARN], new Error("AccessDenied")).create,
+    });
+
+    const first = await collectDeploy(
+      failing.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(first.result).toEqual({ outputs: {}, tornDown: true });
+    expect(first.events).toContainEqual({
+      type: "warning",
+      message:
+        `Deploy did not delete secret '${NAME}' (${ARN}): AccessDenied. The secret stays in ` +
+        "AWS Secrets Manager, and AWS bills you for it. Deploy keeps its record of the secret, " +
+        "and the next deploy of this target tries to delete it again, also when the stack is gone.",
+    });
+    expect(await targetState(input)).toEqual({
+      resources: { boxTelemetrySecrets: { [NAME]: { secretArn: ARN } } },
+    });
+
+    const stub = secretsManager([ARN]);
+    const retry = harness({ createSecretsManagerClient: stub.create, describedStack: null });
+    const second = await collectDeploy(
+      retry.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(second.result).toEqual({ outputs: {}, tornDown: true });
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "DeleteSecretCommand",
+    ]);
+    expect(retry.runs.map(({ operation }) => operation.kind)).not.toContain("destroy");
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    expect(JSON.parse(await Bun.file(statePath).text()).targets[TARGET.name]).toBeUndefined();
   });
 
   test("sends nothing to Secrets Manager and records nothing for a project with no such target", async () => {

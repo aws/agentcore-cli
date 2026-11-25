@@ -450,8 +450,8 @@ describe("removeTelemetrySecrets", () => {
     expect(steps).toEqual([`deleting secret '${NAME}'`]);
     expect(warnings).toEqual([
       `Deploy did not delete secret '${NAME}' (${ARN}): AccessDenied. The secret stays in AWS ` +
-        "Secrets Manager, and AWS bills you for it. The next deploy of this target tries to " +
-        "delete it again.",
+        "Secrets Manager, and AWS bills you for it. Deploy keeps its record of the secret, and " +
+        "the next deploy of this target tries to delete it again, also when the stack is gone.",
     ]);
   });
 
