@@ -8,7 +8,7 @@ import { JsonRendererKey, renderTuiAt } from "../../../tui";
 import { runWithProgress } from "../../../tui/progress";
 import { InputValidationError } from "../../../errors";
 import { invokeHarnessTurn } from "./operation.ts";
-import { HarnessInvokeLaunchContextKey } from "./launchContext";
+import { HarnessInvokeArnKey, HarnessInvokeLaunchContextKey } from "./launchContext";
 import { resolveHarnessBearerToken } from "../request";
 
 export const invokeHarnessFlags = [
@@ -76,6 +76,7 @@ export const createInvokeHarnessHandler = (core: Core, io: AppIO) =>
           core.harness,
           {
             harnessId: flags["id"],
+            harnessArn: ctx.value(HarnessInvokeArnKey),
             prompt,
             qualifier: flags["qualifier"] ?? "DEFAULT",
             sessionId: flags["session-id"],

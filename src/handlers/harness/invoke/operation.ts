@@ -15,6 +15,7 @@ export async function invokeHarnessTurn(
   client: CoreHarnessClient,
   input: {
     harnessId: string;
+    harnessArn?: string;
     prompt: string;
     qualifier?: string;
     sessionId?: string;
@@ -24,8 +25,12 @@ export async function invokeHarnessTurn(
   options: CoreOptions,
   signal?: AbortSignal,
 ): Promise<HarnessInvokeResult> {
-  const detail = await client.getHarness(input.harnessId, options);
-  const harnessArn = resolveHarnessArn(detail, input.bearerToken);
+  // A caller with the ARN and a bearer token may have no AWS credentials, so
+  // GetHarness is skipped and the service enforces the authorizer instead.
+  const harnessArn =
+    input.harnessArn !== undefined && input.bearerToken !== undefined
+      ? input.harnessArn
+      : resolveHarnessArn(await client.getHarness(input.harnessId, options), input.bearerToken);
   const sessionId = input.sessionId ?? newSessionId();
   const response = await client.invokeHarness(
     {

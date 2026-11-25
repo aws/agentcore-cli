@@ -15,6 +15,8 @@ import { attributeName, parseFlags } from "../../../router/flags";
 import { renderTuiAt } from "../../../tui";
 import { createInvokeGatewayHandler, invokeGatewayFlags } from "../../gateway/invoke";
 import { createInvokeHarnessHandler, invokeHarnessFlags } from "../../harness/invoke";
+import { HarnessInvokeArnKey } from "../../harness/invoke/launchContext";
+import { isHarnessArn } from "../../harness/request";
 import { AwsCredentialProviderKey, JsonKey, RegionKey } from "../../keys";
 import type { Core } from "../../types";
 import { assertMutuallyExclusiveFlags, resolveResource } from "../../utils";
@@ -181,6 +183,9 @@ export function createProjectInvokeHandler(core: Core, io: AppIO) {
         .withValue(PathKey, `/agentcore/${resourceType}/invoke`);
       if (resource.credentials) {
         handlerCtx = handlerCtx.withValue(AwsCredentialProviderKey, resource.credentials);
+      }
+      if (resourceType === "harness" && !isProjectName && isHarnessArn(identifier)) {
+        handlerCtx = handlerCtx.withValue(HarnessInvokeArnKey, identifier);
       }
       await handler.handle(handlerCtx, parsedHandlerFlags, {});
     },
