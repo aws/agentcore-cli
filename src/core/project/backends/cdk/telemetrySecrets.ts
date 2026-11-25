@@ -362,7 +362,8 @@ function missingKeys(
   return new ProjectStateError(
     `Runtime '${secret.runtime}' has no key for ${targets} to store in AWS Secrets Manager ` +
       `secret '${secret.name}'. Set ${variables} in ${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} ` +
-      `or in the environment you deploy from. Build copies ${sources} there when it is set.`,
+      `or in the environment you deploy from. Build copies the value of ${sources} into that file ` +
+      "when the shell that runs build, or that file, has a value for it.",
   );
 }
 
