@@ -870,9 +870,9 @@ export function boxGatewayIamWarnings(
     const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
     const endpoint = at && awsEndpoint(at.host);
     const host = at && hostKey(at.host, at.port);
-    if (endpoint && host ? allows(endpoint.api, host) : holds(auth.service)) continue;
+    if (endpoint && host ? allows(endpoint.api, host) : grantsService(auth.service)) continue;
     warnings.push(
-      endpoint && holds(auth.service)
+      host && holds(auth.service)
         ? `Target '${target.name}' calls ${host} with the gateway's role, which has no ` +
             `${auth.service} permissions for that host. Add an IAM policy file to ` +
             `additionalPolicies of the '${network.gateway}' gateway.`

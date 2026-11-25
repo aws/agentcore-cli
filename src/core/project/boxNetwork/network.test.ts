@@ -1351,6 +1351,21 @@ describe("warnings", () => {
       expect(warningsFor(bucket, ["s3:GetObject"])).toEqual([]);
     });
 
+    test("a Bedrock target outside the managed endpoints needs a granted action, and the Bedrock file does not count", () => {
+      const KB_HOST = "bedrock-agent-runtime.us-west-2.amazonaws.com";
+      const kb = signed("egress-kb", KB_HOST, "bedrock");
+      expect(warningsFor(kb, [], [BEDROCK_FILE])).toEqual([
+        forHost("egress-kb", KB_HOST, "bedrock"),
+      ]);
+      expect(warningsFor(kb)).toEqual([forService("egress-kb", "bedrock")]);
+      expect(warningsFor(kb, ["bedrock:Retrieve"], [BEDROCK_FILE])).toEqual([]);
+      const API_HOST = "bedrock-runtime.us-east-1.api.aws";
+      const api = signed("egress-api", API_HOST, "bedrock");
+      expect(warningsFor(api, [], [BEDROCK_FILE])).toEqual([
+        forHost("egress-api", API_HOST, "bedrock"),
+      ]);
+    });
+
     test("an AgentCore target needs an AgentCore grant", () => {
       const memory = signed(
         "agentcore",
