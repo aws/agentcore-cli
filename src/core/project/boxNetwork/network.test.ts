@@ -1563,6 +1563,41 @@ describe("third-party telemetry", () => {
     ]);
   });
 
+  test("keeps each target of a PRIVATE_VPC runtime, and warns that the VPC has no path to its host", () => {
+    const langfuse = {
+      kind: "langfuse",
+      destination: "https://us.cloud.langfuse.com",
+      secret: { ref: "env://LANGFUSE_AUTH" },
+    };
+    const telemetry = { langfuse, langsmith: LANGSMITH };
+    const runtime = {
+      ...CONTAINER,
+      containment: "PRIVATE_VPC",
+      network: { mode: "CONTAINED" },
+    } as const;
+
+    expect(telemetryOf({ telemetry, runtime })).toEqual({
+      names: ["langfuse", "langsmith"],
+      warnings: [
+        `${PROFILE}: [telemetry.langfuse] sends to us.cloud.langfuse.com, but runtime agent uses ` +
+          "a private VPC, which has no internet path. Box tries to send, and each send fails " +
+          "until you give the VPC a path to us.cloud.langfuse.com, or remove " +
+          "`--containment private-vpc`.",
+        `${PROFILE}: [telemetry.langsmith] sends to api.smith.langchain.com, but runtime agent ` +
+          "uses a private VPC, which has no internet path. Box tries to send, and each send " +
+          "fails until you give the VPC a path to api.smith.langchain.com, or remove " +
+          "`--containment private-vpc`.",
+      ],
+    });
+  });
+
+  test("gives no private-VPC warning for a runtime on the default network", () => {
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH } })).toEqual({
+      names: ["langsmith"],
+      warnings: [],
+    });
+  });
+
   test("carries each target the Runtime can send to, and says why it leaves out each other one", () => {
     const telemetry = {
       langsmith: LANGSMITH,

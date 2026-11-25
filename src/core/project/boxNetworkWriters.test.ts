@@ -704,6 +704,7 @@ describe("telemetryPolicyWriter", () => {
 
     expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
+      { kind: "runtimeNetworks" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-quiet.json" },
@@ -746,6 +747,7 @@ describe("telemetryPolicyWriter", () => {
 
     expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
+      { kind: "runtimeNetworks" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       plain,
     ]);

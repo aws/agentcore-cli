@@ -347,6 +347,11 @@ export const ContainedNetworkSchema = z
       )
       .optional(),
     ipAddressType: z.enum(["IPV4", "DUAL_STACK"]).optional(),
+    /**
+     * Gives the VPC an AWS Secrets Manager endpoint, so the box of the runtime can read the keys of
+     * its third-party telemetry targets. Build sets it and removes it.
+     */
+    secretsManagerEndpoint: z.boolean().optional(),
   })
   .strict();
 export type ContainedNetwork = z.infer<typeof ContainedNetworkSchema>;
