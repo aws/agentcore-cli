@@ -21,6 +21,7 @@ import {
   BOX_EGRESS_TARGET_PREFIX,
   awsEndpoint,
   boxGatewayBedrockHost,
+  hasBoxSignedSuffix,
   outboundAuthFor,
   parseEndpoint,
   targetNameFor,
@@ -520,6 +521,15 @@ function hostTargets(
           });
         }
         target = held.name;
+      } else if (userTarget && entry && !hasBoxSignedSuffix(host.host)) {
+        failAt(
+          host,
+          "UNSIGNABLE_HOST",
+          `signs requests to ${host.host} with ${entry.secret!.ref}, and build cannot find the ` +
+            "AWS service and the region of this host. Use an env:// secret for this host, or " +
+            "remove the secret. For an AWS API on a custom domain, add a GATEWAY_IAM_ROLE " +
+            `passthrough target for https://${host.authority} to the '${project.gateway}' gateway.`,
+        );
       } else if (userTarget && entry) {
         const { place, reason } = located({
           code: "UNSIGNABLE_HOST",

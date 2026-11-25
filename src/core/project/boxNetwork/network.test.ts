@@ -565,6 +565,13 @@ describe("outbound auth", () => {
       "[egress.x] sends its secret as query_param, and a gateway target sends an API key only " +
         'in a header. Set `placement` to "header", if the host takes the key in a header.',
     ]);
+    expect(refused("api.example.com", { ref: "aws://default" })).toEqual([
+      ["UNSIGNABLE_HOST", "x"],
+      "[egress.x] signs requests to api.example.com with aws://default, and build cannot find " +
+        "the AWS service and the region of this host. Use an env:// secret for this host, or " +
+        "remove the secret. For an AWS API on a custom domain, add a GATEWAY_IAM_ROLE " +
+        "passthrough target for https://api.example.com to the 'agent-box-egress' gateway.",
+    ]);
     expect(refused("api.example.com/v1", { ref: "env://KEY" })).toEqual([
       ["PATH_SCOPED_SECRET", "x"],
       "[egress.x] sends its secret only under /v1, and a gateway target sends its credential " +
@@ -614,7 +621,7 @@ describe("outbound auth", () => {
 
   const BUCKET = "my-bucket.s3.us-west-2.amazonaws.com";
 
-  test("gives aws:// on a host Box does not sign no target, and warns with what to add", () => {
+  test("gives aws:// on an AWS host Box does not sign no target, and warns with what to add", () => {
     const r = model("", { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } });
 
     expect(r.failures()).toEqual([]);
@@ -646,6 +653,26 @@ describe("outbound auth", () => {
     expect(r.host(BUCKET)).toMatchObject({
       target: "my-bucket",
       outboundAuth: { kind: "iam", service: "s3" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+  });
+
+  test("routes aws:// on a host that is not an AWS host through the user's own IAM target", () => {
+    const host = "api.example.com";
+    const mine = passthrough("my-api", `https://${host}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api", region: "us-west-2" },
+    });
+    const r = model(
+      "",
+      { api: { destinations: [host], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(host)).toMatchObject({
+      target: "my-api",
+      outboundAuth: { kind: "iam", service: "execute-api", region: "us-west-2" },
     });
     expect(r.network.managedTargets).toEqual(new Set());
     expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
@@ -957,7 +984,7 @@ describe("HTTP MCP servers", () => {
     expect(r.network.envRoutes).toEqual([{ route: "tools", variable: "TOOLS_TOKEN" }]);
   });
 
-  test("signs an aws:// server on an AWS host with the gateway's role, and gives one on another host no target", () => {
+  test("signs an aws:// server on an AWS host with the gateway's role, and refuses one on another host", () => {
     const host = "abc123.lambda-url.us-west-2.on.aws";
     const signed = model("", {}, { mcp: { fn: server([host], { secret: { ref: "aws://" } }) } });
     expect(signed.failures()).toEqual([]);
@@ -970,12 +997,14 @@ describe("HTTP MCP servers", () => {
       {},
       { mcp: { tools: server(["tools.example.com"], { secret: { ref: "aws://default" } }) } },
     );
-    expect(unsigned.failures()).toEqual([]);
-    expect(unsigned.targets()).toEqual(["tools.example.com -> (none)"]);
-    expect(unsigned.network.warnings.join("\n")).toContain(
-      ".box/agent/local/profile.toml:2:1: [mcp.tools] signs requests to tools.example.com with " +
-        "aws://default, and Box does not sign for this host name",
-    );
+    expect(unsigned.lines()).toEqual([
+      ".box/agent/local/profile.toml:2:1  [mcp.tools] signs requests to tools.example.com with " +
+        "aws://default, and build cannot find the AWS service and the region of this host. Use " +
+        "an env:// secret for this host, or remove the secret. For an AWS API on a custom " +
+        "domain, add a GATEWAY_IAM_ROLE passthrough target for https://tools.example.com to " +
+        "the 'agent-box-egress' gateway.",
+    ]);
+    expect(unsigned.failures()).toEqual([["UNSIGNABLE_HOST", "tools"]]);
   });
 
   test("stops on a server with two destinations, a path, or a wildcard, at its entry", () => {

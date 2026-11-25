@@ -177,6 +177,12 @@ export function signingService(host: string): { service: string; region: string 
 
 const BOX_SIGNED_HOST_SUFFIXES = [".amazonaws.com", ".api.aws"] as const;
 
+/** Whether `host` ends in `.amazonaws.com` or `.api.aws`, the suffixes that Box signs for. */
+export function hasBoxSignedSuffix(host: string): boolean {
+  const name = host.replace(/\.+$/, "").toLowerCase();
+  return BOX_SIGNED_HOST_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
 /**
  * The service and region that Box signs `host` with under `agentcore dev`, by the rule of
  * `derive_service_region` in Box Core's credentials crate, or `undefined` for a host Box does not
