@@ -2,19 +2,27 @@ import { describe, expect, test } from "bun:test";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import {
   HookPortReserver,
+  hooksConfigurationWarning,
   type HttpFetch,
   runWarmupHook,
+  sharedHookPortError,
   WARMUP_TYPE_HEADER,
   waitForHealthyPing,
+  waitUntilReady,
   warmupTarget,
 } from "./readiness";
 
-function runtime(build: ProjectRuntime["build"], httpPost?: { path: string; port?: number }) {
+function runtime(
+  build: ProjectRuntime["build"],
+  httpPost?: { path: string; port?: number },
+  overrides: Partial<ProjectRuntime> = {},
+) {
   return {
     name: "agent",
     build,
     protocol: "HTTP",
     entrypoint: "main.py",
+    ...overrides,
     codeLocation: "app/agent",
     ...(httpPost && { hooksConfiguration: { build: { warmup: { action: { httpPost } } } } }),
   } as ProjectRuntime;
@@ -63,10 +71,36 @@ describe("warmupTarget", () => {
   );
 
   test("CodeZip: a hook on its own port is reached on that local port", () => {
+    const typescript = runtime(
+      "CodeZip",
+      { path: "/warmup", port: 9300 },
+      { entrypoint: "main.ts" },
+    );
+    expect(warmupTarget(typescript, 9100)).toEqual({ path: "/warmup", port: 9300 });
+  });
+
+  test("Python CodeZip: a hook on its own port carries the uvicorn hint", () => {
     expect(warmupTarget(runtime("CodeZip", { path: "/warmup", port: 9300 }), 9100)).toEqual({
       path: "/warmup",
       port: 9300,
+      hint: expect.stringContaining("HookConfig(port=...) isn't served"),
     });
+  });
+
+  test("a path without a leading slash is refused before dev builds a URL from it", () => {
+    expect(() => warmupTarget(runtime("CodeZip", { path: "warmup" }), 9100)).toThrow(
+      `Runtime 'agent' has warmup hook path "warmup", which must start with "/" (for example "/warmup").`,
+    );
+  });
+
+  test("MCP: any /ping response counts, as it does for the service", () => {
+    const mcp = runtime("CodeZip", { path: "/warmup" }, { protocol: "MCP" });
+    expect(warmupTarget(mcp, 8000)).toEqual({ path: "/warmup", port: 8000, anyPingResponse: true });
+  });
+
+  test("A2A still has to report Healthy", () => {
+    const a2a = runtime("CodeZip", { path: "/warmup" }, { protocol: "A2A" });
+    expect(warmupTarget(a2a, 9000)).toEqual({ path: "/warmup", port: 9000 });
   });
 
   test("Container: a hook on the serving port goes through the dev port mapping", () => {
@@ -110,6 +144,24 @@ describe("waitForHealthyPing", () => {
   test.each(["HealthyBusy", "healthy"])("accepts %s, in any case", async (status) => {
     const { fetchImpl } = scriptedFetch([json({ status })]);
     await waitForHealthyPing(9100, new AbortController().signal, fetchImpl, 1);
+  });
+
+  test("with anyResponse, a 404 from a server without /ping counts as ready", async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      new Error("ECONNREFUSED"),
+      new Response("bad gateway", { status: 502 }),
+      new Response("too many", { status: 429 }),
+      new Response("not found", { status: 404 }),
+    ]);
+    await waitForHealthyPing(8000, new AbortController().signal, fetchImpl, 1, 1_000, true);
+    expect(calls).toHaveLength(4);
+  });
+
+  test("with anyResponse, only 502 and 429 keep it waiting", async () => {
+    const { fetchImpl } = scriptedFetch([new Response("bad gateway", { status: 502 })]);
+    await expect(
+      waitForHealthyPing(8000, new AbortController().signal, fetchImpl, 1, 20, true),
+    ).rejects.toThrow("GET /ping on port 8000 got no response other than 502 or 429 within 0.02s.");
   });
 
   test("gives up at a fixed deadline, however much the agent logs meanwhile", async () => {
@@ -192,5 +244,74 @@ describe("runWarmupHook", () => {
     ).rejects.toThrow(
       "The warmup memory call (POST /warmup on port 9100) did not finish within the 0.02s warmup budget.",
     );
+  });
+});
+
+describe("hooksConfigurationWarning", () => {
+  const named = (hooksConfiguration: unknown) =>
+    ({ name: "agent", hooksConfiguration }) as Pick<ProjectRuntime, "name" | "hooksConfiguration">;
+
+  test.each([
+    ["PascalCase keys", { Build: { Warmup: { Action: { HttpPost: { Path: "/warmup" } } } } }],
+    ["a warmUp typo", { build: { warmUp: { action: { httpPost: { path: "/warmup" } } } } }],
+    ["a build without a warmup", { build: {} }],
+  ])("warns about %s, which dev would silently skip", (_case, hooks) => {
+    expect(hooksConfigurationWarning(named(hooks))).toContain(
+      "Runtime 'agent' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+  });
+
+  test.each([
+    ["a recognized hook", { build: { warmup: { action: { httpPost: { path: "/warmup" } } } } }],
+    ["no hooks", undefined],
+    ["an empty object", {}],
+  ])("stays quiet for %s", (_case, hooks) => {
+    expect(hooksConfigurationWarning(named(hooks))).toBeUndefined();
+  });
+});
+
+describe("sharedHookPortError", () => {
+  const hooked = (name: string, build: ProjectRuntime["build"], port?: number) => ({
+    ...runtime(build, { path: "/warmup", ...(port !== undefined && { port }) }),
+    name,
+  });
+
+  test("names CodeZip agents whose hooks share their own port", () => {
+    expect(
+      sharedHookPortError([hooked("ta", "CodeZip", 9000), hooked("tb", "CodeZip", 9000)]),
+    ).toContain("('ta' and 'tb' on port 9000)");
+  });
+
+  test.each([
+    ["different ports", [hooked("ta", "CodeZip", 9000), hooked("tb", "CodeZip", 9001)]],
+    ["hooks on the serving port", [hooked("ta", "CodeZip", 8080), hooked("tb", "CodeZip")]],
+    [
+      "containers, which get their own host ports",
+      [hooked("ta", "Container", 9000), hooked("tb", "Container", 9000)],
+    ],
+  ])("is undefined for %s", (_case, runtimes) => {
+    expect(sharedHookPortError(runtimes)).toBeUndefined();
+  });
+});
+
+describe("waitUntilReady", () => {
+  test("adds the target's hint to a startup failure, and warns with it first", async () => {
+    const statuses: string[] = [];
+    await expect(
+      waitUntilReady({
+        name: "agent",
+        devPort: 8080,
+        warmup: { path: "/warmup", port: 9000, hint: "Leave the port unset." },
+        waitForPort: async () => {
+          throw new Error("Agent did not accept connections on port 8080 within 120s.");
+        },
+        signal: new AbortController().signal,
+        fetchImpl: scriptedFetch([json({})]).fetchImpl,
+        onStatus: (message) => statuses.push(message),
+      }),
+    ).rejects.toThrow(
+      "Agent did not accept connections on port 8080 within 120s. Leave the port unset.",
+    );
+    expect(statuses).toEqual(["Warning: Leave the port unset."]);
   });
 });

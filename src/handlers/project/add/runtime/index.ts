@@ -4,7 +4,12 @@ import { isChinaRegion } from "../../../../core/partition";
 import type { AddProjectResourceConfig } from "../types";
 import { parseJsonFlag, parseTags, tagsFlag } from "../../../utils";
 import { InputValidationError, RegionUnsupportedFeatureError } from "../../../../errors";
-import { AgentNameSchema, type EnvVar } from "../../../../projectSchemas/runtime";
+import {
+  AgentNameSchema,
+  type EnvVar,
+  type ProjectRuntime,
+} from "../../../../projectSchemas/runtime";
+import { hooksConfigurationWarning } from "../../../../core/dev/readiness";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
@@ -129,7 +134,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       }),
       flag(
         "platform-version",
-        "Runtime platform version: V1 (service default) or V2",
+        "Runtime platform version: V1 or V2. If unset, the service picks the version for your account",
         PlatformVersionSchema.optional(),
         { group: ENVIRONMENT },
       ),
@@ -313,6 +318,11 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         ),
         tags: parseTags(flags["tags"]),
       };
+      const hooksWarning = hooksConfigurationWarning({
+        name: flags.name,
+        hooksConfiguration: infra.hooksConfiguration as ProjectRuntime["hooksConfiguration"],
+      });
+      if (hooksWarning) notes.push(`Warning: ${hooksWarning}`);
 
       if (isImport) {
         await addProjectResource(
@@ -341,6 +351,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         project,
         toAddRuntimeInput({ ...infra, language, protocol }),
         runtimeDocsAddedMessage(flags.name, language, protocol),
+        { notes },
       );
     },
   });

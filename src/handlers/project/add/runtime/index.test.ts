@@ -436,6 +436,46 @@ describe("project add runtime", () => {
     },
   );
 
+  test("warns when --hooks-configuration has no warmup hook in camelCase, and still adds it", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "pascal_hooks",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--hooks-configuration",
+      '{"Build":{"Warmup":{"Action":{"HttpPost":{"Path":"/warmup"}}}}}',
+    ]);
+
+    expect(io.stderr()).toContain(
+      "Warning: Runtime 'pascal_hooks' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect((await runtimeOf(projectRoot, "pascal_hooks"))?.hooksConfiguration).toEqual({
+      Build: { Warmup: { Action: { HttpPost: { Path: "/warmup" } } } },
+    });
+  });
+
+  test("a recognized warmup hook adds without a warning", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "camel_hooks",
+      "--language",
+      "python",
+      "--hooks-configuration",
+      '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup"}}}}}',
+    ]);
+    expect(io.stderr()).not.toContain("Warning:");
+  });
+
   test("infrastructure flags are written to the spec entry", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
