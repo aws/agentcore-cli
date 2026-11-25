@@ -135,10 +135,7 @@ function contextOf(
     },
     hosts: [],
     telemetry: options.telemetry ?? [],
-    ...(options.thirdPartyTelemetry && {
-      thirdPartyTelemetry: options.thirdPartyTelemetry,
-      secretsManager: true,
-    }),
+    ...(options.thirdPartyTelemetry && { thirdPartyTelemetry: options.thirdPartyTelemetry }),
     ruleIds: new Set(),
     places: new Map(),
   });
@@ -533,7 +530,7 @@ describe("the Runtime profile of each CodeZip box template of create", () => {
   );
 });
 
-describe("deriveRuntimeProfile on a third-party target with AGENTCORE_BOX_SECRETS_MANAGER=1", () => {
+describe("deriveRuntimeProfile on a third-party target", () => {
   // box-integration has no box template for an MCP server, so its fixture cases do not apply.
   const cases = Object.entries(OLD_RENDERER.secretsManager)
     .filter(([label]) => Object.hasOwn(RUNTIME_TEMPLATE_SHORTCUTS, label.split(" ")[0]!))

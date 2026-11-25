@@ -15,7 +15,7 @@ import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
-import { BOX_SECRETS_MANAGER_ENV, boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
+import { boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
@@ -190,11 +190,6 @@ export interface BoxNetworkProject {
    */
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
   /**
-   * Whether the AgentCore Runtime profile reads third-party telemetry keys from AWS Secrets
-   * Manager ({@link BOX_SECRETS_MANAGER_ENV}). Off, it carries no third-party target.
-   */
-  readonly secretsManager?: boolean;
-  /**
    * The targets that {@link BOX_GATEWAY_TARGETS_FILE} names for the gateway. Absent when the file
    * does not name the gateway, which build last built before it kept the file: then build owns each
    * target whose name starts with `egress-` and that has the shape build writes.
@@ -262,7 +257,6 @@ export function buildBoxNetwork(
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
       thirdPartyTelemetry: thirdParty.targets,
-      secretsManager: project.secretsManager ?? false,
       ruleIds: new Set(
         parsed.statements
           .filter(
@@ -349,8 +343,8 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
 
 /**
  * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
- * each one it leaves out. With {@link BoxNetworkProject.secretsManager} off it carries none, and
- * warns for each target with a key. A CodeZip runtime carries no target with a key, because its
+ * each one it leaves out. Box reads the key of a target on AgentCore Runtime from AWS Secrets
+ * Manager. A CodeZip runtime carries no target with a key, because its
  * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
  * the variable deploy reads its key from is a variable that a credential reads, or that another
  * target of the profile reads, so deploy never sends one key to the wrong destination.
@@ -362,19 +356,6 @@ function runtimeTelemetry(
 ): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
   const leftOut = (name: string, reason: string) =>
     `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
-  const keyed = (profile.thirdPartyTelemetry ?? []).filter(({ secret }) => secret !== undefined);
-  if (!project.secretsManager) {
-    return {
-      targets: [],
-      warnings: keyed.map(({ name }) =>
-        leftOut(
-          name,
-          "on AgentCore Runtime, Box reads its key from AWS Secrets Manager, and no Box release " +
-            `for Linux can do that yet. To try a box build that can, set ${BOX_SECRETS_MANAGER_ENV}=1`,
-        ),
-      ),
-    };
-  }
   const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
     leftOut(name, reason),
   );

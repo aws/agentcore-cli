@@ -52,8 +52,6 @@ interface Options {
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
   /** The `[telemetry]` tables, as Box resolves them. */
   readonly telemetry?: Record<string, unknown>;
-  /** Whether the Runtime profile reads telemetry keys from AWS Secrets Manager. */
-  readonly secretsManager?: boolean;
   /** The targets that agentcore/box-gateway-targets.json names for the gateway. */
   readonly ownedTargets?: ReadonlySet<string>;
 }
@@ -111,7 +109,6 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     targets: options.targets ?? [],
     grantedActions: options.grantedActions ?? [],
     projectGatewayCheck: options.projectGatewayCheck ?? { accepts: true },
-    secretsManager: options.secretsManager ?? false,
     ...(options.ownedTargets && { ownedTargets: options.ownedTargets }),
   });
   return {
@@ -1544,27 +1541,14 @@ describe("third-party telemetry", () => {
   const LANGSMITH = { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } };
   const COLLECTOR = { kind: "otlp", destination: "https://collector.example.com" };
   const CONTAINER = { build: "Container", entrypoint: "main.py" } as const;
-  /** The model of a container runtime with the switch on, unless `options` says otherwise. */
+  /** The model of a container runtime, unless `options` says otherwise. */
   const telemetryOf = (options: Options) => {
-    const { network } = model("", {}, { secretsManager: true, runtime: CONTAINER, ...options });
+    const { network } = model("", {}, { runtime: CONTAINER, ...options });
     return {
       names: (network.thirdPartyTelemetry ?? []).map(({ name }) => name),
       warnings: network.warnings,
     };
   };
-
-  test("carries no third-party target with the switch off, as before, and warns for each with a key", () => {
-    const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };
-
-    expect(telemetryOf({ telemetry, secretsManager: false })).toEqual({
-      names: [],
-      warnings: [
-        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: on ` +
-          "AgentCore Runtime, Box reads its key from AWS Secrets Manager, and no Box release for " +
-          "Linux can do that yet. To try a box build that can, set AGENTCORE_BOX_SECRETS_MANAGER=1.",
-      ],
-    });
-  });
 
   test("carries no target with a key for a CodeZip runtime, which has no AWS CLI", () => {
     const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };

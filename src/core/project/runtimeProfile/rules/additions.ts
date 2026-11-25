@@ -14,7 +14,7 @@
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
- * | `[telemetry.<name>]`, third party | with AGENTCORE_BOX_SECRETS_MANAGER=1, each target that the Box network model carries (`context.thirdPartyTelemetry`) keeps its keys, and reads its key from its field of the runtime's AWS Secrets Manager secret |
+ * | `[telemetry.<name>]`, third party | each target that the Box network model carries (`context.thirdPartyTelemetry`) keeps its keys, and reads its key from its field of the runtime's AWS Secrets Manager secret |
  * | `plugins` | the user's plugins, then @box/aws-secrets-manager when a carried target has a key |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |

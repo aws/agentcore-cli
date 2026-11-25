@@ -87,11 +87,9 @@ export interface RuntimeProfileContext {
   readonly telemetry: readonly CloudWatchTelemetry[];
   /**
    * The third-party targets of the local profile that the Box network model carries to AgentCore
-   * Runtime. Only {@link secretsManager} carries one; absent means none.
+   * Runtime; absent means none.
    */
   readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
-  /** Whether AGENTCORE_BOX_SECRETS_MANAGER is `1` for this build (boxTelemetrySecrets.ts). */
-  readonly secretsManager?: boolean;
   /**
    * The `@id` of each rule of the local policy that box does not add for a route or a server. Box
    * adds `route_<name>_connect` and `route_<name>_request` for each route, and refuses a second
