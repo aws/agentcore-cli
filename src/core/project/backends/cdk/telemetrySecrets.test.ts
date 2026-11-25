@@ -338,7 +338,8 @@ describe("provisionTelemetrySecrets", () => {
       expect((error as Error).message).toBe(
         "Runtime 'other' has no key for [telemetry.langsmith] to store in AWS Secrets Manager " +
           `secret 'other'. Set ${LANGSMITH} in ${join(root.rootPath, "agentcore", ".env.local")} ` +
-          "or in the environment you deploy from. Build copies LANGSMITH_KEY there when it is set.",
+          "or in the environment you deploy from. Build copies the value of LANGSMITH_KEY into " +
+          "that file when the shell that runs build, or that file, has a value for it.",
       );
       expect(calls).toEqual([]);
     },
