@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
 import type { Project, ProjectEvent } from "../../../../handlers/project/types";
-import type { BoxTelemetrySecret } from "../../boxTelemetrySecrets";
+import { type BoxTelemetrySecret, boxTelemetrySecretName } from "../../boxTelemetrySecrets";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
 import type { DeployedState } from "./deployedState";
 
@@ -27,11 +27,33 @@ export type DeployedTelemetrySecrets = Record<string, { secretArn: string }>;
 /** The days a deleted secret can be restored in; a later deploy restores it. */
 const RECOVERY_WINDOW_DAYS = 7;
 
+const CREATED_BY_TAG = "agentcore:created-by";
+const PROJECT_TAG = "agentcore:project-name";
+const RUNTIME_TAG = "agentcore:runtime-name";
+
+/** The tags deploy gives the secret of runtime `runtime` of project `project` when it creates it. */
+export function telemetrySecretTags(project: string, runtime: string): Record<string, string> {
+  return { [CREATED_BY_TAG]: "agentcore-cli", [PROJECT_TAG]: project, [RUNTIME_TAG]: runtime };
+}
+
+/** True if `tags` are the tags that deploy gives the secret `name` when it creates that secret. */
+function createdByDeploy(name: string, tags: Readonly<Record<string, string>>): boolean {
+  const project = tags[PROJECT_TAG];
+  const runtime = tags[RUNTIME_TAG];
+  return (
+    tags[CREATED_BY_TAG] === "agentcore-cli" &&
+    project !== undefined &&
+    runtime !== undefined &&
+    boxTelemetrySecretName(project, runtime) === name
+  );
+}
+
 /** A secret as Secrets Manager describes it. */
 interface DescribedSecret {
   readonly arn: string;
   /** Whether the secret is scheduled for deletion. */
   readonly deleted: boolean;
+  readonly tags: Readonly<Record<string, string>>;
 }
 
 /** The Secrets Manager calls deploy makes, so a test stubs the client's `send` alone. */
@@ -40,8 +62,13 @@ export interface TelemetrySecretCalls {
   describe(secretId: string): Promise<DescribedSecret | undefined>;
   /** The secret string of the secret, or undefined when it holds none. */
   read(arn: string): Promise<string | undefined>;
-  /** Creates the secret, and returns its ARN. */
-  create(input: { name: string; value: string; description: string }): Promise<string>;
+  /** Creates the secret with `tags`, and returns its ARN. */
+  create(input: {
+    name: string;
+    value: string;
+    description: string;
+    tags: Readonly<Record<string, string>>;
+  }): Promise<string>;
   put(arn: string, value: string): Promise<void>;
   restore(arn: string): Promise<void>;
   /** Schedules the deletion of the secret, with a recovery window. */
@@ -59,7 +86,12 @@ export function secretsManagerCalls(client: SecretsManagerClient): TelemetrySecr
             `Secrets Manager described secret '${secretId}' without an ARN.`,
           );
         }
-        return { arn: described.ARN, deleted: described.DeletedDate !== undefined };
+        const tags = Object.fromEntries(
+          (described.Tags ?? []).flatMap(({ Key, Value }) =>
+            Key === undefined ? [] : [[Key, Value ?? ""]],
+          ),
+        );
+        return { arn: described.ARN, deleted: described.DeletedDate !== undefined, tags };
       } catch (error) {
         if (error instanceof ResourceNotFoundException) return undefined;
         throw error;
@@ -69,9 +101,14 @@ export function secretsManagerCalls(client: SecretsManagerClient): TelemetrySecr
       const value = await client.send(new GetSecretValueCommand({ SecretId: arn }));
       return value.SecretString;
     },
-    async create({ name, value, description }) {
+    async create({ name, value, description, tags }) {
       const created = await client.send(
-        new CreateSecretCommand({ Name: name, SecretString: value, Description: description }),
+        new CreateSecretCommand({
+          Name: name,
+          SecretString: value,
+          Description: description,
+          Tags: Object.entries(tags).map(([Key, Value]) => ({ Key, Value })),
+        }),
       );
       if (!created.ARN) {
         throw new MalformedServiceResponseError(
@@ -155,19 +192,23 @@ function stringFields(text: string | undefined): Record<string, string> {
 /**
  * Decides what to write to one secret. With every key, deploy writes the whole object. Without
  * one, it reads the secret back and keeps the value its field holds, and keeps the secret as it
- * is when nothing changes. A key that neither deploy nor the secret holds fails the deploy.
+ * is when nothing changes. A key that neither deploy nor the secret holds fails the deploy. A
+ * secret of that name that deploy did not create also stops the deploy.
  */
 async function plan(
   calls: TelemetrySecretCalls,
   secret: BoxTelemetrySecret,
   env: Record<string, string | undefined>,
-  rootPath: string,
+  project: Project,
 ): Promise<Plan> {
   const given = secret.fields.map((field) => ({
     ...field,
     value: env[field.variable] || undefined,
   }));
   const existing = await calls.describe(secret.name);
+  if (existing && !createdByDeploy(secret.name, existing.tags)) {
+    throw notCreatedByDeploy(secret, project.spec.name);
+  }
   // A secret scheduled for deletion cannot be read until a write restores it.
   let held: Record<string, string> = {};
   if (existing && !existing.deleted && given.some(({ value }) => value === undefined)) {
@@ -180,7 +221,7 @@ async function plan(
     if (value === undefined) missing.push(field);
     else object[field.field] = value;
   }
-  if (missing.length > 0) throw missingKeys(secret, missing, rootPath);
+  if (missing.length > 0) throw missingKeys(secret, missing, project.rootPath);
   const value = JSON.stringify(object);
   if (existing === undefined) return { secret, kind: "create", value };
   const unchanged =
@@ -194,8 +235,10 @@ async function plan(
  * JSON object, with one field for each third-party telemetry target of its runtime. The key of
  * each target comes from its variable in `processEnv`, else in `agentcore/.env.local`, as a
  * credential's does. A secret is created when absent, and restored when it is scheduled for
- * deletion. Every secret is decided before the first write, so a missing key writes nothing. A
- * failure removes the secrets this deploy created.
+ * deletion. Deploy gives each secret that it creates the tags of {@link telemetrySecretTags}.
+ * Deploy makes a decision for each secret before the first write. Thus a missing key, or a secret
+ * of that name without those tags, writes nothing. A failure removes the secrets this deploy
+ * created.
  */
 export async function* provisionTelemetrySecrets(
   calls: TelemetrySecretCalls,
@@ -211,7 +254,7 @@ export async function* provisionTelemetrySecrets(
   });
 
   const plans: Plan[] = [];
-  for (const secret of secrets) plans.push(await plan(calls, secret, env, project.rootPath));
+  for (const secret of secrets) plans.push(await plan(calls, secret, env, project));
 
   const stored: DeployedTelemetrySecrets = {};
   const created: string[] = [];
@@ -233,6 +276,7 @@ export async function* provisionTelemetrySecrets(
           description:
             `The keys Box sends to the third-party telemetry targets of runtime ` +
             `'${secret.runtime}' of project '${project.spec.name}'. Written by agentcore deploy.`,
+          tags: telemetrySecretTags(project.spec.name, secret.runtime),
         });
         created.push(arn);
         stored[secret.name] = { secretArn: arn };
@@ -264,7 +308,7 @@ export async function* provisionTelemetrySecrets(
 /**
  * Schedules the deletion of each secret of `secrets`, except a secret that `kept` names, which
  * another deployment target records. A secret that is gone, or already scheduled for deletion, is
- * not an error. A secret that cannot be deleted is reported rather than failing the deploy that
+ * not an error. For a secret that deploy did not create, it shows a warning and removes the record. A secret that cannot be deleted is reported rather than failing the deploy that
  * already changed the stack, and comes back in the result so the caller can keep its record.
  */
 export async function* removeTelemetrySecrets(
@@ -284,6 +328,16 @@ export async function* removeTelemetrySecrets(
     try {
       const existing = await calls.describe(secretArn);
       if (existing === undefined || existing.deleted) continue;
+      if (!createdByDeploy(name, existing.tags)) {
+        yield {
+          type: "warning",
+          message:
+            `Deploy did not delete AWS Secrets Manager secret '${name}' (${secretArn}), because ` +
+            "that secret does not have the tags that deploy gives to the secrets that it creates. " +
+            "Deploy removes its record of that secret. If no project uses it, delete it.",
+        };
+        continue;
+      }
       yield { type: "step", message: `deleting secret '${name}'` };
       await calls.delete(secretArn);
     } catch (error) {
@@ -309,5 +363,18 @@ function missingKeys(
     `Runtime '${secret.runtime}' has no key for ${targets} to store in AWS Secrets Manager ` +
       `secret '${secret.name}'. Set ${variables} in ${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} ` +
       `or in the environment you deploy from. Build copies ${sources} there when it is set.`,
+  );
+}
+
+function notCreatedByDeploy(secret: BoxTelemetrySecret, project: string): ProjectStateError {
+  const tags = Object.entries(telemetrySecretTags(project, secret.runtime))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+  return new ProjectStateError(
+    `Deploy stopped before it wrote a secret. AWS Secrets Manager has secret '${secret.name}', ` +
+      `but that secret does not have the tags that deploy gives to the secret of runtime ` +
+      `'${secret.runtime}' (${tags}). Deploy does not write or delete a secret that it did not ` +
+      "create. If no project uses that secret, delete it with no recovery window, or change the " +
+      "name of the runtime. Then deploy again.",
   );
 }
