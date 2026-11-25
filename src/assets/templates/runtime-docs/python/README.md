@@ -196,6 +196,73 @@ Every protocol also shares these:
   to the current time on every ping. Change it only when the status changes,
   or idle sessions never time out and can use up your session quota.
 
+### Platform version V2
+
+`--platform-version V2` (`platformVersion` in `agentcore.json`) prepares your
+agent once and starts each session from a snapshot of it, so cold starts stay
+fast as images and traffic grow. V2 is offered in
+[some Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html#runtime-platform-versions).
+If you don't set it, the service picks the version for your account, so set
+it when you need a specific one.
+On V2:
+
+- Without a warmup hook, the snapshot is taken when your health check
+  (`GET /ping`) first passes, so report healthy only after your agent has
+  loaded what sessions need.
+  `BedrockAgentCoreApp` does this for you: code at module scope (imports,
+  models, clients) runs before `app.run()` starts the server.
+  If the health check doesn't pass in time, the create or update fails.
+- Build reusable clients before the snapshot. Refresh credentials when they
+  expire, and create a new boto3 `Session` in the handler only for
+  clients that need the session's context keys.
+- Create random values, IDs, tokens and timestamps in the request handler,
+  from the operating system (`secrets`, `os.urandom()`, `uuid.uuid4()`). The
+  `random` module repeats the same sequence in every session.
+- In a container, use a snapshot-safe OpenSSL. On Amazon Linux 2023:
+  `RUN dnf swap -y openssl-libs openssl-snapsafe-libs`. Direct code deploys
+  already use it; OpenSSL builds that libraries bundle can repeat values.
+- Every session reports the same hostname and PID, so don't use either as an
+  ID.
+- `--hooks-configuration` adds a build warmup hook, for example
+  `{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup"}}}}}` (keys are
+  camelCase). After the health check passes, the service sends `POST /warmup`
+  to your agent twice, with the `X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type`
+  header set to `memory` (before the snapshot: load and keep what sessions
+  need) and then `disk` (after it: read the files a session starts with).
+  Return 2xx only when the work is done. The two calls share 120 seconds, and
+  a failed call fails the create or update. Your agent has to serve the route:
+{{#if (eq protocol "HTTP")}}
+  With `bedrock-agentcore`, use `@app.warmup`, or add the route yourself.
+  Check that your `bedrock-agentcore` version has `@app.warmup`: without it
+  the route returns 404, `agentcore dev` fails, and so does the deploy.
+{{/if}}
+{{#if (eq protocol "MCP")}}
+  With FastMCP, add `@mcp.custom_route("/warmup", methods=["POST"])`; it's
+  served on the serving port (8000). It can't be `POST /mcp`.
+{{/if}}
+{{#if (eq protocol "A2A")}}
+  Add a `POST /warmup` route to the server on the serving port (9000). It
+  can't be `POST /` or `GET /.well-known/agent-card.json`.
+{{/if}}
+{{#if (eq protocol "AGUI")}}
+  Add a `POST /warmup` route to your FastAPI app. It can't be
+  `POST /invocations`.
+{{/if}}
+  Leave `port` unset unless a separate server in your agent listens on another
+  port. `agentcore dev` runs the same calls, and can't reach a hook that
+  listens only on `127.0.0.1` inside a container.
+- `--resource-configurations` sets a committed memory baseline per session.
+  Each update replaces both settings, so keep them set in `agentcore.json`.
+- Creating or updating a V2 runtime takes several minutes. Keep
+  `platformVersion` set: removing it doesn't move the runtime back, and a
+  later replacement of the runtime would start on the service's default for
+  your account. Set `V1` to move back.
+- If deploy fails with "platformVersion V2 is not available for this
+  account", the target's Region, or your account, doesn't offer V2: deploy to
+  a supported Region or set `V1`.
+
+More: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-v2-optimize.html
+
 ## Dependencies: `pyproject.toml`
 
 Declare dependencies in `[project].dependencies`. That's the only place the
@@ -351,14 +418,19 @@ Requirements for the image:
 A starting point:
 
 ```dockerfile
-FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-RUN pip install --no-cache-dir uv
+# Snapshot-safe OpenSSL, so platform version V2 sessions don't repeat random values.
+RUN dnf upgrade -y \
+ && dnf swap -y openssl-libs openssl-snapsafe-libs \
+ && dnf install -y python3.12 python3.12-pip shadow-utils \
+ && dnf clean all
+RUN python3.12 -m pip install --no-cache-dir uv
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX
 ENV UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=1 PYTHONUNBUFFERED=1 \
     UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX} UV_INDEX=${UV_INDEX} \
-    PATH="/app/.venv/bin:$PATH"
+    UV_PYTHON=python3.12 PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 RUN useradd -m -u 1000 bedrock_agentcore

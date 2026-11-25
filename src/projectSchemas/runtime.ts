@@ -2,6 +2,7 @@ import {
   ContainerUriSchema,
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
+  PlatformVersionSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
   SECURITY_GROUP_ID_PATTERN,
@@ -191,12 +192,45 @@ export const S3FilesAccessPointConfigSchema = z.object({
     ),
 });
 export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
+// Only the shape is checked here; the CDK app and the service check the bucket and prefix rules.
+// Strict so a misspelled optional key, such as s3BucketOwner, fails instead of being dropped.
+export const S3BucketMountConfigSchema = z.strictObject({
+  /** General purpose or directory bucket name. */
+  bucket: z.string().min(3).max(63),
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(
+      /^\/mnt\/[a-zA-Z0-9._-]+\/?$/,
+      "Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/bucket)",
+    ),
+  /**
+   * Key prefix to mount; the whole bucket when omitted. {runtimeSessionId} gives each session
+   * its own prefix (e.g. "data/{runtimeSessionId}/").
+   */
+  prefix: z.string().min(1).max(1024).optional(),
+  /** Account that must own the bucket; defaults to the runtime's account. */
+  s3BucketOwner: z
+    .string()
+    .regex(/^[0-9]{12}$/, "Must be a 12-digit AWS account ID")
+    .optional(),
+  /** Region of the bucket; defaults to the runtime's Region. */
+  s3BucketRegion: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^([a-z]+-){2,3}\d+$/, "Must be an AWS Region code (e.g. us-west-2)")
+    .optional(),
+});
+export type S3BucketMountConfig = z.infer<typeof S3BucketMountConfigSchema>;
 export const MAX_EFS_MOUNTS = 2;
 export const MAX_S3_MOUNTS = 2;
 export const FilesystemConfigurationSchema = z.union([
   z.strictObject({ sessionStorage: SessionStorageSchema }),
   z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
   z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+  z.strictObject({ s3BucketMount: S3BucketMountConfigSchema }),
 ]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 export const LIFECYCLE_TIMEOUT_MIN = 60;
@@ -223,6 +257,28 @@ export const LifecycleConfigurationSchema = z
     }
   });
 export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema>;
+
+// Shape only, and loose: the service validates sizes, paths, ports and the V2 requirement, and
+// fields it adds later pass through to it without a CLI release.
+export const ResourceConfigurationSchema = z.looseObject({
+  minimumMemoryInMiB: z.number().int().positive(),
+});
+export type ResourceConfiguration = z.infer<typeof ResourceConfigurationSchema>;
+
+export const LifecycleHookSchema = z.looseObject({
+  action: z.looseObject({
+    httpPost: z.looseObject({
+      path: z.string().min(1),
+      port: z.number().int().optional(),
+    }),
+  }),
+});
+export type LifecycleHook = z.infer<typeof LifecycleHookSchema>;
+
+export const RuntimeHooksConfigurationSchema = z.looseObject({
+  build: z.looseObject({ warmup: LifecycleHookSchema.optional() }).optional(),
+});
+export type RuntimeHooksConfiguration = z.infer<typeof RuntimeHooksConfigurationSchema>;
 export const RuntimeEndpointNameSchema = z
   .string()
   .min(1, "Endpoint name is required")
@@ -353,6 +409,8 @@ export const ProjectRuntimeSchema = z
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
+    /** Removing this keeps a deployed runtime on its current version; set V1 to move back. */
+    platformVersion: PlatformVersionSchema.optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
     networkConfig: NetworkConfigSchema.optional(),
@@ -367,6 +425,10 @@ export const ProjectRuntimeSchema = z
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),
     lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
+    /** Each update replaces this, so removing it returns sessions to consumption-based pricing. */
+    resourceConfigurations: z.array(ResourceConfigurationSchema).optional(),
+    /** Each update replaces this, so removing it removes the hooks. */
+    hooksConfiguration: RuntimeHooksConfigurationSchema.optional(),
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),
@@ -507,7 +569,9 @@ export const ProjectRuntimeSchema = z
           ? fc.sessionStorage.mountPath
           : "efsAccessPoint" in fc
             ? fc.efsAccessPoint.mountPath
-            : fc.s3FilesAccessPoint.mountPath
+            : "s3FilesAccessPoint" in fc
+              ? fc.s3FilesAccessPoint.mountPath
+              : fc.s3BucketMount.mountPath
         ).replace(/\/$/, ""),
       );
       if (new Set(mountPaths).size !== mountPaths.length) {

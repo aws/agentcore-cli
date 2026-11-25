@@ -57,6 +57,41 @@ describe("runtime custom validation", () => {
       }).success,
     ).toBe(false);
   });
+  it("keeps V2 resource and hook fields it does not model, and rejects invalid ones", () => {
+    const warmup = { action: { httpPost: { path: "/warmup", port: 8080 } } };
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+        hooksConfiguration: { build: { warmup } },
+      }).success,
+    ).toBe(true);
+    const unmodeled = {
+      build: { warmup: { action: { httpPost: { path: "/w", timeoutSeconds: 30 } } } },
+    };
+    expect(
+      ProjectRuntimeSchema.parse({ ...codeZipAgent, hooksConfiguration: unmodeled })
+        .hooksConfiguration,
+    ).toEqual(unmodeled);
+    for (const fields of [
+      { hooksConfiguration: { build: { warmup: { action: { httpPost: { path: "" } } } } } },
+      { resourceConfigurations: [{ minimumMemoryInMiB: 0 }] },
+    ]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...fields }).success).toBe(false);
+    }
+  });
+  it("accepts only the V1 and V2 platform versions", () => {
+    for (const platformVersion of ["V1", "V2"]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
+        true,
+      );
+    }
+    for (const platformVersion of ["v2", "V3", ""]) {
+      expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
+        false,
+      );
+    }
+  });
   it("couples VPC mode and network configuration", () => {
     expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, networkMode: "VPC" }).success).toBe(
       false,
@@ -275,5 +310,83 @@ describe("runtime custom validation", () => {
     expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, ...vpc }).success).toBe(true);
     expect(ProjectRuntimeSchema.safeParse({ ...prebuiltAgent, ...vpc }).success).toBe(true);
     expect(ProjectRuntimeSchema.safeParse(containerAgent).success).toBe(true);
+  });
+});
+
+describe("s3BucketMount validation", () => {
+  const v2Agent = { ...codeZipAgent, platformVersion: "V2" as const };
+  const withMount = (s3BucketMount: Record<string, unknown>, agent: object = v2Agent) =>
+    ProjectRuntimeSchema.safeParse({
+      ...agent,
+      filesystemConfigurations: [
+        {
+          s3BucketMount: {
+            bucket: "amzn-s3-demo-bucket",
+            mountPath: "/mnt/bucket",
+            ...s3BucketMount,
+          },
+        },
+      ],
+    });
+  const messages = (result: ReturnType<typeof withMount>) =>
+    result.error?.issues.map((issue) => issue.message) ?? [];
+
+  it("accepts a whole-bucket mount in PUBLIC and VPC network mode on V2", () => {
+    expect(withMount({}, { ...v2Agent, networkMode: "PUBLIC" }).success).toBe(true);
+    expect(withMount({}, { ...v2Agent, networkMode: "VPC", networkConfig }).success).toBe(true);
+  });
+  it("rejects a misspelled field instead of dropping it", () => {
+    const result = withMount({ s3BucketOwnr: "123456789012" });
+    expect(result.success).toBe(false);
+  });
+  it("accepts every optional field", () => {
+    expect(
+      withMount({
+        prefix: "data/{runtimeSessionId}/",
+        s3BucketOwner: "123456789012",
+        s3BucketRegion: "us-east-1",
+      }).success,
+    ).toBe(true);
+  });
+  it("leaves the platformVersion V2 rule to the service", () => {
+    for (const agent of [codeZipAgent, { ...codeZipAgent, platformVersion: "V1" }]) {
+      expect(withMount({}, agent).success).toBe(true);
+    }
+  });
+  it("counts toward the five-mount limit with no cap of its own", () => {
+    const mounts = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        s3BucketMount: { bucket: "amzn-s3-demo-bucket", mountPath: `/mnt/bucket${index}` },
+      }));
+    expect(
+      ProjectRuntimeSchema.safeParse({ ...v2Agent, filesystemConfigurations: mounts(5) }).success,
+    ).toBe(true);
+    expect(
+      ProjectRuntimeSchema.safeParse({ ...v2Agent, filesystemConfigurations: mounts(6) }).success,
+    ).toBe(false);
+  });
+  it("rejects a mount path another mount type already uses", () => {
+    const result = ProjectRuntimeSchema.safeParse({
+      ...v2Agent,
+      filesystemConfigurations: [
+        { sessionStorage: { mountPath: "/mnt/data" } },
+        { s3BucketMount: { bucket: "amzn-s3-demo-bucket", mountPath: "/mnt/data/" } },
+      ],
+    });
+    expect(messages(result)).toContain("Filesystem mount paths must be unique");
+  });
+  it("checks only the bucket and prefix length, leaving their rules to the CDK app", () => {
+    for (const bucket of ["my.bucket-1", "my-bucket--usw2-az1--x-s3", "my-mrap.mrap"]) {
+      expect(withMount({ bucket }).success).toBe(true);
+    }
+    expect(withMount({ bucket: "ab" }).success).toBe(false);
+    expect(withMount({ bucket: "a".repeat(64) }).success).toBe(false);
+    expect(withMount({ prefix: "data/{runtimeSessionId}/" }).success).toBe(true);
+    expect(withMount({ prefix: "" }).success).toBe(false);
+    expect(withMount({ prefix: "a".repeat(1025) }).success).toBe(false);
+  });
+  it("checks the bucket owner and Region formats", () => {
+    expect(withMount({ s3BucketOwner: "12345678901" }).success).toBe(false);
+    expect(withMount({ s3BucketRegion: "uswest2" }).success).toBe(false);
   });
 });

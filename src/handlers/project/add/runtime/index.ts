@@ -8,11 +8,14 @@ import {
   AgentNameSchema,
   ProjectRuntimeSchema,
   type EnvVar,
+  type ProjectRuntime,
 } from "../../../../projectSchemas/runtime";
 import { buildDocsRuntimeSpec } from "../../../../core/project/templates/runtimeDocs";
+import { hooksConfigurationWarning } from "../../../../core/dev/readiness";
 import { RuntimeAuthorizerTypeSchema } from "../../../../projectSchemas/auth";
 import {
   NetworkModeSchema,
+  PlatformVersionSchema,
   ProtocolModeSchema,
   type ProtocolMode,
 } from "../../../../projectSchemas/constants";
@@ -43,6 +46,8 @@ type JsonRuntimeField =
   | "networkConfig"
   | "authorizerConfiguration"
   | "lifecycleConfiguration"
+  | "resourceConfigurations"
+  | "hooksConfiguration"
   | "filesystemConfigurations";
 
 type WithJsonFields<T> = Omit<T, JsonRuntimeField> & Partial<Record<JsonRuntimeField, unknown>>;
@@ -145,14 +150,32 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         group: ENVIRONMENT,
       }),
       flag(
+        "platform-version",
+        "Runtime platform version: V1 or V2. If unset, the service picks the version for your account",
+        PlatformVersionSchema.optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag(
         "lifecycle-configuration",
         "session idle timeout and instance lifetime configuration (JSON)",
         z.string().optional(),
         { group: ENVIRONMENT },
       ),
       flag(
+        "resource-configurations",
+        'committed per-session memory baseline, e.g. [{"minimumMemoryInMiB":4096}] (JSON, V2 only)',
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag(
+        "hooks-configuration",
+        "lifecycle hooks, e.g. a build warmup hook (JSON, V2 only)",
+        z.string().optional(),
+        { group: ENVIRONMENT },
+      ),
+      flag(
         "filesystem-configurations",
-        "filesystem mount configurations (JSON)",
+        "filesystem mount configurations (JSON); an s3BucketMount needs --platform-version V2",
         z.string().optional(),
         { group: ENVIRONMENT },
       ),
@@ -294,6 +317,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         envVars: toEnvironmentVariables(inputEnvironmentVariables),
         networkMode: flags["network-mode"],
         networkConfig: parseJsonFlag("network-config", flags["network-config"]),
+        platformVersion: flags["platform-version"],
         authorizerType: flags["authorizer-type"],
         authorizerConfiguration: parseJsonFlag(
           "authorizer-configuration",
@@ -304,12 +328,22 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
           "lifecycle-configuration",
           flags["lifecycle-configuration"],
         ),
+        resourceConfigurations: parseJsonFlag(
+          "resource-configurations",
+          flags["resource-configurations"],
+        ),
+        hooksConfiguration: parseJsonFlag("hooks-configuration", flags["hooks-configuration"]),
         filesystemConfigurations: parseJsonFlag(
           "filesystem-configurations",
           flags["filesystem-configurations"],
         ),
         tags: parseTags(flags["tags"]),
       };
+      const hooksWarning = hooksConfigurationWarning({
+        name: flags.name,
+        hooksConfiguration: infra.hooksConfiguration as ProjectRuntime["hooksConfiguration"],
+      });
+      if (hooksWarning) notes.push(`Warning: ${hooksWarning}`);
 
       if (isImport) {
         await addProjectResource(
@@ -339,6 +373,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
         project,
         toAddRuntimeInput({ ...infra, language, protocol }),
         runtimeDocsAddedMessage(flags.name, language, protocol, buildConfig?.containerUri),
+        { notes },
       );
     },
   });

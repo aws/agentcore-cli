@@ -132,6 +132,7 @@ type HarnessOptions = {
    * since most projects here are in-memory; `"real"` uses the project manager's.
    */
   syncRuntimeBuilds?: "real" | ProjectManager["syncRuntimeBuilds"];
+  fetch?: DevProjectHandlerConfig["fetch"];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -216,6 +217,11 @@ function harness(options: HarnessOptions = {}) {
     waitReady: async () => {
       await Bun.sleep(5);
     },
+    fetch:
+      options.fetch ??
+      (async (url) => {
+        throw new Error(`unexpected HTTP call to ${url}`);
+      }),
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(GlobalConfigAccessorKey, new TestGlobalConfigAccessor())
@@ -475,6 +481,87 @@ describe("project dev selection and dispatch", () => {
   });
 });
 
+describe("project dev build warmup hook", () => {
+  const withHook = (): ProjectRuntime => ({
+    ...runtime("orders"),
+    hooksConfiguration: { build: { warmup: { action: { httpPost: { path: "/warmup" } } } } },
+  });
+  const healthy = () =>
+    new Response(JSON.stringify({ status: "Healthy" }), {
+      headers: { "content-type": "application/json" },
+    });
+  /** A runner that serves briefly and then exits, so a successful run of `dev --agent` returns. */
+  const briefRunner = () => {
+    const inputs: DevServerInput[] = [];
+    const runner: DevRunner = {
+      run: async function* (input) {
+        inputs.push(input);
+        yield { type: "stdout", line: "serving" };
+        await Bun.sleep(100);
+      },
+    };
+    return { runner, inputs };
+  };
+
+  test("dev --agent waits for /ping, then sends memory and disk warmup calls", async () => {
+    const calls: string[] = [];
+    const subject = harness({
+      project: project(withHook()),
+      codeZip: briefRunner(),
+      fetch: async (url, init) => {
+        const type = (init.headers as Record<string, string> | undefined)?.[
+          "x-amzn-bedrock-agentcore-runtime-warmup-type"
+        ];
+        calls.push(`${init.method} ${url}${type ? ` ${type}` : ""}`);
+        return url.endsWith("/ping") ? healthy() : new Response("{}");
+      },
+    });
+    await subject.run({ agent: "orders" });
+
+    expect(calls).toEqual([
+      "GET http://127.0.0.1:8080/ping",
+      "POST http://127.0.0.1:8080/warmup memory",
+      "POST http://127.0.0.1:8080/warmup disk",
+    ]);
+    expect(subject.io.stderr()).toContain("Warmup hook for 'orders' succeeded");
+  });
+
+  test("dev --agent stops the agent and fails when the warmup hook fails", async () => {
+    const codeZip = stayingRunner([{ type: "stdout", line: "serving" }]);
+    const subject = harness({
+      project: project(withHook()),
+      codeZip,
+      fetch: async (url) =>
+        url.endsWith("/ping") ? healthy() : new Response("not ready", { status: 503 }),
+    });
+    await expect(subject.run({ agent: "orders" })).rejects.toThrow(
+      "Agent 'orders' failed to start: The warmup memory call (POST /warmup on port 8080) returned 503: not ready.",
+    );
+    expect(codeZip.inputs[0]?.signal.aborted).toBe(true);
+  });
+
+  test("dev --agent warns when hooksConfiguration has no warmup it recognizes", async () => {
+    const subject = harness({
+      project: project({
+        ...runtime("orders"),
+        hooksConfiguration: { Build: { Warmup: {} } } as ProjectRuntime["hooksConfiguration"],
+      }),
+      codeZip: briefRunner(),
+    });
+    await subject.run({ agent: "orders" });
+    expect(subject.io.stderr()).toContain(
+      "Warning: Runtime 'orders' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect(subject.io.stderr()).not.toContain("GET /ping");
+  });
+
+  test("dev --agent without a warmup hook makes no HTTP calls", async () => {
+    const subject = harness({ codeZip: briefRunner() });
+    await subject.run({ agent: "orders" });
+    expect(subject.io.stderr()).not.toContain("GET /ping");
+  });
+});
+
 describe("project dev headless multi-agent", () => {
   const twoRuntimes = () => project(runtime("orders"), runtime("support", "Container"));
 
@@ -573,6 +660,20 @@ describe("project dev headless multi-agent", () => {
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
+  });
+
+  test("refuses CodeZip agents whose warmup hooks share their own port, before starting any", async () => {
+    const ownPort = (name: string): ProjectRuntime => ({
+      ...runtime(name),
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 9000 } } } },
+      },
+    });
+    const codeZip = stayingRunner();
+    const subject = harness({ project: project(ownPort("ta"), ownPort("tb")), codeZip });
+
+    await expect(subject.run()).rejects.toThrow("('ta' and 'tb' on port 9000)");
+    expect(codeZip.inputs).toHaveLength(0);
   });
 
   test("exits non-zero when every agent fails to start", async () => {

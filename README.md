@@ -110,6 +110,9 @@ up from the current directory.
 `agentcore dev` runs runtimes locally or deploys harnesses and prints invoke guidance.
 Use `--mode browser` for Agent Inspector, `--skip-deploy` to reuse deployed harnesses,
 and `--agent <name>` to choose an agent in mixed projects.
+For a runtime with a build warmup hook (`hooksConfiguration.build.warmup`), dev waits for a healthy
+`GET /ping`, then sends the hook's `memory` and `disk` calls as platform version V2 does, and fails
+the start if either fails.
 
 New payment credentials receive provider names that payment connectors can reference.
 An existing payment credential keeps the provider ARN recorded for its deployment

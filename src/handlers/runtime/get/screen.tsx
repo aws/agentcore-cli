@@ -1,3 +1,7 @@
+import type {
+  ResourceConfiguration,
+  RuntimeHooksConfiguration,
+} from "@aws-sdk/client-bedrock-agentcore-control";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { JsonDetail } from "../../../components/JsonDetail";
@@ -67,6 +71,9 @@ export function RuntimeGetScreen(props: ScreenProps) {
         version: detail.data?.agentRuntimeVersion ?? "",
         protocol: detail.data?.protocolConfiguration?.serverProtocol ?? "-",
         network: detail.data?.networkConfiguration?.networkMode ?? "-",
+        platform: detail.data?.platformVersion ?? "-",
+        memory: memoryBaseline(detail.data?.resourceConfigurations),
+        hooks: hookSummary(detail.data?.hooksConfiguration),
         arn: detail.data?.agentRuntimeArn ?? "",
       }}
       actions={
@@ -104,4 +111,17 @@ export function RuntimeGetJsonScreen(props: ScreenProps) {
       onRetry={() => void detail.refetch()}
     />
   );
+}
+
+/** The committed per-session memory baseline, or "-" when the runtime has none. */
+function memoryBaseline(configurations: ResourceConfiguration[] | undefined): string {
+  const memory = configurations?.[0]?.minimumMemoryInMiB;
+  return memory === undefined ? "-" : `${memory} MiB`;
+}
+
+/** The configured lifecycle hooks, e.g. "build.warmup POST /warmup:8080", or "-". */
+function hookSummary(hooks: RuntimeHooksConfiguration | undefined): string {
+  const httpPost = hooks?.build?.warmup?.action?.httpPost;
+  if (!httpPost?.path) return "-";
+  return `build.warmup POST ${httpPost.path}${httpPost.port === undefined ? "" : `:${httpPost.port}`}`;
 }

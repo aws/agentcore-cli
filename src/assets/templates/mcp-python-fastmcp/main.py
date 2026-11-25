@@ -13,6 +13,7 @@ _MOUNT_PATHS = [
     {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
     {{#each efsMounts}}"{{mountPath}}",{{/each}}
     {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+    {{#each s3BucketMounts}}"{{mountPath}}",{{/each}}
 ]
 
 def _safe_resolve(path: str) -> str:

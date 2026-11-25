@@ -465,6 +465,8 @@ describe("project add runtime", () => {
     "VPC",
     "--network-config",
     '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+    "--platform-version",
+    "V2",
     "--authorizer-type",
     "CUSTOM_JWT",
     "--authorizer-configuration",
@@ -473,6 +475,10 @@ describe("project add runtime", () => {
     "X-Custom-Header",
     "--lifecycle-configuration",
     '{"idleRuntimeSessionTimeout":300,"maxLifetime":3600}',
+    "--resource-configurations",
+    '[{"minimumMemoryInMiB":4096}]',
+    "--hooks-configuration",
+    '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup","port":8080}}}}}',
     "--environment-variables",
     '{"LOG_LEVEL":"debug","APP_ENV":"staging"}',
     "--filesystem-configurations",
@@ -568,6 +574,46 @@ describe("project add runtime", () => {
     },
   );
 
+  test("warns when --hooks-configuration has no warmup hook in camelCase, and still adds it", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "pascal_hooks",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--hooks-configuration",
+      '{"Build":{"Warmup":{"Action":{"HttpPost":{"Path":"/warmup"}}}}}',
+    ]);
+
+    expect(io.stderr()).toContain(
+      "Warning: Runtime 'pascal_hooks' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect((await runtimeOf(projectRoot, "pascal_hooks"))?.hooksConfiguration).toEqual({
+      Build: { Warmup: { Action: { HttpPost: { Path: "/warmup" } } } },
+    });
+  });
+
+  test("a recognized warmup hook adds without a warning", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "camel_hooks",
+      "--language",
+      "python",
+      "--hooks-configuration",
+      '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup"}}}}}',
+    ]);
+    expect(io.stderr()).not.toContain("Warning:");
+  });
+
   test("infrastructure flags are written to the spec entry", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -596,6 +642,7 @@ describe("project add runtime", () => {
         subnets: ["subnet-0123456789abcdef0"],
         securityGroups: ["sg-0123456789abcdef0"],
       },
+      platformVersion: "V2",
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
         customJwtAuthorizer: {
@@ -605,6 +652,10 @@ describe("project add runtime", () => {
       },
       requestHeaderAllowlist: ["X-Custom-Header"],
       lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+      resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 8080 } } } },
+      },
       envVars: [
         { name: "LOG_LEVEL", value: "debug" },
         { name: "APP_ENV", value: "staging" },
@@ -612,6 +663,35 @@ describe("project add runtime", () => {
       filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/data" } }],
       tags: { team: "ml", env: "test" },
     });
+  });
+
+  test("an S3 bucket mount is written to the spec entry", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "s3_agent",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--filesystem-configurations",
+      JSON.stringify([
+        {
+          s3BucketMount: {
+            bucket: "amzn-s3-demo-bucket",
+            mountPath: "/mnt/data",
+            prefix: "sessions/{runtimeSessionId}/",
+            s3BucketOwner: "123456789012",
+            s3BucketRegion: "us-west-2",
+          },
+        },
+      ]),
+    ]);
+
+    expect(await runtimeOf(projectRoot, "s3_agent")).toMatchSnapshot();
   });
 
   test("an existing folder keeps the user's files; only missing docs are added", async () => {
@@ -692,6 +772,18 @@ describe("project add runtime", () => {
       "invalid JSON in --network-config",
       ["--name", "my_agent", "--language", "python", "--network-config", "{bad}"],
     ],
+    [
+      "an empty hook path in --hooks-configuration",
+      [
+        "--name",
+        "my_agent",
+        "--language",
+        "python",
+        "--hooks-configuration",
+        '{"build":{"warmup":{"action":{"httpPost":{"path":""}}}}}',
+      ],
+      "path",
+    ],
   ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -704,6 +796,7 @@ describe("project add runtime", () => {
     ["--model-provider", "anthropic"],
     ["--language", "rust"],
     ["--protocol", "GRPC"],
+    ["--platform-version", "v2"],
     ["--type", "create"],
     ["--type", "import"],
   ])("rejects %s %s and writes nothing", async (flagName, value) => {
