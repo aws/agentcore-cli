@@ -21,7 +21,8 @@ export type BoxDevSecrets = {
 
 /**
  * The variables that the box profile `profileText` reads its keys from: each `env://<VAR>` secret
- * of an `[egress.<name>]` route or an `[mcp.<name>]` server, with its value as build picks it
+ * of an `[egress.<name>]` route, an `[mcp.<name>]` server, or a `[telemetry.<name>]` target, with
+ * its value as build picks it
  * ({@link BoxKeySources}): the shell's when it is set and not blank, else `.env.local`'s. On
  * Windows, where variable names are case-insensitive, the shell's `Github_Token` sets
  * `GITHUB_TOKEN`. Dev hands these to `box run` as they are and writes none of them anywhere. Only
@@ -38,11 +39,11 @@ export function boxDevSecrets(
   const found: Record<string, string> = {};
   const missing: BoxDevSecretVariable[] = [];
   const shadowed: BoxDevSecretVariable[] = [];
-  for (const kind of ["egress", "mcp"] as const) {
+  for (const kind of ["egress", "mcp", "telemetry"] as const) {
     for (const [name, entry] of Object.entries(tableOf(table[kind]))) {
-      const secret = BoxEgressSecretSchema.safeParse(tableOf(entry).secret);
-      if (!secret.success || !secret.data.ref.startsWith(ENV_SCHEME)) continue;
-      const variable = secret.data.ref.slice(ENV_SCHEME.length);
+      const ref = secretRef(kind, tableOf(entry).secret);
+      if (ref === undefined || !ref.startsWith(ENV_SCHEME)) continue;
+      const variable = ref.slice(ENV_SCHEME.length);
       if (variable.trim() === "" || Object.hasOwn(found, variable)) continue;
       const fromShell = shellValue(sources.env, variable, platform);
       const fromFile = own(sources.envLocal, variable);
@@ -100,6 +101,16 @@ function shellValue(
 /** The value `env` itself holds for `name`, not one an Object property such as `constructor` gives. */
 function own(env: Readonly<Record<string, string | undefined>>, name: string): string | undefined {
   return Object.hasOwn(env, name) ? env[name] : undefined;
+}
+
+/** The `secret.ref` of a table of `kind`: a route or a server by its schema, a telemetry target by its `ref`. */
+function secretRef(kind: "egress" | "mcp" | "telemetry", secret: unknown): string | undefined {
+  if (kind === "telemetry") {
+    const ref = tableOf(secret).ref;
+    return typeof ref === "string" ? ref : undefined;
+  }
+  const parsed = BoxEgressSecretSchema.safeParse(secret);
+  return parsed.success ? parsed.data.ref : undefined;
 }
 
 function parseProfile(text: string): Record<string, unknown> {
