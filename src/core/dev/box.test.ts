@@ -164,7 +164,7 @@ describe("BoxDevRunner", () => {
   test("runs the agent's box profile from the runtime's code folder", async () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
 
-    const events = await collect(runner.run(input(projectRoot)));
+    const events = await collect(runner.run({ ...input(projectRoot), env: {} }));
 
     expect(calls.map(({ command }) => command)).toEqual([
       ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
@@ -172,7 +172,6 @@ describe("BoxDevRunner", () => {
     expect(calls[0]!.options.cwd).toBe(join(projectRoot, "app", "agent"));
     expect(fallbackRuns).toEqual([]);
     expect(events).toEqual([
-      NO_TRACES_NOTICE,
       {
         type: "status",
         message: "Starting the agent in a box (box run ../../.box/agent/local/profile.toml)",
@@ -185,8 +184,8 @@ describe("BoxDevRunner", () => {
     const { projectRoot, calls, fallbackRuns, runner } = await scene(true);
     await profile(projectRoot, "second");
 
-    await collect(runner.run(secondOf(input(projectRoot))));
-    await collect(runner.run(input(projectRoot)));
+    await collect(runner.run({ ...secondOf(input(projectRoot)), env: {} }));
+    await collect(runner.run({ ...input(projectRoot), env: {} }));
 
     expect(calls.map(({ command }) => command[2])).toEqual([
       "../../.box/second/local/profile.toml",
@@ -212,7 +211,7 @@ describe("BoxDevRunner", () => {
       .join("\n");
     const { projectRoot, calls, runner } = await scene(true, true, { profile: noComments });
 
-    await collect(runner.run(input(projectRoot)));
+    await collect(runner.run({ ...input(projectRoot), env: {} }));
 
     expect(calls.map(({ command }) => command)).toEqual([
       ["box", "run", "../../.box/agent/local/profile.toml", "--no-banner"],
@@ -474,6 +473,34 @@ describe("BoxDevRunner", () => {
     expect(readFileSync(join(projectRoot, ".box", "agent", "local", "profile.toml"), "utf8")).toBe(
       local,
     );
+  });
+
+  test("sends box's records, but not the agent's spans, to dev's collector when the venv has no auto-instrumentation", async () => {
+    const { projectRoot, calls, runner, found } = await scene(true);
+
+    const events = await collect(runner.run(input(projectRoot)));
+
+    expect(found).toHaveLength(1);
+    expect(calls.map(({ command }) => command)).toEqual([
+      ["box", "run", "../../agentcore/.cli/box-dev/agent/profile.toml", "--no-banner"],
+    ]);
+    expect(events.slice(0, 2)).toEqual([
+      NO_TRACES_NOTICE,
+      {
+        type: "status",
+        message:
+          "Box's records go to the dev collector (box profile agentcore/.cli/box-dev/agent/profile.toml)",
+      },
+    ]);
+    const dev = parse(
+      readFileSync(
+        join(projectRoot, "agentcore", ".cli", "box-dev", "agent", "profile.toml"),
+        "utf8",
+      ),
+    ) as Record<string, any>;
+    expect(dev.telemetry.agentcore_dev.destination).toBe("http://127.0.0.1:4318");
+    expect(dev.agent.env.OTEL_TRACES_EXPORTER).toBe("otlp");
+    expect(dev.agent.env.PYTHONPATH).toBeUndefined();
   });
 
   test("runs the local profile, with no dev-time profile, when the runtime turns observability off", async () => {

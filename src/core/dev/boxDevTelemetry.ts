@@ -11,7 +11,7 @@ import type { TomlTable } from "../project/runtimeProfile/types";
  * | --- | --- |
  * | `[telemetry.agentcore_dev]` | an `otlp` target to the collector, for traces and logs, with no secret |
  * | `[agent.env]` | the OTEL variables that dev gives an agent outside a box, except the OTLP endpoints, which box sets to its own receiver |
- * | `[agent.env] PYTHONPATH` | CodeZip: the OTEL auto-instrumentation folder of the venv first, so that each Python process of the agent is instrumented, and uvicorn's reload still works |
+ * | `[agent.env] PYTHONPATH` | CodeZip, when the venv has it: the OTEL auto-instrumentation folder of the venv first, so that each Python process of the agent is instrumented, and uvicorn's reload still works |
  * | `[agent] command` | container: the venv's Python starts under `opentelemetry-instrument`, without `--reload`, because the image holds no live code |
  */
 

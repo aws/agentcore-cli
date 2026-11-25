@@ -116,22 +116,25 @@ export class BoxDevRunner implements DevRunner {
       );
       if (sitecustomizeDir === undefined) {
         yield { type: "status", message: NO_AUTO_INSTRUMENTATION };
-      } else {
-        runProfileFile = await writeBoxDevProfile(
-          input.projectRoot,
-          input.runtime.name,
-          profileText,
-          {
-            destination: collector,
-            serviceName: input.runtime.name,
-            sitecustomizeDir,
-          },
-        );
-        yield {
-          type: "status",
-          message: `Traces of the agent and box's records go to the dev collector (box profile ${runProfileFile})`,
-        };
       }
+      runProfileFile = await writeBoxDevProfile(
+        input.projectRoot,
+        input.runtime.name,
+        profileText,
+        {
+          destination: collector,
+          serviceName: input.runtime.name,
+          sitecustomizeDir,
+        },
+      );
+      const sent =
+        sitecustomizeDir === undefined
+          ? "Box's records go"
+          : "Traces of the agent and box's records go";
+      yield {
+        type: "status",
+        message: `${sent} to the dev collector (box profile ${runProfileFile})`,
+      };
     }
     const fileEnv = credentialEnvironment(input.env);
     // box reads each env:// key of the profile from its own environment, picked as build picks it:
