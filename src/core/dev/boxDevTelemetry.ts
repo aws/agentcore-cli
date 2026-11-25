@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type { TomlTable } from "../project/runtimeProfile/types";
+import { otelEnvVars } from "./otel/collector";
 
 /**
  * The box profile that `agentcore dev` runs when it collects traces: the runtime's local box profile
@@ -10,7 +11,7 @@ import type { TomlTable } from "../project/runtimeProfile/types";
  * | Change | Value |
  * | --- | --- |
  * | `[telemetry.agentcore_dev]` | an `otlp` target to the collector, for traces and logs, with no secret |
- * | `[agent.env]` | the OTEL variables that dev gives an agent outside a box, except the OTLP endpoints, which box sets to its own receiver |
+ * | `[agent.env]` | the OTEL variables that dev gives an agent outside a box, except every `OTEL_EXPORTER_OTLP_*` variable, which box owns and sets to its own receiver |
  * | `[agent.env] PYTHONPATH` | CodeZip, when the venv has it: the OTEL auto-instrumentation folder of the venv first, so that each Python process of the agent is instrumented, and uvicorn's reload still works |
  * | `[agent] command` | container: the venv's Python starts under `opentelemetry-instrument`, without `--reload`, because the image holds no live code |
  */
@@ -28,20 +29,14 @@ export function boxDevTelemetryTargetName(telemetry: Readonly<Record<string, unk
 }
 
 /**
- * The OTEL variables of a boxed agent under dev, as dev gives them to an agent outside a box. The
- * OTLP endpoints are not here: box points the agent at its own receiver, and relays from there.
+ * The OTEL variables of a boxed agent under dev, as dev gives them to an agent outside a box, except
+ * every `OTEL_EXPORTER_OTLP_*` variable, which box owns and sets to its own receiver.
  */
 export function boxDevAgentOtelEnv(serviceName: string): Record<string, string> {
-  return {
-    OTEL_SERVICE_NAME: serviceName,
-    OTEL_SDK_DISABLED: "false",
-    OTEL_TRACES_EXPORTER: "otlp",
-    OTEL_LOGS_EXPORTER: "otlp",
-    OTEL_METRICS_EXPORTER: "none",
-    AGENT_OBSERVABILITY_ENABLED: "true",
-    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: "true",
-    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true",
-  };
+  const outsideBox = Object.entries(otelEnvVars(0)).filter(
+    ([name]) => !name.startsWith("OTEL_EXPORTER_OTLP_"),
+  );
+  return { ...Object.fromEntries(outsideBox), OTEL_SERVICE_NAME: serviceName };
 }
 
 export type BoxDevTelemetryOptions = {

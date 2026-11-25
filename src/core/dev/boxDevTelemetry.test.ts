@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parse } from "smol-toml";
 import { renderBoxProfile } from "../project/templates/boxProfile";
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
+import { otelEnvVars } from "./otel/collector";
 import {
   boxDevAgentOtelEnv,
   boxDevProfileFolder,
@@ -47,7 +48,7 @@ describe("boxDevTelemetryProfile", () => {
     );
   });
 
-  test("gives the agent dev's OTEL variables except the OTLP endpoints, which box sets", () => {
+  test("gives the agent dev's OTEL variables except every OTEL_EXPORTER_OTLP_* variable, which box sets", () => {
     const dev = parse(
       boxDevTelemetryProfile("", { destination: "http://127.0.0.1:1", serviceName: "agent" }).text,
     ) as Doc;
@@ -56,6 +57,14 @@ describe("boxDevTelemetryProfile", () => {
     expect(Object.keys(dev.agent.env).some((name) => name.startsWith("OTEL_EXPORTER_OTLP"))).toBe(
       false,
     );
+    // Each variable that dev gives an agent outside a box, and that box does not own, is here.
+    const outsideBox = Object.entries(otelEnvVars(4318)).filter(
+      ([name]) => !name.startsWith("OTEL_EXPORTER_OTLP_"),
+    );
+    expect(outsideBox.length).toBeGreaterThan(0);
+    for (const [name, value] of outsideBox) expect(dev.agent.env[name]).toBe(value);
+    expect(dev.agent.env.OTEL_SERVICE_NAME).toBe("agent");
+    expect(dev.agent.env.OTEL_TRACES_EXPORTER).toBe("otlp");
   });
 
   test("puts the auto-instrumentation folder first on PYTHONPATH and keeps the command and its reload", () => {
