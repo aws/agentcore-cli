@@ -89,10 +89,10 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
 
   const version = /^version = "([^"]+)"$/m.exec(pyproject)?.[1];
   expect(version).toBeDefined();
-  expect(pyproject).toContain('"aws-opentelemetry-distro",');
-  expect(pyproject).toContain('"bedrock-agentcore",');
-  expect(pyproject).toContain('"aws-bedrock-token-generator>=1.1.0",');
-  expect(pyproject).toContain('"openai>=3.16.2",');
+  expect(pyproject).toContain('"aws-opentelemetry-distro ~= 0.24.0",');
+  expect(pyproject).toContain('"bedrock-agentcore ~= 1.27.0",');
+  expect(pyproject).toContain('"aws-bedrock-token-generator ~= 1.1.0",');
+  expect(pyproject).toContain('"openai ~= 3.57.0",');
   expect(pyproject).toContain("[tool.uv]\npackage = false");
   expect(pyproject).toContain('requires-python = ">=3.12"');
 
