@@ -316,7 +316,14 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   permit, and trace spans, to X-Ray in the region of the Runtime. With box 0.3.2 or later
   (`BOX_TRACES_LOG_GROUP_VERSION`), the target also names the runtime's own log group and its
   `spans` stream, which box reads from `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so the spans go there
-  and not to `aws/spans`. Build gives the execution role
+  and not to `aws/spans`. The Runtime must set `OTEL_EXPORTER_OTLP_TRACES_HEADERS` with
+  `x-aws-log-group` and `x-aws-log-stream`, or box does not start. If the log group is incorrect,
+  or box cannot write to it, no span gets to a log group and box shows no error. The exporter
+  of box examines only the HTTP status. If no spans get to the `spans` stream, set
+  `STRANDS_BOX_TELEMETRY_DEBUG` to `"1"` in the `envVars` of the runtime. Then look for
+  `telemetry export failed` in the log group of the runtime. The spans get to the log group only
+  with the `logs:PutResourcePolicy` grant that the L3 runtime role has on
+  `/aws/bedrock-agentcore/runtimes/*`. The CLI adds no grant for it. Build gives the execution role
   `xray:PutSpans` and `xray:PutTraceSegments` in `agentcore/box-telemetry-policy-<runtime>.json`. To
   send the spans to a different target, add a `cloudwatch_traces` target to the local profile. To
   send no spans, set `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel`
