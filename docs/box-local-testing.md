@@ -619,6 +619,79 @@ To replace the default target with a log group that you make:
 
    To show only the deny decisions, add `--filter-pattern '"deny"'`.
 
+### Send box telemetry to Langfuse, LangSmith, or an OTLP endpoint
+
+A box profile can send spans to a third party: `kind = "langfuse"`, `"langsmith"`, or `"otlp"`.
+Box sends them from the runtime to the host directly, not through the Box gateway. Build writes no
+gateway target for a telemetry host.
+
+1. Get the keys. Use a test project and test data only.
+   - Langfuse: in your project, open **Settings > API Keys** and make a key pair. Box takes the two
+     keys as one value with a colon between them: `pk-lf-...:sk-lf-...`.
+   - LangSmith: open **Settings > API Keys** and make a key (`lsv2_...`).
+
+2. Add the targets to the box profile of the agent, `.box/agent/local/profile.toml`:
+
+   ```toml
+   [telemetry.langfuse]
+   kind = "langfuse"
+   destination = "https://us.cloud.langfuse.com"   # the address of your Langfuse Region
+   secret.ref = "env://LANGFUSE_AUTH"
+
+   [telemetry.langsmith]
+   kind = "langsmith"
+   project = "box-test"
+   secret.ref = "env://LANGSMITH_API_KEY"
+   ```
+
+3. Export the keys in the shell that runs dev, build, and deploy:
+
+   ```sh
+   export LANGFUSE_AUTH='pk-lf-...:sk-lf-...'
+   export LANGSMITH_API_KEY='lsv2_...'
+   ```
+
+   With `agentcore dev`, box reads each key from its environment variable, for CodeZip and container agents.
+
+4. Build and deploy. AgentCore Runtime does not have these environment variables. Thus:
+   - build copies each key into `agentcore/.env.local` as
+     `AGENTCORE_CREDENTIAL_<RUNTIME>_TELEMETRY_<TARGET>`, in capital letters with `_` for `-`, for example
+     `AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGFUSE`;
+   - deploy writes the keys into one AWS Secrets Manager secret for each runtime,
+     `agentcore/<project>/<runtime>/box`, with one field for each target, `telemetry.<target>`. The
+     secret is not in the CloudFormation stack. Thus, no key goes into a template;
+   - the Runtime profile lists the `@box/aws-secrets-manager` plugin, and each target reads
+     `aws-secretsmanager://agentcore/<project>/<runtime>/box#telemetry.<target>`;
+   - the execution role gets `secretsmanager:GetSecretValue` on that secret only, in
+     `agentcore/box-telemetry-policy-<runtime>.json`.
+
+   When the run starts, box reads the keys with the AWS CLI, which is in the container image.
+   The agent does not see the keys. A new deploy without the environment variables keeps the keys in
+   the secret.
+   When no runtime has a key, deploy schedules the deletion of the secret.
+
+5. Check the result:
+
+   ```sh
+   aws secretsmanager describe-secret --secret-id "agentcore/$PROJECT/agent/box" --query Name
+   bun run "$CLI" invoke --runtime agent --payload '{"prompt":"What is 17 times 23?"}'
+   ```
+
+   Then look in Langfuse (the **Tracing** page) and in LangSmith (the project `box-test`). If a send
+   does not succeed, set the environment variable `STRANDS_BOX_TELEMETRY_DEBUG` to `1` on the
+   runtime in `agentcore.json`. Box then writes the cause of each send that did not succeed to the log
+   of the runtime, and it hides the key.
+
+Limits:
+
+- **CodeZip:** the CodeZip Runtime has no AWS CLI, so build stops for a third-party target with a
+  key on a CodeZip runtime. Use a container runtime.
+- **PRIVATE_VPC:** the private VPC has no internet path. Build keeps the target and shows a warning:
+  box tries each send, and no send succeeds until you give the VPC a path to the host, or remove
+  `--containment private-vpc`. Build also sets `"secretsManagerEndpoint": true` in the `network` of
+  the runtime, so the L3 constructs give the VPC an AWS Secrets Manager endpoint: without it box
+  cannot read its keys, and does not start.
+
 ## 11. Tear down
 
 Deploy bills you while resources exist. Remove them when done. `--yes` confirms that deploy deletes
