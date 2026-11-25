@@ -313,7 +313,17 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
 
   **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the Runtime
   profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its own deny,
-  permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the execution role
+  permit, and trace spans, to X-Ray in the region of the Runtime. With box 0.3.2 or later
+  (`BOX_TRACES_LOG_GROUP_VERSION`), the target also names the runtime's own log group and its
+  `spans` stream, which box reads from `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so the spans go there
+  and not to `aws/spans`. The Runtime must set `OTEL_EXPORTER_OTLP_TRACES_HEADERS` with
+  `x-aws-log-group` and `x-aws-log-stream`, or box does not start. If the log group is incorrect,
+  or box cannot write to it, no span gets to a log group and box shows no error. The exporter
+  of box examines only the HTTP status. If no spans get to the `spans` stream, set
+  `STRANDS_BOX_TELEMETRY_DEBUG` to `"1"` in the `envVars` of the runtime. Then look for
+  `telemetry export failed` in the log group of the runtime. The spans get to the log group only
+  with the `logs:PutResourcePolicy` grant that the L3 runtime role has on
+  `/aws/bedrock-agentcore/runtimes/*`. The CLI adds no grant for it. Build gives the execution role
   `xray:PutSpans` and `xray:PutTraceSegments` in `agentcore/box-telemetry-policy-<runtime>.json`. To
   send the spans to a different target, add a `cloudwatch_traces` target to the local profile. To
   send no spans, set `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel`
@@ -535,8 +545,9 @@ the deny, permit, and trace records, and box signs it with the execution role.
 
 With `instrumentation.enableOtel` on, box also sends the spans of the agent and its own spans to
 X-Ray, through the target `[telemetry.agentcore_traces]`. Build gives the execution role the X-Ray
-grant for it. "The default X-Ray target" in step 4 gives the rules. CloudWatch Transaction Search
-keeps the spans in the log group `aws/spans`.
+grant for it. "The default X-Ray target" in step 4 gives the rules. With box 0.3.2 or later, the
+spans go to the stream `spans` of the runtime's own log group. With an older box, CloudWatch
+Transaction Search keeps them in the log group `aws/spans`.
 
 The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the runtime
 can write to the log group of the Runtime, thus build adds no grant for it. A runtime that names an
