@@ -16,7 +16,7 @@ import type {
   WorkloadKey,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { stageBoxContainers } from "./boxContainer";
+import { awsCliWarnings, stageBoxContainers } from "./boxContainer";
 import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
 import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
 import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
@@ -363,6 +363,9 @@ export class CdkBackend implements ProjectBackend {
       await stageBoxCodeZip(project, input.boxNetworks, box);
       await stageBoxContainers(project, input.boxNetworks);
     });
+    for (const message of awsCliWarnings(project, input.boxNetworks)) {
+      yield { type: "warning", message };
+    }
   }
 
   private async *synthesize(
