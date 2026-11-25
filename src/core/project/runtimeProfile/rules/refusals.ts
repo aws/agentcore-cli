@@ -29,7 +29,7 @@ import {
   programOf,
   type PathProblem,
 } from "../projectPaths";
-import { THIRD_PARTY_KINDS, type LeftOutTelemetry } from "../../boxNetwork/telemetry";
+import { THIRD_PARTY_KINDS } from "../../boxNetwork/telemetry";
 import type {
   RuleResult,
   RuntimeProfileContext,
@@ -96,11 +96,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
-      notCloudWatch(
-        name,
-        kind,
-        context.leftOutTelemetry?.find((leftOut) => leftOut.name === name),
-      ),
+      notCloudWatch(name, kind),
     );
   }
 
@@ -211,18 +207,17 @@ function inRuntimeCode(path: string, paths: RuntimeProfileContext["paths"]): boo
   return path === paths.runtimeCode || path.startsWith(`${paths.runtimeCode}/`);
 }
 
-/** Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. */
-function notCloudWatch(name: string, kind: unknown, leftOut: LeftOutTelemetry | undefined): string {
+/**
+ * Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. For a third-party target,
+ * the warning of the Box network model gives the reason build cannot carry it.
+ */
+function notCloudWatch(name: string, kind: unknown): string {
   const thirdParty = THIRD_PARTY_KINDS.some((candidate) => candidate === kind);
   if (thirdParty) {
-    const reason = leftOut === undefined ? "" : `: ${leftOut.reason}`;
-    const remove =
-      leftOut?.fix === undefined
-        ? `Remove [telemetry.${name}],`
-        : `${leftOut.fix}, remove [telemetry.${name}],`;
     return (
-      `is ${JSON.stringify(kind)}, and build cannot carry it to AgentCore Runtime${reason}. ` +
-      `${remove} or change its kind to "cloudwatch_logs" or "cloudwatch_traces".`
+      `is ${JSON.stringify(kind)}, and build cannot carry this target to AgentCore Runtime: the ` +
+      `warning for [telemetry.${name}] gives the reason. Correct that, remove ` +
+      `[telemetry.${name}], or change its kind to "cloudwatch_logs" or "cloudwatch_traces".`
     );
   }
   return (

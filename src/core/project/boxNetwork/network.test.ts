@@ -10,9 +10,6 @@ import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
 import { thirdPartyTelemetry } from "./telemetry";
-import { parse } from "smol-toml";
-import { profileKeyPlaces } from "../runtimeProfile/context";
-import type { TomlTable } from "../runtimeProfile/types";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -1613,7 +1610,7 @@ describe("third-party telemetry", () => {
       warnings: [
         `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.signed]: its ` +
           "`secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
-          "key to AWS Secrets Manager. Set `secret.ref` to an `env://` or `secret://` variable.",
+          "key to AWS Secrets Manager.",
       ],
     });
   });
@@ -1641,94 +1638,5 @@ describe("third-party telemetry", () => {
     expect(names).toEqual(["my-key", "my-collector"]);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("leaves out [telemetry.my_key]: deploy reads its key from");
-  });
-
-  describe("stops build with the reason the model leaves a target out, as the stop prints it", () => {
-    /** The stop of build for a profile whose only table is `[telemetry.<name>]` = `table`. */
-    const stopOf = (name: string, table: Record<string, unknown>, runtime: object = {}) => {
-      const text = [
-        `[telemetry.${name}]`,
-        ...Object.entries(table).map(([key, value]) => `${key} = ${JSON.stringify(value)}`),
-      ].join("\n");
-      const projectRuntime = {
-        ...RUNTIME,
-        codeLocation: "app/agent",
-        ...runtime,
-      } as ProjectRuntime;
-      const spec = {
-        name: "demo",
-        projectType: "box",
-        runtimes: [projectRuntime],
-        memories: [],
-        credentials: [],
-        agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets: [] }],
-      } as unknown as ProjectSpec;
-      const telemetry = thirdPartyTelemetry(parse(text));
-      const { parsed, failures } = parseResolvedPolicy(
-        {
-          path: PROFILE,
-          egress: {},
-          mcp: {},
-          policyFiles: [],
-          places: profilePlaces(text, PROFILE),
-          thirdPartyTelemetry: telemetry.targets,
-          leftOutTelemetry: telemetry.leftOut,
-          source: { table: parse(text) as TomlTable, places: profileKeyPlaces(text, PROFILE) },
-        },
-        "",
-        [],
-      );
-      const network = buildBoxNetwork(parsed, failures, {
-        spec,
-        runtime: projectRuntime,
-        gateway: "agent-box-egress",
-        region: "us-west-2",
-        targets: [],
-        grantedActions: [],
-        projectGatewayCheck: { accepts: true },
-      });
-      return network.failures
-        .filter(({ code }) => code === "RUNTIME_TELEMETRY_NOT_CLOUDWATCH")
-        .map(({ reason }) => reason);
-    };
-
-    test("a target with a key on a CodeZip runtime, which has no AWS CLI", () => {
-      const langfuse = { kind: "langfuse", "secret.ref": "env://LANGFUSE_KEY" };
-
-      expect(stopOf("langfuse", langfuse)).toEqual([
-        '[telemetry.langfuse] kind is "langfuse", and build cannot carry it to AgentCore ' +
-          "Runtime: Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip " +
-          "runtime does not have. Use a container runtime, remove [telemetry.langfuse], or " +
-          'change its kind to "cloudwatch_logs" or "cloudwatch_traces".',
-      ]);
-    });
-
-    test("a target whose key build cannot move to AWS Secrets Manager", () => {
-      const signed = { kind: "otlp", "secret.ref": "aws://my-profile" };
-
-      expect(stopOf("signed", signed, { build: "Container" })).toEqual([
-        '[telemetry.signed] kind is "otlp", and build cannot carry it to AgentCore Runtime: ' +
-          "its `secret.ref` names no `env://` or `secret://` variable, and build moves only " +
-          "such a key to AWS Secrets Manager. Set `secret.ref` to an `env://` or `secret://` " +
-          'variable, remove [telemetry.signed], or change its kind to "cloudwatch_logs" or ' +
-          '"cloudwatch_traces".',
-      ]);
-    });
-
-    test("a target with a value build cannot copy, which has no step but to remove it", () => {
-      const copied = { kind: "langsmith", include: [1] };
-
-      expect(stopOf("copied", copied, { build: "Container" })).toEqual([
-        '[telemetry.copied] kind is "langsmith", and build cannot carry it to AgentCore ' +
-          "Runtime: Box resolves its `include` to a value build cannot copy. Remove " +
-          '[telemetry.copied], or change its kind to "cloudwatch_logs" or "cloudwatch_traces".',
-      ]);
-    });
-
-    test("no stop for a target that the model carries", () => {
-      const langfuse = { kind: "langfuse", "secret.ref": "env://LANGFUSE_KEY" };
-
-      expect(stopOf("langfuse", langfuse, { build: "Container" })).toEqual([]);
-    });
   });
 });

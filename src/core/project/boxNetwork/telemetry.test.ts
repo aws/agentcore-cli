@@ -216,7 +216,6 @@ describe("thirdPartyTelemetry", () => {
           reason:
             "its `secret.ref` names no `env://` or `secret://` variable, and build moves only " +
             "such a key to AWS Secrets Manager",
-          fix: "Set `secret.ref` to an `env://` or `secret://` variable",
         },
       ],
     });
@@ -234,7 +233,6 @@ describe("thirdPartyTelemetry", () => {
       expect(targets).toEqual([]);
       expect(leftOut.map((target) => target.name)).toEqual([name]);
       expect(leftOut[0]?.reason).toContain("cannot name the variable deploy reads its key from");
-      expect(leftOut[0]?.fix).toBe("Rename the target");
     },
   );
 

@@ -161,8 +161,6 @@ export interface ThirdPartyTelemetry {
 export interface LeftOutTelemetry {
   readonly name: string;
   readonly reason: string;
-  /** What the operator does so that build carries the target; absent means no such step. */
-  readonly fix?: string;
 }
 
 /** The keys of a third-party table that Box takes, besides `kind` and `secret`. */
@@ -243,7 +241,6 @@ export function thirdPartyTelemetry(boxToml: Readonly<Record<string, unknown>>):
         reason:
           "its `secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
           "key to AWS Secrets Manager",
-        fix: "Set `secret.ref` to an `env://` or `secret://` variable",
       });
       continue;
     }
@@ -251,9 +248,8 @@ export function thirdPartyTelemetry(boxToml: Readonly<Record<string, unknown>>):
       leftOut.push({
         name,
         reason:
-          "its name cannot name the variable deploy reads its key from, which takes only " +
-          "letters, digits, `_`, and `-`, at most 128 characters",
-        fix: "Rename the target",
+          "its name cannot name the variable deploy reads its key from. Use only letters, " +
+          "digits, `_`, and `-`, at most 128 characters",
       });
       continue;
     }

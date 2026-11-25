@@ -403,8 +403,9 @@ describe("the refusals rule", () => {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "collector", "kind"],
           reason:
-            '[telemetry.collector] kind is "otlp", and build cannot carry it to AgentCore ' +
-            'Runtime. Remove [telemetry.collector], or change its kind to "cloudwatch_logs" or ' +
+            '[telemetry.collector] kind is "otlp", and build cannot carry this target to ' +
+            "AgentCore Runtime: the warning for [telemetry.collector] gives the reason. Correct " +
+            'that, remove [telemetry.collector], or change its kind to "cloudwatch_logs" or ' +
             '"cloudwatch_traces".',
           place: `${PROFILE}:7:1`,
         },
@@ -442,36 +443,15 @@ describe("the refusals rule", () => {
       expect(problems({ thirdPartyTelemetry: [carried] })).toEqual([]);
     });
 
-    test("states the reason and the step the Box network model gives when it leaves the target out", () => {
-      const leftOut = {
-        name: "langfuse",
-        reason:
-          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime does not have",
-        fix: "Use a container runtime",
-      };
-
-      expect(problems({ thirdPartyTelemetry: [], leftOutTelemetry: [leftOut] })).toEqual([
-        {
-          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
-          key: ["telemetry", "langfuse", "kind"],
-          reason:
-            '[telemetry.langfuse] kind is "langfuse", and build cannot carry it to AgentCore ' +
-            "Runtime: Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip " +
-            "runtime does not have. Use a container runtime, remove [telemetry.langfuse], or " +
-            'change its kind to "cloudwatch_logs" or "cloudwatch_traces".',
-          place: `${PROFILE}:2:1`,
-        },
-      ]);
-    });
-
-    test("names no warning when the model gives no reason", () => {
+    test("names the warning of the Box network model when the model leaves the target out", () => {
       expect(problems({ thirdPartyTelemetry: [] })).toEqual([
         {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "langfuse", "kind"],
           reason:
-            '[telemetry.langfuse] kind is "langfuse", and build cannot carry it to AgentCore ' +
-            'Runtime. Remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
+            '[telemetry.langfuse] kind is "langfuse", and build cannot carry this target to ' +
+            "AgentCore Runtime: the warning for [telemetry.langfuse] gives the reason. Correct " +
+            'that, remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
             '"cloudwatch_traces".',
           place: `${PROFILE}:2:1`,
         },

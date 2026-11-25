@@ -1858,8 +1858,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     expect(warnings).toContain(
       ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
         "[telemetry.collector]: its `secret.ref` names no `env://` or `secret://` variable, and " +
-        "build moves only such a key to AWS Secrets Manager. Set `secret.ref` to an `env://` or " +
-        "`secret://` variable.",
+        "build moves only such a key to AWS Secrets Manager.",
     );
   });
 });

@@ -34,12 +34,7 @@ import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
 import type { ParsedProfile } from "./profileParser";
-import {
-  withDeployRegion,
-  type CloudWatchTelemetry,
-  type LeftOutTelemetry,
-  type ThirdPartyTelemetry,
-} from "./telemetry";
+import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -262,7 +257,6 @@ export function buildBoxNetwork(
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
       thirdPartyTelemetry: thirdParty.targets,
-      leftOutTelemetry: thirdParty.leftOut,
       ruleIds: new Set(
         parsed.statements
           .filter(
@@ -360,9 +354,12 @@ function runtimeTelemetry(
   profile: ParsedProfile,
   project: BoxNetworkProject,
   hosts: readonly BoxNetworkHost[],
-): { targets: ThirdPartyTelemetry[]; leftOut: LeftOutTelemetry[]; warnings: string[] } {
-  const leftOut: LeftOutTelemetry[] = [...(profile.leftOutTelemetry ?? [])];
-  const warnings: string[] = [];
+): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
+  const leftOut = (name: string, reason: string) =>
+    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
+  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
+    leftOut(name, reason),
+  );
   const taken = new Set([
     ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
     ...hosts.flatMap(({ outboundAuth }) =>
@@ -372,25 +369,25 @@ function runtimeTelemetry(
   const targets: ThirdPartyTelemetry[] = [];
   for (const target of profile.thirdPartyTelemetry ?? []) {
     if (target.secret !== undefined && project.runtime.build === "CodeZip") {
-      leftOut.push({
-        name: target.name,
-        reason:
+      warnings.push(
+        leftOut(
+          target.name,
           "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
-          "does not have",
-        fix: "Use a container runtime",
-      });
+            "does not have. Use a container runtime",
+        ),
+      );
       continue;
     }
     if (target.secret !== undefined) {
       const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
       if (taken.has(variable)) {
-        leftOut.push({
-          name: target.name,
-          reason:
+        warnings.push(
+          leftOut(
+            target.name,
             `deploy reads its key from ${variable}, and a credential or another target reads ` +
-            "that variable too",
-          fix: "Rename the target",
-        });
+              "that variable too. Rename the target",
+          ),
+        );
         continue;
       }
       taken.add(variable);
@@ -406,12 +403,7 @@ function runtimeTelemetry(
     }
     targets.push(target);
   }
-  const leftOutWarnings = leftOut.map(
-    ({ name, reason, fix }) =>
-      `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.` +
-      (fix === undefined ? "" : ` ${fix}.`),
-  );
-  return { targets, leftOut, warnings: [...leftOutWarnings, ...warnings] };
+  return { targets, warnings };
 }
 
 /** The address a box sends a vendor's spans to when its `[telemetry]` table names no destination. */
