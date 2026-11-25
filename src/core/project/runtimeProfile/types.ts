@@ -76,6 +76,8 @@ export interface RuntimeProfileContext {
   readonly profileFile: string;
   /** The region build builds for: of the Box gateway, its `bedrock` target, and the Memory route. */
   readonly region: string;
+  /** The version of the box that runs the profile; absent: the box that build stages. */
+  readonly boxVersion?: string;
   /** The runtime's Box gateway: its name, and its targets with the ones build adds. */
   readonly gateway: {
     readonly name: string;

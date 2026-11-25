@@ -670,11 +670,12 @@ describe("renderAgentCorePack", () => {
     "reads the log group and stream of the runtime's spans from OTEL_EXPORTER_OTLP_TRACES_HEADERS only with OTEL on and a box that takes them (box %s, OTEL %p)",
     (version, otel, declared) => {
       const { runtime } = parse(
-        renderAgentCorePack({ name: "V3Demo" } as unknown as ProjectSpec, {
-          name: "agent",
-          box: { version },
-          ...(!otel && { instrumentation: { enableOtel: false } }),
-        }),
+        renderAgentCorePack(
+          { name: "V3Demo" } as unknown as ProjectSpec,
+          { name: "agent", ...(!otel && { instrumentation: { enableOtel: false } }) },
+          [],
+          version,
+        ),
       ).inputs as Record<string, any>;
 
       if (!declared) {

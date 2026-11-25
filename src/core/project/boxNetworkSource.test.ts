@@ -9,6 +9,8 @@ import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { telemetryPolicyWriter } from "./boxNetworkWriters";
 import { boxTelemetryPolicyFile } from "./boxTelemetry";
+import { BOX_RELEASE } from "./backends/boxRelease";
+import { tracesToRuntimeLogGroup } from "./templates/boxProfile";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -476,8 +478,10 @@ describe("the default X-Ray target of a runtime with OTEL on", () => {
       region: "${{ inputs.aws.region }}",
       include: ["deny", "permit", "trace"],
       secret: { ref: "aws://" },
-      log_group: "${{ inputs.runtime.traces_log_group }}",
-      log_stream: "${{ inputs.runtime.traces_log_stream }}",
+      ...(tracesToRuntimeLogGroup(BOX_RELEASE.version) && {
+        log_group: "${{ inputs.runtime.traces_log_group }}",
+        log_stream: "${{ inputs.runtime.traces_log_stream }}",
+      }),
     });
     const [file] = policyOf(on!);
     expect(JSON.parse((file as { text: string }).text)).toEqual({

@@ -8,6 +8,7 @@ import { isBoxProject, type ProjectSpec } from "../../../projectSchemas/project"
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { DEV_PORTS } from "../../dev/port";
 import { PYTHON_ENV } from "../../dev/codezip";
+import { BOX_RELEASE } from "../backends/boxRelease";
 import { modelProviderCredentialName } from "./runtime";
 import { projectGatewayInputs, type BoxProjectGateway } from "../boxNetwork/projectGateways";
 
@@ -62,13 +63,10 @@ export const RUNTIME_TRACES_HEADERS_ENV = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
  */
 export const BOX_TRACES_LOG_GROUP_VERSION = "0.3.2";
 
-/**
- * Whether the box of `runtime` sends its spans to the log group that the Runtime names: its
- * `box.version` is {@link BOX_TRACES_LOG_GROUP_VERSION} or later.
- */
-export function tracesToRuntimeLogGroup(runtime: Pick<ProjectRuntime, "box">): boolean {
-  const version = semver.valid(runtime.box?.version ?? "");
-  return version !== null && semver.gte(version, BOX_TRACES_LOG_GROUP_VERSION);
+/** Whether box `version`, by default the staged box, takes the log group of its spans. */
+export function tracesToRuntimeLogGroup(version: string = BOX_RELEASE.version): boolean {
+  const valid = semver.valid(version);
+  return valid !== null && semver.gte(valid, BOX_TRACES_LOG_GROUP_VERSION);
 }
 
 /** The pack of box that each box profile imports. */
@@ -753,8 +751,9 @@ const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
  */
 export function renderAgentCorePack(
   spec: ProjectSpec,
-  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars" | "box">,
+  runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
+  boxVersion?: string,
 ): string {
   const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
@@ -786,7 +785,7 @@ from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
 description = "The OpenTelemetry resource attributes of the runtime."
 from = ${str(`env:${RUNTIME_RESOURCE_ATTRIBUTES_ENV}`)}
 default = ${str(`service.name=${runtime.name}`)}${
-        tracesToRuntimeLogGroup(runtime)
+        tracesToRuntimeLogGroup(boxVersion)
           ? `
 
 # The runtime's own log group and the log stream of its spans, for the default X-Ray target. The

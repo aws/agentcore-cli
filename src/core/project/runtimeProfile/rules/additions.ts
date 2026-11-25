@@ -40,7 +40,6 @@ import {
   RUNTIME_TRACES_HEADERS_ENV,
   tracesToRuntimeLogGroup,
 } from "../../templates/boxProfile";
-import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import type { CloudWatchTelemetry } from "../../boxNetwork";
 import { isTable, isVenvPython } from "../projectPaths";
 import { FILE_TELEMETRY_KIND } from "./refusals";
@@ -116,14 +115,14 @@ export const DEFAULT_TRACES_TARGET = {
 } as const;
 
 /**
- * {@link DEFAULT_TRACES_TARGET} for `runtime`: when its box takes them ({@link tracesToRuntimeLogGroup}),
- * with the log group and log stream that the Runtime names for its spans, so the spans reach the
- * runtime's own log group as the spans of a runtime without a box do.
+ * {@link DEFAULT_TRACES_TARGET}, with the log group and log stream that the Runtime names for its
+ * spans when box `boxVersion`, by default the staged box, takes them
+ * ({@link tracesToRuntimeLogGroup}).
  */
-export function runtimeTracesTarget(runtime: Pick<ProjectRuntime, "box">): TomlTable {
+export function runtimeTracesTarget(boxVersion?: string): TomlTable {
   return {
     ...structuredClone(DEFAULT_TRACES_TARGET),
-    ...(tracesToRuntimeLogGroup(runtime) && {
+    ...(tracesToRuntimeLogGroup(boxVersion) && {
       log_group: RUNTIME_INPUTS.tracesLogGroup,
       log_stream: RUNTIME_INPUTS.tracesLogStream,
     }),
@@ -215,10 +214,7 @@ export function runtimeProfileHeader(
  * {@link runtimeTracesTarget}.
  */
 function defaultTracesTargets(profile: Readonly<TomlTable>): string[] {
-  const forms = [
-    runtimeTracesTarget({}),
-    runtimeTracesTarget({ box: { version: BOX_TRACES_LOG_GROUP_VERSION } }),
-  ];
+  const forms = [DEFAULT_TRACES_TARGET, runtimeTracesTarget(BOX_TRACES_LOG_GROUP_VERSION)];
   return Object.entries(tableOf(profile.telemetry))
     .filter(([, target]) => forms.some((form) => sameValue(target, form)))
     .map(([name]) => name);
@@ -786,7 +782,7 @@ function runtimeTelemetry(
     const name = Object.hasOwn(result, "agentcore_traces")
       ? "agentcore_traces_default"
       : "agentcore_traces";
-    result[name] = runtimeTracesTarget(context.runtime);
+    result[name] = runtimeTracesTarget(context.boxVersion);
   }
   return result;
 }
