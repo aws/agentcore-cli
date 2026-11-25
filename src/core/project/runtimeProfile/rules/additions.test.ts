@@ -17,9 +17,12 @@ import {
   BOX_BEDROCK_API_KEY_ROUTE,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_ROUTE,
+  BOX_TRACES_LOG_GROUP_VERSION,
   renderAgentCorePack,
   renderBoxProfile,
+  tracesToRuntimeLogGroup,
 } from "../../templates/boxProfile";
+import { BOX_RELEASE } from "../../backends/boxRelease";
 import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
@@ -29,10 +32,10 @@ import {
   agentStartsUnderOtel,
   apply,
   DEFAULT_TELEMETRY_TARGET,
-  DEFAULT_TRACES_TARGET,
   defaultTracesTelemetry,
   MEMORY_ROUTE,
   runtimeProfileHeader,
+  runtimeTracesTarget,
 } from "./additions";
 
 const PROFILE_FILE = ".box/agent/local/profile.toml";
@@ -109,11 +112,15 @@ function specOf(runtime: ProjectRuntime, memories: readonly string[] = []) {
   } as unknown as ProjectSpec;
 }
 
+/** The box of {@link contextOf}: one that takes the log group of its spans. */
+const BOX_VERSION = "1.0.0";
+
 function contextOf(
   runtime: ProjectRuntime,
   options: {
     memories?: readonly string[];
     telemetry?: readonly CloudWatchTelemetry[];
+    boxVersion?: string;
   } = {},
 ) {
   const spec = specOf(runtime, options.memories);
@@ -122,6 +129,7 @@ function contextOf(
     runtime,
     profileFile: PROFILE_FILE,
     region: BUILD_REGION,
+    boxVersion: options.boxVersion ?? BOX_VERSION,
     gateway: {
       name: spec.agentCoreGateways[0]!.name,
       targets: spec.agentCoreGateways[0]!.targets,
@@ -173,12 +181,22 @@ const DEFAULT_TARGET = {
   secret: { ref: "aws://" },
 };
 
-/** The default X-Ray target of a Runtime profile with OTEL on. */
-const DEFAULT_TRACES = {
+/** The default X-Ray target of a Runtime profile with OTEL on, for a box before 0.3.2. */
+const PLAIN_TRACES = {
   kind: "cloudwatch_traces",
   region: "${{ inputs.aws.region }}",
   include: ["deny", "permit", "trace"],
   secret: { ref: "aws://" },
+};
+
+/**
+ * The default X-Ray target of a Runtime profile with OTEL on, for a box that takes the log group
+ * and stream of a `cloudwatch_traces` target, as {@link BOX_VERSION} does.
+ */
+const DEFAULT_TRACES = {
+  ...PLAIN_TRACES,
+  log_group: "${{ inputs.runtime.traces_log_group }}",
+  log_stream: "${{ inputs.runtime.traces_log_stream }}",
 };
 
 /** The words that start the agent under opentelemetry-instrument on the Runtime. */
@@ -1426,7 +1444,70 @@ describe("the additions rule", () => {
         expect(tableOf(apply({}, contextOf(runtimeOf(build))).table)).toEqual({
           agentcore: DEFAULT_TARGET,
         });
-        expect({ ...DEFAULT_TRACES_TARGET } as TomlTable).toEqual(DEFAULT_TRACES);
+        expect(runtimeTracesTarget(BOX_VERSION)).toEqual(DEFAULT_TRACES);
+      },
+    );
+
+    test.each([
+      ["0.3.0", false],
+      ["0.3.1", false],
+      ["0.3.0-preview.1", false],
+      ["0.1.11-preview.10", false],
+      ["0.3.2-preview.1", false],
+      ["0.3.2", true],
+      ["0.4.0", true],
+      ["1.0.0", true],
+    ])(
+      "sends the spans of the default X-Ray target to the runtime's own log group and stream only for a box that takes them (box %s)",
+      (version, routed) => {
+        const context = contextOf(OTEL_CONTAINER, { boxVersion: version });
+        const traces = tableOf(apply({}, context).table).agentcore_traces;
+
+        expect(traces).toEqual(routed ? DEFAULT_TRACES : PLAIN_TRACES);
+        expect(defaultTracesTelemetry(apply({}, context).table, BUILD_REGION)).toEqual([
+          {
+            name: "agentcore_traces",
+            kind: "cloudwatch_traces",
+            region: BUILD_REGION,
+            include: PLAIN_TRACES.include,
+          },
+        ]);
+      },
+    );
+
+    test("takes the box that build stages, not box.version, for the default X-Ray target and its inputs", () => {
+      const [older, newer] = ["0.2.4", "1.0.0"].map((version) => {
+        const runtime = { ...OTEL_CONTAINER, box: { version } } as ProjectRuntime;
+        const context = { ...contextOf(runtime), boxVersion: undefined };
+        return {
+          traces: tableOf(apply({}, context).table).agentcore_traces,
+          pack: renderAgentCorePack(context.spec, runtime),
+        };
+      });
+
+      expect(newer).toEqual(older!);
+      expect(older!.traces).toEqual(
+        tracesToRuntimeLogGroup(BOX_RELEASE.version) ? DEFAULT_TRACES : PLAIN_TRACES,
+      );
+    });
+
+    test.each(BUILDS)(
+      "declares in @box/agentcore each traces input that the Runtime profile names, for the same box (%s)",
+      (build) => {
+        const runtime = otelRuntime(build);
+        const context = contextOf(runtime, { boxVersion: BOX_TRACES_LOG_GROUP_VERSION });
+        const { profile } = deriveRuntimeProfile(createdProfile(runtime), context);
+        const named = [
+          ...serializeRuntimeProfile(profile).matchAll(
+            /\$\{\{ inputs\.runtime\.(traces_\w+) \}\}/g,
+          ),
+        ].map(([, name]) => name);
+        const { inputs } = parse(
+          renderAgentCorePack(context.spec, runtime, [], BOX_TRACES_LOG_GROUP_VERSION),
+        ) as { inputs: { runtime: TomlTable } };
+
+        expect(named).not.toEqual([]);
+        expect(Object.keys(inputs.runtime)).toEqual(expect.arrayContaining(named));
       },
     );
 
@@ -1517,10 +1598,18 @@ describe("the additions rule", () => {
       expect(inputs.aws.region).toMatchObject({ from: "env:AWS_REGION" });
     });
 
-    test("names the default X-Ray target in the header", () => {
-      const context = contextOf(OTEL_CODEZIP);
+    test("names the default X-Ray target in the header, with the runtime's own log group when the box takes it", () => {
+      const routed = contextOf(OTEL_CODEZIP);
+      const plain = contextOf(OTEL_CODEZIP, { boxVersion: "0.3.0" });
 
-      expect(runtimeProfileHeader(context, apply({}, context).table).at(-1)).toBe(
+      expect(runtimeProfileHeader(routed, apply({}, routed).table).at(-1)).toBe(
+        "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
+          "own, in the Runtime's region, to the runtime's own log group and log stream, which " +
+          "box reads from OTEL_EXPORTER_OTLP_TRACES_HEADERS when the run starts. Add a " +
+          `cloudwatch_traces target to ${PROFILE_FILE} to use another, or set ` +
+          "instrumentation.enableOtel to false in agentcore.json to send none.",
+      );
+      expect(runtimeProfileHeader(plain, apply({}, plain).table).at(-1)).toBe(
         "[telemetry.agentcore_traces] is the default X-Ray target: the agent's spans and box's " +
           `own, in the Runtime's region. Add a cloudwatch_traces target to ${PROFILE_FILE} to ` +
           "use another, or set instrumentation.enableOtel to false in agentcore.json to send none.",

@@ -15,7 +15,7 @@
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
  * | `[telemetry.<name>]` | each CloudWatch target that box takes is signed with a bare `aws://`, in the deploy region when it names none; one that box refuses goes; a `file` target goes, with a warning |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
- * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region |
+ * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region, to the runtime's own log group and spans stream when the box takes them |
  * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
  * | a route to the AgentCore host | with a default Memory, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
  *
@@ -34,8 +34,11 @@ import {
   boxWorkloadPort,
   OBSERVABILITY_OFF_ENV,
   observabilityOff,
+  BOX_TRACES_LOG_GROUP_VERSION,
   otelOn,
   RUNTIME_LOGS_HEADERS_ENV,
+  RUNTIME_TRACES_HEADERS_ENV,
+  tracesToRuntimeLogGroup,
 } from "../../templates/boxProfile";
 import type { CloudWatchTelemetry } from "../../boxNetwork";
 import { isTable, isVenvPython } from "../projectPaths";
@@ -102,7 +105,7 @@ export const DEFAULT_TELEMETRY_TARGET = {
 /**
  * The X-Ray target of a Runtime profile with OTEL on ({@link otelOn}) that has no
  * `cloudwatch_traces` target: the agent's spans and box's own, in the Runtime's region, signed with
- * the execution role.
+ * the execution role. {@link runtimeTracesTarget} adds the runtime's own log group and stream.
  */
 export const DEFAULT_TRACES_TARGET = {
   kind: "cloudwatch_traces",
@@ -110,6 +113,21 @@ export const DEFAULT_TRACES_TARGET = {
   include: ["deny", "permit", "trace"],
   secret: { ref: RUNTIME_AWS_SIGNER },
 } as const;
+
+/**
+ * {@link DEFAULT_TRACES_TARGET}, with the log group and log stream that the Runtime names for its
+ * spans when box `boxVersion`, by default the staged box, takes them
+ * ({@link tracesToRuntimeLogGroup}).
+ */
+export function runtimeTracesTarget(boxVersion?: string): TomlTable {
+  return {
+    ...structuredClone(DEFAULT_TRACES_TARGET),
+    ...(tracesToRuntimeLogGroup(boxVersion) && {
+      log_group: RUNTIME_INPUTS.tracesLogGroup,
+      log_stream: RUNTIME_INPUTS.tracesLogStream,
+    }),
+  };
+}
 
 /** The program that starts a Python command with the OpenTelemetry instrumentation. */
 const OTEL_INSTRUMENT = "opentelemetry-instrument";
@@ -180,16 +198,25 @@ export function runtimeProfileHeader(
     ...defaultTracesTargets(profile).map(
       (name) =>
         `[telemetry.${name}] is the default X-Ray target: the agent's spans and box's own, in the ` +
-        `Runtime's region. Add a cloudwatch_traces target to ${context.profileFile} to use ` +
+        "Runtime's region" +
+        (Object.hasOwn(tableOf(tableOf(profile.telemetry)[name]), "log_group")
+          ? `, to the runtime's own log group and log stream, which box reads from ` +
+            `${RUNTIME_TRACES_HEADERS_ENV} when the run starts`
+          : "") +
+        `. Add a cloudwatch_traces target to ${context.profileFile} to use ` +
         "another, or set instrumentation.enableOtel to false in agentcore.json to send none.",
     ),
   ];
 }
 
-/** The name of each {@link DEFAULT_TRACES_TARGET} in the `[telemetry]` of `profile`. */
+/**
+ * The name of each default X-Ray target in the `[telemetry]` of `profile`, in either form of
+ * {@link runtimeTracesTarget}.
+ */
 function defaultTracesTargets(profile: Readonly<TomlTable>): string[] {
+  const forms = [DEFAULT_TRACES_TARGET, runtimeTracesTarget(BOX_TRACES_LOG_GROUP_VERSION)];
   return Object.entries(tableOf(profile.telemetry))
-    .filter(([, target]) => sameValue(target, DEFAULT_TRACES_TARGET))
+    .filter(([, target]) => forms.some((form) => sameValue(target, form)))
     .map(([name]) => name);
 }
 
@@ -755,7 +782,7 @@ function runtimeTelemetry(
     const name = Object.hasOwn(result, "agentcore_traces")
       ? "agentcore_traces_default"
       : "agentcore_traces";
-    result[name] = structuredClone(DEFAULT_TRACES_TARGET);
+    result[name] = runtimeTracesTarget(context.boxVersion);
   }
   return result;
 }
