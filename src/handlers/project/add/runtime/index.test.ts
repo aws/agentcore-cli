@@ -65,6 +65,144 @@ async function runtimeOf(projectRoot: string, name: string) {
   return spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
 }
 
+describe("runtime pre-built image (--build-config containerUri)", () => {
+  const privateUri = "123456789012.dkr.ecr.us-west-2.amazonaws.com/team/agent:v1";
+
+  test.each([
+    privateUri,
+    "public.ecr.aws/example/agent:v1",
+    `${privateUri.split(":")[0]}@sha256:${"a".repeat(64)}`,
+  ])("adds a pre-built image without language or local scaffolding: %s", async (containerUri) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io, core } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--build-config",
+      JSON.stringify({ containerUri }),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toEqual({
+      name: "image",
+      codeLocation: "app/image",
+      entrypoint: "main.py",
+      build: "Container",
+      protocol: "HTTP",
+      containerUri,
+    });
+    expect(await Bun.file(join(projectRoot, "app", "image", "README.md")).exists()).toBe(false);
+    expect(core.projectCommands).toEqual([]);
+    expect(io.stderr()).toContain("from a pre-built ECR image");
+    expect(io.stderr()).not.toContain("write your agent");
+  });
+
+  test("keeps the other add runtime flags, including CodeBuild-free VPC settings", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const networkConfig = {
+      subnets: ["subnet-0123456789abcdef0"],
+      securityGroups: Array.from({ length: 6 }, (_, i) => `sg-${String(i).padStart(17, "0")}`),
+    };
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--language",
+      "typescript",
+      "--protocol",
+      "MCP",
+      "--network-mode",
+      "VPC",
+      "--network-config",
+      JSON.stringify(networkConfig),
+      "--build-config",
+      JSON.stringify({ build: "Container", containerUri: privateUri }),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toMatchObject({
+      build: "Container",
+      containerUri: privateUri,
+      entrypoint: "main.js",
+      protocol: "MCP",
+      networkMode: "VPC",
+      networkConfig,
+    });
+  });
+
+  test.each<[string, Record<string, unknown>, string]>([
+    ["build CodeZip", { build: "CodeZip" }, "containerUri requires build 'Container'"],
+    [
+      "build ContainerLocal",
+      { build: "ContainerLocal" },
+      "containerUri requires build 'Container'",
+    ],
+    ["a Dockerfile", { dockerfile: "Dockerfile" }, "dockerfile cannot be used with containerUri"],
+    [
+      "a build context",
+      { buildContextPath: "app" },
+      "buildContextPath cannot be used with containerUri",
+    ],
+    [
+      "build args",
+      { customDockerBuildArgs: { VERSION: "1" } },
+      "customDockerBuildArgs cannot be used with containerUri",
+    ],
+  ])("rejects containerUri with %s before writing anything", async (_label, extra, message) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const before = await specOf(projectRoot);
+    await expectError(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--build-config",
+        JSON.stringify({ containerUri: privateUri, ...extra }),
+      ]),
+      message,
+      InputValidationError,
+    );
+    expect(await specOf(projectRoot)).toEqual(before);
+  });
+
+  test.each([
+    '{"containerUri":"https://example.com/image:v1"}',
+    '{"containerUri":"docker.io/library/python:3.12"}',
+    '{"container_uri":"typo"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1 "}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1!"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent@sha256:XYZ"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/a:v1"}',
+  ])("rejects an invalid image setting: %s", async (value) => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expectError(
+      run(["add", "runtime", "--name", "image", "--build-config", value]),
+      "--build-config",
+      InputValidationError,
+    );
+  });
+
+  test("rejects pre-built images with a Bedrock Agent import", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--agent-id",
+        "A1B2C3D4E5",
+        "--build-config",
+        JSON.stringify({ containerUri: privateUri }),
+      ]),
+    ).rejects.toThrow(/--build-config cannot be combined/);
+  });
+});
+
 describe("project add runtime", () => {
   test.each(["Container", "ContainerLocal"])(
     "--build-config with build %s persists it and copies the Dockerfile",

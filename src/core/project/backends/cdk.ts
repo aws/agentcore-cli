@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { GetTemplateCommand, type Stack } from "@aws-sdk/client-cloudformation";
+import {
+  GetTemplateCommand,
+  ListStackResourcesCommand,
+  type Stack,
+} from "@aws-sdk/client-cloudformation";
 import { parse as parseYaml } from "yaml";
 import { MalformedServiceResponseError, ProjectStateError } from "../../../errors/errors";
 import type {
@@ -15,13 +19,18 @@ import type {
   WorkloadBuilds,
   WorkloadKey,
 } from "../../../handlers/project/types";
-import { assertCdkLocalContainerSupport, cdkCompatibilityWarning } from "./cdk/compatibility";
+import {
+  assertCdkFeatureSupport,
+  cdkCompatibilityWarning,
+  cdkFeaturesFor,
+} from "./cdk/compatibility";
 import {
   assertSupportedBuildTransitions,
   byoExecutionRoleWarning,
   hasLocalContainerBuilds,
   resolveWorkloads,
   type DeployedTemplate,
+  type ManagedRepository,
 } from "./cdk/localContainers";
 import { buildxDriverWarning, checkArm64Builder, selectBuildxBuilder } from "./cdk/arm64Builder";
 import { localImageBuilds } from "./cdk/localImages";
@@ -172,7 +181,7 @@ export type CdkBackendConfig = {
   reportPaymentConnectorAuthorizationUrls?: PaymentConnectorAuthorizationUrlReporter;
   checkLocalBuilder?: typeof checkArm64Builder;
   resolveContainerExecutable?: () => Promise<string>;
-  assertLocalCdkSupport?: typeof assertCdkLocalContainerSupport;
+  assertCdkFeatures?: typeof assertCdkFeatureSupport;
 };
 
 // Stacks in these states hold no deployed workloads: deleted, rolled back after a
@@ -211,7 +220,7 @@ export class CdkBackend implements ProjectBackend {
   private readonly reportPaymentConnectorAuthorizationUrls: PaymentConnectorAuthorizationUrlReporter;
   private readonly checkLocalBuilder: typeof checkArm64Builder;
   private readonly resolveContainerExecutable: () => Promise<string>;
-  private readonly assertLocalCdkSupport: typeof assertCdkLocalContainerSupport;
+  private readonly assertCdkFeatures: typeof assertCdkFeatureSupport;
   private readonly createCloudFormationClient: CreateCloudFormationClient;
 
   constructor(config: CdkBackendConfig) {
@@ -220,7 +229,7 @@ export class CdkBackend implements ProjectBackend {
     this.checkLocalBuilder = config.checkLocalBuilder ?? checkArm64Builder;
     this.resolveContainerExecutable =
       config.resolveContainerExecutable ?? (() => resolveCdkDockerExecutable());
-    this.assertLocalCdkSupport = config.assertLocalCdkSupport ?? assertCdkLocalContainerSupport;
+    this.assertCdkFeatures = config.assertCdkFeatures ?? assertCdkFeatureSupport;
     this.createCloudFormationClient =
       config.createCloudFormationClient ?? createCloudFormationClient;
     this.checkTool = config.checkTool ?? requireTool;
@@ -286,16 +295,12 @@ export class CdkBackend implements ProjectBackend {
   private async *synthesize(
     project: Project,
     explainUndeployedCredentials: boolean,
-    builds: WorkloadBuilds,
   ): AsyncGenerator<ProjectEvent, void> {
     const compatibilityWarning = await cdkCompatibilityWarning(this.cdkDirectory(project));
     if (compatibilityWarning) {
       yield { type: "warning", message: compatibilityWarning };
     }
 
-    if (hasLocalContainerBuilds(builds)) {
-      this.assertLocalCdkSupport(this.cdkDirectory(project));
-    }
     yield { type: "step", message: "synthesizing CloudFormation templates" };
     try {
       yield* withOutputEvents((emit) => {
@@ -331,7 +336,11 @@ export class CdkBackend implements ProjectBackend {
   ): AsyncGenerator<ProjectEvent, void> {
     yield* this.ensureCdkDependencies(project, input);
     const { builds, local } = resolveWorkloads(project);
-    yield* this.synthesize(project, true, builds);
+    // An older CDK package would silently drop settings it does not know.
+    await this.assertCdkFeatures(this.cdkDirectory(project), cdkFeaturesFor(builds), this.runner, {
+      dependenciesManaged: !input.disableDependencyManagement,
+    });
+    yield* this.synthesize(project, true);
     yield* this.buildLocalImages(project, builds, local);
   }
 
@@ -418,8 +427,11 @@ export class CdkBackend implements ProjectBackend {
     // BUILDX_BUILDER chosen here, so the check runs on that same builder.
     let containerExecutable: string | undefined;
     let buildxBuilder: string | undefined;
+    // Before any AWS mutation: an older CDK package would silently drop settings.
+    await this.assertCdkFeatures(this.cdkDirectory(project), cdkFeaturesFor(builds), this.runner, {
+      dependenciesManaged: !input.disableDependencyManagement,
+    });
     if (hasLocalContainerBuilds(builds)) {
-      this.assertLocalCdkSupport(this.cdkDirectory(project));
       containerExecutable = await this.resolveContainerExecutable();
       yield {
         type: "step",
@@ -464,7 +476,8 @@ export class CdkBackend implements ProjectBackend {
       resources: { credentials: provisioned },
     });
 
-    yield* this.synthesize(project, false, builds);
+    // The CDK features were checked before provisioning, above.
+    yield* this.synthesize(project, false);
     const assemblyDirectory = this.assemblyDirectory(project);
     const artifact = await stackArtifactForTarget(this.json, assemblyDirectory, target.name);
     // Checked against the stack this deploy is about to update, before teardown
@@ -898,7 +911,8 @@ export class CdkBackend implements ProjectBackend {
 
   /**
    * Rejects switching a deployed workload into or out of ContainerLocal, or a
-   * deployed Runtime between CodeZip and Container.
+   * deployed Runtime between CodeZip and Container, or from Container to a
+   * containerUri in an ECR repository the stack manages (this deploy deletes it).
    * Reads the live template of the synthesized stack, looked up by name (never by
    * a recorded ARN, which can point at a deleted stack), after synthesis and
    * before the stack is touched. Credential providers are already provisioned.
@@ -913,13 +927,15 @@ export class CdkBackend implements ProjectBackend {
     stackName: string,
   ): Promise<string | undefined> {
     let template: string | undefined;
+    let deployedStackName = stackName;
     try {
       const stack = await this.describeStack(target.region, credentials, stackName);
       if (!stack || NOT_DEPLOYED_STACK_STATUSES.has(stack.StackStatus ?? "")) return undefined;
+      deployedStackName = stack.StackId ?? stackName;
       const client = this.createCloudFormationClient({ region: target.region, credentials });
       const previous = await client.send(
         new GetTemplateCommand({
-          StackName: stack.StackId ?? stackName,
+          StackName: deployedStackName,
           TemplateStage: "Original",
         }),
       );
@@ -941,13 +957,65 @@ export class CdkBackend implements ProjectBackend {
         "Cannot verify build modes: the deployed stack template is unavailable.",
       );
     }
+    const deployed = parseYaml(template) as DeployedTemplate;
+    const containerUris = Object.fromEntries(
+      project.spec.runtimes.flatMap(({ name, containerUri }) =>
+        containerUri ? [[`runtime/${name}`, containerUri]] : [],
+      ),
+    );
     assertSupportedBuildTransitions(
-      parseYaml(template) as DeployedTemplate,
+      deployed,
       builds,
       project.name,
       project.spec.migratedFrom ? undefined : target.name,
+      {
+        containerUris,
+        managedRepositories: Object.keys(containerUris).length
+          ? await this.managedRepositories(deployed, target, credentials, deployedStackName)
+          : [],
+      },
     );
     return undefined;
+  }
+
+  /**
+   * The ECR repositories the deployed stack creates: their physical names from
+   * ListStackResources, plus any literal RepositoryName in the template, which
+   * is all there is when the credentials cannot list the stack's resources.
+   */
+  private async managedRepositories(
+    template: DeployedTemplate,
+    target: AwsDeploymentTarget,
+    credentials: CdkCredentialProvider,
+    stackName: string,
+  ): Promise<ManagedRepository[]> {
+    const repositories = Object.values(template.Resources ?? {}).filter(
+      (resource) => resource.Type === "AWS::ECR::Repository",
+    );
+    if (!repositories.length) return [];
+    const names = new Set<string>();
+    for (const repository of repositories) {
+      const name = repository.Properties?.RepositoryName;
+      if (typeof name === "string") names.add(name);
+    }
+    try {
+      const client = this.createCloudFormationClient({ region: target.region, credentials });
+      let token: string | undefined;
+      do {
+        const page = await client.send(
+          new ListStackResourcesCommand({ StackName: stackName, NextToken: token }),
+        );
+        for (const resource of page.StackResourceSummaries ?? []) {
+          if (resource.ResourceType === "AWS::ECR::Repository" && resource.PhysicalResourceId) {
+            names.add(resource.PhysicalResourceId);
+          }
+        }
+        token = page.NextToken;
+      } while (token);
+    } catch (error) {
+      if (!isAuthorizationError(error)) throw error;
+    }
+    return [...names].map((name) => ({ account: target.account, region: target.region, name }));
   }
 
   private async credentialsForTarget(target: AwsDeploymentTarget) {

@@ -3,6 +3,7 @@ import { flag } from "../../../router";
 import { parseJsonFlagWithSchema } from "../../utils";
 import { isAbsolute } from "node:path";
 import {
+  containerUriIssues,
   DockerfilePathSchema,
   isReservedBuildArgKey,
   ProjectRuntimeSchema,
@@ -64,8 +65,17 @@ function checkBuildFields(data: BuildConfigFields, ctx: z.RefinementCtx, default
 }
 
 export const RuntimeBuildConfigSchema = z
-  .strictObject({ build: ProjectRuntimeSchema.shape.build.optional(), ...buildFields })
+  .strictObject({
+    build: ProjectRuntimeSchema.shape.build.optional(),
+    // A pre-built ECR image; deployed as is, with build "Container" (the default).
+    containerUri: ProjectRuntimeSchema.shape.containerUri,
+    ...buildFields,
+  })
   .superRefine((data, ctx) => {
+    if (data.containerUri !== undefined) {
+      for (const issue of containerUriIssues(data)) ctx.addIssue({ code: "custom", ...issue });
+      return;
+    }
     const container = data.build === "Container" || data.build === "ContainerLocal";
     if (container && data.dockerfile === undefined) {
       ctx.addIssue({
@@ -89,15 +99,15 @@ export const HarnessBuildConfigSchema = z
   .strictObject({ build: HarnessSpecSchema.shape.build, ...buildFields })
   .superRefine((data, ctx) => checkBuildFields(data, ctx, "Container"));
 
-export function buildConfigFlag(builds: string) {
+export function buildConfigFlag(builds: string, extraKeys = "") {
   return flag(
     "build-config",
-    `advanced build settings (JSON object): build (${builds}), dockerfile, buildContextPath, ` +
-      "customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the " +
-      "current directory, copied once to app/<name>/Dockerfile (app/<name>/ is the build " +
-      "context). With buildContextPath (relative to the project root), dockerfile is relative " +
-      "to that build context and used in place. Build args are not secret: they appear in " +
-      "logs and image metadata",
+    `advanced build settings (JSON object): build (${builds}), ${extraKeys}dockerfile, ` +
+      "buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path " +
+      "relative to the current directory, copied once to app/<name>/Dockerfile (app/<name>/ is " +
+      "the build context). With buildContextPath (relative to the project root), dockerfile is " +
+      "relative to that build context and used in place. Build args are not secret: they " +
+      "appear in logs and image metadata",
     z.string().optional(),
     { group: ADVANCED },
   );

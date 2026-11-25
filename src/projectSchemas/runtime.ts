@@ -1,4 +1,5 @@
 import {
+  ContainerUriSchema,
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
   ProtocolModeSchema,
@@ -283,6 +284,41 @@ export const ModelProviderSchema = z.preprocess(
   z.enum(MODEL_PROVIDERS),
 );
 
+/**
+ * The rules for a pre-built image (`containerUri`): it is the whole container
+ * artifact, so it needs `build: "Container"` and excludes every local build
+ * setting. Shared by agentcore.json and `add runtime --build-config`. The CDK
+ * package's Runtime schema applies the same cross-field rules, and its
+ * ContainerUriSchema enforces the same image URI grammar as ContainerUriSchema
+ * in constants.ts (tag, digest, repository length, whitespace, total length);
+ * keep the two in sync.
+ */
+export function containerUriIssues(data: {
+  containerUri?: string;
+  build?: string;
+  dockerfile?: unknown;
+  buildContextPath?: unknown;
+  customDockerBuildArgs?: unknown;
+}): { message: string; path: string[] }[] {
+  if (data.containerUri === undefined) return [];
+  const issues: { message: string; path: string[] }[] = [];
+  // Messages and paths match @aws/agentcore-cdk's AgentEnvSpecSchema. An omitted
+  // build (add runtime --build-config) defaults to Container.
+  if (data.build !== undefined && data.build !== "Container") {
+    issues.push({
+      message:
+        "containerUri requires build 'Container' (it cannot be used with CodeZip or ContainerLocal)",
+      path: ["containerUri"],
+    });
+  }
+  for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    if (data[field] !== undefined) {
+      issues.push({ message: `${field} cannot be used with containerUri`, path: [field] });
+    }
+  }
+  return issues;
+}
+
 export const ProjectRuntimeSchema = z
   .object({
     name: AgentNameSchema,
@@ -307,6 +343,12 @@ export const ProjectRuntimeSchema = z
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,
+    /**
+     * An existing private or public ECR image to deploy, with `build: "Container"`.
+     * Deployment then skips local source, the Dockerfile, CodeBuild, and the
+     * CDK-managed ECR repository.
+     */
+    containerUri: ContainerUriSchema.optional(),
     dockerfile: DockerfilePathSchema.optional(),
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
@@ -344,9 +386,11 @@ export const ProjectRuntimeSchema = z
         path: ["networkConfig"],
       });
     }
+    // Only a Runtime CodeBuild builds has the CodeBuild VPC limits; a pre-built image does not.
+    const codeBuildContainer = data.build === "Container" && data.containerUri === undefined;
     if (
       data.networkMode === "VPC" &&
-      data.build === "Container" &&
+      codeBuildContainer &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
@@ -358,7 +402,7 @@ export const ProjectRuntimeSchema = z
     }
     // Mirrors the CDK, which feeds networkConfig.vpcId to the CodeBuild project's
     // VpcConfig. Only `build: "Container"` reaches that path, so CodeZip is exempt.
-    if (data.networkMode === "VPC" && data.build === "Container" && !data.networkConfig?.vpcId) {
+    if (data.networkMode === "VPC" && codeBuildContainer && !data.networkConfig?.vpcId) {
       ctx.addIssue({
         code: "custom",
         message:
@@ -404,6 +448,7 @@ export const ProjectRuntimeSchema = z
         });
       }
     }
+    for (const issue of containerUriIssues(data)) ctx.addIssue({ code: "custom", ...issue });
     // Reserved by the CodeBuild build environment; ContainerLocal builds locally.
     // Keep in step with the @aws/agentcore-cdk schema.
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {

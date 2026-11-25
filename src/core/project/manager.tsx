@@ -793,13 +793,22 @@ export class FsProjectManager implements ProjectManager {
       }
       case "runtime": {
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
-        // The folder may hold the user's own code, but never another resource's.
+        // The folder may hold the user's own code, but never another resource's. A
+        // pre-built runtime writes no files but still records app/<name> as its codeLocation.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
         if (owner !== undefined) {
           throw new InputValidationError(
             `cannot add runtime '${input.resourceConfig.name}': 'app/${input.resourceConfig.name}' ` +
               `overlaps the files of ${owner}. Choose a different --name.`,
           );
+        }
+        if (
+          isRuntimeDocsConfig(input.resourceConfig) &&
+          input.resourceConfig.containerUri !== undefined
+        ) {
+          projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          yield { type: "step", message: "configuring runtime from the existing ECR image" };
+          break;
         }
         // Rollback removes only what this add created, never a folder the user already had.
         const folderExisted = existsSync(outputPath);

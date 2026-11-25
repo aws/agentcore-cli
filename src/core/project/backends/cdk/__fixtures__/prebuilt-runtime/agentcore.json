@@ -1,0 +1,19 @@
+{
+  "name": "Fixture",
+  "version": 2,
+  "managedBy": "CDK",
+  "runtimes": [
+    { "name": "orders", "build": "ContainerLocal", "codeLocation": "app/orders", "entrypoint": "main.py" },
+    { "name": "billing", "build": "Container", "codeLocation": "app/billing", "entrypoint": "main.py" },
+    { "name": "image", "build": "Container", "codeLocation": "app/image", "entrypoint": "main.py", "containerUri": "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1" }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "harnesses": [{ "name": "assistant", "path": "app/assistant" }]
+}
