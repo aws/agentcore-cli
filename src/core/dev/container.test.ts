@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseEnv } from "node:util";
+import { parse as parseToml } from "smol-toml";
 import {
   InputValidationError,
   InvalidEnvironmentError,
@@ -874,6 +875,63 @@ describe("ContainerDevRunner", () => {
       const { runner } = harness({ processEnv: credentials });
 
       await collect(runner.run(input(root, projectRuntime)));
+
+      expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
+        "# local profile\n",
+      );
+    });
+
+    test("with dev's collector on, stages a profile that sends traces and box's records to it", async () => {
+      const local =
+        '[agent]\ncommand = ["${{ workspace }}/.venv/bin/python", "-m", "uvicorn", "main:app", "--reload", "--port", "8081"]\n';
+      const { projectRuntime, root, context } = await boxedScene({ profileText: local });
+      const { runner } = harness({ processEnv: credentials });
+      const traced = {
+        ...input(root, projectRuntime),
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:4318" },
+      };
+
+      const events = await collect(runner.run(traced));
+
+      const staged = parseToml(
+        await readFile(join(context, ".box-dist", "profile.toml"), "utf8"),
+      ) as {
+        telemetry: Record<string, { kind: string; destination: string }>;
+        agent: { command: string[]; env: Record<string, string> };
+      };
+      expect(staged.telemetry.agentcore_dev!.destination).toBe("http://host.docker.internal:4318");
+      expect(staged.agent.command).toEqual([
+        "${{ workspace }}/.venv/bin/opentelemetry-instrument",
+        "${{ workspace }}/.venv/bin/python",
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--port",
+        "8081",
+      ]);
+      expect(staged.agent.env.OTEL_SERVICE_NAME).toBe(projectRuntime.name);
+      expect(events).toContainEqual({
+        type: "status",
+        message: "Traces of the agent and box's records go to the dev collector",
+      });
+      // The committed profile is unchanged.
+      expect(
+        await readFile(join(root, ".box", projectRuntime.name, "local", "profile.toml"), "utf8"),
+      ).toBe(local);
+    });
+
+    test("stages the local profile as it is when the runtime turns observability off", async () => {
+      const { projectRuntime, root, context } = await boxedScene();
+      const { runner } = harness({ processEnv: credentials });
+      const off = {
+        ...input(root, {
+          ...projectRuntime,
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+        }),
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:4318" },
+      };
+
+      await collect(runner.run(off));
 
       expect(await readFile(join(context, ".box-dist", "profile.toml"), "utf8")).toBe(
         "# local profile\n",
