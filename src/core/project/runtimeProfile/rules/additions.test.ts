@@ -273,7 +273,9 @@ const TELEMETRY_CASES: Record<string, TomlTable | undefined> = {
  * the `@box/` pack names. Their read and exec grants of the Runtime's Python name its standard
  * library, `${{ inputs.python.stdlib }}`, where that renderer named its prefix,
  * `${{ inputs.python.prefix }}`: the prefix is /usr on the Runtime, which box refuses as a system
- * root.
+ * root. The `secretsManager` set comes from renderRuntimeBoxProfile of box-integration-development
+ * (da8df856), with AGENTCORE_BOX_SECRETS_MANAGER=1, for six inputs with an otlp or langfuse
+ * target. Its tests compare only `telemetry` and `plugins`.
  */
 const OLD_RENDERER = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "__fixtures__", "old-renderer-tables.json"), "utf8"),
