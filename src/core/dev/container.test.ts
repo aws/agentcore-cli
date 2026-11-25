@@ -920,6 +920,32 @@ describe("ContainerDevRunner", () => {
       ).toBe(local);
     });
 
+    test("with dev's collector on, says that only box's records go to it when the command is not the venv's Python", async () => {
+      const local = '[agent]\ncommand = ["node", "server.js"]\n';
+      const { projectRuntime, root, context } = await boxedScene({ profileText: local });
+      const { runner } = harness({ processEnv: credentials });
+      const traced = {
+        ...input(root, projectRuntime),
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://host.docker.internal:4318" },
+      };
+
+      const events = await collect(runner.run(traced));
+
+      expect(events).toContainEqual({
+        type: "status",
+        message:
+          "Box's records go to the dev collector. The agent's own spans do not, because its command is not the venv's Python",
+      });
+      const staged = parseToml(
+        await readFile(join(context, ".box-dist", "profile.toml"), "utf8"),
+      ) as {
+        telemetry: Record<string, { destination: string }>;
+        agent: { command: string[] };
+      };
+      expect(staged.telemetry.agentcore_dev!.destination).toBe("http://host.docker.internal:4318");
+      expect(staged.agent.command).toEqual(["node", "server.js"]);
+    });
+
     test("stages the local profile as it is when the runtime turns observability off", async () => {
       const { projectRuntime, root, context } = await boxedScene();
       const { runner } = harness({ processEnv: credentials });
