@@ -8,7 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack } from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
-import { AWS_CLI_RELEASE, stageBoxContainers } from "./boxContainer";
+import { AWS_CLI_RELEASE, awsCliWarnings, stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE } from "./boxRelease";
 
 /** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
@@ -189,6 +189,60 @@ describe("stageBoxContainers", () => {
       "does not copy .box-dist/ whole into the image",
     );
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
+  });
+});
+
+describe("awsCliWarnings", () => {
+  const langfuse = {
+    name: "langfuse",
+    kind: "langfuse",
+    keys: [],
+    secret: { variable: "LANGFUSE_AUTH", keys: [] },
+  } as const;
+  const open = {
+    name: "open",
+    kind: "otlp",
+    keys: [["destination", "https://o.example"]],
+  } as const;
+  const reading = (): BoxNetwork[] => [{ ...model([]), thirdPartyTelemetry: [langfuse] }];
+  const WARNING =
+    "Runtime 'agent' reads the key of [telemetry.langfuse] from AWS Secrets Manager on " +
+    "AgentCore Runtime. Box reads that key with the AWS CLI (aws), which app/agent/Dockerfile " +
+    "does not install. Thus box cannot read the key, and it does not start the agent. Add the " +
+    "AWS CLI lines (the lines that read AWS_CLI_URL) of the agent-python-strands-box " +
+    "Dockerfile.template of this CLI to that Dockerfile. Or replace the runtime with a new " +
+    "runtime from the template of this CLI.";
+
+  test("warns for a Dockerfile from an older template, which does not install the AWS CLI", async () => {
+    expect(awsCliWarnings(await project(BOX_DOCKERFILE), reading())).toEqual([WARNING]);
+  });
+
+  test("warns when only a comment names AWS_CLI_URL", async () => {
+    const demo = await project(`${BOX_DOCKERFILE}# AWS_CLI_URL is not read here\n`);
+
+    expect(awsCliWarnings(demo, reading())).toEqual([WARNING]);
+  });
+
+  test("does not warn for the Dockerfile of the current template", async () => {
+    expect(awsCliWarnings(await project(TEMPLATE_DOCKERFILE), reading())).toEqual([]);
+  });
+
+  test("does not warn when no target of the Runtime profile has a key", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+
+    for (const networks of [[model([])], [{ ...model([]), thirdPartyTelemetry: [open] }]]) {
+      expect(awsCliWarnings(demo, networks as BoxNetwork[])).toEqual([]);
+    }
+  });
+
+  test("does not warn for a runtime that is not a box container", async () => {
+    const codeZip = await project(BOX_DOCKERFILE);
+    codeZip.spec.runtimes[0]!.build = "CodeZip";
+    const unboxed = await project(BOX_DOCKERFILE);
+    delete unboxed.spec.runtimes[0]!.box;
+
+    expect(awsCliWarnings(codeZip, reading())).toEqual([]);
+    expect(awsCliWarnings(unboxed, reading())).toEqual([]);
   });
 });
 

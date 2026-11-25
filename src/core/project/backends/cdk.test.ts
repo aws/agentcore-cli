@@ -723,6 +723,48 @@ describe("CdkBackend.build", () => {
     expect(quiet).not.toContainEqual({ type: "warning", message: OTEL_WARNING } as ProjectEvent);
   });
 
+  test("build warns for a box container whose Dockerfile does not install the AWS CLI it needs", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent")],
+    });
+    await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
+    await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
+    const network = {
+      ...boxNetwork({ packs: ["@box/base", "@box/agentcore"], agent: { command: PLAIN } }),
+      thirdPartyTelemetry: [
+        {
+          name: "langfuse",
+          kind: "langfuse",
+          keys: [],
+          secret: { variable: "LANGFUSE_AUTH", keys: [] },
+        },
+      ],
+    } as BoxNetwork;
+
+    const events = await collect(harness().backend.build(input, { boxNetworks: [network] }));
+
+    expect(events).toContainEqual({
+      type: "warning",
+      message: expect.stringMatching(
+        /^Runtime 'agent' reads the key of \[telemetry\.langfuse\] from AWS Secrets Manager /,
+      ),
+    } as ProjectEvent);
+  });
+
   test("warns but continues when the installed CDK is legacy", async () => {
     const input = await project();
     const packageDirectory = join(cdkDirectory(input), "node_modules", "@aws", "agentcore-cdk");

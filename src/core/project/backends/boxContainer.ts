@@ -99,6 +99,36 @@ function readsSecretsManager(network: BoxNetwork | undefined): boolean {
   return (network?.thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined);
 }
 
+/** A Dockerfile line, not a comment, that names `AWS_CLI_URL`. */
+const NAMES_AWS_CLI_URL = /^(?![ \t]*#).*\bAWS_CLI_URL\b/m;
+
+/** A warning for each box container runtime that reads a key with the AWS CLI that its Dockerfile does not install. */
+export function awsCliWarnings(project: Project, networks: readonly BoxNetwork[]): string[] {
+  return project.spec.runtimes.flatMap((runtime) => {
+    if (runtime.build !== "Container" || !runtimeRunsInBox(project.spec, runtime)) return [];
+    const network = networks.find((candidate) => candidate.runtime === runtime.name);
+    const targets = (network?.thirdPartyTelemetry ?? []).filter(
+      ({ secret }) => secret !== undefined,
+    );
+    const dockerfile = dockerfileOf(project.rootPath, runtime);
+    if (targets.length === 0 || !isFile(dockerfile)) return [];
+    if (NAMES_AWS_CLI_URL.test(readFileSync(dockerfile, "utf8"))) return [];
+    const names = targets.map(({ name }) => `[telemetry.${name}]`).join(", ");
+    const path = posix.join(
+      runtime.buildContextPath ?? runtime.codeLocation,
+      runtime.dockerfile ?? "Dockerfile",
+    );
+    return [
+      `Runtime '${runtime.name}' reads the key of ${names} from AWS Secrets Manager on AgentCore ` +
+        `Runtime. Box reads that key with the AWS CLI (aws), which ${path} does not install. ` +
+        "Thus box cannot read the key, and it does not start the agent. Add the AWS CLI lines " +
+        "(the lines that read AWS_CLI_URL) of the agent-python-strands-box Dockerfile.template " +
+        "of this CLI to that Dockerfile. Or replace the runtime with a new runtime from the " +
+        "template of this CLI.",
+    ];
+  });
+}
+
 /**
  * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
  * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
