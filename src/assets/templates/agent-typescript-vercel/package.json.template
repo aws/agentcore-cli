@@ -12,6 +12,7 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "~4.0.0",
     "@aws-sdk/credential-providers": "~3.1126.0",
+    "@aws/aws-distro-opentelemetry-node-autoinstrumentation": "~0.14.0",
     "ai": "~6.0.0",
     "bedrock-agentcore": "~0.3.0",
     "tsx": "~4.19.0",

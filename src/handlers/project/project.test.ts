@@ -294,6 +294,7 @@ describe("project create", () => {
     expect(existsSync(join(appRoot, "model", "apiKey.ts"))).toBe(false);
     const pkg = await Bun.file(join(appRoot, "package.json")).json();
     expect(Object.keys(pkg.dependencies)).toEqual([
+      "@aws/aws-distro-opentelemetry-node-autoinstrumentation",
       "@opentelemetry/api",
       "@strands-agents/sdk",
       "bedrock-agentcore",
