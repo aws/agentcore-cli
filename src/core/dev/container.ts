@@ -11,6 +11,7 @@ import {
 } from "../../errors";
 import { notBoxProjectMessage } from "./box";
 import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
+import { boxDevTelemetryProfile } from "./boxDevTelemetry";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
 import {
   MissingToolError,
@@ -30,6 +31,7 @@ import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import {
   boxLocalProfileFile,
   boxLocalProfilePath,
+  observabilityOff,
   runsInBox,
 } from "../project/templates/boxProfile";
 import {
@@ -194,6 +196,7 @@ export class ContainerDevRunner implements DevRunner {
       `${key}=<redacted>`,
     ]);
     const staged = await this.stageBox(input, context);
+    if (staged?.notice) yield { type: "status", message: staged.notice };
     const boxDist = staged?.folder;
     const boxed = staged !== undefined;
     // The container gets none of the host's environment, so box in it gets each env:// key of the
@@ -366,7 +369,7 @@ export class ContainerDevRunner implements DevRunner {
   private async stageBox(
     input: DevServerInput,
     context: string,
-  ): Promise<{ folder: string; profileText: string } | undefined> {
+  ): Promise<{ folder: string; profileText: string; notice?: string } | undefined> {
     // As build and deploy, dev decides whether a runtime is boxed from runsInBox alone.
     if (!runsInBox(input.boxProject, input.runtime)) {
       // A box runtime's image installs box and starts `box run`, which needs the Box project.
@@ -387,13 +390,29 @@ export class ContainerDevRunner implements DevRunner {
     const folder = imageTakesBoxDistArg(input.projectRoot, input.runtime)
       ? BOX_DEV_DIST
       : BOX_IMAGE_DIST;
+    // With dev's collector on, the image's profile also sends the agent's spans and logs, and box's
+    // own records, to the collector, which the container reaches at the rewritten endpoint.
+    const collector = input.env?.OTEL_EXPORTER_OTLP_ENDPOINT;
+    const dev =
+      collector && !observabilityOff(input.runtime)
+        ? boxDevTelemetryProfile(profileText, {
+            destination: collector,
+            serviceName: input.runtime.name,
+            instrumentCommand: true,
+          })
+        : undefined;
     await stageBoxImage(
       context,
-      profileText,
+      dev?.text ?? profileText,
       boxPolicyFileCopies(input.projectRoot, input.runtime.name),
       folder,
     );
-    return { folder, profileText };
+    const notice = dev
+      ? dev.agentInstrumented
+        ? "Traces of the agent and box's records go to the dev collector"
+        : "Box's records go to the dev collector. The agent's own spans do not, because its command is not the venv's Python"
+      : undefined;
+    return { folder, profileText, notice };
   }
 
   private async resolveContainerTool(signal: AbortSignal): Promise<ContainerTool> {

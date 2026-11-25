@@ -1,16 +1,25 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, posix } from "node:path";
 import { InputValidationError, ProjectStateError, ResourceNotFoundError } from "../../errors";
 import type { DevEvent, DevRunner, DevServerInput } from "../../handlers/project/dev/types";
-import { streamProcess, type ProcessStreamer } from "../../io";
+import { runProcess, streamProcess, type ProcessRunner, type ProcessStreamer } from "../../io";
 import { requireTool } from "../../io/exec";
 import { BOX_INSTALL_HINT } from "../project/backends/boxRelease";
+import { boxPolicyFileCopies } from "../project/boxNetworkSource";
 import { boxDevSecrets, missingBoxSecretWarning, shadowedBoxSecretNote } from "./boxDevSecrets";
+import {
+  boxDevProfileFolder,
+  boxDevTelemetryProfile,
+  type BoxDevTelemetryOptions,
+} from "./boxDevTelemetry";
+import { findOtelSitecustomizeDir, NO_AUTO_INSTRUMENTATION } from "./codezip";
 import {
   boxIngressPort,
   boxLocalProfileFile,
   boxLocalProfilePath,
   boxStartFolder,
+  observabilityOff,
   runsInBox,
 } from "../project/templates/boxProfile";
 
@@ -18,6 +27,8 @@ type BoxDevRunnerConfig = {
   /** The runner used when the project has no box profile. */
   fallback: DevRunner;
   streamProcess?: ProcessStreamer;
+  /** Runs the venv's Python to find its OTEL auto-instrumentation; tests inject one. */
+  runProcess?: ProcessRunner;
   /** Fails when `box` is not on PATH, with the install hint; tests inject one. */
   checkTool?: (tool: string, installHint: string) => Promise<void>;
   /** The environment `box run` starts from, the shell's by default; tests inject one. */
@@ -35,6 +46,7 @@ type BoxDevRunnerConfig = {
 export class BoxDevRunner implements DevRunner {
   private readonly fallback: DevRunner;
   private readonly streamProcess: ProcessStreamer;
+  private readonly runProcess: ProcessRunner;
   private readonly checkTool: NonNullable<BoxDevRunnerConfig["checkTool"]>;
   private readonly processEnv: NodeJS.ProcessEnv;
   private readonly platform: NodeJS.Platform;
@@ -42,6 +54,7 @@ export class BoxDevRunner implements DevRunner {
   constructor(config: BoxDevRunnerConfig) {
     this.fallback = config.fallback;
     this.streamProcess = config.streamProcess ?? streamProcess;
+    this.runProcess = config.runProcess ?? runProcess;
     this.checkTool = config.checkTool ?? requireTool;
     this.processEnv = config.processEnv ?? process.env;
     this.platform = config.platform ?? process.platform;
@@ -91,8 +104,37 @@ export class BoxDevRunner implements DevRunner {
       );
     }
     await this.checkTool("box", BOX_INSTALL_HINT);
-    if (input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
-      yield { type: "status", message: "Traces are not collected when the agent runs in a box" };
+    // With dev's collector on, box runs a dev-time copy of the profile that sends the agent's spans
+    // and logs, and box's own records, to the collector (boxDevTelemetry.ts).
+    let runProfileFile = profileFile;
+    const collector = input.env?.OTEL_EXPORTER_OTLP_ENDPOINT;
+    if (collector && !observabilityOff(input.runtime)) {
+      const sitecustomizeDir = await findOtelSitecustomizeDir(
+        this.runProcess,
+        join(input.projectRoot, input.runtime.codeLocation),
+        input.signal,
+      );
+      if (sitecustomizeDir === undefined) {
+        yield { type: "status", message: NO_AUTO_INSTRUMENTATION };
+      }
+      runProfileFile = await writeBoxDevProfile(
+        input.projectRoot,
+        input.runtime.name,
+        profileText,
+        {
+          destination: collector,
+          serviceName: input.runtime.name,
+          sitecustomizeDir,
+        },
+      );
+      const sent =
+        sitecustomizeDir === undefined
+          ? "Box's records go"
+          : "Traces of the agent and box's records go";
+      yield {
+        type: "status",
+        message: `${sent} to the dev collector (box profile ${runProfileFile})`,
+      };
     }
     const fileEnv = credentialEnvironment(input.env);
     // box reads each env:// key of the profile from its own environment, picked as build picks it:
@@ -116,7 +158,7 @@ export class BoxDevRunner implements DevRunner {
       startFolder === ""
         ? input.projectRoot
         : join(input.projectRoot, ...startFolder.split("/").filter(Boolean));
-    const profileArg = posix.relative(startFolder, profileFile);
+    const profileArg = posix.relative(startFolder, runProfileFile);
     yield {
       type: "status",
       message: `Starting the agent in a box (box run ${profileArg})`,
@@ -127,6 +169,36 @@ export class BoxDevRunner implements DevRunner {
       signal: input.signal,
     });
   }
+}
+
+/**
+ * Writes the dev-time box profile of agent `agentName` (boxDevTelemetryProfile) and a copy of each
+ * policy file the local profile names, into the git-ignored `agentcore/.cli/box-dev/<agentName>/`,
+ * and returns the profile's path from the project root.
+ */
+async function writeBoxDevProfile(
+  projectRoot: string,
+  agentName: string,
+  profileText: string,
+  options: BoxDevTelemetryOptions,
+): Promise<string> {
+  const folder = boxDevProfileFolder(agentName);
+  const directory = join(projectRoot, ...folder.split("/"));
+  await rm(directory, { recursive: true, force: true });
+  await mkdir(directory, { recursive: true });
+  const header =
+    `# Written by agentcore dev from ${boxLocalProfileFile(agentName)} for this run, which it\n` +
+    "# rewrites each time. Change the local profile instead.\n";
+  await writeFile(
+    join(directory, "profile.toml"),
+    header + boxDevTelemetryProfile(profileText, options).text,
+  );
+  for (const { from, relative } of boxPolicyFileCopies(projectRoot, agentName)) {
+    const to = join(directory, ...relative.split("/"));
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
+  }
+  return posix.join(folder, "profile.toml");
 }
 
 /**

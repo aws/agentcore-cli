@@ -61,7 +61,11 @@ export class CodeZipDevRunner implements DevRunner {
     yield { type: "status", message: "Starting development server" };
     const serverProcess = commandForRuntime(devEntrypoint, directory, input);
     if (devEntrypoint.endsWith(".py") && input.env?.OTEL_EXPORTER_OTLP_ENDPOINT) {
-      const sitecustomizeDir = await this.findOtelSitecustomizeDir(directory, input.signal);
+      const sitecustomizeDir = await findOtelSitecustomizeDir(
+        this.runProcess,
+        directory,
+        input.signal,
+      );
       if (sitecustomizeDir) {
         const existing = serverProcess.options.env?.PYTHONPATH;
         serverProcess.options.env = {
@@ -69,50 +73,51 @@ export class CodeZipDevRunner implements DevRunner {
           PYTHONPATH: existing ? `${sitecustomizeDir}${delimiter}${existing}` : sitecustomizeDir,
         };
       } else {
-        yield {
-          type: "status",
-          message:
-            "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.",
-        };
+        yield { type: "status", message: NO_AUTO_INSTRUMENTATION };
       }
     }
     yield* this.streamProcess(serverProcess.command, serverProcess.options);
   }
+}
 
-  /**
-   * Locate the auto-instrumentation sitecustomize.py directory inside the agent's
-   * uv environment. Prepending it to PYTHONPATH instruments every Python process —
-   * an `opentelemetry-instrument` wrapper would only instrument uvicorn's reloader
-   * parent, leaving the re-spawned worker processes untraced.
-   */
-  private async findOtelSitecustomizeDir(
-    directory: string,
-    signal: AbortSignal,
-  ): Promise<string | undefined> {
-    const output: string[] = [];
-    // uv writes sync progress to stderr, which merges into onOutput, so the path
-    // is printed behind a marker and read from that line rather than the last one.
-    const script = `import opentelemetry.instrumentation.auto_instrumentation as m, os; print("${SITECUSTOMIZE_MARKER}" + os.path.dirname(m.__file__))`;
-    try {
-      await this.runProcess(["uv", "run", "python", "-c", script], {
-        cwd: directory,
-        env: { ...process.env, ...PYTHON_ENV },
-        onOutput: (chunk) => output.push(chunk),
-        signal,
-      });
-    } catch {
-      return undefined;
-    }
-    const marked = output
-      .join("")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.startsWith(SITECUSTOMIZE_MARKER));
-    const sitecustomizeDir = marked?.slice(SITECUSTOMIZE_MARKER.length);
-    if (!sitecustomizeDir || !existsSync(join(sitecustomizeDir, "sitecustomize.py")))
-      return undefined;
-    return sitecustomizeDir;
+/** Why dev collects no traces of an agent whose venv lacks the OTEL auto-instrumentation. */
+export const NO_AUTO_INSTRUMENTATION =
+  "OTEL auto-instrumentation is not installed in the agent environment; traces will not be collected. Add aws-opentelemetry-distro to the agent's dependencies to enable them.";
+
+/**
+ * Locate the auto-instrumentation sitecustomize.py directory inside the agent's
+ * uv environment. Prepending it to PYTHONPATH instruments every Python process —
+ * an `opentelemetry-instrument` wrapper would only instrument uvicorn's reloader
+ * parent, leaving the re-spawned worker processes untraced.
+ */
+export async function findOtelSitecustomizeDir(
+  runProcess: ProcessRunner,
+  directory: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const output: string[] = [];
+  // uv writes sync progress to stderr, which merges into onOutput, so the path
+  // is printed behind a marker and read from that line rather than the last one.
+  const script = `import opentelemetry.instrumentation.auto_instrumentation as m, os; print("${SITECUSTOMIZE_MARKER}" + os.path.dirname(m.__file__))`;
+  try {
+    await runProcess(["uv", "run", "python", "-c", script], {
+      cwd: directory,
+      env: { ...process.env, ...PYTHON_ENV },
+      onOutput: (chunk) => output.push(chunk),
+      signal,
+    });
+  } catch {
+    return undefined;
   }
+  const marked = output
+    .join("")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith(SITECUSTOMIZE_MARKER));
+  const sitecustomizeDir = marked?.slice(SITECUSTOMIZE_MARKER.length);
+  if (!sitecustomizeDir || !existsSync(join(sitecustomizeDir, "sitecustomize.py")))
+    return undefined;
+  return sitecustomizeDir;
 }
 
 function commandForRuntime(
