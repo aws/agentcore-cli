@@ -537,9 +537,9 @@ function hostTargets(
           reason:
             `signs requests to ${host.host} with ${entry.secret!.ref}, and Box does not sign ` +
             "for this host name, so build cannot find its service and its region and makes no " +
-            `gateway target for it. On AgentCore Runtime, the profile does not have this entry, ` +
-            `and nothing signs the requests to ${host.authority}. To sign them, add a passthrough target ` +
-            `for https://${host.authority} to the '${project.gateway}' gateway in ` +
+            "gateway target for it. The AgentCore Runtime box profile leaves this entry out, and " +
+            `nothing signs the requests to ${host.authority}. To sign them, add a passthrough ` +
+            `target for https://${host.authority} to the '${project.gateway}' gateway in ` +
             "agentcore.json, with protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. " +
             "Give it the service and the region of the host. Then add an IAM policy file with " +
             "the permissions for the host to additionalPolicies of that gateway.",

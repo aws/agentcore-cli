@@ -183,11 +183,7 @@ export function hasBoxSignedSuffix(host: string): boolean {
   return BOX_SIGNED_HOST_SUFFIXES.some((suffix) => name.endsWith(suffix));
 }
 
-/**
- * The service and region that Box signs `host` with under `agentcore dev`, by the rule of
- * `derive_service_region` in Box Core's credentials crate, or `undefined` for a host Box does not
- * sign.
- */
+/** `derive_service_region` of Box Core for `host`, except `undefined` for an empty label. */
 export function boxSigningOf(host: string): { service: string; region: string } | undefined {
   const name = host.replace(/\.+$/, "").toLowerCase();
   const suffix = BOX_SIGNED_HOST_SUFFIXES.find((candidate) => name.endsWith(candidate));

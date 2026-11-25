@@ -593,7 +593,7 @@ describe("outbound auth", () => {
     expect(r.network.grantedActions).toEqual([]);
   });
 
-  test("reads the service and region of a host by Box's own signing rule", () => {
+  test("reads the service and region of a host as Box does, except for an empty label", () => {
     const cases: [string, { service: string; region: string } | undefined][] = [
       ["s3.us-east-1.amazonaws.com", { service: "s3", region: "us-east-1" }],
       ["S3.US-WEST-2.AMAZONAWS.COM.", { service: "s3", region: "us-west-2" }],
@@ -630,9 +630,9 @@ describe("outbound auth", () => {
     expect(r.network.warnings).toContain(
       `${PROFILE}:2:1: [egress.bucket] signs requests to ${BUCKET} with aws://, and Box does ` +
         "not sign for this host name, so build cannot find its service and its region and " +
-        "makes no gateway target for it. On AgentCore Runtime, the profile does not have this " +
-        `entry, and nothing signs the requests to ${BUCKET}. To sign them, add a passthrough target for ` +
-        `https://${BUCKET} to the 'agent-box-egress' gateway in agentcore.json, with ` +
+        "makes no gateway target for it. The AgentCore Runtime box profile leaves this entry " +
+        `out, and nothing signs the requests to ${BUCKET}. To sign them, add a passthrough ` +
+        `target for https://${BUCKET} to the 'agent-box-egress' gateway in agentcore.json, with ` +
         "protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. Give it the service and " +
         "the region of the host. Then add an IAM policy file with the permissions for the host " +
         "to additionalPolicies of that gateway.",
