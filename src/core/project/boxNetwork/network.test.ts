@@ -10,6 +10,7 @@ import { boxSigningOf } from "./egress";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
+import { targetOutboundAuth } from "./projectSpec";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -656,6 +657,41 @@ describe("outbound auth", () => {
     });
     expect(r.network.managedTargets).toEqual(new Set());
     expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+  });
+
+  test("takes the service of the user's own IAM target that has no region, and gives the host no region", () => {
+    const mine = passthrough("my-bucket", `https://${BUCKET}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "s3" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    const auth = r.host(BUCKET)!.outboundAuth;
+    expect(auth).toStrictEqual({ kind: "iam", service: "s3" });
+    expect(targetOutboundAuth(auth)).toStrictEqual({ type: "GATEWAY_IAM_ROLE", service: "s3" });
+  });
+
+  test("drops a managed target of an earlier build when the entry changes to aws:// on an AWS host Box does not sign", () => {
+    const earlier = passthrough("egress-bucket", `https://${BUCKET}`, {
+      outboundAuth: { ...GITHUB_KEY, credentialName: "bucket" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [earlier], ownedTargets: new Set(["egress-bucket"]) },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual([`${BUCKET} -> (none)`]);
+    expect(r.host(BUCKET)?.outboundAuth).toEqual({ kind: "none" });
+    expect(r.network.managedTargets).toEqual(new Set(["egress-bucket"]));
+    expect(r.network.warnings.join("\n")).toContain(
+      `[egress.bucket] signs requests to ${BUCKET} with aws://`,
+    );
   });
 
   test("routes aws:// on a host that is not an AWS host through the user's own IAM target", () => {
