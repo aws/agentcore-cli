@@ -21,8 +21,14 @@ import { type BoxTelemetrySecret, boxTelemetrySecretName } from "../../boxTeleme
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
 import type { DeployedState } from "./deployedState";
 
-/** The secrets deploy wrote for a target, by name. */
-export type DeployedTelemetrySecrets = Record<string, { secretArn: string }>;
+/** The secrets deploy wrote for a target, by name, and the fields its runtime can read. */
+export type DeployedTelemetrySecrets = Record<string, { secretArn: string; fields?: string[] }>;
+
+/** Each secret deploy wrote before the stack deploy: its fields, and the other fields it keeps. */
+export type ProvisionedTelemetrySecrets = Record<
+  string,
+  { secretArn: string; fields: string[]; stale: string[] }
+>;
 
 /** The days a deleted secret can be restored in; a later deploy restores it. */
 const RECOVERY_WINDOW_DAYS = 7;
@@ -160,7 +166,7 @@ export function telemetrySecretsOfOtherTargets(
 }
 
 /** What deploy does with one secret: keep it as it is, or write its JSON object. */
-type Plan = { readonly secret: BoxTelemetrySecret } & (
+type Plan = { readonly secret: BoxTelemetrySecret; readonly stale: readonly string[] } & (
   | { readonly kind: "keep"; readonly arn: string }
   | { readonly kind: "create"; readonly value: string }
   | {
@@ -188,9 +194,9 @@ function stringFields(text: string | undefined): Record<string, string> {
 
 /**
  * Decides what to write to one secret. Deploy reads a secret that exists and is not scheduled for
- * deletion, takes the value of a field whose key it lacks from it, and keeps the secret as it is
- * when the object is equal. A key that neither deploy nor the secret holds fails the deploy. A
- * secret of that name that deploy did not create also stops the deploy.
+ * deletion, takes the value of a field whose key it lacks from it, keeps each other field it holds,
+ * and keeps the secret as it is when the object is equal. A key that neither deploy nor the secret
+ * holds fails the deploy. A secret of that name that deploy did not create also stops the deploy.
  */
 async function plan(
   calls: TelemetrySecretCalls,
@@ -208,7 +214,7 @@ async function plan(
   }
   // A secret scheduled for deletion cannot be read until a write restores it.
   const held = existing && !existing.deleted ? stringFields(await calls.read(existing.arn)) : {};
-  const object: Record<string, string> = {};
+  const object: Record<string, string> = { ...held };
   const missing: typeof given = [];
   for (const field of given) {
     const value = field.value ?? held[field.field];
@@ -216,12 +222,14 @@ async function plan(
     else object[field.field] = value;
   }
   if (missing.length > 0) throw missingKeys(secret, missing, project.rootPath);
+  const named = new Set(given.map(({ field }) => field));
+  const stale = Object.keys(held).filter((field) => !named.has(field));
   const value = JSON.stringify(object);
-  if (existing === undefined) return { secret, kind: "create", value };
+  if (existing === undefined) return { secret, stale, kind: "create", value };
   if (!existing.deleted && isDeepStrictEqual(object, held)) {
-    return { secret, kind: "keep", arn: existing.arn };
+    return { secret, stale, kind: "keep", arn: existing.arn };
   }
-  return { secret, kind: "update", arn: existing.arn, restore: existing.deleted, value };
+  return { secret, stale, kind: "update", arn: existing.arn, restore: existing.deleted, value };
 }
 
 /**
@@ -232,14 +240,14 @@ async function plan(
  * deletion. Deploy gives each secret that it creates the tags of {@link telemetrySecretTags}.
  * Deploy makes a decision for each secret before the first write. Thus a missing key, or a secret
  * of that name without those tags, writes nothing. A failure removes the secrets this deploy
- * created.
+ * created. A secret keeps each field it held, until {@link pruneTelemetrySecrets} runs.
  */
 export async function* provisionTelemetrySecrets(
   calls: TelemetrySecretCalls,
   project: Project,
   secrets: readonly BoxTelemetrySecret[],
   processEnv: Record<string, string | undefined>,
-): AsyncGenerator<ProjectEvent, DeployedTelemetrySecrets> {
+): AsyncGenerator<ProjectEvent, ProvisionedTelemetrySecrets> {
   if (secrets.length === 0) return {};
   const needed = new Set(secrets.flatMap(({ fields }) => fields.map(({ variable }) => variable)));
   const env = await new EnvLocalFile(project.rootPath).read({
@@ -250,17 +258,18 @@ export async function* provisionTelemetrySecrets(
   const plans: Plan[] = [];
   for (const secret of secrets) plans.push(await plan(calls, secret, env, project));
 
-  const stored: DeployedTelemetrySecrets = {};
+  const stored: ProvisionedTelemetrySecrets = {};
   const created: string[] = [];
   try {
     for (const plan of plans) {
       const { secret } = plan;
+      const fields = { fields: secret.fields.map(({ field }) => field), stale: [...plan.stale] };
       yield {
         type: "step",
         message: `preparing secret '${secret.name}' for the box telemetry of '${secret.runtime}'`,
       };
       if (plan.kind === "keep") {
-        stored[secret.name] = { secretArn: plan.arn };
+        stored[secret.name] = { secretArn: plan.arn, ...fields };
         continue;
       }
       if (plan.kind === "create") {
@@ -273,12 +282,12 @@ export async function* provisionTelemetrySecrets(
           tags: telemetrySecretTags(project.spec.name, secret.runtime),
         });
         created.push(arn);
-        stored[secret.name] = { secretArn: arn };
+        stored[secret.name] = { secretArn: arn, ...fields };
         continue;
       }
       if (plan.restore) await calls.restore(plan.arn);
       await calls.put(plan.arn, plan.value);
-      stored[secret.name] = { secretArn: plan.arn };
+      stored[secret.name] = { secretArn: plan.arn, ...fields };
     }
   } catch (error) {
     for (const arn of created.reverse()) {
@@ -298,6 +307,88 @@ export async function* provisionTelemetrySecrets(
     throw error;
   }
   return stored;
+}
+
+/** The records of `stored`; with `before`, a field read before stays, and a record with no fields stays so. */
+export function telemetrySecretRecords(
+  stored: ProvisionedTelemetrySecrets,
+  before?: DeployedTelemetrySecrets,
+): DeployedTelemetrySecrets {
+  return Object.fromEntries(
+    Object.entries(stored).map(([name, { secretArn, fields }]) => {
+      const earlier = before?.[name];
+      if (earlier === undefined) return [name, { secretArn, fields }];
+      if (earlier.fields === undefined) return [name, { secretArn }];
+      return [name, { secretArn, fields: [...new Set([...earlier.fields, ...fields])] }];
+    }),
+  );
+}
+
+/** By secret ARN, the fields the runtime of another target can read; undefined when one records none. */
+export function telemetrySecretFieldsOfOtherTargets(
+  state: DeployedState,
+  targetName: string,
+): Map<string, Set<string> | undefined> {
+  const read = new Map<string, Set<string> | undefined>();
+  for (const [name, target] of Object.entries(state.targets)) {
+    if (name === targetName) continue;
+    for (const { secretArn, fields } of Object.values(
+      target.resources?.boxTelemetrySecrets ?? {},
+    )) {
+      const known = read.has(secretArn) ? read.get(secretArn) : new Set<string>();
+      read.set(secretArn, known && fields ? new Set([...known, ...fields]) : undefined);
+    }
+  }
+  return read;
+}
+
+/** After the stack deploy, removes each stale field of `stored` that no runtime of `others` can read. */
+export async function* pruneTelemetrySecrets(
+  calls: TelemetrySecretCalls,
+  stored: ProvisionedTelemetrySecrets,
+  others: ReadonlyMap<string, ReadonlySet<string> | undefined>,
+): AsyncGenerator<ProjectEvent, void> {
+  for (const [name, { secretArn, stale }] of Object.entries(stored)) {
+    if (stale.length === 0) continue;
+    const read = others.has(secretArn) ? others.get(secretArn) : new Set<string>();
+    const kept = stale.filter((field) => read === undefined || read.has(field));
+    if (kept.length > 0) {
+      yield {
+        type: "step",
+        message: `keeping ${quoted(kept)} in secret '${name}': another deployment target reads ${them(kept)}`,
+      };
+    }
+    const removed = stale.filter((field) => !kept.includes(field));
+    if (removed.length === 0) continue;
+    try {
+      const held = stringFields(await calls.read(secretArn));
+      const left = Object.fromEntries(
+        Object.entries(held).filter(([field]) => !removed.includes(field)),
+      );
+      if (isDeepStrictEqual(left, held)) continue;
+      yield {
+        type: "step",
+        message: `removing ${quoted(removed)} from secret '${name}': no deployed runtime reads ${them(removed)}`,
+      };
+      await calls.put(secretArn, JSON.stringify(left));
+    } catch (error) {
+      yield {
+        type: "warning",
+        message:
+          `Deploy did not remove ${quoted(removed)} from secret '${name}' (${secretArn}): ` +
+          `${(error as Error).message}. The secret keeps ${them(removed)}, and the next deploy of ` +
+          `this target tries to remove ${them(removed)} again.`,
+      };
+    }
+  }
+}
+
+function quoted(fields: readonly string[]): string {
+  return fields.map((field) => `'${field}'`).join(", ");
+}
+
+function them(fields: readonly string[]): string {
+  return fields.length === 1 ? "it" : "them";
 }
 
 /**

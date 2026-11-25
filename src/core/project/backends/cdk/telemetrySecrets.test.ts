@@ -19,8 +19,11 @@ import type { BoxTelemetrySecret } from "../../boxTelemetrySecrets";
 import {
   orphanedTelemetrySecrets,
   provisionTelemetrySecrets,
+  pruneTelemetrySecrets,
   removeTelemetrySecrets,
   secretsManagerCalls,
+  telemetrySecretFieldsOfOtherTargets,
+  telemetrySecretRecords,
   telemetrySecretsOfOtherTargets,
   telemetrySecretTags,
   type TelemetrySecretCalls,
@@ -55,6 +58,14 @@ const KEYS = { [LANGSMITH]: "dummy-langsmith", [LANGFUSE]: "dummy-public:dummy-s
 const OBJECT = JSON.stringify({
   "telemetry.langsmith": "dummy-langsmith",
   "telemetry.langfuse": "dummy-public:dummy-secret",
+});
+/** The fields of {@link SECRET}. */
+const FIELDS = ["telemetry.langsmith", "telemetry.langfuse"];
+/** What deploy returns for {@link SECRET} at `secretArn`, with the `stale` fields it keeps. */
+const storedOf = (secretArn: string, stale: string[] = []) => ({
+  secretArn,
+  fields: FIELDS,
+  stale,
 });
 
 const directories: string[] = [];
@@ -206,7 +217,7 @@ describe("provisionTelemetrySecrets", () => {
     );
 
     expect(calls).toEqual([`create ${NAME} ${OBJECT}`]);
-    expect(value).toEqual({ [NAME]: { secretArn: `${ARN}1` } });
+    expect(value).toEqual({ [NAME]: storedOf(`${ARN}1`) });
     expect(steps).toEqual([`preparing secret '${NAME}' for the box telemetry of 'agent'`]);
   });
 
@@ -271,7 +282,7 @@ describe("provisionTelemetrySecrets", () => {
     const { value } = await drain(provisionTelemetrySecrets(stub, await project(), [SECRET], KEYS));
 
     expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${OBJECT}`]);
-    expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+    expect(value).toEqual({ [NAME]: storedOf(ARN) });
   });
 
   test("keeps a secret whose object is equal, when deploy has each key", async () => {
@@ -281,7 +292,7 @@ describe("provisionTelemetrySecrets", () => {
     for (const env of [{}, KEYS]) {
       const { value } = await drain(provisionTelemetrySecrets(stub, root, [SECRET], env));
 
-      expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+      expect(value).toEqual({ [NAME]: storedOf(ARN) });
     }
     expect(calls).toEqual([`read ${ARN}`, `read ${ARN}`]);
   });
@@ -292,10 +303,10 @@ describe("provisionTelemetrySecrets", () => {
     const { value } = await drain(provisionTelemetrySecrets(stub, await project(), [SECRET], {}));
 
     expect(calls).toEqual([`read ${ARN}`]);
-    expect(value).toEqual({ [NAME]: { secretArn: ARN } });
+    expect(value).toEqual({ [NAME]: storedOf(ARN) });
   });
 
-  test("keeps the value of a field whose key deploy lacks, and drops the field of a target that went", async () => {
+  test("keeps the value of a field whose key deploy lacks, and the field of a target that went", async () => {
     const held = JSON.stringify({
       "telemetry.langsmith": "dummy-old",
       "telemetry.langfuse": KEYS[LANGFUSE],
@@ -303,11 +314,23 @@ describe("provisionTelemetrySecrets", () => {
     });
     const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: held } });
 
-    await drain(
+    const { value } = await drain(
       provisionTelemetrySecrets(stub, await project(), [SECRET], { [LANGSMITH]: KEYS[LANGSMITH] }),
     );
 
-    expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${OBJECT}`]);
+    const union = JSON.stringify({ ...JSON.parse(OBJECT), "telemetry.gone": "dummy-gone" });
+    expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${union}`]);
+    expect(value).toEqual({ [NAME]: storedOf(ARN, ["telemetry.gone"]) });
+  });
+
+  test("keeps a secret that holds the field of a target that went, and each key deploy has", async () => {
+    const held = JSON.stringify({ ...JSON.parse(OBJECT), "telemetry.gone": "dummy-gone" });
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: held } });
+
+    const { value } = await drain(provisionTelemetrySecrets(stub, await project(), [SECRET], KEYS));
+
+    expect(calls).toEqual([`read ${ARN}`]);
+    expect(value).toEqual({ [NAME]: storedOf(ARN, ["telemetry.gone"]) });
   });
 
   test("restores a secret that is scheduled for deletion, then puts the keys", async () => {
@@ -486,11 +509,132 @@ describe("removeTelemetrySecrets", () => {
   });
 });
 
+describe("pruneTelemetrySecrets", () => {
+  const HELD = JSON.stringify({
+    ...JSON.parse(OBJECT),
+    "telemetry.gone": "dummy-gone",
+    "telemetry.old": "dummy-old",
+  });
+  const STALE = ["telemetry.gone", "telemetry.old"];
+
+  test("removes each stale field that no other deployment target reads", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: HELD } });
+
+    const { steps } = await drain(
+      pruneTelemetrySecrets(stub, { [NAME]: storedOf(ARN, STALE) }, new Map()),
+    );
+
+    expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${OBJECT}`]);
+    expect(steps).toEqual([
+      `removing 'telemetry.gone', 'telemetry.old' from secret '${NAME}': no deployed runtime ` +
+        "reads them",
+    ]);
+  });
+
+  test("keeps a stale field that the runtime of another deployment target reads", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: HELD } });
+    const others = new Map([[ARN, new Set(["telemetry.langsmith", "telemetry.gone"])]]);
+
+    const { steps } = await drain(
+      pruneTelemetrySecrets(stub, { [NAME]: storedOf(ARN, STALE) }, others),
+    );
+
+    const left = JSON.stringify({ ...JSON.parse(OBJECT), "telemetry.gone": "dummy-gone" });
+    expect(calls).toEqual([`read ${ARN}`, `put ${ARN} ${left}`]);
+    expect(steps).toEqual([
+      `keeping 'telemetry.gone' in secret '${NAME}': another deployment target reads it`,
+      `removing 'telemetry.old' from secret '${NAME}': no deployed runtime reads it`,
+    ]);
+  });
+
+  test("keeps each stale field when another deployment target records the secret with no fields", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: HELD } });
+
+    const { steps } = await drain(
+      pruneTelemetrySecrets(stub, { [NAME]: storedOf(ARN, STALE) }, new Map([[ARN, undefined]])),
+    );
+
+    expect(calls).toEqual([]);
+    expect(steps).toEqual([
+      `keeping 'telemetry.gone', 'telemetry.old' in secret '${NAME}': another deployment target ` +
+        "reads them",
+    ]);
+  });
+
+  test("does nothing for a secret with no stale field", async () => {
+    const { stub, calls } = stubCalls({ [NAME]: { arn: ARN, deleted: false, value: HELD } });
+
+    const { steps } = await drain(
+      pruneTelemetrySecrets(stub, { [NAME]: storedOf(ARN) }, new Map()),
+    );
+
+    expect(calls).toEqual([]);
+    expect(steps).toEqual([]);
+  });
+
+  test("warns when it cannot change the secret, and does not fail", async () => {
+    const { stub } = stubCalls(
+      { [NAME]: { arn: ARN, deleted: false, value: HELD } },
+      { put: new Error("AccessDenied") },
+    );
+
+    const { warnings } = await drain(
+      pruneTelemetrySecrets(stub, { [NAME]: storedOf(ARN, ["telemetry.gone"]) }, new Map()),
+    );
+
+    expect(warnings).toEqual([
+      `Deploy did not remove 'telemetry.gone' from secret '${NAME}' (${ARN}): AccessDenied. The ` +
+        "secret keeps it, and the next deploy of this target tries to remove it again.",
+    ]);
+  });
+});
+
 describe("the records of the secrets", () => {
   test("finds the recorded secrets that no runtime declares any more", () => {
     const recorded = { [NAME]: { secretArn: ARN }, old: { secretArn: "arn:old" } };
 
     expect(orphanedTelemetrySecrets(recorded, [SECRET])).toEqual({ old: { secretArn: "arn:old" } });
+  });
+
+  test("records the fields of each secret, with each field the runtime read before", () => {
+    const stored = { [NAME]: storedOf(ARN, ["telemetry.gone"]), other: storedOf("arn:other") };
+
+    expect(telemetrySecretRecords(stored)).toEqual({
+      [NAME]: { secretArn: ARN, fields: FIELDS },
+      other: { secretArn: "arn:other", fields: FIELDS },
+    });
+    expect(
+      telemetrySecretRecords(stored, {
+        [NAME]: { secretArn: ARN, fields: ["telemetry.gone", "telemetry.langsmith"] },
+        other: { secretArn: "arn:other" },
+      }),
+    ).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.gone", ...FIELDS] },
+      other: { secretArn: "arn:other" },
+    });
+  });
+
+  test("collects the fields that the runtime of every other deployment target reads", () => {
+    const record = (secretArn: string, fields?: string[]) => ({
+      resources: { boxTelemetrySecrets: { [NAME]: { secretArn, ...(fields && { fields }) } } },
+    });
+    const state = {
+      targets: {
+        default: record(ARN, ["telemetry.mine"]),
+        staging: record(ARN, ["telemetry.langsmith"]),
+        test: record(ARN, ["telemetry.gone"]),
+        old: record("arn:old"),
+        older: record("arn:old", ["telemetry.langsmith"]),
+        empty: {},
+      },
+    };
+
+    expect(telemetrySecretFieldsOfOtherTargets(state, "default")).toEqual(
+      new Map([
+        [ARN, new Set(["telemetry.langsmith", "telemetry.gone"])],
+        ["arn:old", undefined],
+      ]),
+    );
   });
 
   test("collects the secrets every other deployment target records", () => {
