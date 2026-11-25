@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import z from "zod";
-import { createHandler, flag, PlatformKey, type Middleware } from "../../../router";
+import {
+  CommandRunMetricEventKey,
+  createHandler,
+  flag,
+  PlatformKey,
+  type Middleware,
+} from "../../../router";
 import { assertProjectPathFits } from "./pathLimit";
 import { type AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
@@ -131,13 +137,14 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
     ],
     handle: async (ctx, flags) => {
       const name = flags["name"];
+      const template = flags["template"];
+      ctx.value(CommandRunMetricEventKey)?.setAttributes({ project_template: template });
       if (!flags["skip-install"]) {
         assertProjectPathFits(name, ctx.require(PlatformKey), {
           alternative: "pass --skip-install and install the CDK dependencies yourself",
         });
       }
 
-      const template = flags["template"];
       const region = ctx.require(RegionKey);
       const base = {
         name,

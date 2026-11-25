@@ -1,5 +1,6 @@
 import z from "zod";
 import { ERROR_SOURCE } from "../errors";
+import { PROJECT_TEMPLATE_NAMES } from "../handlers/project/shortcuts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
@@ -64,6 +65,7 @@ export const commandRunSchema = safeSchema({
   error_source: z.enum(Object.values(ERROR_SOURCE)).optional(),
   is_tui: z.boolean().default(false),
   project_format: z.enum(["v0", "v1", "unknown"]).optional(),
+  project_template: z.enum(PROJECT_TEMPLATE_NAMES).optional(),
   legacy_deploy_exit_code: z.number().int().min(0).max(255).optional(),
   project_runtime_count: z.number().int().nonnegative().optional(),
   project_memory_count: z.number().int().nonnegative().optional(),

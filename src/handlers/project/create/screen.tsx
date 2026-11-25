@@ -3,7 +3,7 @@ import { Box, Text, useApp } from "ink";
 import { useNavigate } from "react-router";
 import { ProjectNameSchema } from "../../../projectSchemas/project";
 import type { ScreenProps } from "../../types";
-import { PlatformKey } from "../../../router";
+import { CommandRunMetricEventKey, PlatformKey } from "../../../router";
 import { RegionKey } from "../../keys";
 import { assertProjectPathFits } from "./pathLimit";
 import {
@@ -242,6 +242,9 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       // same place RouterScreen's esc goes.
       onCancel={() => navigate("/agentcore")}
       onSubmit={async function* () {
+        ctx.value(CommandRunMetricEventKey)?.setAttributes({
+          project_template: values.kind === "agent" ? values.template : undefined,
+        });
         // All of these throw before anything is written, so the wizard reports
         // them the way it reports a failed create — with the retry still on
         // offer, because nothing has to be cleaned up first. The API key is

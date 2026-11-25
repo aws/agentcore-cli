@@ -4,14 +4,18 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRootHandler } from "../index";
 import {
+  assertMetricEmitted,
   createSilentLogger,
   expectError,
+  getTestTelemetryClient,
   initProject,
   inTempDirectory,
   TestCoreClient,
   TestGlobalConfigAccessor,
   testIO,
+  withTelemetry,
 } from "../../testing";
+import { ValueContext, type Context } from "../../router";
 import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
@@ -20,7 +24,7 @@ import { BOX_RELEASE } from "../../core/project/backends/boxRelease";
 
 async function run(
   args: string[],
-  opts?: { core?: TestCoreClient; stdin?: string; platform?: NodeJS.Platform },
+  opts?: { core?: TestCoreClient; stdin?: string; platform?: NodeJS.Platform; ctx?: Context },
 ) {
   const io = testIO({ stdin: opts?.stdin });
   const core = opts?.core ?? new TestCoreClient();
@@ -30,8 +34,20 @@ async function run(
     logger: createSilentLogger(),
     platform: opts?.platform,
   });
-  await root.route(["node", "agentcore", ...args]);
+  await root.route(["node", "agentcore", ...args], opts?.ctx);
   return { io, core };
+}
+
+async function runWithTelemetry(args: string[], opts?: { platform?: NodeJS.Platform }) {
+  const { client, filePath, cleanup } = await getTestTelemetryClient();
+  cleanups.push(cleanup);
+  const error = await withTelemetry(ValueContext.EmptyContext(), client, (ctx) =>
+    run(args, { ...opts, ctx }),
+  ).then(
+    () => undefined,
+    (caught: unknown) => caught,
+  );
+  return { filePath, error };
 }
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -601,6 +617,45 @@ describe("project create", () => {
     });
     expect(spec.memories ?? []).toHaveLength(1);
     expect(await Bun.file(join(projectRoot, "app", "agent", "main.ts")).exists()).toBe(true);
+  });
+
+  test.each([
+    [[], "empty"],
+    [["--template", "agent-python-minimal"], "agent-python-minimal"],
+  ] as const)("create %j records project_template %s", async (templateArgs, template) => {
+    cleanups.push((await inTempDirectory()).cleanup);
+    const { filePath, error } = await runWithTelemetry([
+      "create",
+      "--name",
+      "MyAgent",
+      "--skip-install",
+      "--skip-git",
+      ...templateArgs,
+    ]);
+    expect(error).toBeUndefined();
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      command_path: "/agentcore/create",
+      exit_reason: "success",
+      project_template: template,
+    });
+  });
+
+  test("a create that fails still records the chosen project_template", async () => {
+    const { path, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const deep = join(path, "n".repeat(120));
+    await mkdir(deep);
+    process.chdir(deep);
+
+    const { filePath, error } = await runWithTelemetry(
+      ["create", "--name", "Deep", "--template", "agent-python-strands"],
+      { platform: "win32" },
+    );
+    expect(error).toBeInstanceOf(InputValidationError);
+    await assertMetricEmitted(filePath, "cli.command_run", {
+      exit_reason: "failure",
+      project_template: "agent-python-strands",
+    });
   });
 
   test("rejects an invalid --name", async () => {
