@@ -518,7 +518,7 @@ describe("BoxDevRunner", () => {
     expect(existsSync(join(projectRoot, "agentcore", ".cli", "box-dev"))).toBe(false);
   });
 
-  test("runs the local profile when dev collects no traces (enableOtel false)", async () => {
+  test("runs the local profile when dev passes no collector endpoint", async () => {
     const { projectRoot, calls, runner, found } = await scene(true, true, { sitecustomize: true });
 
     await collect(runner.run({ ...input(projectRoot), env: {} }));
