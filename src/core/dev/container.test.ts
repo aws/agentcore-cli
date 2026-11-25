@@ -1018,6 +1018,22 @@ describe("ContainerDevRunner", () => {
       expect(existsSync(join(root, "agentcore", ".env.local"))).toBe(false);
     });
 
+    test("hands box in the container a telemetry target's secret:// key from the shell", async () => {
+      const { projectRuntime, root } = await boxedScene({
+        profileText:
+          '[telemetry.langsmith]\nkind = "langsmith"\nsecret.ref = "secret://LANGSMITH_KEY"\n',
+      });
+      const { calls, runner } = harness({
+        processEnv: { ...credentials, LANGSMITH_KEY: "dummy-langsmith-key" },
+      });
+
+      await collect(runner.run(input(root, projectRuntime)));
+
+      const run = commandCall(calls, "run");
+      expect(parseEnv(run.envFile!.contents).LANGSMITH_KEY).toBe("dummy-langsmith-key");
+      expect(run.command.join(" ")).not.toContain("dummy-langsmith-key");
+    });
+
     test("hands box in the container the shell's env:// key over .env.local's", async () => {
       const { projectRuntime, root } = await boxedScene({
         profileText:
