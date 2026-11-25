@@ -100,7 +100,9 @@ function boxTelemetrySecretFieldOf(
 
 /**
  * The statement that lets the execution role read the secrets of `secrets`, and no other secret,
- * or undefined when there are none. Build has no account, so each ARN matches any account.
+ * or undefined when there are none. The account in each ARN is `*`: each deployment target uses
+ * the one policy file of the runtime, a target can have a different account, and the L3 does not
+ * replace `${AWS::AccountId}` in that file.
  * Secrets Manager adds `-` and six characters to the name of a secret in its ARN. The secret is
  * encrypted with the AWS managed key, which needs no `kms:Decrypt` grant.
  */
