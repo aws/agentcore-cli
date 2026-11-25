@@ -660,6 +660,42 @@ describe("renderAgentCorePack", () => {
     );
   });
 
+  test.each([
+    ["0.3.2", true, true],
+    ["1.0.0", true, true],
+    ["0.3.1", true, false],
+    ["0.3.0", true, false],
+    ["0.3.2", false, false],
+  ])(
+    "reads the log group and stream of the runtime's spans from OTEL_EXPORTER_OTLP_TRACES_HEADERS only with OTEL on and a box that takes them (box %s, OTEL %p)",
+    (version, otel, declared) => {
+      const { runtime } = parse(
+        renderAgentCorePack(
+          { name: "V3Demo" } as unknown as ProjectSpec,
+          { name: "agent", ...(!otel && { instrumentation: { enableOtel: false } }) },
+          [],
+          version,
+        ),
+      ).inputs as Record<string, any>;
+
+      if (!declared) {
+        expect(runtime).not.toHaveProperty("traces_log_group");
+        expect(runtime).not.toHaveProperty("traces_log_stream");
+        return;
+      }
+      expect(runtime.traces_log_group).toEqual({
+        description: "The runtime's own CloudWatch Logs log group, for its spans.",
+        from: "env:OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+        key: "x-aws-log-group",
+      });
+      expect(runtime.traces_log_stream).toEqual({
+        description: "The log stream of the runtime's spans.",
+        from: "env:OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+        key: "x-aws-log-stream",
+      });
+    },
+  );
+
   test("turns OTEL on when the runtime has no instrumentation, as create writes it", () => {
     const text = renderAgentCorePack({ name: "V3Demo" } as unknown as ProjectSpec, {
       name: "agent",

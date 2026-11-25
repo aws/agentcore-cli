@@ -1,7 +1,7 @@
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 
-MODEL_ID = "global.anthropic.claude-sonnet-5-5"
+MODEL_ID = {{safeJson modelId}}
 
 
 def load_model() -> BaseChatModel:

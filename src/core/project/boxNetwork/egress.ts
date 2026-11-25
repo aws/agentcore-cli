@@ -175,6 +175,32 @@ export function signingService(host: string): { service: string; region: string 
   return endpoint && { service: endpoint.service, region: endpoint.region };
 }
 
+const BOX_SIGNED_HOST_SUFFIXES = [".amazonaws.com", ".api.aws"] as const;
+
+/** Whether `host` ends in `.amazonaws.com` or `.api.aws`, the suffixes that Box signs for. */
+export function hasBoxSignedSuffix(host: string): boolean {
+  const name = host.replace(/\.+$/, "").toLowerCase();
+  return BOX_SIGNED_HOST_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+/** `derive_service_region` of Box Core for `host`, except `undefined` for an empty label. */
+export function boxSigningOf(host: string): { service: string; region: string } | undefined {
+  const name = host.replace(/\.+$/, "").toLowerCase();
+  const suffix = BOX_SIGNED_HOST_SUFFIXES.find((candidate) => name.endsWith(candidate));
+  if (suffix === undefined) return undefined;
+  const labels = name.slice(0, -suffix.length).split(".");
+  if (labels.some((label) => label.length === 0)) return undefined;
+  const signingName = (prefix: string) =>
+    prefix === "bedrock-runtime" || prefix === "bedrock-agent-runtime" ? "bedrock" : prefix;
+  const [first, second, third] = labels;
+  if (labels.length === 1) return { service: signingName(first!), region: "us-east-1" };
+  if (labels.length === 2) return { service: signingName(first!), region: second! };
+  if (labels.length === 3 && second === "execute-api") {
+    return { service: "execute-api", region: third! };
+  }
+  return undefined;
+}
+
 export { BOX_EGRESS_TARGET_PREFIX };
 
 /**
@@ -192,13 +218,17 @@ export function targetNameFor(name: string): string | undefined {
 }
 
 export type OutboundAuthResult =
-  | { readonly ok: true; readonly auth: BoxEgressAuth }
+  | { readonly ok: true; readonly auth: BoxEgressAuth; readonly userTarget?: undefined }
+  /** `aws://` for a host Box does not sign: only a target of the user's own signs for it. */
+  | { readonly ok: true; readonly auth?: undefined; readonly userTarget: true }
   | { readonly ok: false; readonly code: FailureCode; readonly reason: string };
 
 /**
  * The gateway's outbound auth for the secret of an `[egress]` entry: `aws://` signs with the
  * gateway's role for the host's service, `env://` sends the API key of the credential
- * `credentialFor` names, and no secret sends nothing. A failure's reason follows the entry's name.
+ * `credentialFor` names, and no secret sends nothing. Outside the endpoints build manages, `aws://`
+ * takes the service and region Box signs the host with under `agentcore dev`, and gives no IAM
+ * grant; a host Box does not sign gives `userTarget`. A failure's reason follows the entry's name.
  */
 export function outboundAuthFor(
   secret: BoxEgressSecret | undefined,
@@ -219,17 +249,8 @@ export function outboundAuthFor(
           "deploy gives the gateway. Remove this entry. To call a gateway, add it to this project.",
       };
     }
-    const signing = signingService(host);
-    if (!signing) {
-      return {
-        ok: false,
-        code: "UNSIGNABLE_HOST",
-        reason:
-          `signs requests to ${host} with ${secret.ref}, and the gateway signs only for Bedrock, ` +
-          "AgentCore, and Lambda function URL hosts. Use an env:// secret for this host, or " +
-          "remove the secret.",
-      };
-    }
+    const signing = signingService(host) ?? boxSigningOf(host);
+    if (!signing) return { ok: true, userTarget: true };
     return { ok: true, auth: { kind: "iam", ...signing } };
   }
   if (scheme === "env" && value.length > 0) {
