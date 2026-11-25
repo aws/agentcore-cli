@@ -30,7 +30,6 @@ import {
   type PathProblem,
 } from "../projectPaths";
 import { THIRD_PARTY_KINDS } from "../../boxNetwork/telemetry";
-import { BOX_SECRETS_MANAGER_ENV, BOX_SECRETS_MANAGER_PLUGIN } from "../../boxTelemetrySecrets";
 import type {
   RuleResult,
   RuntimeProfileContext,
@@ -97,7 +96,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
-      notCloudWatch(name, kind, context),
+      notCloudWatch(name, kind),
     );
   }
 
@@ -209,29 +208,23 @@ function inRuntimeCode(path: string, paths: RuntimeProfileContext["paths"]): boo
 }
 
 /**
- * Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. A third-party target goes
- * there only through AWS Secrets Manager: the message names that switch when it is off, and the
- * warning of the Box network model when the switch is on and build cannot carry the target.
+ * Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. For a third-party target,
+ * the warning of the Box network model gives the reason build cannot carry it.
  */
-function notCloudWatch(name: string, kind: unknown, context: RuntimeProfileContext): string {
+function notCloudWatch(name: string, kind: unknown): string {
   const thirdParty = THIRD_PARTY_KINDS.some((candidate) => candidate === kind);
-  if (thirdParty && context.secretsManager) {
+  if (thirdParty) {
     return (
       `is ${JSON.stringify(kind)}, and build cannot carry this target to AgentCore Runtime: the ` +
       `warning for [telemetry.${name}] gives the reason. Correct that, remove ` +
       `[telemetry.${name}], or change its kind to "cloudwatch_logs" or "cloudwatch_traces".`
     );
   }
-  const reason =
-    `${typeof kind === "string" ? `is ${JSON.stringify(kind)}` : "is not set"}. At this time, ` +
-    "a box on AgentCore Runtime can send telemetry only to CloudWatch: kind " +
-    `"cloudwatch_logs" or "cloudwatch_traces". Remove [telemetry.${name}], or change its ` +
-    "kind to one of these.";
-  if (!thirdParty) return reason;
   return (
-    `${reason} With a box build that has the ${BOX_SECRETS_MANAGER_PLUGIN} plugin, you can set ` +
-    `${BOX_SECRETS_MANAGER_ENV}=1 instead: then build carries the target, and deploy moves its ` +
-    "key to AWS Secrets Manager."
+    `${typeof kind === "string" ? `is ${JSON.stringify(kind)}` : "is not set"}. A box on ` +
+    'AgentCore Runtime sends telemetry to CloudWatch (kind "cloudwatch_logs" or ' +
+    '"cloudwatch_traces") or to a third party (kind "otlp", "langfuse", or "langsmith"). ' +
+    `Remove [telemetry.${name}], or change its kind to one of these.`
   );
 }
 

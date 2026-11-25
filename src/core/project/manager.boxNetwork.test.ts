@@ -1701,8 +1701,6 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
   const TELEMETRY_POLICY = "agentcore/box-telemetry-policy-agent_python_strands.json";
   const ENTRY = "../../agentcore/box-telemetry-policy-agent_python_strands.json";
   const SECRET = "agentcore/demo/agent_python_strands/box";
-  /** The switch that turns the move on, which is off by default. */
-  const ON = { AGENTCORE_BOX_SECRETS_MANAGER: "1" };
   const VARIABLE = "AGENTCORE_CREDENTIAL_AGENT_PYTHON_STRANDS_TELEMETRY_LANGSMITH";
   /** A stand-in key, which the test looks for in each file build writes. */
   const KEY = "dummy-langsmith-key";
@@ -1739,7 +1737,7 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
 
   test("names the secret in the Runtime profile, and lets the execution role read it alone", async () => {
     const { manager, root, box } = await otelOffProject({
-      env: { ...ON, LANGSMITH_KEY: KEY },
+      env: { LANGSMITH_KEY: KEY },
       template: "agent-python-strands-box-container",
     });
     box.answer = showsTelemetry({ langsmith: LANGSMITH });
@@ -1786,33 +1784,8 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     expect(warnings).toEqual([]);
   });
 
-  test("keeps today's Runtime profile with the switch off, and says why", async () => {
-    const { manager, root, box } = await otelOffProject({
-      env: { LANGSMITH_KEY: KEY },
-      template: "agent-python-strands-box-container",
-    });
-    box.answer = showsTelemetry({ langsmith: LANGSMITH });
-
-    const { steps, warnings } = await build(manager, root);
-
-    const profile = await runtimeProfile(root);
-    expect(profile.telemetry).toEqual({ agentcore: DEFAULT_TARGET });
-    expect(profile.plugins).toBeUndefined();
-    expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
-    expect(steps.filter((step) => step.includes(VARIABLE))).toEqual([]);
-    expect(await text(root, "app/agent_python_strands/.box-dist/box-release.env")).not.toContain(
-      "AWS_CLI",
-    );
-    expect(warnings).toContain(
-      ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
-        "[telemetry.langsmith]: on AgentCore Runtime, Box reads its key from AWS Secrets Manager, " +
-        "and no Box release for Linux can do that yet. To try a box build that can, set " +
-        "AGENTCORE_BOX_SECRETS_MANAGER=1.",
-    );
-  });
-
   test("leaves out a target whose key the Runtime has no source for, and says so", async () => {
-    const { manager, root, box } = await otelOffProject({ env: ON });
+    const { manager, root, box } = await otelOffProject();
     const collector = {
       kind: "otlp",
       destination: "https://collector.example.com",

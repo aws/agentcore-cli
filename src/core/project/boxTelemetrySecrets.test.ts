@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ThirdPartyTelemetry } from "./boxNetwork";
 import {
-  boxSecretsManagerEnabled,
   boxTelemetrySecretEnvEntries,
   boxTelemetrySecretRef,
   boxTelemetrySecrets,
@@ -25,14 +24,6 @@ const COLLECTOR: ThirdPartyTelemetry = {
   kind: "otlp",
   keys: [["destination", "https://collector.example.com"]],
 };
-
-describe("boxSecretsManagerEnabled", () => {
-  test("is on only for 1, so the Runtime profile keeps today's form by default", () => {
-    expect(boxSecretsManagerEnabled({ AGENTCORE_BOX_SECRETS_MANAGER: "1" })).toBe(true);
-    expect(boxSecretsManagerEnabled({})).toBe(false);
-    expect(boxSecretsManagerEnabled({ AGENTCORE_BOX_SECRETS_MANAGER: "true" })).toBe(false);
-  });
-});
 
 describe("boxTelemetrySecrets", () => {
   test("names one secret for each runtime, with one field for each target with a key", () => {

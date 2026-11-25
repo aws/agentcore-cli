@@ -60,7 +60,6 @@ import { reservedBoxTargetNameProblem } from "./boxMemory";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import { resolveRegion } from "../region";
 import { BoxCliProfileResolver, type BoxProfileResolver } from "./boxProfileResolver";
-import { boxSecretsManagerEnabled } from "./boxTelemetrySecrets";
 import {
   addBoxGatewaysToRecord,
   BOX_GATEWAY_TARGETS_FILE,
@@ -1874,7 +1873,6 @@ export class FsProjectManager implements ProjectManager {
       this.boxProfileResolver,
       region,
       projectGatewayCheck,
-      boxSecretsManagerEnabled(this.processEnv),
     );
     if (networks.some(({ failures }) => failures.length > 0)) {
       throw new InputValidationError(boxNetworkFailureMessage(networks, command));

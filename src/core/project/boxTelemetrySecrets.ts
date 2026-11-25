@@ -3,26 +3,13 @@
  * runtime. Locally, Box reads a target's key from a variable of its environment (`env://VAR`). On
  * AgentCore Runtime that variable does not exist, so deploy stores the key in one JSON secret for
  * each runtime, which the CLI owns, with one field for each target. The AgentCore Runtime profile
- * names that field, and the execution role can read that secret.
- *
- * Box reads such a secret only through its `@box/aws-secrets-manager` plugin, which no Linux release
- * of Box has yet. So build does all of this only when {@link BOX_SECRETS_MANAGER_ENV} is `1`.
+ * names that field, and the execution role can read that secret. Box reads it at the start of a run
+ * through its `@box/aws-secrets-manager` plugin, which runs the AWS CLI.
  */
 import { partition } from "@aws-sdk/util-endpoints";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { BoxNetwork, ThirdPartyTelemetry } from "./boxNetwork";
-
-/**
- * The variable that turns on the move of third-party telemetry keys to AWS Secrets Manager, for a
- * box build that has the plugin. Build, deploy, and staging read it; any value but `1` is off.
- */
-export const BOX_SECRETS_MANAGER_ENV = "AGENTCORE_BOX_SECRETS_MANAGER";
-
-/** Whether `env` turns on the move of third-party telemetry keys to AWS Secrets Manager. */
-export function boxSecretsManagerEnabled(env: NodeJS.ProcessEnv): boolean {
-  return env[BOX_SECRETS_MANAGER_ENV] === "1";
-}
 
 /** The Box plugin that reads `aws-secretsmanager://` references. Only the profile may list it. */
 export const BOX_SECRETS_MANAGER_PLUGIN = "@box/aws-secrets-manager";
