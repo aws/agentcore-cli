@@ -1786,6 +1786,21 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     expect(warnings).toEqual([]);
   });
 
+  test("copies a key that only agentcore/.env.local holds, as dev reads it", async () => {
+    const { manager, root, box } = await otelOffProject({
+      template: "agent-python-strands-box-container",
+    });
+    await new EnvLocalFile(root).insertIfNew([
+      { key: "LANGSMITH_KEY", value: KEY, comment: "the key box reads locally" },
+    ]);
+    box.answer = showsTelemetry({ langsmith: LANGSMITH });
+
+    const { steps } = await build(manager, root);
+
+    expect(steps).toContain(`writing ${VARIABLE} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect((await new EnvLocalFile(root).read())[VARIABLE]).toBe(KEY);
+  });
+
   test("keeps the target of a PRIVATE_VPC runtime, gives its VPC an AWS Secrets Manager endpoint, and warns", async () => {
     const { manager, root, box } = await otelOffProject({
       env: { LANGFUSE_AUTH: "dummy-pk:dummy-sk" },

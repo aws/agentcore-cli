@@ -8,6 +8,7 @@ import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
 import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
+  boxKeyReads,
   boxNetworkEdits,
   credentialsWriter,
   defaultTargetsWriter,
@@ -841,6 +842,33 @@ describe("the secrets of third-party telemetry targets", () => {
     ]);
     // The target needs a secret, not a credential provider.
     expect(edits.spec.credentials).toEqual([]);
+  });
+
+  test("copies a key that only .env.local holds, and the shell's value over it", () => {
+    const copied = (env: NodeJS.ProcessEnv) =>
+      boxNetworkEdits([credentialsWriter], [network({ thirdPartyTelemetry: [langsmith] })], {
+        spec: spec(),
+        projectRoot: "/nonexistent/project",
+        env,
+        envLocal: { LANGSMITH_KEY: "dummy-file-key" },
+      }).envLocal.map(({ key, value }) => [key, value]);
+
+    expect(copied({})).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-file-key"],
+    ]);
+    expect(copied({ LANGSMITH_KEY: "dummy-shell-key" })).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-shell-key"],
+    ]);
+  });
+
+  test("reads the variable of each target's key from .env.local, unless the shell sets it", () => {
+    const networks = [network({ thirdPartyTelemetry: [langsmith] })];
+
+    const reads = boxKeyReads(networks, spec(), { LANGSMITH_KEY: "dummy-shell-key", OTHER: "x" });
+
+    expect(reads.select?.("LANGSMITH_KEY")).toBe(true);
+    expect(reads.select?.("OTHER")).toBe(false);
+    expect(reads.overrides).toMatchObject({ LANGSMITH_KEY: "dummy-shell-key" });
   });
 });
 

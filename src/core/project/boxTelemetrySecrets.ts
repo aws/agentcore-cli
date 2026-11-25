@@ -10,6 +10,8 @@ import { partition } from "@aws-sdk/util-endpoints";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { BoxNetwork, ThirdPartyTelemetry } from "./boxNetwork";
+import type { BoxKeySources } from "./boxProfileCredentials";
+import { hasValue } from "./boxProfileEgress";
 
 /** The Box plugin that reads `aws-secretsmanager://` references. Only the profile may list it. */
 export const BOX_SECRETS_MANAGER_PLUGIN = "@box/aws-secrets-manager";
@@ -119,18 +121,19 @@ export function boxTelemetrySecretsStatement(
 
 /**
  * The `.env.local` entries that carry each key for deploy: the value of the variable the box
- * profile names, under the variable deploy reads. Only for variables that `env` holds and that
- * are not blank, as for a box route's API key.
+ * profile names, under the variable deploy reads. Build takes the value from the shell when it is
+ * set and not empty. If not, build takes it from `.env.local`, the same as for the API key of a box
+ * route and the same as dev.
  */
 export function boxTelemetrySecretEnvEntries(
   secrets: readonly BoxTelemetrySecret[],
-  env: NodeJS.ProcessEnv,
+  sources: BoxKeySources,
 ): EnvLocalEntry[] {
   const entries: EnvLocalEntry[] = [];
   for (const { runtime, fields } of secrets) {
     for (const { target, variable, source } of fields) {
-      const value = env[source];
-      if (value === undefined || value.trim() === "") continue;
+      const value = hasValue(sources.env[source]) ? sources.env[source] : sources.envLocal[source];
+      if (!hasValue(value)) continue;
       if (entries.some(({ key }) => key === variable)) continue;
       entries.push({
         key: variable,
