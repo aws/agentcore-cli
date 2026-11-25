@@ -7,9 +7,12 @@
  * through its `@box/aws-secrets-manager` plugin, which runs the AWS CLI.
  */
 import { partition } from "@aws-sdk/util-endpoints";
+import { ProjectStateError } from "../../errors/errors";
 import type { EnvLocalEntry } from "../../handlers/project/types";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import type { BoxNetwork, ThirdPartyTelemetry } from "./boxNetwork";
+import type { BoxKeySources } from "./boxProfileCredentials";
+import { hasValue } from "./boxProfileEgress";
 
 /** The Box plugin that reads `aws-secretsmanager://` references. Only the profile may list it. */
 export const BOX_SECRETS_MANAGER_PLUGIN = "@box/aws-secrets-manager";
@@ -98,7 +101,9 @@ function boxTelemetrySecretFieldOf(
 
 /**
  * The statement that lets the execution role read the secrets of `secrets`, and no other secret,
- * or undefined when there are none. Build has no account, so each ARN matches any account.
+ * or undefined when there are none. The account in each ARN is `*`: each deployment target uses
+ * the one policy file of the runtime, a target can have a different account, and the L3 does not
+ * replace `${AWS::AccountId}` in that file.
  * Secrets Manager adds `-` and six characters to the name of a secret in its ARN. The secret is
  * encrypted with the AWS managed key, which needs no `kms:Decrypt` grant.
  */
@@ -119,19 +124,29 @@ export function boxTelemetrySecretsStatement(
 
 /**
  * The `.env.local` entries that carry each key for deploy: the value of the variable the box
- * profile names, under the variable deploy reads. Only for variables that `env` holds and that
- * are not blank, as for a box route's API key.
+ * profile names, under the variable deploy reads. Build takes the value from the shell when it is
+ * set and not empty. If not, build takes it from `.env.local`, the same as for the API key of a box
+ * route and the same as dev. Two targets that read their key from one variable stop the build.
  */
 export function boxTelemetrySecretEnvEntries(
   secrets: readonly BoxTelemetrySecret[],
-  env: NodeJS.ProcessEnv,
+  sources: BoxKeySources,
 ): EnvLocalEntry[] {
   const entries: EnvLocalEntry[] = [];
+  const readers = new Map<string, string>();
   for (const { runtime, fields } of secrets) {
     for (const { target, variable, source } of fields) {
-      const value = env[source];
-      if (value === undefined || value.trim() === "") continue;
-      if (entries.some(({ key }) => key === variable)) continue;
+      const reader = readers.get(variable);
+      if (reader !== undefined) {
+        throw new ProjectStateError(
+          `[telemetry.${target}] of runtime '${runtime}' reads its key at deploy from ` +
+            `${variable}, and ${reader} reads its key from that variable too. Change the name of ` +
+            "one of the two targets.",
+        );
+      }
+      readers.set(variable, `[telemetry.${target}] of runtime '${runtime}'`);
+      const value = hasValue(sources.env[source]) ? sources.env[source] : sources.envLocal[source];
+      if (!hasValue(value)) continue;
       entries.push({
         key: variable,
         value,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ProjectStateError } from "../../errors/errors";
 import type { ThirdPartyTelemetry } from "./boxNetwork";
 import {
   boxTelemetrySecretEnvEntries,
@@ -140,8 +141,17 @@ describe("boxTelemetrySecretEnvEntries", () => {
     { runtime: "other", thirdPartyTelemetry: [LANGFUSE] },
   ]);
 
+  const entry = (value: string) => ({
+    key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
+    value,
+    comment:
+      "Key for box telemetry [telemetry.langsmith] of 'agent' (env://LANGSMITH_KEY), " +
+      "stored in AWS Secrets Manager on deploy",
+  });
+
   test("copies the value of the profile's variable to the variable deploy reads", () => {
-    expect(boxTelemetrySecretEnvEntries(secrets, { LANGSMITH_KEY: "dummy-key" })).toEqual([
+    const sources = { env: { LANGSMITH_KEY: "dummy-key" }, envLocal: {} };
+    expect(boxTelemetrySecretEnvEntries(secrets, sources)).toEqual([
       {
         key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
         value: "dummy-key",
@@ -152,8 +162,46 @@ describe("boxTelemetrySecretEnvEntries", () => {
     ]);
   });
 
+  test("reads the variable from .env.local when the shell has no value for it, as dev does", () => {
+    const envLocal = { LANGSMITH_KEY: "dummy-file-key" };
+
+    expect(boxTelemetrySecretEnvEntries(secrets, { env: {}, envLocal })).toEqual([
+      entry("dummy-file-key"),
+    ]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, { env: { LANGSMITH_KEY: " " }, envLocal }),
+    ).toEqual([entry("dummy-file-key")]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, {
+        env: { LANGSMITH_KEY: "dummy-shell-key" },
+        envLocal,
+      }),
+    ).toEqual([entry("dummy-shell-key")]);
+  });
+
+  test("stops for two targets that read their key from one variable, and names both", () => {
+    const shared = boxTelemetrySecrets("demo", [
+      { runtime: "agent", thirdPartyTelemetry: [{ ...LANGSMITH, name: "nested_TELEMETRY_sink" }] },
+      { runtime: "agent_TELEMETRY_nested", thirdPartyTelemetry: [{ ...LANGSMITH, name: "sink" }] },
+    ]);
+
+    expect(() => boxTelemetrySecretEnvEntries(shared, { env: {}, envLocal: {} })).toThrow(
+      new ProjectStateError(
+        "[telemetry.sink] of runtime 'agent_TELEMETRY_nested' reads its key at deploy from " +
+          "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK, and " +
+          "[telemetry.nested_TELEMETRY_sink] of runtime 'agent' reads its key from that variable " +
+          "too. Change the name of one of the two targets.",
+      ),
+    );
+  });
+
   test("writes nothing for a variable that is not set or is blank", () => {
-    expect(boxTelemetrySecretEnvEntries(secrets, {})).toEqual([]);
-    expect(boxTelemetrySecretEnvEntries(secrets, { LANGSMITH_KEY: "  " })).toEqual([]);
+    expect(boxTelemetrySecretEnvEntries(secrets, { env: {}, envLocal: {} })).toEqual([]);
+    expect(
+      boxTelemetrySecretEnvEntries(secrets, {
+        env: { LANGSMITH_KEY: "  " },
+        envLocal: { LANGSMITH_KEY: "" },
+      }),
+    ).toEqual([]);
   });
 });

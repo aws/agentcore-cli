@@ -8,7 +8,10 @@ This agent speaks the A2A protocol. Other agents discover it via its agent card 
 `/.well-known/agent-card.json` and invoke it with JSON-RPC (`message/send`, `message/stream`)
 at the server root, matching the AgentCore Runtime A2A service contract.
 
-## Memory
+{{#if box}}
+On AgentCore Runtime the Box gateway may call only the Bedrock model in this runtime's `modelId` in `agentcore/agentcore.json`. To use another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock denies the call.
+
+{{/if}}## Memory
 
 The template provisions semantic and episodic memory. `memory/session.py` retrieves up to three
 semantic facts for the actor and five episodes for the current session. The default

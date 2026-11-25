@@ -8,10 +8,12 @@ import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
 import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
+  boxKeyReads,
   boxNetworkEdits,
   credentialsWriter,
   defaultTargetsWriter,
   gatewayTargetsWriter,
+  placeSecretsManagerEndpoint,
   runtimeProfileWriter,
   telemetryPolicyWriter,
   type BoxNetworkWriteContext,
@@ -841,6 +843,61 @@ describe("the secrets of third-party telemetry targets", () => {
     ]);
     // The target needs a secret, not a credential provider.
     expect(edits.spec.credentials).toEqual([]);
+  });
+
+  test("copies a key that only .env.local holds, and the shell's value over it", () => {
+    const copied = (env: NodeJS.ProcessEnv) =>
+      boxNetworkEdits([credentialsWriter], [network({ thirdPartyTelemetry: [langsmith] })], {
+        spec: spec(),
+        projectRoot: "/nonexistent/project",
+        env,
+        envLocal: { LANGSMITH_KEY: "dummy-file-key" },
+      }).envLocal.map(({ key, value }) => [key, value]);
+
+    expect(copied({})).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-file-key"],
+    ]);
+    expect(copied({ LANGSMITH_KEY: "dummy-shell-key" })).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-shell-key"],
+    ]);
+  });
+
+  test("reads the variable of each target's key from .env.local, unless the shell sets it", () => {
+    const networks = [network({ thirdPartyTelemetry: [langsmith] })];
+
+    const reads = boxKeyReads(networks, spec(), { LANGSMITH_KEY: "dummy-shell-key", OTHER: "x" });
+
+    expect(reads.select?.("LANGSMITH_KEY")).toBe(true);
+    expect(reads.select?.("OTHER")).toBe(false);
+    expect(reads.overrides).toMatchObject({ LANGSMITH_KEY: "dummy-shell-key" });
+  });
+});
+
+describe("placeSecretsManagerEndpoint", () => {
+  /** A project whose runtime `agent` uses a private VPC, with `network` when it is given. */
+  const privateVpc = (network?: Record<string, unknown>) => {
+    const project = spec();
+    Object.assign(project.runtimes[0]!, { containment: "PRIVATE_VPC" }, network && { network });
+    return project;
+  };
+
+  test("deletes the network of a runtime when the endpoint was its only field", () => {
+    const project = privateVpc();
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    expect(project.runtimes[0]!.network).toEqual({ secretsManagerEndpoint: true });
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]).not.toHaveProperty("network");
+  });
+
+  test("keeps the other fields of the network when it removes the endpoint", () => {
+    const project = privateVpc({ mode: "CONTAINED" });
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]!.network).toEqual({ mode: "CONTAINED" });
   });
 });
 

@@ -39,6 +39,7 @@ import {
   type PolicyFileText,
 } from "./boxNetwork";
 import type { BoxProfileResolver, ResolvedBoxProfile } from "./boxProfileResolver";
+import { boxTelemetrySecretVariable } from "./boxTelemetrySecrets";
 import { profileKeyPlaces } from "./runtimeProfile/context";
 import { isTable } from "./runtimeProfile/projectPaths";
 import type { TomlTable } from "./runtimeProfile/types";
@@ -71,6 +72,7 @@ export async function readBoxNetworks(
   const withDefaults = structuredClone(spec);
   addBoxGatewayTargets(withDefaults, region);
   const networks: BoxNetwork[] = [];
+  const profilePaths: string[] = [];
   const keys: SharedKeys = new Map();
   const record = readBoxGatewayTargets(projectRoot);
   for (const runtime of runtimes) {
@@ -101,8 +103,69 @@ export async function readBoxNetworks(
       warnings: [...network.warnings, ...granted.warnings],
       failures: [...network.failures, ...sharedKeyFailures(network, parsed, keys)],
     });
+    profilePaths.push(parsed.profile.path);
   }
-  return networks;
+  const shared = sharedTelemetryVariableFailures(networks, profilePaths);
+  return networks.map((network, index) => {
+    const failures = shared[index] ?? [];
+    return failures.length === 0
+      ? network
+      : { ...network, failures: [...network.failures, ...failures] };
+  });
+}
+
+/**
+ * For each of `networks`, the failures of its third-party telemetry targets. A target fails when
+ * deploy reads its key from a variable that a target of an earlier box runtime also reads, or that
+ * the API key credential of an entry of a different box runtime reads. One variable holds one key.
+ * The model of a runtime does not carry a target whose variable a credential or a different target
+ * of that runtime reads.
+ */
+function sharedTelemetryVariableFailures(
+  networks: readonly BoxNetwork[],
+  profilePaths: readonly string[],
+): BoxNetworkFailure[][] {
+  const credentials = new Map<string, { runtime: string; credential: string }[]>();
+  for (const { runtime, hosts } of networks) {
+    for (const { outboundAuth: auth } of hosts) {
+      if (auth.kind !== "apiKey") continue;
+      const variable = credentialEnvVarName(auth.credentialName);
+      const users = credentials.get(variable) ?? [];
+      credentials.set(variable, [...users, { runtime, credential: auth.credentialName }]);
+    }
+  }
+  const readers = new Map<string, { runtime: string; target: string }>();
+  return networks.map(({ runtime, thirdPartyTelemetry }, index) => {
+    const failures: BoxNetworkFailure[] = [];
+    for (const { name, secret } of thirdPartyTelemetry ?? []) {
+      if (secret === undefined) continue;
+      const variable = boxTelemetrySecretVariable(runtime, name);
+      const reader = readers.get(variable);
+      const credential = credentials.get(variable)?.find((user) => user.runtime !== runtime);
+      const reads = `[telemetry.${name}] reads its key at deploy from ${variable}`;
+      const place = profilePaths[index]!;
+      if (reader !== undefined) {
+        failures.push({
+          code: "TELEMETRY_KEY_VARIABLE_SHARED",
+          reason:
+            `${reads}, and [telemetry.${reader.target}] of runtime '${reader.runtime}' reads ` +
+            "its key from that variable too. Change the name of one of the two targets.",
+          place,
+        });
+      } else if (credential !== undefined) {
+        failures.push({
+          code: "TELEMETRY_KEY_VARIABLE_SHARED",
+          reason:
+            `${reads}, and the API key credential '${credential.credential}' of runtime ` +
+            `'${credential.runtime}' reads that variable too. Change the name of the target.`,
+          place,
+        });
+      } else {
+        readers.set(variable, { runtime, target: name });
+      }
+    }
+    return failures;
+  });
 }
 
 /**

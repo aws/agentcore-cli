@@ -112,7 +112,8 @@ describe("runtime templates", () => {
     expect(runtime.instrumentation).toBeUndefined();
   });
 
-  // A box template is the Strands template with two files of agent-python-strands-box in place.
+  // A box template is the Strands template with two files of agent-python-strands-box in place,
+  // and one more README paragraph.
   test("agent-python-strands-box-container writes the Strands files, with its own Dockerfile and .gitignore", async () => {
     const files = async (dir: string) =>
       Object.fromEntries(
@@ -133,9 +134,24 @@ describe("runtime templates", () => {
     );
 
     expect(Object.keys(box).sort()).toEqual(Object.keys(plain).sort());
-    const { Dockerfile: boxDockerfile, ".gitignore": boxGitignore, ...rest } = box;
-    const { Dockerfile: plainDockerfile, ".gitignore": plainGitignore, ...plainRest } = plain;
+    const {
+      Dockerfile: boxDockerfile,
+      ".gitignore": boxGitignore,
+      "README.md": boxReadme,
+      ...rest
+    } = box;
+    const {
+      Dockerfile: plainDockerfile,
+      ".gitignore": plainGitignore,
+      "README.md": plainReadme,
+      ...plainRest
+    } = plain;
     expect(rest).toEqual(plainRest);
+    // The box README adds one paragraph: its Box gateway calls only the model in modelId.
+    const modelParagraph = boxReadme!.match(
+      /\n\nOn AgentCore Runtime the Box gateway may call only[^\n]*\n/,
+    )!;
+    expect(boxReadme!.replace(modelParagraph[0], "\n")).toEqual(plainReadme!);
     expect(boxDockerfile).toContain("box run");
     expect(plainDockerfile).not.toContain("box run");
     expect(boxGitignore).toContain(".box-dist/");
