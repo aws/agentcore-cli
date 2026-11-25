@@ -2,7 +2,8 @@
 
 AgentCore calls ``GET /ping`` for health and ``POST /invocations`` for the BMA
 lifecycle calls ``activate``, ``renew_turn_lease``, ``release_turn_lease``, and
-``disconnect``. An invocation with no action returns the status.
+``disconnect``. An invocation with no action returns the status. On platform version V2 with a
+build warmup hook, AgentCore calls ``POST /warmup`` before sessions start (see ``warmup``).
 
 The server runs one ``codex exec-server`` for the attachment of the last
 ``activate`` call and saves the attachment in ``state.json`` in ``BMA_STATE_DIR``.
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import mmap
 import os
 import shlex
 import signal
@@ -75,6 +77,11 @@ EXEC_SERVER_ENVIRONMENT = {
 }
 
 PROTOCOL_VERSION = 1
+
+WARMUP_TYPE_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type"
+# Kept for the life of the process, so the binaries' pages are in memory in the V2 snapshot.
+WARMUP_MAPS: list[mmap.mmap] = []
+WARMUP_LOCK = threading.Lock()
 RESTART_DELAY_SECONDS = 5
 STOP_GRACE_SECONDS = 3
 
@@ -575,7 +582,46 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
+    def warmup(self) -> None:
+        """Build warmup hook for platform version V2: POST /warmup on the serving port.
+
+        ``memory`` runs before the snapshot: it maps the Codex and CloudWatch agent binaries and
+        reads every page, keeping the maps, so each session starts with them in memory instead of
+        reading them from disk. ``disk`` runs after it: it starts each binary once, so the files a
+        start reads are fast for new sessions. No process keeps running, so no random state is
+        shared between sessions. Enable it with ``hooksConfiguration`` in ``agentcore.json``.
+        """
+        kind = (self.headers.get(WARMUP_TYPE_HEADER) or "").lower()
+        started = time.monotonic()
+        try:
+            if kind == "memory":
+                with WARMUP_LOCK:
+                    if not WARMUP_MAPS:
+                        for binary in (BMA_CODEX_BINARY.resolve(), COLLECTOR_BINARY):
+                            with open(binary, "rb") as handle:
+                                mapped = mmap.mmap(handle.fileno(), 0, prot=mmap.PROT_READ)
+                            for offset in range(0, len(mapped), mmap.PAGESIZE):
+                                mapped[offset]
+                            WARMUP_MAPS.append(mapped)
+            elif kind == "disk":
+                for command in (
+                    [str(BMA_CODEX_BINARY), "--version"],
+                    [str(COLLECTOR_BINARY), "-version"],
+                ):
+                    subprocess.run(command, capture_output=True, timeout=60, check=True)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            log("warmup_failed", type=kind, error=str(error))
+            self.send_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(error), "type": kind}
+            )
+            return
+        log("warmup", type=kind, seconds=round(time.monotonic() - started, 2))
+        self.send_json(HTTPStatus.OK, {"status": "ok", "type": kind})
+
     def do_POST(self) -> None:
+        if self.path == "/warmup":
+            self.warmup()
+            return
         if self.path != "/invocations":
             self.close_connection = True
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "route not found"})

@@ -200,12 +200,15 @@ Every protocol also shares these:
 
 `--platform-version V2` (`platformVersion` in `agentcore.json`) prepares your
 agent once and starts each session from a snapshot of it, so cold starts stay
-fast as images and traffic grow. V1 is the default, and V2 is offered in
+fast as images and traffic grow. V2 is offered in
 [some Regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html#runtime-platform-versions).
+If you don't set it, the service picks the version for your account, so set
+it when you need a specific one.
 On V2:
 
-- The snapshot is taken when your health check (`GET /ping`) first passes,
-  so report healthy only after your agent has loaded what sessions need.
+- Without a warmup hook, the snapshot is taken when your health check
+  (`GET /ping`) first passes, so report healthy only after your agent has
+  loaded what sessions need.
   `BedrockAgentCoreApp` does this for you: code at module scope (imports,
   models, clients) runs before `app.run()` starts the server.
   If the health check doesn't pass in time, the create or update fails.
@@ -220,13 +223,40 @@ On V2:
   already use it; OpenSSL builds that libraries bundle can repeat values.
 - Every session reports the same hostname and PID, so don't use either as an
   ID.
-- `--hooks-configuration` adds a build warmup hook that loads memory and warms
-  files before sessions start; its two calls share 120 seconds.
-  `--resource-configurations` sets a committed memory baseline per session.
-  Each update replaces both, so keep them set in `agentcore.json`.
+- `--hooks-configuration` adds a build warmup hook, for example
+  `{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup"}}}}}` (keys are
+  camelCase). After the health check passes, the service sends `POST /warmup`
+  to your agent twice, with the `X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type`
+  header set to `memory` (before the snapshot: load and keep what sessions
+  need) and then `disk` (after it: read the files a session starts with).
+  Return 2xx only when the work is done. The two calls share 120 seconds, and
+  a failed call fails the create or update. Your agent has to serve the route:
+{{#if (eq protocol "HTTP")}}
+  With `bedrock-agentcore`, use `@app.warmup`, or add the route yourself.
+  Check that your `bedrock-agentcore` version has `@app.warmup`: without it
+  the route returns 404, `agentcore dev` fails, and so does the deploy.
+{{/if}}
+{{#if (eq protocol "MCP")}}
+  With FastMCP, add `@mcp.custom_route("/warmup", methods=["POST"])`; it's
+  served on the serving port (8000). It can't be `POST /mcp`.
+{{/if}}
+{{#if (eq protocol "A2A")}}
+  Add a `POST /warmup` route to the server on the serving port (9000). It
+  can't be `POST /` or `GET /.well-known/agent-card.json`.
+{{/if}}
+{{#if (eq protocol "AGUI")}}
+  Add a `POST /warmup` route to your FastAPI app. It can't be
+  `POST /invocations`.
+{{/if}}
+  Leave `port` unset unless a separate server in your agent listens on another
+  port. `agentcore dev` runs the same calls, and can't reach a hook that
+  listens only on `127.0.0.1` inside a container.
+- `--resource-configurations` sets a committed memory baseline per session.
+  Each update replaces both settings, so keep them set in `agentcore.json`.
 - Creating or updating a V2 runtime takes several minutes. Keep
   `platformVersion` set: removing it doesn't move the runtime back, and a
-  later replacement of the runtime would start on V1. Set `V1` to move back.
+  later replacement of the runtime would start on the service's default for
+  your account. Set `V1` to move back.
 - If deploy fails with "platformVersion V2 is not available for this
   account", the target's Region, or your account, doesn't offer V2: deploy to
   a supported Region or set `V1`.

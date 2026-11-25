@@ -9,8 +9,10 @@ import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
 import {
   HookPortReserver,
+  hooksConfigurationWarning,
   type HttpFetch,
   planWarmup,
+  sharedHookPortError,
   waitUntilReady,
 } from "../../../core/dev/readiness";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
@@ -403,6 +405,18 @@ async function runRuntimeDev({
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
+        for (const runtime of runtimes) {
+          const warning = hooksConfigurationWarning(runtime);
+          if (warning) renderStatus({ io: config.io, message: `Warning: ${warning}`, json });
+        }
+        const sharedHookPort = runtimes.length > 1 ? sharedHookPortError(runtimes) : undefined;
+        // Headless starts every agent at once; the Inspector starts them one by one on request.
+        if (sharedHookPort && input.mode === "headless" && !input.agent) {
+          throw new InputValidationError(sharedHookPort);
+        }
+        if (sharedHookPort) {
+          renderStatus({ io: config.io, message: `Warning: ${sharedHookPort}`, json });
+        }
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })

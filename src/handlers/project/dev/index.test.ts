@@ -523,6 +523,21 @@ describe("project dev build warmup hook", () => {
     expect(codeZip.inputs[0]?.signal.aborted).toBe(true);
   });
 
+  test("dev --agent warns when hooksConfiguration has no warmup it recognizes", async () => {
+    const subject = harness({
+      project: project({
+        ...runtime("orders"),
+        hooksConfiguration: { Build: { Warmup: {} } } as ProjectRuntime["hooksConfiguration"],
+      }),
+      codeZip: briefRunner(),
+    });
+    await subject.run({ agent: "orders" });
+    expect(subject.io.stderr()).toContain(
+      "Warning: Runtime 'orders' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect(subject.io.stderr()).not.toContain("GET /ping");
+  });
+
   test("dev --agent without a warmup hook makes no HTTP calls", async () => {
     const subject = harness({ codeZip: briefRunner() });
     await subject.run({ agent: "orders" });
@@ -600,6 +615,20 @@ describe("project dev headless multi-agent", () => {
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
+  });
+
+  test("refuses CodeZip agents whose warmup hooks share their own port, before starting any", async () => {
+    const ownPort = (name: string): ProjectRuntime => ({
+      ...runtime(name),
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 9000 } } } },
+      },
+    });
+    const codeZip = stayingRunner();
+    const subject = harness({ project: project(ownPort("ta"), ownPort("tb")), codeZip });
+
+    await expect(subject.run()).rejects.toThrow("('ta' and 'tb' on port 9000)");
+    expect(codeZip.inputs).toHaveLength(0);
   });
 
   test("exits non-zero when every agent fails to start", async () => {

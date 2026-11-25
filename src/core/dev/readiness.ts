@@ -24,6 +24,13 @@ export type WarmupTarget = {
   port: number;
   /** The hook is a container's own port, reached through an extra port mapping. */
   viaContainerMapping?: boolean;
+  /**
+   * MCP servers don't have to serve `/ping`: the service treats any response other than 502 or 429
+   * as ready, including a 404. Every other protocol must report Healthy.
+   */
+  anyPingResponse?: boolean;
+  /** Added to a startup or warmup failure when dev knows a likely cause. */
+  hint?: string;
 };
 
 /**
@@ -51,11 +58,23 @@ export function warmupTarget(
   const httpPost = runtime.hooksConfiguration?.build?.warmup?.action.httpPost;
   if (!httpPost) return undefined;
   const { path, port } = httpPost;
-  const servingPort = DEV_PORTS[runtime.protocol ?? "HTTP"];
+  if (!path.startsWith("/")) {
+    throw new Error(
+      `Runtime '${runtime.name}' has warmup hook path "${path}", which must start with "/" ` +
+        `(for example "/${path}"). AgentCore Runtime rejects it too.`,
+    );
+  }
+  const protocol = runtime.protocol ?? "HTTP";
+  const servingPort = DEV_PORTS[protocol];
+  const base = protocol === "MCP" ? { path, anyPingResponse: true } : { path };
   // The serving port is wherever dev runs the agent, which may not be its configured number.
-  if (port === undefined || port === servingPort) return { path, port: devPort };
-  if (!isContainerBuild(runtime)) return { path, port };
-  if (hookHostPort !== undefined) return { path, port: hookHostPort, viaContainerMapping: true };
+  if (port === undefined || port === servingPort) return { ...base, port: devPort };
+  if (!isContainerBuild(runtime)) {
+    return isPythonHttpCodeZip(runtime)
+      ? { ...base, port, hint: PYTHON_CODEZIP_HOOK_PORT_HINT }
+      : { ...base, port };
+  }
+  if (hookHostPort !== undefined) return { ...base, port: hookHostPort, viaContainerMapping: true };
   throw new Error(
     `Runtime '${runtime.name}' serves its warmup hook on port ${port}, which agentcore dev can't ` +
       `reach inside a container. Remove "port" from hooksConfiguration.build.warmup.action.httpPost, ` +
@@ -63,10 +82,65 @@ export function warmupTarget(
   );
 }
 
+const PYTHON_CODEZIP_HOOK_PORT_HINT =
+  "agentcore dev runs Python CodeZip agents under uvicorn, where the SDK's HookConfig(port=...) " +
+  'isn\'t served (it needs app.run()). To run the hook locally, remove "port" from ' +
+  "hooksConfiguration.build.warmup.action.httpPost so it's served on the serving port.";
+
+/** dev runs these with `uvicorn --reload` instead of the agent's own `app.run()`. */
+function isPythonHttpCodeZip(runtime: ProjectRuntime): boolean {
+  const file = runtime.entrypoint.split(":")[0] ?? "";
+  return (runtime.protocol ?? "HTTP") === "HTTP" && file.endsWith(".py");
+}
+
+/**
+ * A warning for a `hooksConfiguration` that dev and the service won't recognize as a warmup hook.
+ * The schema keeps unknown keys so new service fields pass through, which also lets PascalCase
+ * keys (`Build`) and typos (`warmUp`) through. Undefined when the hook is recognized or unset.
+ */
+export function hooksConfigurationWarning(
+  runtime: Pick<ProjectRuntime, "name" | "hooksConfiguration">,
+): string | undefined {
+  const hooks = runtime.hooksConfiguration;
+  if (!hooks || Object.keys(hooks).length === 0) return undefined;
+  // Optional chaining throughout: `add` checks the raw flag value before the schema does.
+  if (hooks.build?.warmup?.action?.httpPost?.path) return undefined;
+  return (
+    `Runtime '${runtime.name}' has a hooksConfiguration without build.warmup.action.httpPost.path. ` +
+    "Keys are camelCase (build, warmup, action, httpPost), so agentcore dev skips the warmup, " +
+    "and AgentCore Runtime may reject the hook at deploy."
+  );
+}
+
+/**
+ * For agents started together: CodeZip agents whose warmup hooks listen on the same own port of
+ * this machine. Only one of them can bind it, so the other's warmup would reach the wrong agent.
+ */
+export function sharedHookPortError(runtimes: ProjectRuntime[]): string | undefined {
+  const byPort = new Map<number, string[]>();
+  for (const runtime of runtimes) {
+    if (isContainerBuild(runtime)) continue;
+    const port = runtime.hooksConfiguration?.build?.warmup?.action.httpPost.port;
+    if (port === undefined || port === DEV_PORTS[runtime.protocol ?? "HTTP"]) continue;
+    byPort.set(port, [...(byPort.get(port) ?? []), runtime.name]);
+  }
+  const clashes = [...byPort].filter(([, names]) => names.length > 1);
+  if (clashes.length === 0) return undefined;
+  const described = clashes
+    .map(([port, names]) => `${names.map((name) => `'${name}'`).join(" and ")} on port ${port}`)
+    .join("; ");
+  return (
+    `Agents serve their warmup hooks on the same port of this machine (${described}), so only ` +
+    "one of them can listen there. Give each hook its own port, or run the agents one at a time " +
+    "with --agent."
+  );
+}
+
 /**
  * Poll `GET /ping` until it reports Healthy or HealthyBusy, the signal aborts, or `timeoutMs`
  * passes. AgentCore Runtime calls the warmup hook only after this check passes. The deadline is
  * fixed: each poll makes the agent log a line, so a deadline based on its output would never pass.
+ * With `anyResponse` (MCP), any response other than 502 or 429 counts, as it does for the service.
  */
 export async function waitForHealthyPing(
   port: number,
@@ -74,6 +148,7 @@ export async function waitForHealthyPing(
   fetchImpl: HttpFetch,
   intervalMs = PING_INTERVAL_MS,
   timeoutMs = PING_TIMEOUT_MS,
+  anyResponse = false,
 ): Promise<void> {
   const url = `http://127.0.0.1:${port}/ping`;
   const deadline = Date.now() + timeoutMs;
@@ -81,7 +156,9 @@ export async function waitForHealthyPing(
     if (signal.aborted) throw new Error("Aborted while waiting for /ping to report healthy.");
     if (Date.now() > deadline) {
       throw new Error(
-        `GET /ping on port ${port} did not report Healthy within ${timeoutMs / 1000}s.`,
+        anyResponse
+          ? `GET /ping on port ${port} got no response other than 502 or 429 within ${timeoutMs / 1000}s.`
+          : `GET /ping on port ${port} did not report Healthy within ${timeoutMs / 1000}s.`,
       );
     }
     try {
@@ -89,6 +166,10 @@ export async function waitForHealthyPing(
         method: "GET",
         signal: AbortSignal.any([signal, AbortSignal.timeout(PING_REQUEST_TIMEOUT_MS)]),
       });
+      if (anyResponse && response.status !== 502 && response.status !== 429) {
+        await response.body?.cancel().catch(() => {});
+        return;
+      }
       if (response.ok) {
         const body = (await response.json().catch(() => undefined)) as
           { status?: unknown } | undefined;
@@ -185,8 +266,19 @@ export async function runWarmupSequence(options: {
   onStatus: (message: string) => void;
 }): Promise<void> {
   const { name, devPort, target, signal, fetchImpl, onStatus } = options;
-  onStatus(`Waiting for '${name}' to report healthy on GET /ping.`);
-  await waitForHealthyPing(devPort, signal, fetchImpl);
+  onStatus(
+    target.anyPingResponse
+      ? `Waiting for '${name}' to answer GET /ping (any response but 502 or 429, as for MCP on AgentCore Runtime).`
+      : `Waiting for '${name}' to report healthy on GET /ping.`,
+  );
+  await waitForHealthyPing(
+    devPort,
+    signal,
+    fetchImpl,
+    undefined,
+    undefined,
+    target.anyPingResponse,
+  );
   await runWarmupHook(target, signal, fetchImpl, (type) =>
     onStatus(
       `Running the warmup hook for '${name}' (${type}): POST ${target.path} on port ${target.port}.`,
@@ -213,8 +305,14 @@ export async function waitUntilReady(options: {
   onStatus: (message: string) => void;
 }): Promise<void> {
   const { warmup, waitForPort, ...sequence } = options;
-  await waitForPort();
-  if (warmup) await runWarmupSequence({ ...sequence, target: warmup });
+  if (warmup?.hint) sequence.onStatus(`Warning: ${warmup.hint}`);
+  try {
+    await waitForPort();
+    if (warmup) await runWarmupSequence({ ...sequence, target: warmup });
+  } catch (error) {
+    if (!warmup?.hint || !(error instanceof Error) || sequence.signal.aborted) throw error;
+    throw new Error(`${error.message} ${warmup.hint}`, { cause: error });
+  }
 }
 
 /**

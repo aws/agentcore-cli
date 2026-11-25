@@ -64,6 +64,11 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(dockerfile).toContain(
     'CMD ["uv", "run", "--no-sync", "opentelemetry-instrument", "python", "-u", "lifecycle/server.py"]',
   );
+  // The V2 build warmup hook keeps both binaries in memory in the snapshot and starts no process.
+  expect(server).toContain('if self.path == "/warmup":');
+  expect(server).toContain('WARMUP_TYPE_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type"');
+  expect(server).toContain("mmap.mmap(handle.fileno(), 0, prot=mmap.PROT_READ)");
+  expect(server).toContain('[str(BMA_CODEX_BINARY), "--version"]');
   expect(dockerignore).toContain(".venv/");
   expect(dockerignore).toContain(".env");
   expect(dockerignore).toContain(".git/");
