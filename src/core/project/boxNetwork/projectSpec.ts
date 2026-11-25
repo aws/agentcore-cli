@@ -18,7 +18,11 @@ export function gatewayTargetFor(
 export function targetOutboundAuth(auth: BoxEgressAuth): OutboundAuth | undefined {
   switch (auth.kind) {
     case "iam":
-      return { type: "GATEWAY_IAM_ROLE", service: auth.service, region: auth.region };
+      return {
+        type: "GATEWAY_IAM_ROLE",
+        service: auth.service,
+        ...(auth.region !== undefined && { region: auth.region }),
+      };
     case "apiKey":
       return {
         type: "API_KEY",
