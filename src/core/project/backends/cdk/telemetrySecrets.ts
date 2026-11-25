@@ -31,7 +31,7 @@ const CREATED_BY_TAG = "agentcore:created-by";
 const PROJECT_TAG = "agentcore:project-name";
 const RUNTIME_TAG = "agentcore:runtime-name";
 
-/** The tags deploy gives the secret of runtime `runtime` of project `project` when it creates it. */
+/** The tags deploy gives the secret of runtime `runtime` of `project` when it creates it. */
 export function telemetrySecretTags(project: string, runtime: string): Record<string, string> {
   return { [CREATED_BY_TAG]: "agentcore-cli", [PROJECT_TAG]: project, [RUNTIME_TAG]: runtime };
 }
@@ -309,8 +309,9 @@ export async function* provisionTelemetrySecrets(
 /**
  * Schedules the deletion of each secret of `secrets`, except a secret that `kept` names, which
  * another deployment target records. A secret that is gone, or already scheduled for deletion, is
- * not an error. For a secret that deploy did not create, it shows a warning and removes the record. A secret that cannot be deleted is reported rather than failing the deploy that
- * already changed the stack, and comes back in the result so the caller can keep its record.
+ * not an error. For a secret that deploy did not create, it shows a warning and removes the
+ * record. A secret that cannot be deleted is reported rather than failing the deploy that already
+ * changed the stack, and comes back in the result so the caller can keep its record.
  */
 export async function* removeTelemetrySecrets(
   calls: TelemetrySecretCalls,
@@ -334,8 +335,8 @@ export async function* removeTelemetrySecrets(
           type: "warning",
           message:
             `Deploy did not delete AWS Secrets Manager secret '${name}' (${secretArn}), because ` +
-            "that secret does not have the tags that deploy gives to the secrets that it creates. " +
-            "Deploy removes its record of that secret. If no project uses it, delete it.",
+            "that secret does not have the tags that deploy gives to the secrets that it " +
+            "creates. Deploy removes its record of that secret. If no project uses it, delete it.",
         };
         continue;
       }
@@ -366,8 +367,8 @@ function missingKeys(
   return new ProjectStateError(
     `Runtime '${secret.runtime}' has no key for ${targets} to store in AWS Secrets Manager ` +
       `secret '${secret.name}'. Set ${variables} in ${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} ` +
-      `or in the environment you deploy from. Build copies the value of ${sources} into that file ` +
-      "when the shell that runs build, or that file, has a value for it.",
+      `or in the environment you deploy from. Build copies the value of ${sources} into that ` +
+      "file when the shell that runs build, or that file, has a value for it.",
   );
 }
 
