@@ -41,6 +41,20 @@ describe("boxDevSecrets", () => {
     ]);
   });
 
+  test("returns a telemetry target's secret:// variable, which box reads as env://", () => {
+    const langsmith =
+      '[telemetry.langsmith]\nkind = "langsmith"\nsecret.ref = "secret://LANGSMITH_KEY"\n';
+
+    expect(fromShell(langsmith, { LANGSMITH_KEY: "dummy-key" })).toEqual({
+      env: { LANGSMITH_KEY: "dummy-key" },
+      missing: [],
+      shadowed: [],
+    });
+    expect(fromShell(langsmith, {}).missing).toEqual([
+      { variable: "LANGSMITH_KEY", table: "[telemetry.langsmith]" },
+    ]);
+  });
+
   test("names one variable once when two tables read it", () => {
     const profile =
       GITHUB_ROUTE +

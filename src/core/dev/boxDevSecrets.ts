@@ -5,6 +5,8 @@ import type { BoxKeySources } from "../project/boxProfileCredentials";
 import { ENV_LOCAL_RELATIVE_PATH } from "../project/envLocal";
 
 const ENV_SCHEME = "env://";
+/** Box reads a `secret://` reference of a `[telemetry.<name>]` target as an `env://` one. */
+const TELEMETRY_SCHEMES = [ENV_SCHEME, "secret://"] as const;
 
 /** A variable the box profile reads a key from, and the table that reads it. */
 export type BoxDevSecretVariable = { readonly variable: string; readonly table: string };
@@ -21,8 +23,8 @@ export type BoxDevSecrets = {
 
 /**
  * The variables that the box profile `profileText` reads its keys from: each `env://<VAR>` secret
- * of an `[egress.<name>]` route, an `[mcp.<name>]` server, or a `[telemetry.<name>]` target, with
- * its value as build picks it
+ * of an `[egress.<name>]` route, an `[mcp.<name>]` server, or a `[telemetry.<name>]` target, and
+ * each `secret://<VAR>` secret of a `[telemetry.<name>]` target, with its value as build picks it
  * ({@link BoxKeySources}): the shell's when it is set and not blank, else `.env.local`'s. On
  * Windows, where variable names are case-insensitive, the shell's `Github_Token` sets
  * `GITHUB_TOKEN`. Dev hands these to `box run` as they are and writes none of them anywhere. Only
@@ -42,8 +44,10 @@ export function boxDevSecrets(
   for (const kind of ["egress", "mcp", "telemetry"] as const) {
     for (const [name, entry] of Object.entries(tableOf(table[kind]))) {
       const ref = secretRef(kind, tableOf(entry).secret);
-      if (ref === undefined || !ref.startsWith(ENV_SCHEME)) continue;
-      const variable = ref.slice(ENV_SCHEME.length);
+      const schemes = kind === "telemetry" ? TELEMETRY_SCHEMES : [ENV_SCHEME];
+      const scheme = schemes.find((candidate) => ref?.startsWith(candidate));
+      if (ref === undefined || scheme === undefined) continue;
+      const variable = ref.slice(scheme.length);
       if (variable.trim() === "" || Object.hasOwn(found, variable)) continue;
       const fromShell = shellValue(sources.env, variable, platform);
       const fromFile = own(sources.envLocal, variable);
