@@ -348,8 +348,9 @@ export async function* removeTelemetrySecrets(
         type: "warning",
         message:
           `Deploy did not delete secret '${name}' (${secretArn}): ${(error as Error).message}. ` +
-          "The secret stays in AWS Secrets Manager, and AWS bills you for it. The next deploy of " +
-          "this target tries to delete it again.",
+          "The secret stays in AWS Secrets Manager, and AWS bills you for it. Deploy keeps its " +
+          "record of the secret, and the next deploy of this target tries to delete it again, " +
+          "also when the stack is gone.",
       };
     }
   }
