@@ -108,6 +108,7 @@ import { HarnessSpecSchema, HarnessYamlSchema } from "../../projectSchemas/harne
 import { FsTreeNode } from "./templates/fsTree";
 import { getEvaluatorTemplateResolver } from "./templates/evaluator";
 import {
+  boxGatewayName,
   boxGatewaySpec,
   isBoundGateway,
   isBoxProject,
@@ -116,6 +117,7 @@ import {
   type ManagedBy,
 } from "../../projectSchemas/project";
 import { ConfigBundleSchema } from "../../projectSchemas/config-bundle";
+import { MAX_TAGS, TEMPLATE_TAG_KEY } from "../../projectSchemas/tags";
 import {
   type AgentCoreGateway,
   AgentCoreGatewaySchema,
@@ -2382,7 +2384,13 @@ export class FsProjectManager implements ProjectManager {
     runtime.platformVersion = BOX_PLATFORM_VERSION;
     // start.py starts `box run` on AgentCore Runtime, and the profile runs the agent.
     runtime.entrypoint = BOX_CODEZIP_ENTRYPOINT;
-    projectSpec.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec(name)));
+    // The fallback template tag, strands-box, which resolveRuntimeTemplateProfile gives a box
+    // runtime no template made. boxRuntimeInput refused the key in --tags. Its Box gateway takes
+    // the same value.
+    runtime.tags = { ...runtime.tags, ...resolveRuntimeTemplateProfile(boxInput)?.runtime?.tags };
+    projectSpec.agentCoreGateways.push(
+      AgentCoreGatewaySchema.parse(boxGatewaySpec(name, runtime.tags[TEMPLATE_TAG_KEY]!)),
+    );
 
     // start.py and an empty .venv, as create writes them. A file or folder the user has stays.
     const appDir = join(projectRoot, ...runtime.codeLocation.split("/"));
@@ -2690,8 +2698,9 @@ function assertNotBoxProject(spec: z.infer<typeof ProjectSpecSchema>, what: stri
 /**
  * The input that the box profile of `config`, a docs-only runtime added to the Box project `spec`,
  * renders from: a Python CodeZip agent with the framework `none` and Bedrock, as
- * agent-python-minimal-box has. Throws for a Bedrock Agent import, for a TypeScript runtime, and
- * for a runtime whose Box gateway name is taken.
+ * agent-python-minimal-box has. Throws for a Bedrock Agent import, for a TypeScript runtime, for a
+ * runtime whose Box gateway name is taken, for `--tags` that set `agentcore:template`, and for tags
+ * that would pass the limit of 50 at deploy.
  */
 function boxRuntimeInput(
   spec: z.infer<typeof ProjectSpecSchema>,
@@ -2714,11 +2723,30 @@ function boxRuntimeInput(
         "it with --language python.",
     );
   }
-  const gateway = boxGatewaySpec(config.name).name;
+  const gateway = boxGatewayName(config.name);
   if (spec.agentCoreGateways.some(({ name }) => name === gateway)) {
     throw new InputValidationError(
       `cannot add runtime '${config.name}': its Box gateway needs the name '${gateway}', and a ` +
         "gateway with that name already exists. Choose a different --name.",
+    );
+  }
+  // The template tag key and the tag count are checked here, before add runtime writes anything.
+  if (config.tags?.[TEMPLATE_TAG_KEY] !== undefined) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project: the CLI sets the tag ` +
+        `${TEMPLATE_TAG_KEY} on each runtime of a Box project. Remove it from --tags.`,
+    );
+  }
+  // At deploy the CDK library gives the runtime the project's tags too, so count them with its own.
+  // Its Box gateway gets only the project's tags and the template tag, never more, so this covers
+  // it too.
+  const tags = Object.keys({ ...spec.tags, ...config.tags, [TEMPLATE_TAG_KEY]: "" }).length;
+  if (tags > MAX_TAGS) {
+    throw new InputValidationError(
+      `cannot add runtime '${config.name}' to a Box project: it would have ${tags} tags at ` +
+        `deploy, over the limit of ${MAX_TAGS}: its --tags, the tags of the project, and the tag ` +
+        `${TEMPLATE_TAG_KEY} that the CLI sets on each runtime of a Box project. Pass fewer ` +
+        "--tags, or remove tags from the project.",
     );
   }
   return {

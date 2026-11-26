@@ -48,7 +48,7 @@ fork of [strands-agents/box](https://github.com/strands-agents/box), then run
   [aws/agentcore-l3-cdk-constructs#481](https://github.com/aws/agentcore-l3-cdk-constructs/pull/481): it gives the
   runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
   the box cannot reach Memory.
-- `box` `0.3.0` on your `PATH`, the release the CLI pins. Use that release: the box
+- `box` `0.3.2` on your `PATH`, the release the CLI pins. Use that release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
   run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
@@ -74,30 +74,30 @@ a bundle, reports its signature as invalid (`invalid Info.plist`), and kills box
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
 
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
-`BOX_VERSION` is the folder you unpacked into, `0.3.0`.
+`BOX_VERSION` is the folder you unpacked into, `0.3.2`.
 
 ```
-BOX_VERSION=0.3.0
+BOX_VERSION=0.3.2
 export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
 grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
@@ -114,11 +114,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.3.0` (from
+- `box --version` should print the pinned `box 0.3.2` (from
   `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
   writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.2"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line to
 that folder.
@@ -200,6 +200,12 @@ This adds an `[egress]` entry for `api.github.com` with a `github` API key crede
 needs `destinations`. Build declares the credential from the `env://` secret, adds the
 `egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
+The credential takes the name of the entry, so the name of an entry with an `env://` secret must be
+a valid credential name: 3 to 128 characters, and only letters, digits, hyphens, and underscores.
+The name must not end in a credential field suffix, such as `_client_secret`. It must not give
+the same variable as a credential of the project or the credential of another entry, as
+`git-hub` and `git_hub` do, or `GitHub` and `github`. Build stops on an entry such as `[egress.w]`, and names its line.
+
 The `destinations` key lists the hosts the credential may reach. The box blocks the credential's
 egress to any host not in the list. Each entry is a `<host>` or `<host>:<port>` string. The default
 port is 443. A port must be 1 to 65535.
@@ -261,8 +267,9 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
   `openai`, and deploy provisions your key in AgentCore Identity.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
-  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
-  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  host, a plain-HTTP-only host, an unsupported secret, an `env://` entry whose name is not a valid
+  credential name, an MCP server that names more than one host, a path, or a port other than 443,
+  and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
   number of problems, then gives one line for each problem: its `file:line:column` in your
   profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
   by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as

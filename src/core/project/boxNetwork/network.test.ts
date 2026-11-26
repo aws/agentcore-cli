@@ -76,7 +76,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     credentials: options.credentials ?? [],
     agentCoreGateways: [
       {
-        ...boxGatewaySpec("agent"),
+        ...boxGatewaySpec("agent", "strands-box"),
         targets: options.targets ?? [],
         ...(options.executionRoleArn && { executionRoleArn: options.executionRoleArn }),
       },
@@ -535,13 +535,119 @@ describe("outbound auth", () => {
     }
   });
 
-  test("leaves an env:// entry that cannot name an API key credential to the credentials writer", () => {
-    const invalid = model("", {
-      ab: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } },
+  test("stops build for an env:// entry whose name is not a valid credential name, at its line", () => {
+    const short = model("", {
+      w: { destinations: ["api.example.com"], secret: { ref: "env://MISSING_TOKEN" } },
     });
-    expect(invalid.failures()).toEqual([]);
-    expect(invalid.host("a.example.com")?.outboundAuth).toMatchObject({ credentialName: "ab" });
-    expect(invalid.network.envRoutes).toEqual([{ route: "ab", variable: "KEY" }]);
+    expect(short.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "w"]]);
+    expect(short.lines()).toEqual([
+      `${PROFILE}:2:1  [egress.w] reads its key from env://MISSING_TOKEN, which build keeps in ` +
+        "an API key credential named after the entry, and 'w' is not a valid credential name. " +
+        "A credential name has 3 to 128 characters, and only letters, digits, hyphens (-), and " +
+        "underscores (_). Rename the entry.",
+    ]);
+  });
+
+  test("gives an entry with an invalid name and two destinations one failure", () => {
+    const r = model("", {
+      w: {
+        destinations: ["a.example.com", "b.example.com"],
+        secret: { ref: "env://MISSING_TOKEN" },
+      },
+    });
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "w"]]);
+  });
+
+  test("stops build for an env:// [mcp] server whose name is not a valid credential name", () => {
+    const r = model(
+      "",
+      {},
+      {
+        mcp: {
+          fs: { type: "http", destinations: ["fs.example.com"], secret: { ref: "env://FS_KEY" } },
+        },
+      },
+    );
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "fs"]]);
+  });
+
+  test.each([
+    ["a name that ends in a credential field suffix", "github_client_secret", {}, []],
+    [
+      "a name that derives the variable of a credential",
+      "git-hub",
+      {},
+      [{ authorizerType: "ApiKeyCredentialProvider", name: "git_hub" }],
+    ],
+    [
+      // The credential keeps its key in Secrets Manager, so it reserves no variable, but its name
+      // still derives AGENTCORE_CREDENTIAL_MY_KEY.
+      "a name that derives the variable of a credential that keeps its key elsewhere",
+      "my-key",
+      {},
+      [
+        {
+          authorizerType: "ApiKeyCredentialProvider",
+          name: "my_key",
+          secretRef: { secretId: "my-secret", jsonKey: "key" },
+        },
+      ],
+    ],
+    [
+      "a name of a credential that is not an API key",
+      "github",
+      {},
+      [
+        {
+          authorizerType: "OAuthCredentialProvider",
+          name: "github",
+          discoveryUrl: "https://example.com/.well-known/openid-configuration",
+        },
+      ],
+    ],
+    [
+      // The two get two gateway targets, but one credential variable, AGENTCORE_CREDENTIAL_GITHUB.
+      "a name that derives the variable of an earlier entry's new credential",
+      "GitHub",
+      { github: { destinations: ["b.example.com"], secret: { ref: "env://OTHER" } } },
+      [],
+    ],
+  ])("stops build for an env:// entry with %s", (_label, name, before, credentials) => {
+    const r = model(
+      "",
+      { ...before, [name]: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } },
+      { credentials: credentials as ProjectSpec["credentials"] },
+    );
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", name]]);
+  });
+
+  test("gives no name failure to an [egress] entry and an [mcp] server of one name", () => {
+    const r = model(
+      "",
+      { tools: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } },
+      {
+        mcp: {
+          tools: { type: "http", destinations: ["b.example.com"], secret: { ref: "env://KEY" } },
+        },
+      },
+    );
+    // Both take the credential 'tools'. Their one target name is a different failure.
+    expect(r.failures().filter(([code]) => code === "CREDENTIAL_NAME_INVALID")).toEqual([]);
+  });
+
+  test("does not check the name of an env:// entry whose variable a credential reserves", () => {
+    const r = model(
+      "",
+      {
+        w: {
+          destinations: ["api.example.com"],
+          secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
+        },
+      },
+      { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }] },
+    );
+    expect(r.failures()).toEqual([]);
+    expect(r.host("api.example.com")?.outboundAuth).toMatchObject({ credentialName: "github" });
   });
 
   test("gives no route a credential for a host that gets no target", () => {
@@ -1447,7 +1553,7 @@ describe("the gateways of the project", () => {
   const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
   const OPEN = { name: "open-tools", authorizerType: "NONE", targets: [] };
   const JWT = { name: "jwt-tools", authorizerType: "CUSTOM_JWT", targets: [] };
-  const OTHER_BOX = { ...boxGatewaySpec("other"), targets: [] };
+  const OTHER_BOX = { ...boxGatewaySpec("other", "strands-box"), targets: [] };
 
   test("gives the agent each gateway without boundRuntime, with its target and its variables", () => {
     const { network } = model("", {}, { gateways: [TOOLS, OPEN, OTHER_BOX] });
@@ -1647,7 +1753,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             {
               name: "egress-gateway-tools",
@@ -1682,7 +1788,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             passthrough("mine", `https://${GATEWAY_HOST}`, {
               outboundAuth: {

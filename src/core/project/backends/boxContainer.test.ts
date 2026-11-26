@@ -51,7 +51,7 @@ async function project(dockerfile: string): Promise<Project> {
       ],
       memories: [],
       projectType: "box",
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     },
   } as unknown as Project;
 }

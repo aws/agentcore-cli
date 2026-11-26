@@ -114,7 +114,7 @@ function specOf(runtime: ProjectRuntime, memories: readonly string[] = []) {
     runtimes: [runtime],
     memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
     projectType: "box",
-    agentCoreGateways: [{ ...boxGatewaySpec(runtime.name), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec(runtime.name, "strands-box"), targets }],
   } as unknown as ProjectSpec;
 }
 

@@ -23,7 +23,7 @@ import { FS_RECORD_FILES, type RecordFiles } from "./boxGatewayTargets";
 import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "./envLocal";
 import { boxGatewayLogsNotice, FsProjectManager } from "./manager";
 import { ProjectSpecSchema } from "../../projectSchemas/project";
-import { renderAwsMetadataPolicy } from "./templates/boxProfile";
+import { renderAwsMetadataPolicy, tracesToRuntimeLogGroup } from "./templates/boxProfile";
 import type { PassthroughGatewayCheck } from "./backends/cdk/compatibility";
 
 /** The golden files of this suite; `RECORD=1 bun test <this file>` rewrites them, with no AWS call. */
@@ -1626,9 +1626,14 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     Action: ["xray:PutSpans", "xray:PutTraceSegments"],
     Resource: "*",
   };
+  // The pinned box names the log group and stream of its spans (strands-agents/box#629, 0.3.2).
   const DEFAULT_TRACES = {
     kind: "cloudwatch_traces",
     region: "${{ inputs.aws.region }}",
+    ...(tracesToRuntimeLogGroup() && {
+      log_group: "${{ inputs.runtime.traces_log_group }}",
+      log_stream: "${{ inputs.runtime.traces_log_stream }}",
+    }),
     include: ["deny", "permit", "trace"],
     secret: { ref: "aws://" },
   };

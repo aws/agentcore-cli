@@ -419,7 +419,7 @@ describe("containment", () => {
   ) => ({
     ...box,
     runtimes: runtimes.map((entry) => ({ platformVersion: "V2", ...entry })),
-    agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name)),
+    agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name, "strands-box")),
     ...fields,
   });
   const withNetwork = (network: Record<string, unknown>) => boxProject([{ ...contained, network }]);
@@ -582,7 +582,7 @@ describe("Box project runtimes on AgentCore Runtime V2", () => {
     ...minimalProject,
     ...(projectType && { projectType }),
     runtimes: [{ ...runtime, ...(platformVersion && { platformVersion }) }],
-    agentCoreGateways: [boxGatewaySpec("agent")],
+    agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
   });
   const messages = (spec: unknown) => {
     const result = ProjectSpecSchema.safeParse(spec);
@@ -668,7 +668,7 @@ describe("a passthrough target that names a gateway", () => {
   describe("a target that build owns", () => {
     /** The Box gateway of `agent`, with one egress- target that names `gateway`. */
     const boxGateway = (gateway: string) => ({
-      ...boxGatewaySpec("agent"),
+      ...boxGatewaySpec("agent", "strands-box"),
       targets: [target({ gateway }, `egress-gateway-${gateway}`)],
     });
     const parse = (projectType: string | undefined, gateways: unknown[]) => {
@@ -693,7 +693,7 @@ describe("a passthrough target that names a gateway", () => {
 
     test("is refused on a gateway without boundRuntime, which build does not write", () => {
       const ordinary = front({ gateway: "gone" }, {}, "egress-foo");
-      expect(parse("box", [boxGatewaySpec("agent"), ordinary])).toContainEqual(
+      expect(parse("box", [boxGatewaySpec("agent", "strands-box"), ordinary])).toContainEqual(
         expect.stringContaining('Target "egress-foo" of gateway "front" names the gateway "gone"'),
       );
     });
@@ -734,23 +734,49 @@ describe("Box project gateways", () => {
 
   test("accepts a Box project with a Box gateway for each runtime", () => {
     expect(
-      parse(["agent", "search"], [boxGatewaySpec("agent"), boxGatewaySpec("search")]).success,
+      parse(
+        ["agent", "search"],
+        [boxGatewaySpec("agent", "strands-box"), boxGatewaySpec("search", "strands-box")],
+      ).success,
     ).toBe(true);
   });
 
+  test("prints the entry to add back with the template tag of the runtime", () => {
+    const result = ProjectSpecSchema.safeParse({
+      ...minimalProject,
+      projectType: "box",
+      runtimes: [
+        {
+          ...runtimeNamed("agent"),
+          tags: { "agentcore:template": "agent-python-strands-box" },
+        },
+      ],
+      agentCoreGateways: [],
+    });
+
+    expect(messages(result)[0]).toContain(
+      JSON.stringify(boxGatewaySpec("agent", "agent-python-strands-box"), null, 2),
+    );
+  });
+
   test("rejects a runtime with no Box gateway, and prints the entry to add back", () => {
-    const result = parse(["agent", "search", "checkout"], [boxGatewaySpec("search")]);
+    const result = parse(
+      ["agent", "search", "checkout"],
+      [boxGatewaySpec("search", "strands-box")],
+    );
     const found = messages(result);
     expect(found).toHaveLength(2);
     expect(found[0]).toContain('Runtime "agent" has no Box gateway.');
     expect(found[0]).toContain('delete the runtime from "runtimes" by hand');
     expect(found[0]).not.toContain("remove runtime");
-    expect(found[0]).toContain(JSON.stringify(boxGatewaySpec("agent"), null, 2));
+    expect(found[0]).toContain(JSON.stringify(boxGatewaySpec("agent", "strands-box"), null, 2));
     expect(found[1]).toContain('Runtime "checkout" has no Box gateway.');
   });
 
   test("finds the Box gateway by boundRuntime, not by name", () => {
-    expect(parse(["agent"], [{ ...boxGatewaySpec("agent"), name: "renamed" }]).success).toBe(true);
+    expect(
+      parse(["agent"], [{ ...boxGatewaySpec("agent", "strands-box"), name: "renamed" }]).success,
+    ).toBe(true);
   });
 
   test("accepts the targets build writes on a Box gateway", () => {
@@ -760,7 +786,7 @@ describe("Box project gateways", () => {
       passthrough: { endpoint: "https://api.example.com", protocolType: "CUSTOM" },
     };
     const box = {
-      ...boxGatewaySpec("agent"),
+      ...boxGatewaySpec("agent", "strands-box"),
       targets: [getBoxGatewayBedrockTargetSpec(), egress],
     };
     expect(messages(parse(["agent"], [box]))).toEqual([]);
@@ -786,7 +812,7 @@ describe("Box runtimes and the folder build stages box in", () => {
       ...minimalProject,
       projectType: "box",
       runtimes,
-      agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name)),
+      agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name, "strands-box")),
     });
   const messages = (result: ReturnType<typeof parse>) =>
     result.success ? [] : result.error.issues.map(({ message }) => message);
@@ -838,7 +864,7 @@ describe("gateway variable prefixes", () => {
   });
 
   test("rejects a gateway named box next to a Box gateway", () => {
-    const result = parse([{ name: "box", targets: [] }, boxGatewaySpec("agent")]);
+    const result = parse([{ name: "box", targets: [] }, boxGatewaySpec("agent", "strands-box")]);
     expect(result.error?.issues.map(({ message }) => message)).toEqual([
       'Gateways "box" and "agent-box-egress" both set AGENTCORE_GATEWAY_BOX_* on runtime "agent". Rename one gateway or give it a different discoveryPrefix',
     ]);
@@ -855,6 +881,8 @@ describe("gateway variable prefixes", () => {
   });
 
   test("accepts gateways with different prefixes", () => {
-    expect(parse([{ name: "tools", targets: [] }, boxGatewaySpec("agent")]).success).toBe(true);
+    expect(
+      parse([{ name: "tools", targets: [] }, boxGatewaySpec("agent", "strands-box")]).success,
+    ).toBe(true);
   });
 });

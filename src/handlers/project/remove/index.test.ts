@@ -709,7 +709,7 @@ describe("project remove in a Box project", () => {
     cleanups.push(cleanup);
     const spec = await projectSpec(projectRoot);
     expect(spec.projectType).toBe("box");
-    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec("agent")]);
+    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec("agent", "agent-python-strands-box")]);
     return projectRoot;
   }
 

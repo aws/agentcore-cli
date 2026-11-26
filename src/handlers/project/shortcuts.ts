@@ -12,6 +12,7 @@ import {
 import { InputValidationError } from "../../errors";
 import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { TEMPLATE_TAG_KEY } from "../../projectSchemas/tags";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -382,6 +383,9 @@ export function resolveRuntimeTemplateShortcut(
 ): ScaffoldRuntimeInput {
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
+  const profile: RuntimeTemplateProfile | undefined = template.supportsModelProviderOverride
+    ? { ...template.profile, modelProviderOverride: true }
+    : template.profile;
 
   const input = {
     runtimeName,
@@ -398,9 +402,17 @@ export function resolveRuntimeTemplateShortcut(
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
     ...(template.box && { boxTemplate: true }),
     runtimeVersion: template.runtimeVersion,
-    templateProfile: template.supportsModelProviderOverride
-      ? { ...template.profile, modelProviderOverride: true }
-      : template.profile,
+    // A Box template tags its runtime with its own name, after any tags of its profile so none
+    // replaces it; newProjectSpec copies the tag to its Box gateway.
+    templateProfile: template.box
+      ? {
+          ...profile,
+          runtime: {
+            ...profile?.runtime,
+            tags: { ...profile?.runtime?.tags, [TEMPLATE_TAG_KEY]: name },
+          },
+        }
+      : profile,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);

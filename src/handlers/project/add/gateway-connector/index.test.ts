@@ -105,7 +105,7 @@ describe("project add gateway-connector", () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     const runtime = spec.runtimes[0].name;
-    const box = boxGatewaySpec(runtime);
+    const box = boxGatewaySpec(runtime, "strands-box");
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",

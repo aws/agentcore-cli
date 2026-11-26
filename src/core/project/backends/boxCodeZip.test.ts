@@ -70,7 +70,7 @@ async function project(
       })),
       memories: [],
       projectType: "box",
-      agentCoreGateways: names.map((name) => boxGatewaySpec(name)),
+      agentCoreGateways: names.map((name) => boxGatewaySpec(name, "strands-box")),
     },
   } as unknown as Project;
 }

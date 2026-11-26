@@ -16,7 +16,8 @@ import {
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
-import { boxGatewaySpec } from "../../../projectSchemas/project";
+import { BOX_TEMPLATE_TAG_VALUE, boxGatewaySpec } from "../../../projectSchemas/project";
+import { TEMPLATE_TAG_KEY } from "../../../projectSchemas/tags";
 import { BOX_PLATFORM_VERSION, DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
@@ -181,7 +182,13 @@ const BOX_GITIGNORE =
 export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
   const { projectType, ...merged } = mergeSpecEntries(entries);
   const boxGateways =
-    projectType === "box" ? (merged.runtimes ?? []).map(({ name }) => boxGatewaySpec(name)) : [];
+    projectType === "box"
+      ? // Each Box gateway takes the template tag of its runtime: the name of its Box template, or
+        // strands-box for a runtime no template made.
+        (merged.runtimes ?? []).map(({ name, tags }) =>
+          boxGatewaySpec(name, tags?.[TEMPLATE_TAG_KEY] ?? BOX_TEMPLATE_TAG_VALUE),
+        )
+      : [];
   return {
     name: projectName,
     version: 2,
