@@ -218,7 +218,7 @@ to a Box project, and refuses a TypeScript runtime and a Bedrock Agent import th
 `"box": { "version": ... }` in `agentcore.json`, which create and add runtime write, and its local
 box profile; build and deploy stop without them. Build derives the AgentCore Runtime profile of
 each runtime from its local profile. box comes from the `box-cli` archives of the public GitHub
-release `v0.3.0` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
+release `v0.3.2` of [strands-agents/box](https://github.com/strands-agents/box/releases). No token
 or account is needed to download it. Use that release's build for your machine for `agentcore dev`
 and the profile checks of `build`: an older box cannot read the profiles that this CLI writes.
 
@@ -263,7 +263,7 @@ agentcore invoke --runtime agent --session-id my-box-session-0000000000000000000
 agentcore logs runtime --name agent --since 15m --query '"running profile"'
 ```
 
-The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.3.0`. The
+The CodeBuild log of the deploy shows `/tmp/box.tar.gz: OK` and `box 0.3.2`. The
 second answer should say teal, and the runtime log shows `running profile ...` with no `ERROR`,
 `blocked by egress control` or `AccessDenied` line. For a CodeZip agent, use
 `--template agent-python-strands-box` and skip the container settings.

@@ -48,7 +48,7 @@ fork of [strands-agents/box](https://github.com/strands-agents/box), then run
   [aws/agentcore-l3-cdk-constructs#481](https://github.com/aws/agentcore-l3-cdk-constructs/pull/481): it gives the
   runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
   the box cannot reach Memory.
-- `box` `0.3.0` on your `PATH`, the release the CLI pins. Use that release: the box
+- `box` `0.3.2` on your `PATH`, the release the CLI pins. Use that release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
   run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
@@ -74,30 +74,30 @@ a bundle, reports its signature as invalid (`invalid Info.plist`), and kills box
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
 
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
-`BOX_VERSION` is the folder you unpacked into, `0.3.0`.
+`BOX_VERSION` is the folder you unpacked into, `0.3.2`.
 
 ```
-BOX_VERSION=0.3.0
+BOX_VERSION=0.3.2
 export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
 grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
@@ -114,11 +114,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.3.0` (from
+- `box --version` should print the pinned `box 0.3.2` (from
   `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
   writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.2"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line to
 that folder.
