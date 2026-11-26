@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import spawn from "cross-spawn";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import z from "zod";
@@ -622,6 +623,232 @@ describe.skipIf(!BOX_DEPLOYS)(
   },
 );
 
+// Box project scenarios on AgentCore Runtime that a user hits beyond one template's happy path: a
+// second runtime beside the first's Memory, an egress route that the Box gateway signs with a stored
+// API key, and Memory that recalls within a session and across sessions. Each deploys its own
+// project; they run concurrently. They need the AGENTCORE_E2E_BOX_CDK opt-in, as the flow tests do.
+describe.skipIf(!BOX_DEPLOYS)(
+  "Box project scenarios on AgentCore Runtime",
+  { tags: [TAGS.BOX] },
+  () => {
+    const cli = new CliRunner();
+    const strands = BOX_TEMPLATES.find((t) => t.template === "agent-python-strands-box");
+    const minimal = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+    if (!strands || !minimal)
+      throw new Error("BOX_TEMPLATES lacks the strands or minimal box case");
+
+    /** Deploys `projectDir`, runs `scenario`, and tears the stack down even when a step fails. */
+    async function deployed(
+      projectDir: string,
+      scenario: () => Promise<void>,
+      env: NodeJS.ProcessEnv = {},
+    ): Promise<void> {
+      let scenarioCompleted = false;
+      try {
+        const deployment = parseResult(
+          DeployResponseSchema,
+          await cli.run(["deploy", "--yes", "--json"], projectDir, env),
+        );
+        expect(deployment.message).toContain("deployed project");
+        await scenario();
+        scenarioCompleted = true;
+      } finally {
+        await cli.run(["remove", "all", "--yes", "--json"], projectDir);
+        const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
+        if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
+      }
+    }
+
+    /** Invokes runtime `name` of `projectDir` with `prompt` in `session`, and returns the reply. */
+    async function ask(projectDir: string, name: string, session: string, prompt: string) {
+      const response = parseResult(
+        RuntimeInvokeResponseSchema,
+        await cli.run(
+          [
+            "invoke",
+            "--runtime",
+            name,
+            "--session-id",
+            session,
+            "--payload",
+            JSON.stringify({ prompt }),
+            "--json",
+          ],
+          projectDir,
+        ),
+      );
+      expect(response.statusCode).toBeGreaterThanOrEqual(200);
+      expect(response.statusCode).toBeLessThan(300);
+      expect(response.body.trim()).not.toBe("");
+      return response.body;
+    }
+
+    const DEPLOY_TEST_TIMEOUT =
+      TIMEOUT_MS.PROJECT_CREATE +
+      6 * TIMEOUT_MS.PROJECT_INVOKE +
+      3 * TIMEOUT_MS.PROJECT_DEPLOY +
+      TIMEOUT_MS.PROJECT_REMOVE;
+
+    // A Box project's runtimes each run in a box, and the box pack of each reads the ID of every
+    // project Memory, so a runtime added beside the first, whose Memory it gets, must start.
+    test.concurrent(
+      "a runtime added to a Box project with a Memory deploys and answers beside the first",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        const added = parseResult(
+          OperationSchema,
+          await cli.run(
+            ["add", "runtime", "--name", "second", "--language", "python", "--json"],
+            projectDir,
+          ),
+        );
+        expect(added.operation).toBe("add");
+        // add runtime writes start.py and the docs; the agent code is the user's, here the first's.
+        const from = join(projectDir, "app", CREATED_RUNTIME_NAME);
+        const to = join(projectDir, "app", "second");
+        for (const entry of [
+          "main.py",
+          "pyproject.toml",
+          "uv.lock",
+          "model",
+          "memory",
+          "parse.py",
+        ]) {
+          if (existsSync(join(from, entry))) {
+            await cp(join(from, entry), join(to, entry), { recursive: true });
+          }
+        }
+        await deployed(projectDir, async () => {
+          await ask(
+            projectDir,
+            CREATED_RUNTIME_NAME,
+            getSessionId("box-two-a"),
+            "Reply with a short greeting.",
+          );
+          await ask(
+            projectDir,
+            "second",
+            getSessionId("box-two-b"),
+            "Reply with a short greeting.",
+          );
+          await assertRunsInBox(cli, projectDir, "second");
+        });
+      },
+    );
+
+    // The profile's egress entry names an env:// key: build stops until deploy has stored it, deploy
+    // stores it as an API key credential, and the Box gateway sends it to the host. The agent never
+    // holds the key, so the echoed header can only come from the gateway.
+    test.concurrent(
+      "an egress route with an env:// key reaches its host with the key the Box gateway adds",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
+        const key = `e2e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        const env = { E2E_ECHO_KEY: key };
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), ECHO_AGENT);
+        const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
+        await writeFile(
+          profile,
+          `${await readFile(profile, "utf8")}\n[egress.echo]\ndestinations = ["${new URL(ECHO_URL).host}"]\nsecret.ref = "env://E2E_ECHO_KEY"\n`,
+        );
+        const build = await cli.run(["build", "--json"], projectDir, env);
+        expect(build.exitCode).not.toBe(0);
+        expect(`${build.stdout}${build.stderr}`).toContain("before its first deployment");
+        await deployed(
+          projectDir,
+          async () => {
+            await retry(
+              async () => {
+                const body = await ask(
+                  projectDir,
+                  CREATED_RUNTIME_NAME,
+                  getSessionId("box-echo"),
+                  "echo",
+                );
+                const reply = JSON.parse(body) as {
+                  status?: number;
+                  authorization?: string;
+                  error?: string;
+                };
+                expect(reply.error).toBeUndefined();
+                expect(reply.status).toBe(200);
+                expect(reply.authorization).toBe(`Bearer ${key}`);
+              },
+              3 * TIMEOUT_MS.PROJECT_INVOKE,
+              15 * 1000,
+            );
+          },
+          env,
+        );
+      },
+    );
+
+    // The template's agent keeps the conversation in Memory: short-term events within a session, and
+    // facts that long-term extraction makes available to a new session of the same actor.
+    test.concurrent(
+      "Memory recalls a fact within a session and from a new session",
+      { timeout: DEPLOY_TEST_TIMEOUT + 10 * 60 * 1000 },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        const color = `teal${Date.now().toString(36).slice(-4)}`;
+        await deployed(projectDir, async () => {
+          const first = getSessionId("box-mem-a");
+          await ask(
+            projectDir,
+            CREATED_RUNTIME_NAME,
+            first,
+            `My favorite color is ${color}. Remember it.`,
+          );
+          expect(
+            await ask(projectDir, CREATED_RUNTIME_NAME, first, "What is my favorite color?"),
+          ).toContain(color);
+          // Extraction into long-term memory takes a few minutes.
+          await retry(
+            async () => {
+              const reply = await ask(
+                projectDir,
+                CREATED_RUNTIME_NAME,
+                getSessionId("box-mem-b"),
+                "What is my favorite color?",
+              );
+              expect(reply).toContain(color);
+            },
+            10 * 60 * 1000,
+            60 * 1000,
+          );
+        });
+      },
+    );
+  },
+);
+
+/** The public host that answers with the request's headers, for the API key egress scenario. */
+const ECHO_URL = "https://httpbin.org/headers";
+/** An agent that calls ECHO_URL with no credential of its own and returns the Authorization it saw. */
+const ECHO_AGENT = `import json
+import urllib.request
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        with urllib.request.urlopen("${ECHO_URL}", timeout=20) as response:
+            headers = json.load(response).get("headers", {})
+            return {"status": response.status, "authorization": headers.get("Authorization")}
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
 /**
  * Gives the project in `projectDir` the egress agent, and allows its one host, with no credential,
  * in the runtime's local box profile, which build derives the AgentCore Runtime profile from.
@@ -647,10 +874,14 @@ function assertEgressReply(body: string): void {
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent,
  * then checks they show no box error. The logs arrive a little after the invoke, so it retries.
  */
-async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void> {
+async function assertRunsInBox(
+  cli: CliRunner,
+  projectDir: string,
+  runtimeName: string = CREATED_RUNTIME_NAME,
+): Promise<void> {
   const logs = (query: string) =>
     cli.run(
-      ["logs", "runtime", "--name", CREATED_RUNTIME_NAME, "--since", "30m", "--query", query],
+      ["logs", "runtime", "--name", runtimeName, "--since", "30m", "--query", query],
       projectDir,
     );
   await retry(
