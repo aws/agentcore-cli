@@ -1863,13 +1863,17 @@ describe("third-party telemetry", () => {
       names: ["langfuse", "langsmith"],
       warnings: [
         `${PROFILE}: [telemetry.langfuse] sends to us.cloud.langfuse.com, but runtime agent uses ` +
-          "a private VPC, which has no internet path. Box tries to send, and each send fails " +
-          "until you give the VPC a path to us.cloud.langfuse.com, or remove " +
-          "`--containment private-vpc`.",
+          "a private VPC. Box tries to send, but no data gets to us.cloud.langfuse.com. The VPC " +
+          "has no internet path, and its DNS firewall resolves only AWS service names. To send " +
+          'to us.cloud.langfuse.com, use the default network: remove "containment" and ' +
+          '"network" from runtime agent in agentcore.json. You can also use `agentcore create` ' +
+          "again without `--containment private-vpc`.",
         `${PROFILE}: [telemetry.langsmith] sends to api.smith.langchain.com, but runtime agent ` +
-          "uses a private VPC, which has no internet path. Box tries to send, and each send " +
-          "fails until you give the VPC a path to api.smith.langchain.com, or remove " +
-          "`--containment private-vpc`.",
+          "uses a private VPC. Box tries to send, but no data gets to api.smith.langchain.com. " +
+          "The VPC has no internet path, and its DNS firewall resolves only AWS service names. " +
+          'To send to api.smith.langchain.com, use the default network: remove "containment" ' +
+          'and "network" from runtime agent in agentcore.json. You can also use ' +
+          "`agentcore create` again without `--containment private-vpc`.",
       ],
     });
   });
