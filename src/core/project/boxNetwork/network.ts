@@ -356,7 +356,7 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
  * the variable deploy reads its key from is a variable that a credential reads, or that another
  * target of the profile reads, so deploy never sends one key to the wrong destination. A target of
  * a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path, and its DNS firewall
- * resolves only AWS service names, so no data gets to the target.
+ * resolves only the names of the VPC endpoints, so no data gets to the target.
  */
 function runtimeTelemetry(
   profile: ParsedProfile,
@@ -405,10 +405,10 @@ function runtimeTelemetry(
       warnings.push(
         `${profile.path}: [telemetry.${target.name}] sends to ${host}, but runtime ` +
           `${project.runtime.name} uses a private VPC. Box tries to send, but no data gets to ` +
-          `${host}. The VPC has no internet path, and its DNS firewall resolves only AWS service ` +
-          `names. To send to ${host}, use the default network: remove "containment" and ` +
-          `"network" from runtime ${project.runtime.name} in agentcore.json. You can also use ` +
-          "`agentcore create` again without `--containment private-vpc`.",
+          `${host}. The VPC has no internet path, and its DNS firewall resolves only the names ` +
+          `of the VPC endpoints. To send to ${host}, use the default network: remove ` +
+          `"containment" and "network" from runtime ${project.runtime.name} in agentcore.json. ` +
+          "You can also use `agentcore create` again without `--containment private-vpc`.",
       );
     }
     targets.push(target);

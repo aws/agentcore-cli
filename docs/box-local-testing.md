@@ -717,13 +717,17 @@ Limits:
 
 - **CodeZip:** the CodeZip Runtime has no AWS CLI, so build stops for a third-party target with a
   key on a CodeZip runtime. Use a container runtime.
-- **PRIVATE_VPC:** the private VPC has no internet path, and its DNS firewall resolves only AWS
-  service names. `agentcore.json` has no field that adds a name to that list. Build keeps the target
-  and shows a warning: box tries to send, but no data gets to the host. To send to the host, remove
-  `"containment"` and `"network"` from the runtime in `agentcore.json`, or use `agentcore create`
-  again without `--containment private-vpc`. Build also sets `"secretsManagerEndpoint": true` in
-  the `network` of the runtime, so the L3 constructs give the VPC an AWS Secrets Manager endpoint:
-  without it box cannot read its keys, and does not start.
+- **PRIVATE_VPC:** the private VPC has no internet path, and its DNS firewall resolves only the
+  names of the VPC endpoints. `agentcore.json` has no field that adds a name to that list. Build
+  keeps the target and shows a warning: box tries to send, but no data gets to the host. To send to
+  the host, remove `"containment"` and `"network"` from the runtime in `agentcore.json`, or use
+  `agentcore create` again without `--containment private-vpc`. If you remove `"containment"`, you
+  also remove the private-VPC guarantees: the VPC-only conditions on the runtime role and on the Box
+  gateway. The L3 constructs keep the VPC, its subnets, its route table, and its security groups
+  (tag `agentcore:secure-vpc`) in the account after they go out of the stack. Delete them by hand.
+  Build also sets `"secretsManagerEndpoint": true` in the `network` of the runtime, so the L3
+  constructs give the VPC an AWS Secrets Manager endpoint: without it box cannot read its keys, and
+  does not start.
 
 ## 11. Tear down
 
