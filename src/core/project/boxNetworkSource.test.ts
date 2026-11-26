@@ -3,6 +3,7 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
@@ -239,6 +240,84 @@ describe("readBoxNetworks", () => {
         "'agent' takes that credential for env://GITHUB_TOKEN. One credential holds one key. " +
         "Rename the entry in one of the two profiles.",
     );
+  });
+
+  test.each([
+    ["git-hub", "git_hub", "AGENTCORE_CREDENTIAL_GIT_HUB"],
+    ["github", "GitHub", "AGENTCORE_CREDENTIAL_GITHUB"],
+  ])(
+    "refuses an entry whose new credential derives the variable of another runtime's, %s and %s",
+    async (first, second, variable) => {
+      const root = await project([]);
+      const entry = (name: string, variable: string, host: string) => ({
+        [name]: { destinations: [host], secret: { ref: `env://${variable}` } },
+      });
+      const profiles: Record<string, ReturnType<typeof entry>> = {
+        ".box/agent/local/profile.toml": entry(first, "A_TOKEN", "a.example.com"),
+        ".box/second/local/profile.toml": entry(second, "B_TOKEN", "b.example.com"),
+      };
+      for (const [file, egress] of Object.entries(profiles)) {
+        const [[name, { destinations, secret }]] = Object.entries(egress) as [
+          [string, { destinations: string[]; secret: { ref: string } }],
+        ];
+        await mkdir(join(root, file, ".."), { recursive: true });
+        await writeFile(
+          join(root, file),
+          `# ${file}\n[egress.${name}]\ndestinations = ${JSON.stringify(destinations)}\n` +
+            `secret.ref = "${secret.ref}"\n`,
+        );
+      }
+      const resolver: BoxProfileResolver = {
+        resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+      };
+
+      const networks = await readBoxNetworks(specWith("second"), root, resolver);
+
+      expect(
+        networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+      ).toEqual([[], [["CREDENTIAL_NAME_INVALID", ".box/second/local/profile.toml:2:1"]]]);
+      expect(networks[1]!.failures[0]!.reason).toBe(
+        `[egress.${second}] reads its key from env://B_TOKEN, which build keeps in an API key ` +
+          `credential named after the entry, and credential '${second}' would derive the same ` +
+          `variable, ${variable}, as credential '${first}', which build adds for runtime ` +
+          "'agent'. Rename the entry in one of the two profiles.",
+      );
+      expect(boxNetworkFailureMessage(networks, "build")).toStartWith("Build stopped: 1 problem");
+    },
+  );
+
+  test("does not refuse an entry against an entry of another runtime that uses an existing credential", async () => {
+    const root = await project([]);
+    // [egress.github] reads the variable of the existing credential 'mycred', so build adds no
+    // credential 'github', and [egress.GitHub] can take AGENTCORE_CREDENTIAL_GITHUB.
+    const profiles: Record<string, Record<string, unknown>> = {
+      ".box/agent/local/profile.toml": {
+        github: {
+          destinations: ["a.example.com"],
+          secret: { ref: `env://${credentialEnvVarName("mycred")}` },
+        },
+      },
+      ".box/second/local/profile.toml": {
+        GitHub: { destinations: ["b.example.com"], secret: { ref: "env://B_TOKEN" } },
+      },
+    };
+    for (const [file, egress] of Object.entries(profiles)) {
+      const [name] = Object.keys(egress);
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(join(root, file), `# ${file}\n[egress.${name}]\n`);
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+    };
+    const spec = {
+      ...specWith("second"),
+      credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "mycred" }],
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ failures }) => failures)).toEqual([[], []]);
+    expect(networks[0]!.hosts[0]!.outboundAuth).toMatchObject({ credentialName: "mycred" });
   });
 
   test("refuses a telemetry target whose key variable a target of another runtime reads", async () => {
@@ -657,16 +736,16 @@ describe("two routes of one profile to one host", () => {
   test.each([
     [
       "two open routes",
-      '[egress.a]\ndestinations = ["api.example.com"]\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: open, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: open, beta: open },
       ".box/agent/local/profile.toml:3:1",
     ],
     [
       "a route with a secret and an open route",
-      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: keyed, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: keyed, beta: open },
       ".box/agent/local/profile.toml:4:1",
     ],
   ])(
@@ -677,7 +756,7 @@ describe("two routes of one profile to one host", () => {
       expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
         [
           "EGRESS_DESTINATION_OVERLAP",
-          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
+          "[egress.beta] names api.example.com, and [egress.alpha] names it too, but one host has only " +
             "one entry. Keep api.example.com in only one of the two.",
           place,
         ],
@@ -689,20 +768,20 @@ describe("two routes of one profile to one host", () => {
   test("gives an entry that names its host twice one target and one route", async () => {
     const twice = { destinations: ["api.example.com", "api.example.com:443"] };
     const network = await networkOf(
-      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+      '[egress.alpha]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
         'secret.ref = "env://A_TOKEN"\n',
-      { a: { ...twice, secret: keyed.secret } },
+      { alpha: { ...twice, secret: keyed.secret } },
     );
 
     expect(network.failures).toEqual([]);
     expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
-      ["api.example.com", "egress-a"],
+      ["api.example.com", "egress-alpha"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
       ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["a", ["api.example.com"]],
+      ["alpha", ["api.example.com"]],
     ]);
   });
 });

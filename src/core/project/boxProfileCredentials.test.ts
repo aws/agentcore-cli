@@ -306,7 +306,8 @@ describe("planBoxProfileCredentials", () => {
     );
 
     expect(plan.unprovisioned.get("bad name!")).toBe(
-      "'bad name!' is not a valid credential name. Rename the entry.",
+      "'bad name!' is not a valid credential name. A credential name has 3 to 128 characters, " +
+        "and only letters, digits, hyphens (-), and underscores (_). Rename the entry.",
     );
   });
 
@@ -323,7 +324,9 @@ describe("planBoxProfileCredentials", () => {
       routes: [route("bad name!", "SOME_KEY")],
       added: [],
       warning:
-        "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name",
+        "skipping box egress 'bad name!' (env://SOME_KEY): 'bad name!' is not a valid credential name. " +
+        "A credential name has 3 to 128 characters, and only letters, digits, hyphens (-), and " +
+        "underscores (_)",
     },
     {
       label: "a name that ends in a credential field suffix",

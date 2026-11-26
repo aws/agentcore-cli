@@ -11,6 +11,7 @@ import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-sup
 import { resolveRuntimeTemplateShortcut } from "../../handlers/project/shortcuts";
 import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { ENC_PREFIX } from "../../secrets/cipher";
+import { InputValidationError } from "../../errors/errors";
 import { createSilentLogger, TestIdentityClient } from "../../testing";
 
 // A box template: only it writes the box profile whose env:// secrets build provisions.
@@ -355,6 +356,29 @@ describe("FsProjectManager.build: box env:// credentials", () => {
       );
     },
   );
+
+  test("stops on an env:// entry whose name is not a valid credential name, and changes nothing", async () => {
+    const egress = {
+      w: { destinations: ["api.example.com"], secret: { ref: "env://MISSING_TOKEN" } },
+    };
+    const { subject, built } = manager({}, boxShowOf({ egress }));
+    const created = await project(
+      subject,
+      '[egress.w]\ndestinations = ["api.example.com"]\nsecret.ref = "env://MISSING_TOKEN"\n',
+    );
+    const spec = await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8");
+
+    const stopped = drain(subject.build(created));
+
+    await expect(stopped).rejects.toThrow(InputValidationError);
+    await expect(stopped).rejects.toThrow(
+      `${BOX_PROFILE_FILE}:1:1  [egress.w] reads its key from env://MISSING_TOKEN`,
+    );
+    expect(built).toEqual([]);
+    expect(await readFile(join(created.rootPath, "agentcore", "agentcore.json"), "utf8")).toBe(
+      spec,
+    );
+  });
 
   test("stops on a box profile that does not parse, and changes nothing", async () => {
     const { subject } = manager({ GITHUB_TOKEN: "ghp_shell" });

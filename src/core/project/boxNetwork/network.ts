@@ -7,6 +7,7 @@
 import {
   credentialEnvironmentVariableNames,
   credentialEnvVarName,
+  type Credential,
 } from "../../../projectSchemas/credential";
 import type {
   AgentCoreGateway,
@@ -17,7 +18,7 @@ import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
-import { boxEgressCredentialName } from "../boxProfileCredentials";
+import { boxEgressCredentialName, boxRouteCredentialProblem } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
 import { BOX_SECRETS_MANAGER_PLUGIN, boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
 import { BOX_CODEZIP_ENTRYPOINT } from "../templates/boxProfile";
@@ -560,6 +561,12 @@ function hostTargets(
    * entry that reads the credential's own variable takes the same key.
    */
   const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
+  /**
+   * The API key credentials that build adds for the entries before this one, which a later entry
+   * must not derive the same variable as, and the entries that already failed for their name.
+   */
+  const pending: Credential[] = [];
+  const badNames = new Set<string>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
     let userTarget = false;
@@ -571,6 +578,31 @@ function hostTargets(
       if (!result.ok) failAt(host, result.code, result.reason);
       else if (result.userTarget) userTarget = true;
       else auth = result.auth;
+      // Build names the credential after the entry when no credential reserves its variable, and
+      // deploy would have no credential for a name `agentcore credentials add` refuses.
+      if (
+        auth.kind === "apiKey" &&
+        auth.credentialName === entry.name &&
+        !badNames.has(entry.name)
+      ) {
+        const problem = boxRouteCredentialProblem(
+          [...project.spec.credentials, ...pending],
+          entry.name,
+        );
+        if (problem !== undefined) {
+          badNames.add(entry.name);
+          failAt(
+            host,
+            "CREDENTIAL_NAME_INVALID",
+            `reads its key from env://${auth.variable}, which build keeps in an API key ` +
+              `credential named after the entry, and ${problem}. Rename the entry.`,
+          );
+        } else if (
+          ![...project.spec.credentials, ...pending].some(({ name }) => name === entry.name)
+        ) {
+          pending.push({ authorizerType: "ApiKeyCredentialProvider", name: entry.name });
+        }
+      }
       const alias =
         auth.kind === "apiKey" && auth.variable !== credentialEnvVarName(auth.credentialName)
           ? auth
