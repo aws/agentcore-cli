@@ -53,12 +53,12 @@ describe("gateway-connector wizard helpers", () => {
       ...spec,
       projectType: "box",
       runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
-      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name, "strands-box")],
     });
     const screen = renderScreen("/agentcore/add/gateway-connector");
 
     await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
-    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name, "strands-box").name);
     expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
     screen.unmount();
   });

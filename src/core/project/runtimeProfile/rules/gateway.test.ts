@@ -48,7 +48,7 @@ function project(targets: AgentCoreGatewayTarget[] = [], memories: string[] = []
     runtimes: [RUNTIME],
     memories: memories.map((name) => ({ name, eventExpiryDuration: 30, strategies: [] })),
     credentials: [],
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent", "strands-box"), targets }],
   } as unknown as ProjectSpec;
 }
 

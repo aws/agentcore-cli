@@ -389,7 +389,7 @@ describe("project remove screen", () => {
           ...runtime,
           platformVersion: "V2",
         })),
-        agentCoreGateways: [boxGatewaySpec(RUNTIME)],
+        agentCoreGateways: [boxGatewaySpec(RUNTIME, "strands-box")],
       }),
     );
     const project = (await core.projectManager.resolve({ filePath: created.rootPath }))!;
@@ -401,7 +401,9 @@ describe("project remove screen", () => {
 
     const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
     expect(successFrame).toContain("gateways removed");
-    expect(successFrame).toContain(`removed gateway '${boxGatewaySpec(RUNTIME).name}'`);
+    expect(successFrame).toContain(
+      `removed gateway '${boxGatewaySpec(RUNTIME, "strands-box").name}'`,
+    );
     r.unmount();
   });
 
@@ -410,7 +412,7 @@ describe("project remove screen", () => {
     const { project: created, specPath } = await createProject(core);
     const onDisk = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
     const boxGateway = {
-      ...boxGatewaySpec(RUNTIME),
+      ...boxGatewaySpec(RUNTIME, "strands-box"),
       targets: [
         { name: "search", targetType: "mcpServer", endpoint: "https://search.example.com/mcp" },
       ],

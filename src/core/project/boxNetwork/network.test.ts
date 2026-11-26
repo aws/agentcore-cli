@@ -76,7 +76,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     credentials: options.credentials ?? [],
     agentCoreGateways: [
       {
-        ...boxGatewaySpec("agent"),
+        ...boxGatewaySpec("agent", "strands-box"),
         targets: options.targets ?? [],
         ...(options.executionRoleArn && { executionRoleArn: options.executionRoleArn }),
       },
@@ -1553,7 +1553,7 @@ describe("the gateways of the project", () => {
   const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
   const OPEN = { name: "open-tools", authorizerType: "NONE", targets: [] };
   const JWT = { name: "jwt-tools", authorizerType: "CUSTOM_JWT", targets: [] };
-  const OTHER_BOX = { ...boxGatewaySpec("other"), targets: [] };
+  const OTHER_BOX = { ...boxGatewaySpec("other", "strands-box"), targets: [] };
 
   test("gives the agent each gateway without boundRuntime, with its target and its variables", () => {
     const { network } = model("", {}, { gateways: [TOOLS, OPEN, OTHER_BOX] });
@@ -1753,7 +1753,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             {
               name: "egress-gateway-tools",
@@ -1788,7 +1788,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             passthrough("mine", `https://${GATEWAY_HOST}`, {
               outboundAuth: {

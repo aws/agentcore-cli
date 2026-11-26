@@ -634,7 +634,7 @@ describe("CdkBackend.build", () => {
             ...(!otel && { instrumentation: { enableOtel: false } }),
           },
         ],
-        agentCoreGateways: projectType ? [boxGatewaySpec("agent")] : [],
+        agentCoreGateways: projectType ? [boxGatewaySpec("agent", "strands-box")] : [],
       });
 
       const command = started ? UNDER_OTEL[build]! : PLAIN;
@@ -661,7 +661,7 @@ describe("CdkBackend.build", () => {
           platformVersion: "V2" as const,
         },
       ],
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     });
 
     expect(boxOtelWarnings(spec, [boxNetwork({ agent: { command: PLAIN } })])).toEqual([]);
@@ -682,7 +682,7 @@ describe("CdkBackend.build", () => {
           platformVersion: "V2" as const,
         },
       ],
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     });
 
     expect(boxOtelWarnings(spec, [])).toEqual([]);
@@ -704,7 +704,7 @@ describe("CdkBackend.build", () => {
           platformVersion: "V2" as const,
         },
       ],
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     });
     await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
     await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
@@ -739,7 +739,7 @@ describe("CdkBackend.build", () => {
           platformVersion: "V2" as const,
         },
       ],
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     });
     await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
     await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
@@ -2659,8 +2659,8 @@ describe("CdkBackend.resolveProjectResources", () => {
         ]),
       ]);
 
-  const ONE = boxGatewaySpec("agent").name;
-  const TWO = boxGatewaySpec("second_agent").name;
+  const ONE = boxGatewaySpec("agent", "strands-box").name;
+  const TWO = boxGatewaySpec("second_agent", "strands-box").name;
   /** A gateway and its target names; a deployed gateway, the target id exports, and the ids expected. */
   test.each([
     {
