@@ -33,7 +33,7 @@ const SPEC = {
   ],
   memories: [],
   credentials: [],
-  agentCoreGateways: [boxGatewaySpec("agent")],
+  agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
 } as unknown as ProjectSpec;
 
 /** What box resolves the profile of {@link project} to: its route `api`, which has no secret. */
@@ -74,7 +74,10 @@ function specWith(...names: string[]): ProjectSpec {
       ...SPEC.runtimes,
       ...names.map((name) => ({ ...SPEC.runtimes[0]!, name, codeLocation: `app/${name}` })),
     ],
-    agentCoreGateways: [boxGatewaySpec("agent"), ...names.map((name) => boxGatewaySpec(name))],
+    agentCoreGateways: [
+      boxGatewaySpec("agent", "strands-box"),
+      ...names.map((name) => boxGatewaySpec(name, "strands-box")),
+    ],
   } as unknown as ProjectSpec;
 }
 
@@ -120,8 +123,12 @@ describe("readBoxNetworks", () => {
     const spec = {
       ...SPEC,
       agentCoreGateways: [
-        { ...boxGatewaySpec("agent"), name: "agent-box-egress", boundRuntime: undefined },
-        { ...boxGatewaySpec("agent"), name: "renamed" },
+        {
+          ...boxGatewaySpec("agent", "strands-box"),
+          name: "agent-box-egress",
+          boundRuntime: undefined,
+        },
+        { ...boxGatewaySpec("agent", "strands-box"), name: "renamed" },
       ],
     } as unknown as ProjectSpec;
 
@@ -273,7 +280,7 @@ describe("readBoxNetworks", () => {
         name,
         codeLocation: `app/${name}`,
       })),
-      agentCoreGateways: Object.keys(runtimes).map((name) => boxGatewaySpec(name)),
+      agentCoreGateways: Object.keys(runtimes).map((name) => boxGatewaySpec(name, "strands-box")),
     } as unknown as ProjectSpec;
 
     const networks = await readBoxNetworks(spec, root, resolver);
@@ -318,7 +325,10 @@ describe("readBoxNetworks", () => {
         name,
         codeLocation: `app/${name}`,
       })),
-      agentCoreGateways: [boxGatewaySpec("agent"), boxGatewaySpec("second")],
+      agentCoreGateways: [
+        boxGatewaySpec("agent", "strands-box"),
+        boxGatewaySpec("second", "strands-box"),
+      ],
     } as unknown as ProjectSpec;
 
     const networks = await readBoxNetworks(spec, root, resolver);
@@ -481,9 +491,9 @@ describe("the telemetry of each box runtime", () => {
         { ...SPEC.runtimes[0]!, name: "quiet", codeLocation: "app/quiet" },
       ],
       agentCoreGateways: [
-        boxGatewaySpec("agent"),
-        boxGatewaySpec("second"),
-        boxGatewaySpec("quiet"),
+        boxGatewaySpec("agent", "strands-box"),
+        boxGatewaySpec("second", "strands-box"),
+        boxGatewaySpec("quiet", "strands-box"),
       ],
     } as unknown as ProjectSpec;
     const logs = (log_group: string) => ({
@@ -701,7 +711,7 @@ describe("the record of the targets build writes", () => {
   };
   const withTarget = {
     ...SPEC,
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets: [mine] }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent", "strands-box"), targets: [mine] }],
   } as unknown as ProjectSpec;
   const managed = async (root: string) => [
     ...(await readBoxNetworks(withTarget, root, new FakeBoxProfileResolver()))[0]!.managedTargets,
@@ -756,7 +766,9 @@ describe("the IAM policy files of the Box gateway", () => {
     const listed = ["missing", "broken", "list", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent", "strands-box"), additionalPolicies: listed },
+      ],
     } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
@@ -790,7 +802,7 @@ describe("the IAM policy files of the Box gateway", () => {
       ...SPEC,
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           additionalPolicies: Object.keys(files).map((name) => `agentcore/${name}.json`),
         },
       ],
@@ -807,7 +819,10 @@ describe("the IAM policy files of the Box gateway", () => {
     const spec = {
       ...SPEC,
       agentCoreGateways: [
-        { ...boxGatewaySpec("agent"), additionalPolicies: ["agentcore/box-bedrock-policy.json"] },
+        {
+          ...boxGatewaySpec("agent", "strands-box"),
+          additionalPolicies: ["agentcore/box-bedrock-policy.json"],
+        },
       ],
     } as unknown as ProjectSpec;
 
@@ -827,7 +842,9 @@ describe("the IAM policy files of the Box gateway", () => {
     const listed = ["box-bedrock-policy", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent", "strands-box"), additionalPolicies: listed },
+      ],
     } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
@@ -858,9 +875,9 @@ describe("boxNetworkFailureMessage", () => {
       ...SPEC,
       runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
       agentCoreGateways: [
-        boxGatewaySpec("agent"),
+        boxGatewaySpec("agent", "strands-box"),
         {
-          ...boxGatewaySpec("second"),
+          ...boxGatewaySpec("second", "strands-box"),
           targets: [
             {
               name: "api",

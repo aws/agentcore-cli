@@ -21,7 +21,8 @@ export const TagsSchema = z
   .refine((tags) => Object.keys(tags).length <= MAX_TAGS, `Maximum ${MAX_TAGS} tags per resource`);
 export type Tags = z.infer<typeof TagsSchema>;
 /**
- * The tag key that names the family of CLI templates a resource was made from: `strands-box` for a
- * Box template, `BedrockManagedAgents` for the BMA template. `isBmaRuntime` reads it.
+ * The tag key that names the CLI template a resource was made from: the Box template's name (such
+ * as `agent-python-strands-box`) on a box runtime and its Box gateway, `strands-box` when
+ * `add runtime` made them, and `BedrockManagedAgents` for the BMA template. `isBmaRuntime` reads it.
  */
 export const TEMPLATE_TAG_KEY = "agentcore:template";

@@ -28,7 +28,7 @@ function spec(options: { entrypoint?: string; memories?: string[] } = {}): Proje
       eventExpiryDuration: 30,
       strategies: [],
     })),
-    agentCoreGateways: [boxGatewaySpec("agent")],
+    agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
   } as unknown as ProjectSpec;
 }
 

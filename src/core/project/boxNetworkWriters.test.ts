@@ -113,7 +113,7 @@ function spec(targets: AgentCoreGatewayTarget[] = [MINE]) {
     ],
     memories: [],
     credentials: [],
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent", "strands-box"), targets }],
   } as unknown as ProjectSpec;
 }
 
@@ -258,7 +258,9 @@ describe("gatewayTargetsWriter", () => {
         }),
       );
       const project = spec([passthrough("egress-old", "https://old.example.com")]);
-      project.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec("search")));
+      project.agentCoreGateways.push(
+        AgentCoreGatewaySchema.parse(boxGatewaySpec("search", "strands-box")),
+      );
       const models = [network({ hosts: [host("api.example.com", "egress-api")] })];
 
       const edits = boxNetworkEdits([gatewayTargetsWriter], models, {

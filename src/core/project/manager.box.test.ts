@@ -80,7 +80,8 @@ async function drain<T>(generator: AsyncGenerator<unknown, T>): Promise<T> {
  * A Box project with the given box runtimes, as `newProjectSpec` writes one for a Box template:
  * `projectType: "box"`, `box.version` on each runtime, and the gateway `<runtime>-box-egress` for
  * each. The runtimes are written here, so a test can make a project with two. They check that
- * each gateway stays bound to its own runtime.
+ * each gateway stays bound to its own runtime. Its runtimes carry no tags, unlike a runtime a Box
+ * template makes, so each Box gateway gets the fallback `strands-box`.
  */
 async function createdProject(
   manager: FsProjectManager,
@@ -118,6 +119,21 @@ async function createdProject(
     ),
   );
   return (await manager.resolve({ filePath: created.rootPath }))!;
+}
+
+/** `count` tags named `<prefix>0`, `<prefix>1`, ..., each with the value `v`. */
+const numberedTags = (prefix: string, count: number): Record<string, string> =>
+  Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}${i}`, "v"]));
+
+/** `project` with the project-level `tags` written into its agentcore.json, resolved again. */
+async function withProjectTags(
+  manager: FsProjectManager,
+  project: Project,
+  tags: Record<string, string>,
+): Promise<Project> {
+  const path = join(project.rootPath, "agentcore", "agentcore.json");
+  await writeFile(path, JSON.stringify({ ...(await specOnDisk(project)), tags }, null, 2));
+  return (await manager.resolve({ filePath: project.rootPath }))!;
 }
 
 /** The agentcore.json of MyTemp3, a project made with CLI 1.0.0, as that CLI wrote it. */
@@ -337,8 +353,11 @@ describe("agentcore create", () => {
     ]);
 
     expect(spec.projectType).toBe("box");
-    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec("agent"), boxGatewaySpec("my_agent")]);
-    expect(boxGatewaySpec("my_agent")).toMatchObject({
+    expect(spec.agentCoreGateways).toEqual([
+      boxGatewaySpec("agent", "strands-box"),
+      boxGatewaySpec("my_agent", "strands-box"),
+    ]);
+    expect(boxGatewaySpec("my_agent", "strands-box")).toMatchObject({
       name: "my-agent-box-egress",
       authorizerType: "AWS_IAM",
       protocolType: "None",
@@ -397,7 +416,7 @@ describe("agentcore create", () => {
     });
   });
 
-  test("a Box template tags its runtime and its Box gateway agentcore:template=strands-box", async () => {
+  test("a Box template tags its runtime and its Box gateway with the name of the template", async () => {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
     tempDirectories.push(directory);
     process.chdir(directory);
@@ -413,7 +432,7 @@ describe("agentcore create", () => {
     );
 
     const spec = await parsedSpec(project);
-    const tag = { "agentcore:template": "strands-box" };
+    const tag = { "agentcore:template": "agent-python-strands-box" };
     expect(spec.runtimes[0]?.tags).toEqual(tag);
     expect(spec.agentCoreGateways[0]?.tags).toEqual(tag);
     // The tag goes on the runtime and its gateway only, not on every resource of the project.
@@ -573,7 +592,7 @@ describe("gateway targets in a Box project", () => {
     expect(search.platformVersion).toBe("V2");
     expect(search.entrypoint).toBe("start.py");
     expect(spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === "search")).toEqual(
-      expect.objectContaining(boxGatewaySpec("search")),
+      expect.objectContaining(boxGatewaySpec("search", "strands-box")),
     );
     const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
     // dev starts this profile's box in app/search, the runtime's own folder.
@@ -630,30 +649,32 @@ describe("gateway targets in a Box project", () => {
     ).toEqual({ "agentcore:template": "strands-box" });
   });
 
-  test("add runtime keeps the value the user passes for agentcore:template", async () => {
+  test("add runtime refuses agentcore:template in --tags, and changes nothing", async () => {
     const manager = subject();
     const project = await createdProject(manager);
+    const before = await specText(project);
 
-    await drain(
+    const add = drain(
       manager.addResource(project, {
         resourceType: "runtime",
         resourceConfig: {
           name: "search",
           language: "Python",
           protocol: "HTTP",
-          tags: { "agentcore:template": "custom" },
+          tags: { team: "ml", "agentcore:template": "BedrockManagedAgents" },
         },
       } as never),
     );
 
-    const spec = await parsedSpec(project);
-    expect(spec.runtimes.find(({ name }) => name === "search")?.tags).toEqual({
-      "agentcore:template": "custom",
-    });
-    // The Box gateway takes no --tags, so it keeps the Box template tag.
-    expect(
-      spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === "search")?.tags,
-    ).toEqual({ "agentcore:template": "strands-box" });
+    await expect(add).rejects.toThrow(
+      new InputValidationError(
+        "cannot add runtime 'search' to a Box project: the CLI sets the tag agentcore:template on " +
+          "each runtime of a Box project. Remove it from --tags.",
+      ),
+    );
+    expect(await specText(project)).toBe(before);
+    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+    expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
   });
 
   test("add runtime adds an empty entry for its Box gateway to the record of build's targets", async () => {
@@ -689,7 +710,7 @@ describe("gateway targets in a Box project", () => {
     }
 
     const notices = warnings.filter((warning) => warning.includes("APPLICATION_LOGS"));
-    expect(notices).toEqual([boxGatewayLogsNotice(boxGatewaySpec("search").name)]);
+    expect(notices).toEqual([boxGatewayLogsNotice(boxGatewaySpec("search", "strands-box").name)]);
   });
 
   test("add runtime refuses a Bedrock Agent import in a Box project, and changes nothing", async () => {
@@ -989,7 +1010,9 @@ describe("gateway targets in a Box project", () => {
     // The add wrote the box profile of the new runtime, and then the write of agentcore.json failed.
     const profile = join(project.rootPath, ".box", "search", "local", "profile.toml");
     expect(messages).toContain(`writing box profile ${profile}`);
-    expect(messages).not.toContain(boxGatewayLogsNotice(boxGatewaySpec("search").name));
+    expect(messages).not.toContain(
+      boxGatewayLogsNotice(boxGatewaySpec("search", "strands-box").name),
+    );
     expect(await specText(project)).toBe(before);
     expect(existsSync(recordOf(project))).toBe(false);
   });
@@ -1021,38 +1044,142 @@ describe("gateway targets in a Box project", () => {
     });
   });
 
-  test("add runtime refuses --tags that the Box template tag takes over the limit, and changes nothing", async () => {
+  test.each([
+    ["50 --tags", {}, numberedTags("k", 50), 51],
+    ["45 project tags and 5 --tags", numberedTags("p", 45), numberedTags("k", 5), 51],
+  ])(
+    "add runtime refuses %s, over the limit with the template tag, and changes nothing",
+    async (_label, projectTags, runtimeTags, total) => {
+      const manager = subject();
+      let project = await createdProject(manager);
+      if (Object.keys(projectTags).length > 0)
+        project = await withProjectTags(manager, project, projectTags);
+      const before = await specText(project);
+
+      const add = drain(
+        manager.addResource(project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "search",
+            language: "Python",
+            protocol: "HTTP",
+            tags: runtimeTags,
+          },
+        } as never),
+      );
+
+      await expect(add).rejects.toThrow(
+        new InputValidationError(
+          `cannot add runtime 'search' to a Box project: it would have ${total} tags at deploy, ` +
+            "over the limit of 50: its --tags, the tags of the project, and the tag " +
+            "agentcore:template that the CLI sets on each runtime of a Box project. Pass fewer " +
+            "--tags, or remove tags from the project.",
+        ),
+      );
+      expect(await specText(project)).toBe(before);
+      expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
+      expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
+    },
+  );
+
+  test.each([
+    ["45 project tags and 4 --tags", numberedTags("p", 45), numberedTags("k", 4)],
+    [
+      "30 project tags and the same 30 keys in --tags, counted once",
+      numberedTags("k", 30),
+      numberedTags("k", 30),
+    ],
+    [
+      "a project tag agentcore:template beside 48 others, and 1 --tags",
+      { "agentcore:template": "custom", ...numberedTags("p", 48) },
+      numberedTags("k", 1),
+    ],
+  ])(
+    "add runtime takes %s, 50 tags at most at deploy",
+    async (_label, projectTags, runtimeTags) => {
+      const manager = subject();
+      const project = await withProjectTags(manager, await createdProject(manager), projectTags);
+
+      await drain(
+        manager.addResource(project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "search",
+            language: "Python",
+            protocol: "HTTP",
+            tags: runtimeTags,
+          },
+        } as never),
+      );
+
+      const spec = await parsedSpec(project);
+      // A project tag agentcore:template does not replace the runtime's own, which wins at deploy.
+      expect(spec.runtimes.find(({ name }) => name === "search")?.tags).toEqual({
+        ...runtimeTags,
+        "agentcore:template": "strands-box",
+      });
+      // add runtime writes no project tags.
+      expect(spec.tags).toEqual(projectTags);
+    },
+  );
+
+  test("add runtime without --tags tags the runtime and its Box gateway strands-box only", async () => {
     const manager = subject();
     const project = await createdProject(manager);
-    const before = await specText(project);
-    const tags = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`k${i}`, "v"]));
 
-    const add = drain(
+    await drain(
       manager.addResource(project, {
         resourceType: "runtime",
-        resourceConfig: { name: "search", language: "Python", protocol: "HTTP", tags },
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
       } as never),
     );
 
-    await expect(add).rejects.toThrow(
-      new InputValidationError(
-        "cannot add runtime 'search' to a Box project: it would have 51 tags, over the limit of " +
-          "50. Every runtime of a Box project gets the tag agentcore:template=strands-box, so pass " +
-          "at most 49 tags with --tags, or set agentcore:template yourself.",
-      ),
-    );
-    expect(await specText(project)).toBe(before);
-    expect(existsSync(join(project.rootPath, "app", "search"))).toBe(false);
-    expect(existsSync(join(project.rootPath, ".box", "search"))).toBe(false);
+    const spec = await parsedSpec(project);
+    const tag = { "agentcore:template": "strands-box" };
+    expect(spec.runtimes.find(({ name }) => name === "search")?.tags).toEqual(tag);
+    expect(
+      spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === "search")?.tags,
+    ).toEqual(tag);
   });
 
-  test("add runtime takes 50 --tags when one of them is agentcore:template", async () => {
+  test("add runtime into a project a Box template made keeps the template name on the first runtime", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));
+    tempDirectories.push(directory);
+    process.chdir(directory);
+    const manager = subject();
+    const project = await drain(
+      manager.create({
+        name: "example",
+        skipInstall: true,
+        skipGit: true,
+        scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+          runtimeName: "agent",
+        }),
+      }),
+    );
+
+    await drain(
+      manager.addResource(project, {
+        resourceType: "runtime",
+        resourceConfig: { name: "search", language: "Python", protocol: "HTTP" },
+      } as never),
+    );
+
+    const spec = await parsedSpec(project);
+    const tagOf = (runtime: string) => [
+      spec.runtimes.find(({ name }) => name === runtime)?.tags?.["agentcore:template"],
+      spec.agentCoreGateways.find(({ boundRuntime }) => boundRuntime === runtime)?.tags?.[
+        "agentcore:template"
+      ],
+    ];
+    expect(tagOf("agent")).toEqual(["agent-python-strands-box", "agent-python-strands-box"]);
+    expect(tagOf("search")).toEqual(["strands-box", "strands-box"]);
+  });
+
+  test("add runtime takes 49 --tags, 50 with the template tag", async () => {
     const manager = subject();
     const project = await createdProject(manager);
-    const tags = Object.fromEntries([
-      ["agentcore:template", "custom"],
-      ...Array.from({ length: 49 }, (_, i) => [`k${i}`, "v"]),
-    ]);
+    const tags = Object.fromEntries(Array.from({ length: 49 }, (_, i) => [`k${i}`, "v"]));
 
     await drain(
       manager.addResource(project, {
@@ -1062,7 +1189,10 @@ describe("gateway targets in a Box project", () => {
     );
 
     const spec = await parsedSpec(project);
-    expect(spec.runtimes.find(({ name }) => name === "search")?.tags).toEqual(tags);
+    expect(spec.runtimes.find(({ name }) => name === "search")?.tags).toEqual({
+      ...tags,
+      "agentcore:template": "strands-box",
+    });
   });
 
   test("add runtime refuses a TypeScript runtime in a Box project, and changes nothing", async () => {

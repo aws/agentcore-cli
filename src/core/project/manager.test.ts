@@ -941,9 +941,13 @@ describe("FsProjectManager.create box profile", () => {
   });
 
   test.each([
-    ["the CodeZip box template", AGENT_PYTHON_STRANDS_BOX],
-    ["the container box template", AGENT_PYTHON_STRANDS_BOX_CONTAINER],
-  ])("a template with a box profile makes a Box project: %s", async (_label, runtime) => {
+    ["the CodeZip box template", AGENT_PYTHON_STRANDS_BOX, "agent-python-strands-box"],
+    [
+      "the container box template",
+      AGENT_PYTHON_STRANDS_BOX_CONTAINER,
+      "agent-python-strands-box-container",
+    ],
+  ])("a template with a box profile makes a Box project: %s", async (_label, runtime, template) => {
     const directory = await inTempDirectory();
     await runCreate(manager().manager, {
       name: "example",
@@ -956,7 +960,7 @@ describe("FsProjectManager.create box profile", () => {
       await readFile(join(directory, "example", "agentcore", "agentcore.json"), "utf8"),
     ) as Record<string, unknown>;
     expect(spec.projectType).toBe("box");
-    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec(runtime.runtimeName)]);
+    expect(spec.agentCoreGateways).toEqual([boxGatewaySpec(runtime.runtimeName, template)]);
   });
 
   test("a template with no box profile makes no Box project", async () => {
@@ -2402,7 +2406,7 @@ describe("FsProjectManager.build", () => {
 
     const root = join(directory, "example");
     const spec = JSON.parse(await readFile(join(root, "agentcore", "agentcore.json"), "utf8"));
-    const boxGatewayName = boxGatewaySpec(AGENT_PYTHON_STRANDS_BOX.runtimeName).name;
+    const boxGatewayName = boxGatewaySpec(AGENT_PYTHON_STRANDS_BOX.runtimeName, "strands-box").name;
     const box = spec.agentCoreGateways.find(
       ({ name }: { name: string }) => name === boxGatewayName,
     );

@@ -113,14 +113,15 @@ describe("the Box gateway target and the Memory host", () => {
 
 describe("the Box template tag", () => {
   test.each([...RUNTIME_TEMPLATE_SHORTCUT_NAMES])(
-    "%s tags its runtime only if it is a Box template",
+    "%s tags its runtime with its name only if it is a Box template",
     (name) => {
       const tags = resolveRuntimeTemplateProfile(resolveRuntimeTemplateShortcut(name))?.runtime
         ?.tags;
       if (isBoxTemplate(name)) {
-        expect(tags).toEqual({ "agentcore:template": "strands-box" });
+        expect(tags).toEqual({ "agentcore:template": name });
       } else {
-        expect(tags?.["agentcore:template"]).not.toBe("strands-box");
+        // Only the BMA template tags its runtime otherwise.
+        expect([undefined, "BedrockManagedAgents"]).toContain(tags?.["agentcore:template"]);
       }
     },
   );
