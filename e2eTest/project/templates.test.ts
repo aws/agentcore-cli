@@ -253,6 +253,30 @@ const LOCAL_DEV_PORT_BASE = 18080;
  */
 const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
 
+/** The `agentcore dev` step that holds each box ingress port, so the tests that share it take turns. */
+const devPortQueues = new Map<number, Promise<void>>();
+
+/**
+ * Runs `step` once no other test runs `agentcore dev` on `port`. Box listens on the protocol's fixed
+ * ingress port, so two dev runs on one port cannot overlap; the rest of each test (build, deploy,
+ * invoke) runs concurrently with the others.
+ */
+async function withDevPort<T>(port: number, step: () => Promise<T>): Promise<T> {
+  const previous = devPortQueues.get(port) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => (release = resolve));
+  devPortQueues.set(
+    port,
+    previous.then(() => mine),
+  );
+  await previous;
+  try {
+    return await step();
+  } finally {
+    release();
+  }
+}
+
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
 // projects are independent, so the templates run concurrently; each one's
@@ -340,13 +364,16 @@ describe(
   },
 );
 
-// The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
-// deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
-// `agentcore dev`, which the sequential tests below cover. They need `box` on PATH and the
-// AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable @aws/agentcore-cdk build, so CI skips them. Run them
-// with `bun run test:e2e -- --tagsFilter='box'`.
+// The Strands Box templates run their agent in a box, locally and on AgentCore Runtime. Each test
+// takes one project through the flow a user follows: create, dev and invoke --local, build, deploy,
+// invoke, checks that the Runtime started the agent in a box, then runs dev and invoke --local again. Dev, build and deploy run in one
+// project because dev leaves state that build and deploy then read (box binds each profile name to
+// the file that ran it). The dev step waits for the other tests on its box ingress port
+// (withDevPort); the deploys run concurrently. The container template skips dev without a container
+// tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable
+// @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
 describe.skipIf(!BOX_DEPLOYS)(
-  "create, deploy, invoke for Strands Box templates",
+  "create, dev, build, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
     const cli = new CliRunner();
@@ -360,16 +387,23 @@ describe.skipIf(!BOX_DEPLOYS)(
     test.concurrent.each(templates)(
       "$name",
       {
+        // Each dev step may wait for every other test on its port.
         timeout:
           TIMEOUT_MS.PROJECT_CREATE +
+          2 * templates.length * (TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE) +
           2 * TIMEOUT_MS.PROJECT_INVOKE +
-          2 * TIMEOUT_MS.PROJECT_DEPLOY +
+          3 * TIMEOUT_MS.PROJECT_DEPLOY +
           TIMEOUT_MS.PROJECT_REMOVE,
       },
       async (runtime) => {
         const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
         let scenarioCompleted = false;
         try {
+          await devInBox(cli, runtime, projectDir);
+
+          // Build after dev, as a user does: build runs box on the local profile that dev ran.
+          parseResult(JsonObjectSchema, await cli.run(["build", "--json"], projectDir));
+
           const deployment = parseResult(
             DeployResponseSchema,
             await cli.run(["deploy", "--yes", "--json"], projectDir),
@@ -403,6 +437,10 @@ describe.skipIf(!BOX_DEPLOYS)(
           }
 
           await assertRunsInBox(cli, projectDir);
+
+          // Dev again after build and deploy: they leave state (box's profile bindings, the
+          // Runtime profile, .box-dist) that dev must still run beside.
+          await devInBox(cli, runtime, projectDir);
           scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.
@@ -416,10 +454,11 @@ describe.skipIf(!BOX_DEPLOYS)(
   },
 );
 
-// `agentcore dev` for each Strands Box template: box runs the agent on the developer's machine. Box
-// listens on the protocol's fixed ingress port, so these tests run one at a time. They deploy
-// nothing. They need `box` on PATH and a machine where `box run` can start its sandbox.
-describe.skipIf(!BOX_ON_PATH)(
+// `agentcore dev` for each Strands Box template, on a machine that cannot deploy Box projects (no
+// AGENTCORE_E2E_BOX_CDK): box runs the agent on the developer's machine. With the opt-in, the flow
+// tests above run dev instead. Box listens on the protocol's fixed ingress port, so these tests run
+// one at a time. They need `box` on PATH and a machine where `box run` can start its sandbox.
+describe.skipIf(!BOX_ON_PATH || BOX_DEPLOYS)(
   "create and dev for Strands Box templates",
   { tags: [TAGS.BOX], sequential: true },
   () => {
@@ -784,6 +823,24 @@ async function invokeLocally(
       await new Promise<void>((resolve) => dev.once("close", resolve));
     }
   }
+}
+
+/**
+ * Runs `agentcore dev` and `invoke --local` for a box template, once no other test runs dev on its
+ * box ingress port, and checks that box ran the agent. The container template needs a container
+ * tool for dev, so it skips the step without one.
+ */
+async function devInBox(
+  cli: CliRunner,
+  runtime: RuntimeTemplateTestCase,
+  projectDir: string,
+): Promise<void> {
+  if (!CONTAINER_TOOL_ON_PATH && runtime.template === "agent-python-strands-box-container") return;
+  const port = BOX_DEV_PORTS[runtime.protocol];
+  const { devOutput } = await withDevPort(port, () =>
+    invokeLocally(cli, runtime, projectDir, port),
+  );
+  expect(devOutput).toContain("box: running profile");
 }
 
 /** Given a runtime and response body, validates the protocol response and request identifier. */
