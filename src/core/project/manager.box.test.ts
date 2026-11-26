@@ -370,7 +370,7 @@ describe("agentcore create", () => {
 
   test.each([
     ["no containment", undefined, undefined, undefined],
-    ["sandboxed", "sandboxed" as const, undefined, undefined],
+    ["contained", "contained" as const, undefined, undefined],
     ["private-vpc", "private-vpc" as const, "PRIVATE_VPC", { mode: "CONTAINED" }],
   ])("with %s writes containment %p on the runtime", async (_name, containment, value, network) => {
     const directory = await mkdtemp(join(tmpdir(), "agentcore-box-"));

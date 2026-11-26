@@ -119,8 +119,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       ),
       flag(
         "containment",
-        "how contained the agent is: sandboxed (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
-        z.enum(CONTAINMENT_LEVELS).default("sandboxed"),
+        "the containment level of the agent: contained (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(CONTAINMENT_LEVELS).default("contained"),
       ),
       flag(
         "skip-install",

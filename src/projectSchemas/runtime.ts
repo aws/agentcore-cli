@@ -290,13 +290,13 @@ export const BoxVersionSchema = z
   .regex(/^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/, "a box version is letters, digits, '.', '+' and '-'");
 
 /**
- * How far a runtime of a Box project is contained. `SANDBOXED`, or no field: the agent runs in a box
+ * How far a runtime of a Box project is contained. `CONTAINED`, or no field: the agent runs in a box
  * behind its Box gateway. `PRIVATE_VPC`: also in a private VPC with no internet path.
  */
-export const ContainmentSchema = z.enum(["SANDBOXED", "PRIVATE_VPC"]);
+export const ContainmentSchema = z.enum(["CONTAINED", "PRIVATE_VPC"]);
 export type Containment = z.infer<typeof ContainmentSchema>;
 export const PRIVATE_VPC_LIMIT =
-  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each contained runtime.';
+  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each PRIVATE_VPC runtime.';
 
 /**
  * The AgentCore Runtime platform a runtime runs on, set as `PlatformVersion` on its
