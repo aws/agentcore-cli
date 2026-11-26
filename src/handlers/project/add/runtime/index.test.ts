@@ -694,6 +694,49 @@ describe("project add runtime", () => {
     expect(await runtimeOf(projectRoot, "s3_agent")).toMatchSnapshot();
   });
 
+  test("public EFS and S3 Files mounts are written to the spec entry", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "public_mounts",
+      "--language",
+      "python",
+      "--network-mode",
+      "PUBLIC",
+      "--platform-version",
+      "V2",
+      "--filesystem-configurations",
+      JSON.stringify([
+        {
+          efsAccessPoint: {
+            accessPointArn:
+              "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0",
+            mountPath: "/mnt/efs",
+          },
+        },
+        {
+          s3FilesAccessPoint: {
+            accessPointArn:
+              "arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1",
+            mountPath: "/mnt/s3",
+          },
+        },
+      ]),
+    ]);
+
+    expect(await runtimeOf(projectRoot, "public_mounts")).toMatchObject({
+      networkMode: "PUBLIC",
+      platformVersion: "V2",
+      filesystemConfigurations: [
+        { efsAccessPoint: { mountPath: "/mnt/efs" } },
+        { s3FilesAccessPoint: { mountPath: "/mnt/s3" } },
+      ],
+    });
+  });
+
   test("an existing folder keeps the user's files; only missing docs are added", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);

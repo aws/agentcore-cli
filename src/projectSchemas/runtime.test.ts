@@ -247,26 +247,58 @@ describe("runtime custom validation", () => {
       }).success,
     ).toBe(false);
   });
-  it("enforces filesystem counts, VPC dependency, and unique mount paths", () => {
+  it("enforces filesystem counts, network mode, platform version, and unique mount paths", () => {
     const efsAccessPoint = {
       efsAccessPoint: {
         accessPointArn:
           "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0",
-        mountPath: "/mnt/data",
+        mountPath: "/mnt/efs",
       },
     };
+    const s3FilesAccessPoint = {
+      s3FilesAccessPoint: {
+        accessPointArn:
+          "arn:aws:s3files:us-east-1:123456789012:file-system/fs-0123456789abcdef01/access-point/fsap-0123456789abcdef1",
+        mountPath: "/mnt/s3",
+      },
+    };
+    const byoMounts = [efsAccessPoint, s3FilesAccessPoint];
     expect(
       ProjectRuntimeSchema.safeParse({
         ...codeZipAgent,
-        filesystemConfigurations: [efsAccessPoint],
+        filesystemConfigurations: byoMounts,
       }).success,
     ).toBe(false);
     expect(
       ProjectRuntimeSchema.safeParse({
         ...codeZipAgent,
+        networkMode: "PUBLIC",
+        platformVersion: "V1",
+        filesystemConfigurations: byoMounts,
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        networkMode: "PUBLIC",
+        platformVersion: "V2",
+        filesystemConfigurations: byoMounts,
+      }).success,
+    ).toBe(true);
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
         networkMode: "VPC",
         networkConfig,
-        filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/data/" } }, efsAccessPoint],
+        filesystemConfigurations: byoMounts,
+      }).success,
+    ).toBe(true);
+    expect(
+      ProjectRuntimeSchema.safeParse({
+        ...codeZipAgent,
+        networkMode: "VPC",
+        networkConfig,
+        filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/efs/" } }, efsAccessPoint],
       }).success,
     ).toBe(false);
     expect(

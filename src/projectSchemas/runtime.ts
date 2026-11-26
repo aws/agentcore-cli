@@ -556,11 +556,12 @@ export const ProjectRuntimeSchema = z
         });
       }
       const hasByo = efsCount > 0 || s3Count > 0;
-      if (hasByo && data.networkMode !== "VPC") {
+      const hasPublicByo = hasByo && data.networkMode === "PUBLIC" && data.platformVersion === "V2";
+      if (hasByo && data.networkMode !== "VPC" && !hasPublicByo) {
         ctx.addIssue({
           code: "custom",
           message:
-            "efsAccessPoint and s3FilesAccessPoint filesystem mounts require networkMode: VPC",
+            "efsAccessPoint and s3FilesAccessPoint filesystem mounts require networkMode: VPC, or networkMode: PUBLIC with platformVersion: V2",
           path: ["filesystemConfigurations"],
         });
       }

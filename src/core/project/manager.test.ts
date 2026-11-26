@@ -29,6 +29,7 @@ import {
   LITELLM_MODEL_ID_REQUIRED_CN_MESSAGE,
   MEMORY_STRIPPED_CN_MESSAGE,
   MODEL_PROVIDER_RUNTIMES_CN_MESSAGE,
+  PUBLIC_BYO_MOUNTS_CN_MESSAGE,
   chinaModelProviderRestriction,
   modelProviderOverridableCnMessage,
 } from "./manager";
@@ -987,6 +988,38 @@ describe("FsProjectManager.addResource", () => {
       return { subject, project, checkedTools, deployCalls };
     }
 
+    test("rejects a public EFS or S3 Files mount before scaffolding", async () => {
+      await inTempDirectory();
+      const { subject, project, checkedTools } = await projectWithTarget(
+        "cn-north-1",
+        undefined,
+        MCP_PYTHON_FASTMCP,
+      );
+
+      await expect(
+        runAdd(subject, project, {
+          resourceType: "runtime",
+          resourceConfig: {
+            name: "cn_public_mount",
+            networkMode: "PUBLIC",
+            platformVersion: "V2",
+            filesystemConfigurations: [
+              {
+                efsAccessPoint: {
+                  accessPointArn:
+                    "arn:aws:elasticfilesystem:cn-north-1:111122223333:access-point/fsap-0123456789abcdef0",
+                  mountPath: "/mnt/efs",
+                },
+              },
+            ],
+            scaffoldRuntimeInput: { ...MCP_PYTHON_FASTMCP, runtimeName: "cn_public_mount" },
+          },
+        }),
+      ).rejects.toThrow(new RegionUnsupportedFeatureError(PUBLIC_BYO_MOUNTS_CN_MESSAGE));
+
+      expect(checkedTools).toEqual([]);
+    });
+
     test("rejects a model-provider template before scaffolding", async () => {
       await inTempDirectory();
       const { subject, project, checkedTools } = await projectWithTarget("cn-north-1");
@@ -1203,6 +1236,9 @@ describe("FsProjectManager.addResource", () => {
           bedrockManagedAgents?: boolean;
           tags?: Record<string, string>;
           additionalPolicies?: string[];
+          networkMode?: string;
+          platformVersion?: string;
+          filesystemConfigurations?: unknown[];
         }[];
         harnesses: unknown[];
         memories?: unknown[];
@@ -1233,6 +1269,33 @@ describe("FsProjectManager.addResource", () => {
         return { steps, error };
       }
     }
+
+    test("deploy to a China target rejects public EFS or S3 Files mounts", async () => {
+      await inTempDirectory();
+      const { subject, project, deployCalls } = await projectWithTarget(
+        "cn-north-1",
+        undefined,
+        MCP_PYTHON_FASTMCP,
+      );
+      await editSpec(project, (spec) => {
+        spec.runtimes[0]!.networkMode = "PUBLIC";
+        spec.runtimes[0]!.platformVersion = "V2";
+        spec.runtimes[0]!.filesystemConfigurations = [
+          {
+            efsAccessPoint: {
+              accessPointArn:
+                "arn:aws:elasticfilesystem:cn-north-1:111122223333:access-point/fsap-0123456789abcdef0",
+              mountPath: "/mnt/efs",
+            },
+          },
+        ];
+      });
+
+      const { error } = await deployOutcome(subject, project);
+      expect(error).toBeInstanceOf(RegionUnsupportedFeatureError);
+      expect(String(error)).toContain(PUBLIC_BYO_MOUNTS_CN_MESSAGE);
+      expect(deployCalls).toEqual([]);
+    });
 
     test("deploy to a China target hard-fails on a persisted commercial model provider", async () => {
       await inTempDirectory();
