@@ -555,6 +555,20 @@ describe("readBoxNetworks", () => {
 
     expect(await failuresOf(root)).toEqual([]);
   });
+
+  test("warns with what the resolver changed in box's state before Box resolved the profile", async () => {
+    const root = await project([]);
+    const note =
+      'Box had bound the profile name "demo-agent" to a copy of dev. Removed its record.';
+    const resolver = new FakeBoxProfileResolver({
+      ...boxShowOf({ egress: API_ROUTE }),
+      notes: [note],
+    });
+
+    const [network] = await readBoxNetworks(SPEC, root, resolver);
+
+    expect(network?.warnings).toEqual([note]);
+  });
 });
 
 describe("the telemetry of each box runtime", () => {

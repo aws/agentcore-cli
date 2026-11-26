@@ -10,6 +10,7 @@ import { InvalidEnvironmentError } from "../../errors/errors";
 import { ProcessFailedError, streamProcess, type ProcessStreamer } from "../../io";
 import { resolveExecutable } from "../../io/exec";
 import { BOX_MACOS_HINT, BOX_RELEASE, BOX_RELEASE_PAGE } from "./backends/boxRelease";
+import { releaseDevCopyName } from "./boxDevNameRecord";
 
 /** A pack of the profile, at the version Box resolves it to. */
 export interface BoxPack {
@@ -31,6 +32,8 @@ export interface ResolvedBoxProfile {
   readonly openRoutes: readonly BoxOpenRoute[];
   readonly packs: readonly BoxPack[];
   readonly warnings: readonly string[];
+  /** What the CLI changed in box's own state before Box resolved the profile. */
+  readonly notes?: readonly string[];
 }
 
 /**
@@ -126,6 +129,19 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
     profilePath: string,
     startFolder = "",
   ): Promise<ResolvedBoxProfile> {
+    return this.show(projectRoot, profilePath, startFolder, true);
+  }
+
+  /**
+   * Box's resolution of the profile. When `mayRelease`, and Box refuses the profile's name because
+   * it bound the name to agentcore dev's copy of a profile, releases the name and shows it once more.
+   */
+  private async show(
+    projectRoot: string,
+    profilePath: string,
+    startFolder: string,
+    mayRelease: boolean,
+  ): Promise<ResolvedBoxProfile> {
     // box takes a relative profile path from the folder it starts in.
     const shown = isAbsolute(profilePath) ? profilePath : posix.relative(startFolder, profilePath);
     const command = ["box", "profile", "show", shown, "--format", "json", "--full"];
@@ -169,6 +185,11 @@ export class BoxCliProfileResolver implements BoxProfileResolver {
             `'box profile show ${profilePath}' in the project folder to see why.`,
           { cause: error },
         );
+      }
+      const released = mayRelease ? releaseDevCopyName(lines, projectRoot, this.env) : undefined;
+      if (released !== undefined) {
+        const again = await this.show(projectRoot, profilePath, startFolder, false);
+        return { ...again, notes: [released] };
       }
       const agent = venvAgentFolder(lines, projectRoot);
       const oldBox = OLD_BOX_PACK_NAME.test(lines.join(" ").replace(/\s+/g, " "));

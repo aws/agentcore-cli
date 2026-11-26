@@ -14,11 +14,30 @@ import { otelEnvVars } from "./otel/collector";
  * | `[agent.env]` | the OTEL variables that dev gives an agent outside a box, except every `OTEL_EXPORTER_OTLP_*` variable, which box owns and sets to its own receiver |
  * | `[agent.env] PYTHONPATH` | CodeZip, when the venv has it: the OTEL auto-instrumentation folder of the venv first, so that each Python process of the agent is instrumented, and uvicorn's reload still works |
  * | `[agent] command` | container: the venv's Python starts under `opentelemetry-instrument`, without `--reload`, because the image holds no live code |
+ * | `[profile] name` | CodeZip: the local profile's name with `-dev` (boxDevProfileName), because box binds a name to the one profile file that runs it, and build and deploy show the local profile under its own name |
  */
+
+/** The git-ignored folder, from the project root, that holds the dev-time box profile of each agent. */
+export const BOX_DEV_PROFILES_DIR = posix.join("agentcore", ".cli", "box-dev");
 
 /** The folder, from the project root, of the dev-time box profile of agent `agentName`. */
 export function boxDevProfileFolder(agentName: string): string {
-  return posix.join("agentcore", ".cli", "box-dev", agentName);
+  return posix.join(BOX_DEV_PROFILES_DIR, agentName);
+}
+
+/** The longest profile name that box takes. */
+const BOX_PROFILE_NAME_MAX = 64;
+
+/** What the name of a dev-time profile ends in. */
+const DEV_SUFFIX = "-dev";
+
+/**
+ * The `[profile] name` of the dev-time profile of a local profile named `name`: `name` with
+ * `-dev`, shortened to fit box's 64 characters. No name that create writes, `<project>-<agent>`,
+ * has a second `-`, so the dev-time name is never the name of a local profile.
+ */
+export function boxDevProfileName(name: string): string {
+  return `${name.slice(0, BOX_PROFILE_NAME_MAX - DEV_SUFFIX.length)}${DEV_SUFFIX}`;
 }
 
 /** The name of the telemetry target to dev's collector, which no target of `telemetry` has. */
@@ -48,6 +67,8 @@ export type BoxDevTelemetryOptions = {
   readonly sitecustomizeDir?: string;
   /** Container: start the venv's Python under `opentelemetry-instrument`. */
   readonly instrumentCommand?: boolean;
+  /** CodeZip: give the profile its own `[profile] name`, from boxDevProfileName. */
+  readonly ownName?: boolean;
 };
 
 export type BoxDevTelemetryProfile = {
@@ -92,6 +113,10 @@ export function boxDevTelemetryProfile(
   }
   agent.env = env;
   profile.agent = agent;
+  const declared = table(profile.profile);
+  if (options.ownName && typeof declared.name === "string") {
+    profile.profile = { ...declared, name: boxDevProfileName(declared.name) };
+  }
   return { text: stringifyToml(profile), agentInstrumented };
 }
 
