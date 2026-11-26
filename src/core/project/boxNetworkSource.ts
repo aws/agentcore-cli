@@ -74,6 +74,7 @@ export async function readBoxNetworks(
   const networks: BoxNetwork[] = [];
   const profilePaths: string[] = [];
   const keys: SharedKeys = new Map();
+  const added: NewCredentials = new Map();
   const record = readBoxGatewayTargets(projectRoot);
   for (const runtime of runtimes) {
     // ProjectSpecSchema requires a Box project to keep a gateway bound to each runtime.
@@ -101,7 +102,11 @@ export async function readBoxNetworks(
     networks.push({
       ...network,
       warnings: [...network.warnings, ...granted.warnings],
-      failures: [...network.failures, ...sharedKeyFailures(network, parsed, keys)],
+      failures: [
+        ...network.failures,
+        ...sharedKeyFailures(network, parsed, keys),
+        ...newCredentialNameFailures(network, parsed, spec, added),
+      ],
     });
     profilePaths.push(parsed.profile.path);
   }
@@ -231,6 +236,65 @@ function sharedKeyFailures(
       place:
         (entry === undefined ? undefined : parsed.profile.places?.entries.get(`egress.${entry}`)) ??
         parsed.profile.path,
+    });
+  }
+  return failures;
+}
+
+/**
+ * By the variable of each API key credential that build adds for an entry, the credential and the
+ * runtime of the first entry that takes it.
+ */
+type NewCredentials = Map<string, { readonly credential: string; readonly runtime: string }>;
+
+/**
+ * A failure for each `env://` entry of `network` whose new API key credential derives the same
+ * variable as the new credential of an entry of an earlier box runtime, as `added` records them.
+ * The model of each runtime already refuses two such entries of one profile, and a credential of
+ * agentcore.json. Two runtimes can share one credential of one name, but not one variable.
+ */
+function newCredentialNameFailures(
+  network: BoxNetwork,
+  parsed: ParsedPolicy,
+  spec: ProjectSpec,
+  added: NewCredentials,
+): BoxNetworkFailure[] {
+  const failures: BoxNetworkFailure[] = [];
+  // An entry whose name the model refused gets no credential, so it holds no variable either.
+  const refused = new Set(
+    network.failures
+      .filter(({ code }) => code === "CREDENTIAL_NAME_INVALID")
+      .map(({ egressEntry, mcpEntry }) => egressEntry ?? mcpEntry),
+  );
+  const checked = new Set<string>();
+  for (const { outboundAuth: auth, sources } of network.hosts) {
+    if (auth.kind !== "apiKey") continue;
+    const source = sources.find((candidate) => candidate.kind !== "rule");
+    if (source === undefined) continue;
+    const [table, name] =
+      source.kind === "entry"
+        ? (["egress", source.egressEntry] as const)
+        : (["mcp", source.mcpEntry] as const);
+    // Only a credential named after its entry, and not in agentcore.json, is new.
+    if (auth.credentialName !== name || refused.has(name) || checked.has(name)) continue;
+    checked.add(name);
+    if (spec.credentials.some((credential) => credential.name === name)) continue;
+    const variable = credentialEnvVarName(name);
+    const holder = added.get(variable);
+    if (holder === undefined) {
+      added.set(variable, { credential: name, runtime: network.runtime });
+      continue;
+    }
+    if (holder.credential === name || holder.runtime === network.runtime) continue;
+    failures.push({
+      code: "CREDENTIAL_NAME_INVALID",
+      ...(table === "egress" ? { egressEntry: name } : { mcpEntry: name }),
+      reason:
+        `[${table}.${name}] reads its key from env://${auth.variable}, which build keeps in an ` +
+        `API key credential named after the entry, and credential '${name}' would derive the ` +
+        `same variable, ${variable}, as credential '${holder.credential}', which build adds for ` +
+        `runtime '${holder.runtime}'. Rename the entry in one of the two profiles.`,
+      place: parsed.profile.places?.entries.get(`${table}.${name}`) ?? parsed.profile.path,
     });
   }
   return failures;
