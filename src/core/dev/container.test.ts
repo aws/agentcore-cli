@@ -883,6 +883,7 @@ describe("ContainerDevRunner", () => {
 
     test("with dev's collector on, stages a profile that sends traces and box's records to it", async () => {
       const local =
+        '[profile]\nname = "Demo-agent"\n\n' +
         '[agent]\ncommand = ["${{ workspace }}/.venv/bin/python", "-m", "uvicorn", "main:app", "--reload", "--port", "8081"]\n';
       const { projectRuntime, root, context } = await boxedScene({ profileText: local });
       const { runner } = harness({ processEnv: credentials });
@@ -896,9 +897,12 @@ describe("ContainerDevRunner", () => {
       const staged = parseToml(
         await readFile(join(context, ".box-dist", "profile.toml"), "utf8"),
       ) as {
+        profile: { name: string };
         telemetry: Record<string, { kind: string; destination: string }>;
         agent: { command: string[]; env: Record<string, string> };
       };
+      // Box runs in the container, with its own box home, so the profile keeps its name.
+      expect(staged.profile.name).toBe("Demo-agent");
       expect(staged.telemetry.agentcore_dev!.destination).toBe("http://host.docker.internal:4318");
       expect(staged.agent.command).toEqual([
         "${{ workspace }}/.venv/bin/opentelemetry-instrument",

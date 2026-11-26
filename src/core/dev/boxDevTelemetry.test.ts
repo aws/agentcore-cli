@@ -6,6 +6,7 @@ import { otelEnvVars } from "./otel/collector";
 import {
   boxDevAgentOtelEnv,
   boxDevProfileFolder,
+  boxDevProfileName,
   boxDevTelemetryProfile,
   boxDevTelemetryTargetName,
 } from "./boxDevTelemetry";
@@ -144,5 +145,42 @@ describe("boxDevTelemetryProfile", () => {
 
   test("writes into the git-ignored CLI folder of the project", () => {
     expect(boxDevProfileFolder("agent")).toBe("agentcore/.cli/box-dev/agent");
+  });
+
+  test("gives a CodeZip copy a profile name of its own, which no local profile has", () => {
+    const runtime = resolveRuntimeTemplateShortcut("agent-python-strands-box", {
+      runtimeName: "agent",
+    });
+    const local = renderBoxProfile("Demo", runtime, "us-west-2")!;
+    const options = { destination: "http://127.0.0.1:1", serviceName: "agent" };
+
+    const dev = parse(boxDevTelemetryProfile(local, { ...options, ownName: true }).text) as Doc;
+
+    expect((parse(local) as Doc).profile.name).toBe("Demo-agent");
+    expect(dev.profile.name).toBe("Demo-agent-dev");
+    // A container's copy runs in the image, with a box home of its own, so it keeps the name.
+    expect((parse(boxDevTelemetryProfile(local, options).text) as Doc).profile.name).toBe(
+      "Demo-agent",
+    );
+  });
+
+  test("keeps the name of a copy within the 64 characters that box takes", () => {
+    const name = `P-${"a".repeat(62)}`;
+
+    expect(boxDevProfileName("Demo-agent")).toBe("Demo-agent-dev");
+    expect(boxDevProfileName(name)).toBe(`${name.slice(0, 60)}-dev`);
+    expect(boxDevProfileName(name)).toHaveLength(64);
+  });
+
+  test("adds no profile name to a profile that declares none", () => {
+    const dev = parse(
+      boxDevTelemetryProfile("", {
+        destination: "http://127.0.0.1:1",
+        serviceName: "agent",
+        ownName: true,
+      }).text,
+    ) as Doc;
+
+    expect(dev.profile).toBeUndefined();
   });
 });

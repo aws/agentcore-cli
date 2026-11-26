@@ -172,9 +172,9 @@ export class BoxDevRunner implements DevRunner {
 }
 
 /**
- * Writes the dev-time box profile of agent `agentName` (boxDevTelemetryProfile) and a copy of each
- * policy file the local profile names, into the git-ignored `agentcore/.cli/box-dev/<agentName>/`,
- * and returns the profile's path from the project root.
+ * Writes the dev-time box profile of agent `agentName` (boxDevTelemetryProfile), under its own
+ * `[profile] name`, and a copy of each policy file the local profile names, into the git-ignored
+ * `agentcore/.cli/box-dev/<agentName>/`, and returns the profile's path from the project root.
  */
 async function writeBoxDevProfile(
   projectRoot: string,
@@ -191,7 +191,7 @@ async function writeBoxDevProfile(
     "# rewrites each time. Change the local profile instead.\n";
   await writeFile(
     join(directory, "profile.toml"),
-    header + boxDevTelemetryProfile(profileText, options).text,
+    header + boxDevTelemetryProfile(profileText, { ...options, ownName: true }).text,
   );
   for (const { from, relative } of boxPolicyFileCopies(projectRoot, agentName)) {
     const to = join(directory, ...relative.split("/"));

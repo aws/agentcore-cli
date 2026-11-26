@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { InvalidEnvironmentError } from "../../errors/errors";
+import type { ProjectRuntime } from "../../projectSchemas/runtime";
+import { BoxDevRunner } from "../dev/box";
 import { ProcessFailedError, type ProcessEvent, type StreamProcessOptions } from "../../io";
 import { BOX_RELEASE } from "./backends/boxRelease";
 import { BoxCliProfileResolver, parseBoxProfileShow } from "./boxProfileResolver";
-import { boxNetworkRules, boxReachRules } from "./boxProfileResolver-test-support";
+import { boxErrorLines, boxNetworkRules, boxReachRules } from "./boxProfileResolver-test-support";
 
 const NC = 'action == Box::Action::"net:connect"';
 const HR = 'action == Box::Action::"http:request"';
@@ -384,6 +387,94 @@ describe("BoxCliProfileResolver", () => {
     });
   });
 
+  describe("a profile name that an earlier agentcore dev bound to its copy", () => {
+    /** A project `Demo`, and a box home whose record of `Demo-agent` names dev's copy. */
+    const stuck = async () => {
+      const folder = realpathSync(await mkdtemp(join(tmpdir(), "box-dev-name-")));
+      directories.push(folder);
+      const root = join(folder, "Demo");
+      const copy = join(root, "agentcore", ".cli", "box-dev", "agent", "profile.toml");
+      const record = join(folder, "box-home", "storage", "Demo-agent", ".profile-source");
+      await mkdir(dirname(record), { recursive: true });
+      await writeFile(record, `${copy}\n`);
+      const refusal = boxErrorLines(
+        `the profile name "Demo-agent" in ${join(root, ".box", "agent", "local", "profile.toml")} ` +
+          `belongs to ${copy}; give this profile another \`[profile] name\``,
+      );
+      return { root, record, refusal, env: { BOX_HOME: join(folder, "box-home") } };
+    };
+    /** Box refuses the first show with `refusal`, and prints {@link SHOWN} for the next. */
+    const refusedOnce = (refusal: string[]) => {
+      const calls: string[][] = [];
+      return {
+        calls,
+        async *streamProcess(command: string[]): AsyncGenerator<ProcessEvent> {
+          calls.push(command);
+          if (calls.length > 1) {
+            yield* stdout(SHOWN);
+            return;
+          }
+          for (const line of refusal) yield { type: "stderr", line };
+          throw new ProcessFailedError(command, "/work/demo", 1, "box: error: ...");
+        },
+      };
+    };
+
+    test("releases the name, shows the profile again, and says what it removed", async () => {
+      const { root, record, refusal, env } = await stuck();
+      const fake = refusedOnce(refusal);
+
+      const resolved = await new BoxCliProfileResolver({ env, ...fake }).resolve(
+        root,
+        ".box/agent/local/profile.toml",
+      );
+
+      expect(fake.calls).toHaveLength(2);
+      expect(existsSync(record)).toBe(false);
+      expect(resolved).toEqual({
+        ...parseBoxProfileShow(SHOWN, ".box/agent/local/profile.toml"),
+        notes: [expect.stringContaining(record)],
+      });
+    });
+
+    test("shows Box's refusal when Box refuses the profile again", async () => {
+      const { root, record, refusal, env } = await stuck();
+      const fake = streamer(
+        refusal.map((line) => ({ type: "stderr", line })),
+        new ProcessFailedError(COMMAND, root, 1, "box: error: ..."),
+      );
+
+      const error = await new BoxCliProfileResolver({ env, ...fake })
+        .resolve(root, ".box/agent/local/profile.toml")
+        .catch((caught: unknown) => caught);
+
+      expect(fake.calls).toHaveLength(2);
+      expect(existsSync(record)).toBe(false);
+      expect((error as Error).message).toStartWith(
+        "Box refused the profile .box/agent/local/profile.toml:\n  box: error: the profile name",
+      );
+    });
+
+    test("keeps a name that belongs to another profile file, and shows Box's refusal", async () => {
+      const { root, record, env } = await stuck();
+      await writeFile(record, `${join(root, "..", "mine", "profile.toml")}\n`);
+      const refusal = boxErrorLines(
+        `the profile name "Demo-agent" in ${join(root, ".box", "agent", "local", "profile.toml")} ` +
+          `belongs to ${join(root, "..", "mine", "profile.toml")}; give this profile another ` +
+          "`[profile] name`",
+      );
+      const fake = refusedOnce(refusal);
+
+      const error = await new BoxCliProfileResolver({ env, ...fake })
+        .resolve(root, ".box/agent/local/profile.toml")
+        .catch((caught: unknown) => caught);
+
+      expect(fake.calls).toHaveLength(1);
+      expect(existsSync(record)).toBe(true);
+      expect(error).toBeInstanceOf(InvalidEnvironmentError);
+    });
+  });
+
   test("says how to see why when Box fails and prints no error", async () => {
     expect(((await failure(refusal([], 2))) as Error).message).toBe(
       "Box stopped on .box/profile.toml with exit code 2 and printed no error. Run " +
@@ -502,4 +593,98 @@ describe("the box on PATH", () => {
     },
     120_000,
   );
+
+  /** A project `Demo` with the local box profile `Demo-agent` of the CodeZip runtime `agent`. */
+  const demo = async () => {
+    const folder = realpathSync(await mkdtemp(join(tmpdir(), "box-dev-name-")));
+    directories.push(folder);
+    const root = join(folder, "Demo");
+    await mkdir(join(root, ".box", "agent", "local"), { recursive: true });
+    await writeFile(
+      join(root, ".box", "agent", "local", "profile.toml"),
+      'packs = ["@box/base"]\n\n[profile]\nname = "Demo-agent"\n\n[agent]\ncommand = ["/bin/sh"]\n',
+    );
+    await mkdir(join(root, "app", "agent", ".venv", "bin"), { recursive: true });
+    await writeFile(join(root, "app", "agent", ".venv", "bin", "python"), "");
+    const copy = join(root, "agentcore", ".cli", "box-dev", "agent", "profile.toml");
+    const boxHome = join(folder, "box-home");
+    /** Binds `name` to `owner`, as `box run` does before it starts the agent. */
+    const bind = async (name: string, owner: string) => {
+      const record = join(boxHome, "storage", name, ".profile-source");
+      await mkdir(dirname(record), { recursive: true });
+      await writeFile(record, `${owner}\n`);
+      return record;
+    };
+    return { root, copy, bind, env: { ...process.env, BOX_HOME: boxHome } };
+  };
+
+  test.skipIf(!boxPrintsJson)(
+    "shows the local profile after dev runs its copy, which box binds to a name of its own (skipped when the box on PATH has no --format json --full)",
+    async () => {
+      const { root, copy, bind, env } = await demo();
+      const runner = new BoxDevRunner({
+        fallback: { run: () => (async function* () {})() },
+        streamProcess: async function* () {},
+        runProcess: () => Promise.reject(new Error("no opentelemetry in the venv")),
+        checkTool: () => Promise.resolve(),
+        processEnv: env,
+      });
+      for await (const _ of runner.run({
+        runtime: {
+          name: "agent",
+          build: "CodeZip",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+          box: { version: "1.0.0" },
+        } as ProjectRuntime,
+        projectRoot: root,
+        boxProject: true,
+        port: 8080,
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318" },
+        signal: new AbortController().signal,
+      }));
+      const name = (parseToml(readFileSync(copy, "utf8")) as { profile: { name: string } }).profile
+        .name;
+      const record = await bind(name, copy);
+
+      const resolved = await new BoxCliProfileResolver({ env }).resolve(
+        root,
+        ".box/agent/local/profile.toml",
+        "app/agent",
+      );
+
+      expect(name).toBe("Demo-agent-dev");
+      expect(resolved.notes).toBeUndefined();
+      expect(existsSync(record)).toBe(true);
+    },
+    120_000,
+  );
+
+  for (const [refusal, copyName] of [
+    ["belongs to the copy", "Demo-agent"],
+    ["was recorded for the copy", "Demo-agent-dev"],
+  ] as const) {
+    test.skipIf(!boxPrintsJson)(
+      `shows the local profile when box says its name ${refusal} of an earlier dev (skipped when the box on PATH has no --format json --full)`,
+      async () => {
+        const { root, copy, bind, env } = await demo();
+        await mkdir(dirname(copy), { recursive: true });
+        await writeFile(
+          copy,
+          `packs = ["@box/base"]\n\n[profile]\nname = "${copyName}"\n\n[agent]\ncommand = ["/bin/sh"]\n`,
+        );
+        const record = await bind("Demo-agent", copy);
+
+        const resolved = await new BoxCliProfileResolver({ env }).resolve(
+          root,
+          ".box/agent/local/profile.toml",
+          "app/agent",
+        );
+
+        expect(resolved.notes).toEqual([expect.stringContaining(record)]);
+        expect(existsSync(record)).toBe(false);
+      },
+      120_000,
+    );
+  }
 });

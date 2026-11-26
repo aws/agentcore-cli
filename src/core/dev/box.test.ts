@@ -475,6 +475,26 @@ describe("BoxDevRunner", () => {
     );
   });
 
+  test("runs the dev-time profile under a name of its own, so box binds the local profile's name to the local profile only", async () => {
+    const { projectRoot, runner } = await scene(true, true, {
+      profile: `${PROFILE}\n[profile]\nname = "Demo-agent"\n`,
+    });
+
+    await collect(runner.run(input(projectRoot)));
+
+    const dev = parse(
+      readFileSync(
+        join(projectRoot, "agentcore", ".cli", "box-dev", "agent", "profile.toml"),
+        "utf8",
+      ),
+    ) as Record<string, any>;
+    const local = parse(
+      readFileSync(join(projectRoot, ".box", "agent", "local", "profile.toml"), "utf8"),
+    ) as Record<string, any>;
+    expect(dev.profile.name).toBe("Demo-agent-dev");
+    expect(local.profile.name).toBe("Demo-agent");
+  });
+
   test("sends box's records, but not the agent's spans, to dev's collector when the venv has no auto-instrumentation", async () => {
     const { projectRoot, calls, runner, found } = await scene(true);
 
