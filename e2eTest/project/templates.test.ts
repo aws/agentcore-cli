@@ -680,7 +680,7 @@ describe.skipIf(!BOX_DEPLOYS)(
       expect(response.statusCode).toBeGreaterThanOrEqual(200);
       expect(response.statusCode).toBeLessThan(300);
       expect(response.body.trim()).not.toBe("");
-      return response.body;
+      return replyText(response.body);
     }
 
     const DEPLOY_TEST_TIMEOUT =
@@ -823,6 +823,30 @@ describe.skipIf(!BOX_DEPLOYS)(
     );
   },
 );
+
+/**
+ * The text of an invoke reply. A streamed reply is server-sent events, whose text arrives split
+ * across `contentBlockDelta` events, so a word can span two of them; the text is their join. Any
+ * other body is returned as it is.
+ */
+function replyText(body: string): string {
+  const deltas = body
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => {
+      try {
+        const text = (
+          JSON.parse(line.slice("data: ".length)) as {
+            event?: { contentBlockDelta?: { delta?: { text?: unknown } } };
+          }
+        ).event?.contentBlockDelta?.delta?.text;
+        return typeof text === "string" ? text : "";
+      } catch {
+        return "";
+      }
+    });
+  return deltas.some((text) => text !== "") ? deltas.join("") : body;
+}
 
 /** The public host that answers with the request's headers, for the API key egress scenario. */
 const ECHO_URL = "https://httpbin.org/headers";
