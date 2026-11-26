@@ -80,12 +80,11 @@ export async function readBoxNetworks(
     const entry = boxGatewayOf(withDefaults, runtime.name);
     if (!entry) continue;
     // Each boxed agent reads its own .box/<name>/local profile and policy files.
-    const { parsed, failures: found } = await readResolvedPolicy(
-      projectRoot,
-      runtime,
-      resolver,
-      region,
-    );
+    const {
+      parsed,
+      failures: found,
+      notes,
+    } = await readResolvedPolicy(projectRoot, runtime, resolver, region);
     const granted = grantedActions(projectRoot, entry.name, entry.additionalPolicies ?? []);
     const network = buildBoxNetwork(parsed, found, {
       spec,
@@ -100,7 +99,7 @@ export async function readBoxNetworks(
     });
     networks.push({
       ...network,
-      warnings: [...network.warnings, ...granted.warnings],
+      warnings: [...notes, ...network.warnings, ...granted.warnings],
       failures: [...network.failures, ...sharedKeyFailures(network, parsed, keys)],
     });
     profilePaths.push(parsed.profile.path);
@@ -264,19 +263,23 @@ export function boxPolicyFileCopies(projectRoot: string, agentName: string): Pol
 
 /**
  * Box's resolution of the local box profile of `runtime` for a build in `region`, parsed, with
- * the profile's own policy files to place its rules and to stage; nothing when the agent has no
- * local box profile.
+ * the profile's own policy files to place its rules and to stage, and what the resolver changed in
+ * box's state; nothing when the agent has no local box profile.
  */
 async function readResolvedPolicy(
   projectRoot: string,
   runtime: ProjectRuntime,
   resolver: BoxProfileResolver,
   region: string,
-): Promise<{ parsed: ParsedPolicy; failures: readonly BoxNetworkFailure[] }> {
+): Promise<{
+  parsed: ParsedPolicy;
+  failures: readonly BoxNetworkFailure[];
+  notes: readonly string[];
+}> {
   const agentName = runtime.name;
   const profileFile = boxLocalProfileFile(agentName);
   const text = profileText(projectRoot, agentName);
-  if (text === undefined) return { parsed: noPolicy(profileFile), failures: [] };
+  if (text === undefined) return { parsed: noPolicy(profileFile), failures: [], notes: [] };
   const named = profilePolicyFiles(text, profileFile);
   const places = profilePlaces(text, profileFile);
   const files = readPolicyFiles(
@@ -310,6 +313,7 @@ async function readResolvedPolicy(
       ...files.failures,
       ...policy.failures,
     ],
+    notes: resolved.notes ?? [],
   };
 }
 

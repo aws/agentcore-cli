@@ -116,3 +116,28 @@ export class FakeBoxProfileResolver implements BoxProfileResolver {
       : Promise.resolve(structuredClone(this.answer));
   }
 }
+
+/**
+ * The error `message` as box prints it on stderr: after `box: error: `, wrapped at 80 columns at a
+ * space, or inside a word that is longer than a line, with each next line indented by 12 spaces.
+ */
+export function boxErrorLines(message: string): string[] {
+  const width = 80;
+  const indent = " ".repeat(12);
+  const lines: string[] = [];
+  let line = "box: error:";
+  for (const word of message.split(" ")) {
+    if (line.length + 1 + word.length <= width) {
+      line += ` ${word}`;
+      continue;
+    }
+    lines.push(line);
+    let rest = word;
+    while (indent.length + rest.length > width) {
+      lines.push(indent + rest.slice(0, width - indent.length));
+      rest = rest.slice(width - indent.length);
+    }
+    line = indent + rest;
+  }
+  return [...lines, line];
+}
