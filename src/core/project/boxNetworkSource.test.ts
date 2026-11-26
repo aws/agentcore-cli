@@ -3,6 +3,7 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
@@ -284,6 +285,40 @@ describe("readBoxNetworks", () => {
       expect(boxNetworkFailureMessage(networks, "build")).toStartWith("Build stopped: 1 problem");
     },
   );
+
+  test("does not refuse an entry against an entry of another runtime that uses an existing credential", async () => {
+    const root = await project([]);
+    // [egress.github] reads the variable of the existing credential 'mycred', so build adds no
+    // credential 'github', and [egress.GitHub] can take AGENTCORE_CREDENTIAL_GITHUB.
+    const profiles: Record<string, Record<string, unknown>> = {
+      ".box/agent/local/profile.toml": {
+        github: {
+          destinations: ["a.example.com"],
+          secret: { ref: `env://${credentialEnvVarName("mycred")}` },
+        },
+      },
+      ".box/second/local/profile.toml": {
+        GitHub: { destinations: ["b.example.com"], secret: { ref: "env://B_TOKEN" } },
+      },
+    };
+    for (const [file, egress] of Object.entries(profiles)) {
+      const [name] = Object.keys(egress);
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(join(root, file), `# ${file}\n[egress.${name}]\n`);
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+    };
+    const spec = {
+      ...specWith("second"),
+      credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "mycred" }],
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ failures }) => failures)).toEqual([[], []]);
+    expect(networks[0]!.hosts[0]!.outboundAuth).toMatchObject({ credentialName: "mycred" });
+  });
 
   test("refuses a telemetry target whose key variable a target of another runtime reads", async () => {
     // The two names of each pair give one variable: AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK.
