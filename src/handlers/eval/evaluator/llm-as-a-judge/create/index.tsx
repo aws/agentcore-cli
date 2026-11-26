@@ -8,11 +8,14 @@ import type { Core } from "../../../../types";
 import { coreOptsFromCtx, parseTags, tagsFlag } from "../../../../utils";
 import {
   buildEvaluatorModelConfig,
+  inferenceFlags,
+  inferenceFromFlags,
   modelProviderFlag,
   ratingScaleFlag,
   resolveRatingScale,
 } from "../sharedFlags";
 import { LEVELS } from "../../levels";
+import { assertJudgeTemperature } from "../../../../../core/eval/judgeInference";
 
 export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
   createHandler({
@@ -33,6 +36,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
         z.string().min(1),
       ),
       ratingScaleFlag,
+      ...inferenceFlags,
       flag("kms-key-arn", "customer managed KMS key ARN for evaluator data", z.string().optional()),
       tagsFlag(),
     ],
@@ -46,6 +50,8 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
             : `invalid --model "${flags["model"]}": expected an OpenResponses model ID`,
         );
       }
+      const inference = inferenceFromFlags(flags);
+      assertJudgeTemperature(modelProvider, inference?.temperature);
 
       const source = new SourceResolver({ stdin: io.stdin });
       const instructions = await source.resolveText("instructions", flags["instructions"]);
@@ -62,7 +68,7 @@ export const createLlmAsAJudgeCreateHandler = (core: Core, io: AppIO) =>
             llmAsAJudge: {
               instructions,
               ratingScale,
-              modelConfig: buildEvaluatorModelConfig(modelProvider, flags["model"]),
+              modelConfig: buildEvaluatorModelConfig(modelProvider, flags["model"], inference),
             },
           },
           kmsKeyArn: flags["kms-key-arn"],

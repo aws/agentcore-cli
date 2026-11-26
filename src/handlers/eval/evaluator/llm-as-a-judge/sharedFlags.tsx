@@ -12,6 +12,11 @@ import {
   type EvaluatorModelProvider,
 } from "../../../../projectSchemas/evaluator";
 import type { SourceResolver } from "../../../../io";
+import {
+  withBedrockInference,
+  withOpenResponsesInference,
+} from "../../../../core/eval/judgeInference";
+import type { EvaluatorInferenceSettings } from "../../types";
 
 // The token budget and temperature the old CLI's project deployment applies to
 // an OpenResponses judge. topP is deliberately omitted so behavior matches it.
@@ -27,17 +32,57 @@ export const modelProviderFlag = flag(
   EvaluatorModelProviderSchema.optional(),
 );
 
+// Judge tuning shared by create and update. Each flag is optional with no
+// default: an omitted one leaves the evaluator's current value (or the provider
+// default) untouched. --temperature admits the wider OpenResponses range; the
+// Bedrock 0-1 bound is checked once the provider is resolved.
+export const inferenceFlags = [
+  flag(
+    "max-tokens",
+    "maximum tokens the judge model may generate (min 1)",
+    z.number().int().min(1).optional(),
+  ),
+  flag(
+    "temperature",
+    "judge sampling temperature: 0-1 for Bedrock, 0-2 for OpenResponses",
+    z.number().min(0).max(2).optional(),
+  ),
+  flag("top-p", "judge top-p (nucleus) sampling value (0-1)", z.number().min(0).max(1).optional()),
+] as const;
+
+// inferenceFromFlags collects the inference flags, or undefined when none was
+// passed, so the request carries no tuning the caller did not ask for.
+export function inferenceFromFlags(flags: {
+  "max-tokens"?: number;
+  temperature?: number;
+  "top-p"?: number;
+}): EvaluatorInferenceSettings | undefined {
+  const inference: EvaluatorInferenceSettings = {
+    maxTokens: flags["max-tokens"],
+    temperature: flags["temperature"],
+    topP: flags["top-p"],
+  };
+  return Object.values(inference).some((value) => value !== undefined) ? inference : undefined;
+}
+
 // buildEvaluatorModelConfig selects the SDK modelConfig union arm for the
 // resolved provider. OpenResponses carries the deployment token/temperature
 // defaults; Bedrock passes the model id alone (the service supplies its own).
+// Any inference settings are applied on top of those.
 export function buildEvaluatorModelConfig(
   provider: EvaluatorModelProvider,
   modelId: string,
+  inference?: EvaluatorInferenceSettings,
 ): EvaluatorModelConfig {
   if (provider === "OpenResponses") {
-    return { responsesEvaluatorModelConfig: { modelId, ...OPEN_RESPONSES_DEFAULTS } };
+    return {
+      responsesEvaluatorModelConfig: withOpenResponsesInference(
+        { modelId, ...OPEN_RESPONSES_DEFAULTS },
+        inference,
+      ),
+    };
   }
-  return { bedrockEvaluatorModelConfig: { modelId } };
+  return { bedrockEvaluatorModelConfig: withBedrockInference({ modelId }, inference) };
 }
 
 const ratingScaleDescription = `rating scale: a preset (${RATING_SCALE_PRESET_IDS.join(" | ")}) or a custom RatingScale (JSON inline, file://<path>, or - for stdin)`;
