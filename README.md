@@ -270,7 +270,7 @@ second answer should say teal, and the runtime log shows `running profile ...` w
 
 A boxed agent gets the deployed Memory IDs and the Runtime's region inside the box. It does not get
 the `AGENTCORE_GATEWAY_<NAME>_URL` variables of gateways you add yourself: its calls go out through
-its Box gateway. With its default Memory, its calls to the AgentCore host
+its Box gateway. When the project has a Memory, its calls to the AgentCore host
 (`bedrock-agentcore.<region>.amazonaws.com`) are the exception: box signs them with the execution
 role and sends them to that host directly, so Memory can hold each call to the session of the
 runtime. Box routes a connection by its host alone, and Code Interpreter, Browser, and the other

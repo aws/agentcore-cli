@@ -18,14 +18,14 @@
  * | `plugins` | the user's plugins, then @box/aws-secrets-manager when a carried target has a key |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region, to the runtime's own log group and spans stream when the box takes them |
- * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
- * | a route to the AgentCore host | with a default Memory, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
+ * | `[egress.agentcore]` | added when the project has a Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
+ * | a route to the AgentCore host | with a Memory in the project, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
 import { posix } from "node:path";
 import { agentCoreDataPlaneHost } from "../../boxNetwork/egress";
-import { BOX_MEMORY_ROUTE_NAME, hasDefaultMemory } from "../../boxMemory";
+import { BOX_MEMORY_ROUTE_NAME, hasProjectMemory } from "../../boxMemory";
 import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
@@ -190,7 +190,7 @@ export function runtimeProfileHeader(
     `${Object.keys(RUNTIME_AWS_STAND_INS).join(" and ")} are stand-ins so boto3 in the box can ` +
       "build its requests. They authenticate nothing: box signs each request with the execution " +
       "role. Every AWS route goes to the Box gateway" +
-      (hasDefaultMemory(context.spec, context.runtime)
+      (hasProjectMemory(context.spec)
         ? `, except ${routesToHost(profile, agentCoreDataPlaneHost(context.region))}: box sends ` +
           "the calls to that host directly, so Memory can hold each call to the session of the " +
           "runtime."
@@ -276,7 +276,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 }
 
 /**
- * `[egress]` and `[mcp]` for the agent's Memory calls when the runtime has its default Memory. They
+ * `[egress]` and `[mcp]` for the agent's Memory calls when the project has a Memory. They
  * go to the AgentCore data-plane host directly, signed with the execution role, not through the Box
  * gateway, whose role would sign them and keep Memory from holding each call to the session of the
  * runtime. Box chooses where a connection goes from its host alone, before it sees a path, and the
@@ -296,7 +296,7 @@ function memoryRoutes(
   problems: RuntimeProfileProblem[],
 ): Pick<TomlTable, "egress" | "mcp"> {
   const { egress, mcp } = table;
-  if (!hasDefaultMemory(context.spec, context.runtime)) return { egress, mcp };
+  if (!hasProjectMemory(context.spec)) return { egress, mcp };
   // box refuses `[egress]` or `[mcp]` that is not a table before build gets the profile.
   if ((egress !== undefined && !isTable(egress)) || (mcp !== undefined && !isTable(mcp))) {
     return { egress, mcp };
@@ -391,11 +391,11 @@ function credentialProblems(
       place: context.placeOf(key),
       reason:
         `${label} sends ${secret} to ${host}. On AgentCore Runtime, runtime ` +
-        `'${context.runtime.name}' has its default Memory, so box sends every call to that host ` +
+        `'${context.runtime.name}' gets the Memories of the project, so box sends every call to that host ` +
         "directly, signed with the execution role, and not through the Box gateway. Box cannot " +
         "route one host both ways, so the key would not be sent. Remove the secret from " +
-        `${label} if the service takes the execution role's signature, or remove the default ` +
-        `Memory of runtime '${context.runtime.name}' from agentcore.json.`,
+        `${label} if the service takes the execution role's signature, or remove the Memories ` +
+        `of the project from agentcore.json, which runtime '${context.runtime.name}' gets.`,
     });
   }
 }
