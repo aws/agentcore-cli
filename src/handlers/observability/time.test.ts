@@ -19,9 +19,30 @@ describe("parseTimeString", () => {
     expect(() => parseTimeString(" ", now)).toThrow(InputValidationError);
     expect(() => parseTimeString("5x", now)).toThrow('Invalid time string: "5x"');
   });
+
+  test.each(["5", "60", "45", "30", "0", "2026", "1709391000", "999999999999", " 5 "])(
+    "rejects bare numbers without a duration unit: %s",
+    (input) => {
+      expect(() => parseTimeString(input, now)).toThrow(
+        new InputValidationError(
+          `Invalid time string: "${input}". Use relative durations (5m, 1h, 2d), ` +
+            'ISO 8601, epoch ms, or "now".',
+        ),
+      );
+    },
+  );
 });
 
 describe("resolveTimeWindow", () => {
+  test.each(["since", "until"] as const)(
+    "rejects a bare number in --%s with invalid-time guidance",
+    (flag) => {
+      expect(() =>
+        resolveTimeWindow({ [flag]: "45", defaultWindowMs: 3_600_000 }, () => 1_800_000_000_000),
+      ).toThrow('Invalid time string: "45"');
+    },
+  );
+
   test("derives the default start from a historical end", () => {
     expect(
       resolveTimeWindow(
