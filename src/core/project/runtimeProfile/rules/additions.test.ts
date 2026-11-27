@@ -1321,11 +1321,99 @@ describe("the additions rule", () => {
       expect(egress.github).toEqual({ destinations: ["api.github.com"] });
     });
 
-    test("adds no Memory route for a runtime with no default Memory", () => {
+    test("adds no Memory route when the project has no Memory", () => {
       const none = apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table;
-      const other = apply(createdProfile(CODEZIP), contextOf(CODEZIP, { memories: ["shared"] }));
       expect(none.egress).not.toHaveProperty(MEMORY_ROUTE);
-      expect(other.table.egress).not.toHaveProperty(MEMORY_ROUTE);
+    });
+
+    // The constructs give every runtime the ID of every Memory of the project, so a runtime that
+    // `add runtime` added beside the first calls the first's Memory, and box must let it.
+    test("adds the Memory route for a runtime when the project's Memory is named for another runtime", () => {
+      const { table, problems } = apply(
+        createdProfile(CODEZIP),
+        contextOf(CODEZIP, { memories: ["secondMemory"] }),
+      );
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      expect(problems).toEqual([]);
+      expect(table.egress).toHaveProperty(MEMORY_ROUTE, {
+        destinations: [host],
+        secret: { ref: "aws://" },
+      });
+      const context = contextOf(CODEZIP, { memories: ["secondMemory"] });
+      expect(runtimeProfileHeader(context, table)[2]).toEndWith(
+        `except [egress.${MEMORY_ROUTE}], to ${host}: box sends the calls to that host directly, so ` +
+          "Memory can hold each call to the session of the runtime.",
+      );
+    });
+
+    // A target the user wrote in agentcore.json can sign the calls to the AgentCore host with its
+    // own credential while the profile lets the host through with no secret. Box sends those calls
+    // past the gateway, so the target's credential would never be sent.
+    test.each(["API_KEY", "OAUTH"] as const)(
+      "stops build for a Box gateway target of the user that signs the AgentCore host with $0",
+      (type) => {
+        const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+        const base = contextOf(CODEZIP, { memories: ["secondMemory"] });
+        const target = {
+          ...passthrough("tools", `https://${host}`),
+          outboundAuth: { type, credentialName: "tools" },
+        } as AgentCoreGatewayTarget;
+        const context = {
+          ...base,
+          gateway: { ...base.gateway, targets: [...base.gateway.targets, target] },
+          hosts: [
+            {
+              host,
+              authority: host,
+              target: "tools",
+              outboundAuth: { kind: "none" },
+              sources: [{ kind: "entry", egressEntry: "tools", destinations: [host] }],
+            },
+          ],
+        } as unknown as Parameters<typeof apply>[1];
+
+        const { problems } = apply({ egress: { tools: { destinations: [host] } } }, context);
+
+        expect(problems).toEqual([
+          {
+            code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+            key: ["egress", "tools"],
+            place: "agentcore/agentcore.json",
+            reason:
+              `Target 'tools' of gateway '${base.gateway.name}' in agentcore.json signs the calls to ` +
+              `${host} with its ${type} credential. On AgentCore Runtime, runtime 'agent' gets every ` +
+              "Memory of the project, so box sends every call to that host directly, signed with the " +
+              "execution role, and not through the Box gateway. So the target's credential would " +
+              "not be sent. Set the outboundAuth of the target to GATEWAY_IAM_ROLE or NONE if the " +
+              "service takes the execution role's signature. No boxed runtime of a project with a " +
+              "Memory can send a credential of its own to that host.",
+          },
+        ]);
+      },
+    );
+
+    test("leaves a Box gateway target of the user to the AgentCore host alone when it signs with the gateway role", () => {
+      const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
+      const base = contextOf(CODEZIP, { memories: ["secondMemory"] });
+      const target = {
+        ...passthrough("tools", `https://${host}`),
+        outboundAuth: { type: "GATEWAY_IAM_ROLE" },
+      } as AgentCoreGatewayTarget;
+      const context = {
+        ...base,
+        gateway: { ...base.gateway, targets: [...base.gateway.targets, target] },
+        hosts: [
+          {
+            host,
+            authority: host,
+            target: "tools",
+            outboundAuth: { kind: "none" },
+            sources: [{ kind: "entry", egressEntry: "tools", destinations: [host] }],
+          },
+        ],
+      } as unknown as Parameters<typeof apply>[1];
+
+      expect(apply({ egress: { tools: { destinations: [host] } } }, context).problems).toEqual([]);
     });
 
     test("sends a route or HTTP MCP server of the profile to the AgentCore host directly, with its name, and adds no second route", () => {
@@ -1400,11 +1488,11 @@ describe("the additions rule", () => {
             place: PROFILE_FILE,
             reason:
               `[${kind}.tools] sends env://TOOLS_TOKEN to ${host}. On AgentCore Runtime, runtime ` +
-              "'agent' has its default Memory, so box sends every call to that host directly, " +
-              "signed with the execution role, and not through the Box gateway. Box cannot route " +
-              "one host both ways, so the key would not be sent. Remove the secret from " +
-              `[${kind}.tools] if the service takes the execution role's signature, or remove the ` +
-              "default Memory of runtime 'agent' from agentcore.json.",
+              "'agent' gets every Memory of the project, so box sends every call to that host " +
+              "directly, signed with the execution role, and not through the Box gateway. Box " +
+              "cannot route one host both ways, so the key would not be sent. Remove the secret " +
+              `from [${kind}.tools] if the service takes the execution role's signature. No boxed ` +
+              "runtime of a project with a Memory can send a credential of its own to that host.",
           },
         ]);
       },
@@ -1453,7 +1541,7 @@ describe("the additions rule", () => {
       ]);
     });
 
-    test("leaves a gateway route to the Memory host alone for a runtime with no default Memory", () => {
+    test("leaves a gateway route to the Memory host alone when the project has no Memory", () => {
       const host = `bedrock-agentcore.${BUILD_REGION}.amazonaws.com`;
       const local = { egress: { memory: { destinations: [host], backends: [{ url: "x" }] } } };
 

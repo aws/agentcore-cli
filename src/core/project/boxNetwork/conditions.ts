@@ -28,6 +28,8 @@ export const BOX_ACTIONS = new Set([
   "shell:exec",
   "shell:spawn",
   "mcp:call",
+  // The WebSocket handshake, which box 0.3.2 decides apart from http:request.
+  "websocket:connect",
   "websocket:send",
   "websocket:receive",
 ]);
