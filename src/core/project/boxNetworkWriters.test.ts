@@ -8,10 +8,12 @@ import type { BoxNetwork, BoxNetworkHost } from "./boxNetwork";
 import { BOX_BEDROCK_POLICY_FILE } from "./boxMemory";
 import {
   BOX_NETWORK_WRITERS,
+  boxKeyReads,
   boxNetworkEdits,
   credentialsWriter,
   defaultTargetsWriter,
   gatewayTargetsWriter,
+  placeSecretsManagerEndpoint,
   runtimeProfileWriter,
   telemetryPolicyWriter,
   type BoxNetworkWriteContext,
@@ -111,7 +113,7 @@ function spec(targets: AgentCoreGatewayTarget[] = [MINE]) {
     ],
     memories: [],
     credentials: [],
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent", "strands-box"), targets }],
   } as unknown as ProjectSpec;
 }
 
@@ -256,7 +258,9 @@ describe("gatewayTargetsWriter", () => {
         }),
       );
       const project = spec([passthrough("egress-old", "https://old.example.com")]);
-      project.agentCoreGateways.push(AgentCoreGatewaySchema.parse(boxGatewaySpec("search")));
+      project.agentCoreGateways.push(
+        AgentCoreGatewaySchema.parse(boxGatewaySpec("search", "strands-box")),
+      );
       const models = [network({ hosts: [host("api.example.com", "egress-api")] })];
 
       const edits = boxNetworkEdits([gatewayTargetsWriter], models, {
@@ -704,6 +708,7 @@ describe("telemetryPolicyWriter", () => {
 
     expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
+      { kind: "runtimeNetworks" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-second.json" },
       { kind: "file", path: "agentcore/box-telemetry-policy-quiet.json" },
@@ -746,6 +751,7 @@ describe("telemetryPolicyWriter", () => {
 
     expect(telemetryPolicyWriter.writes(models, contextFor(project))).toEqual([
       { kind: "runtimePolicies" },
+      { kind: "runtimeNetworks" },
       { kind: "file", path: "agentcore/box-telemetry-policy-agent.json" },
       plain,
     ]);
@@ -757,6 +763,143 @@ describe("telemetryPolicyWriter", () => {
     expect(() => run([telemetryPolicyWriter, other], models, project)).toThrow(
       `Box network writers 'telemetry policy' and 'other' both write ${JSON.stringify(plain)}`,
     );
+  });
+});
+
+describe("the secrets of third-party telemetry targets", () => {
+  const langsmith = {
+    name: "langsmith",
+    kind: "langsmith",
+    keys: [],
+    secret: { variable: "LANGSMITH_KEY", keys: [] },
+  } as const;
+  const logs = {
+    name: "logs",
+    kind: "cloudwatch_logs",
+    region: "us-west-2",
+    logGroup: "g",
+    logStream: "s",
+  } as const;
+  const SECRET_ARN = "arn:aws:secretsmanager:us-west-2:*:secret:agentcore/demo/agent/box-??????";
+
+  test("adds the read of each secret to the runtime's telemetry policy, after its CloudWatch grant", () => {
+    const edits = run(
+      [telemetryPolicyWriter],
+      [network({ telemetry: [logs], thirdPartyTelemetry: [langsmith] })],
+    );
+
+    const [file] = edits.files;
+    expect(JSON.parse("text" in file! ? file.text : "")).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        expect.objectContaining({ Sid: "BoxTelemetryToCloudWatchLogs" }),
+        {
+          Sid: "BoxTelemetrySecrets",
+          Effect: "Allow",
+          Action: ["secretsmanager:GetSecretValue"],
+          Resource: [SECRET_ARN],
+        },
+      ],
+    });
+    expect(edits.spec.runtimes[0]!.additionalPolicies).toEqual([
+      "../../agentcore/box-telemetry-policy-agent.json",
+    ]);
+  });
+
+  test("writes the policy for a runtime whose only grant is the read of a secret", () => {
+    const edits = run([telemetryPolicyWriter], [network({ thirdPartyTelemetry: [langsmith] })]);
+
+    const [file] = edits.files;
+    expect(JSON.parse("text" in file! ? file.text : "").Statement).toEqual([
+      expect.objectContaining({ Sid: "BoxTelemetrySecrets", Resource: [SECRET_ARN] }),
+    ]);
+  });
+
+  test("grants no read for a target with no key", () => {
+    const open = { name: "open", kind: "otlp", keys: [["destination", "https://o.example"]] };
+
+    const edits = run([telemetryPolicyWriter], [network({ thirdPartyTelemetry: [open as never] })]);
+
+    expect(edits.files).toEqual([
+      { path: "agentcore/box-telemetry-policy-agent.json", remove: true },
+    ]);
+  });
+
+  test("copies each key the box profile's variable holds to .env.local for deploy", () => {
+    const edits = boxNetworkEdits(
+      [credentialsWriter],
+      [network({ thirdPartyTelemetry: [langsmith] })],
+      {
+        spec: spec(),
+        projectRoot: "/nonexistent/project",
+        env: { LANGSMITH_KEY: "dummy-key" },
+        envLocal: {},
+      },
+    );
+
+    expect(edits.envLocal).toEqual([
+      expect.objectContaining({
+        key: "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH",
+        value: "dummy-key",
+      }),
+    ]);
+    // The target needs a secret, not a credential provider.
+    expect(edits.spec.credentials).toEqual([]);
+  });
+
+  test("copies a key that only .env.local holds, and the shell's value over it", () => {
+    const copied = (env: NodeJS.ProcessEnv) =>
+      boxNetworkEdits([credentialsWriter], [network({ thirdPartyTelemetry: [langsmith] })], {
+        spec: spec(),
+        projectRoot: "/nonexistent/project",
+        env,
+        envLocal: { LANGSMITH_KEY: "dummy-file-key" },
+      }).envLocal.map(({ key, value }) => [key, value]);
+
+    expect(copied({})).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-file-key"],
+    ]);
+    expect(copied({ LANGSMITH_KEY: "dummy-shell-key" })).toEqual([
+      ["AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH", "dummy-shell-key"],
+    ]);
+  });
+
+  test("reads the variable of each target's key from .env.local, unless the shell sets it", () => {
+    const networks = [network({ thirdPartyTelemetry: [langsmith] })];
+
+    const reads = boxKeyReads(networks, spec(), { LANGSMITH_KEY: "dummy-shell-key", OTHER: "x" });
+
+    expect(reads.select?.("LANGSMITH_KEY")).toBe(true);
+    expect(reads.select?.("OTHER")).toBe(false);
+    expect(reads.overrides).toMatchObject({ LANGSMITH_KEY: "dummy-shell-key" });
+  });
+});
+
+describe("placeSecretsManagerEndpoint", () => {
+  /** A project whose runtime `agent` uses a private VPC, with `network` when it is given. */
+  const privateVpc = (network?: Record<string, unknown>) => {
+    const project = spec();
+    Object.assign(project.runtimes[0]!, { containment: "PRIVATE_VPC" }, network && { network });
+    return project;
+  };
+
+  test("deletes the network of a runtime when the endpoint was its only field", () => {
+    const project = privateVpc();
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    expect(project.runtimes[0]!.network).toEqual({ secretsManagerEndpoint: true });
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]).not.toHaveProperty("network");
+  });
+
+  test("keeps the other fields of the network when it removes the endpoint", () => {
+    const project = privateVpc({ mode: "CONTAINED" });
+
+    placeSecretsManagerEndpoint(project, ["agent"]);
+    placeSecretsManagerEndpoint(project, []);
+
+    expect(project.runtimes[0]!.network).toEqual({ mode: "CONTAINED" });
   });
 });
 

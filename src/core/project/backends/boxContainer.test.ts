@@ -8,7 +8,7 @@ import type { Project } from "../../../handlers/project/types";
 import type { BoxNetwork } from "../boxNetwork";
 import { renderAgentCorePack } from "../templates/boxProfile";
 import { serializeRuntimeProfile } from "../runtimeProfile/serialize";
-import { stageBoxContainers } from "./boxContainer";
+import { AWS_CLI_RELEASE, awsCliWarnings, stageBoxContainers } from "./boxContainer";
 import { BOX_RELEASE } from "./boxRelease";
 
 /** The staged path of the generated @box/agentcore pack, from `.box-dist/`. */
@@ -51,7 +51,7 @@ async function project(dockerfile: string): Promise<Project> {
       ],
       memories: [],
       projectType: "box",
-      agentCoreGateways: [boxGatewaySpec("agent")],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
     },
   } as unknown as Project;
 }
@@ -130,6 +130,56 @@ describe("stageBoxContainers", () => {
     expect(await readFile(join(dist, "policy.dw"), "utf8")).toBe("// rules\n");
   });
 
+  test("names the AWS CLI for the image only when the Runtime profile reads a key from Secrets Manager", async () => {
+    const demo = await project(TEMPLATE_DOCKERFILE);
+    const env = () =>
+      readFile(join(demo.rootPath, "app", "agent", ".box-dist", "box-release.env"), "utf8");
+    const langsmith = {
+      name: "langsmith",
+      kind: "langsmith",
+      keys: [],
+      secret: { variable: "LANGSMITH_KEY", keys: [] },
+    } as const;
+    const open = {
+      name: "open",
+      kind: "otlp",
+      keys: [["destination", "https://o.example"]],
+    } as const;
+
+    await stageBoxContainers(demo, [{ ...model([]), thirdPartyTelemetry: [langsmith] }]);
+    expect(await env()).toEndWith(
+      `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n`,
+    );
+
+    for (const networks of [
+      [model([])],
+      [{ ...model([]), thirdPartyTelemetry: [open] }],
+    ] as BoxNetwork[][]) {
+      await stageBoxContainers(demo, networks);
+      expect(await env()).not.toContain("AWS_CLI");
+    }
+  });
+
+  test("the image installs the AWS CLI it is told to, checks its SHA-256 before it unzips, and keeps it out of /app", () => {
+    // Read from box-release.env, which the CLI writes only with the switch on.
+    expect(TEMPLATE_DOCKERFILE).toContain('if [ -n "${AWS_CLI_URL:-}" ]; then');
+    const check = TEMPLATE_DOCKERFILE.indexOf(
+      'echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c -',
+    );
+    expect(check).toBeGreaterThan(
+      TEMPLATE_DOCKERFILE.indexOf('-o /tmp/awscli.zip "${AWS_CLI_URL}"'),
+    );
+    expect(check).toBeLessThan(TEMPLATE_DOCKERFILE.indexOf("unzip -q /tmp/awscli.zip"));
+    expect(TEMPLATE_DOCKERFILE).toContain(
+      "--install-dir /usr/local/aws-cli --bin-dir /usr/local/bin",
+    );
+    expect(TEMPLATE_DOCKERFILE).not.toMatch(/gpg|PGP|\.sig\b/);
+    expect(AWS_CLI_RELEASE.url).toBe(
+      `https://awscli.amazonaws.com/awscli-exe-linux-aarch64-${AWS_CLI_RELEASE.version}.zip`,
+    );
+    expect(AWS_CLI_RELEASE.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   test("refuses an image that copies only the profile when policy files go with it", async () => {
     const demo = await project(BOX_DOCKERFILE);
     await mkdir(join(demo.rootPath, ".box", "agent", "local"), { recursive: true });
@@ -139,6 +189,60 @@ describe("stageBoxContainers", () => {
       "does not copy .box-dist/ whole into the image",
     );
     expect(existsSync(join(demo.rootPath, "app", "agent", ".box-dist"))).toBe(false);
+  });
+});
+
+describe("awsCliWarnings", () => {
+  const langfuse = {
+    name: "langfuse",
+    kind: "langfuse",
+    keys: [],
+    secret: { variable: "LANGFUSE_AUTH", keys: [] },
+  } as const;
+  const open = {
+    name: "open",
+    kind: "otlp",
+    keys: [["destination", "https://o.example"]],
+  } as const;
+  const reading = (): BoxNetwork[] => [{ ...model([]), thirdPartyTelemetry: [langfuse] }];
+  const WARNING =
+    "Runtime 'agent' reads the key of [telemetry.langfuse] from AWS Secrets Manager on " +
+    "AgentCore Runtime. Box reads that key with the AWS CLI (aws), which app/agent/Dockerfile " +
+    "does not install. Thus box cannot read the key, and it does not start the agent. Add the " +
+    "AWS CLI lines (the lines that read AWS_CLI_URL) of the agent-python-strands-box " +
+    "Dockerfile.template of this CLI to that Dockerfile. Or replace the runtime with a new " +
+    "runtime from the template of this CLI.";
+
+  test("warns for a Dockerfile from an older template, which does not install the AWS CLI", async () => {
+    expect(awsCliWarnings(await project(BOX_DOCKERFILE), reading())).toEqual([WARNING]);
+  });
+
+  test("warns when only a comment names AWS_CLI_URL", async () => {
+    const demo = await project(`${BOX_DOCKERFILE}# AWS_CLI_URL is not read here\n`);
+
+    expect(awsCliWarnings(demo, reading())).toEqual([WARNING]);
+  });
+
+  test("does not warn for the Dockerfile of the current template", async () => {
+    expect(awsCliWarnings(await project(TEMPLATE_DOCKERFILE), reading())).toEqual([]);
+  });
+
+  test("does not warn when no target of the Runtime profile has a key", async () => {
+    const demo = await project(BOX_DOCKERFILE);
+
+    for (const networks of [[model([])], [{ ...model([]), thirdPartyTelemetry: [open] }]]) {
+      expect(awsCliWarnings(demo, networks as BoxNetwork[])).toEqual([]);
+    }
+  });
+
+  test("does not warn for a runtime that is not a box container", async () => {
+    const codeZip = await project(BOX_DOCKERFILE);
+    codeZip.spec.runtimes[0]!.build = "CodeZip";
+    const unboxed = await project(BOX_DOCKERFILE);
+    delete unboxed.spec.runtimes[0]!.box;
+
+    expect(awsCliWarnings(codeZip, reading())).toEqual([]);
+    expect(awsCliWarnings(unboxed, reading())).toEqual([]);
   });
 });
 

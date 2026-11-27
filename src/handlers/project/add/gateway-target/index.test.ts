@@ -42,7 +42,7 @@ describe("project add gateway-target", () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     const runtime = spec.runtimes[0].name;
-    const box = boxGatewaySpec(runtime);
+    const box = boxGatewaySpec(runtime, "strands-box");
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",
@@ -82,7 +82,7 @@ describe("project add gateway-target", () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
     const runtime = spec.runtimes[0];
-    const box = boxGatewaySpec(runtime.name);
+    const box = boxGatewaySpec(runtime.name, "strands-box");
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",

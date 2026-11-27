@@ -290,13 +290,13 @@ export const BoxVersionSchema = z
   .regex(/^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/, "a box version is letters, digits, '.', '+' and '-'");
 
 /**
- * How far a runtime of a Box project is contained. `SANDBOXED`, or no field: the agent runs in a box
+ * How far a runtime of a Box project is contained. `CONTAINED`, or no field: the agent runs in a box
  * behind its Box gateway. `PRIVATE_VPC`: also in a private VPC with no internet path.
  */
-export const ContainmentSchema = z.enum(["SANDBOXED", "PRIVATE_VPC"]);
+export const ContainmentSchema = z.enum(["CONTAINED", "PRIVATE_VPC"]);
 export type Containment = z.infer<typeof ContainmentSchema>;
 export const PRIVATE_VPC_LIMIT =
-  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each contained runtime.';
+  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each PRIVATE_VPC runtime.';
 
 /**
  * The AgentCore Runtime platform a runtime runs on, set as `PlatformVersion` on its
@@ -347,6 +347,11 @@ export const ContainedNetworkSchema = z
       )
       .optional(),
     ipAddressType: z.enum(["IPV4", "DUAL_STACK"]).optional(),
+    /**
+     * Gives the VPC an AWS Secrets Manager endpoint, so the box of the runtime can read the keys of
+     * its third-party telemetry targets. Build sets it and removes it.
+     */
+    secretsManagerEndpoint: z.boolean().optional(),
   })
   .strict();
 export type ContainedNetwork = z.infer<typeof ContainedNetworkSchema>;
@@ -364,11 +369,14 @@ export const ProjectRuntimeSchema = z
      */
     modelProvider: ModelProviderSchema.optional(),
     /**
-     * The model id the scaffold rendered into a LiteLLM runtime's code
-     * (explicit --model-id or the template default). Read by the China
-     * deploy gate to detect LiteLLM's Bedrock route ('bedrock/' prefix);
-     * ignored by the CDK app. Delete it together with modelProvider if you
-     * replace the model wiring by hand.
+     * The model id the scaffold rendered into the runtime's code (explicit
+     * --model-id or the template default), for a LiteLLM runtime and for a
+     * box runtime that calls a Bedrock model. The China deploy gate reads it
+     * to detect LiteLLM's Bedrock route ('bedrock/' prefix). For a box runtime,
+     * build lets its Box gateway call only this Bedrock model or inference
+     * profile; change it when the code calls another model. Ignored by the CDK
+     * app. Delete it together with modelProvider if you replace the model
+     * wiring by hand.
      */
     modelId: z.string().min(1).optional(),
     description: z.string().max(200).optional(),

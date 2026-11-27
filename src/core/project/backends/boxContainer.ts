@@ -79,6 +79,57 @@ function boxReleaseEnv({ repo, version, linux }: BoxRelease): string {
 }
 
 /**
+ * The AWS CLI v2 for Linux arm64 that a box image installs when its Runtime profile reads a key
+ * from AWS Secrets Manager: Box runs `aws` outside the sandbox to read it. The checksum is of the
+ * archive at `url`.
+ */
+export const AWS_CLI_RELEASE = {
+  version: "2.41.1",
+  url: "https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.41.1.zip",
+  sha256: "83f3bb8440cf6a05e6289f8024126b8c8e15e9513adfe0d6c059747350cdb1e2",
+} as const;
+
+/** The lines of {@link BOX_RELEASE_ENV} that make the image install {@link AWS_CLI_RELEASE}. */
+export function awsCliReleaseEnv(): string {
+  return `AWS_CLI_URL=${AWS_CLI_RELEASE.url}\nAWS_CLI_SHA256=${AWS_CLI_RELEASE.sha256}\n`;
+}
+
+/** Whether the Runtime profile of `network` reads a key from AWS Secrets Manager. */
+function readsSecretsManager(network: BoxNetwork | undefined): boolean {
+  return (network?.thirdPartyTelemetry ?? []).some(({ secret }) => secret !== undefined);
+}
+
+/** A Dockerfile line, not a comment, that names `AWS_CLI_URL`. */
+const NAMES_AWS_CLI_URL = /^(?![ \t]*#).*\bAWS_CLI_URL\b/m;
+
+/** A warning for each box container runtime that reads a key with the AWS CLI that its Dockerfile does not install. */
+export function awsCliWarnings(project: Project, networks: readonly BoxNetwork[]): string[] {
+  return project.spec.runtimes.flatMap((runtime) => {
+    if (runtime.build !== "Container" || !runtimeRunsInBox(project.spec, runtime)) return [];
+    const network = networks.find((candidate) => candidate.runtime === runtime.name);
+    const targets = (network?.thirdPartyTelemetry ?? []).filter(
+      ({ secret }) => secret !== undefined,
+    );
+    const dockerfile = dockerfileOf(project.rootPath, runtime);
+    if (targets.length === 0 || !isFile(dockerfile)) return [];
+    if (NAMES_AWS_CLI_URL.test(readFileSync(dockerfile, "utf8"))) return [];
+    const names = targets.map(({ name }) => `[telemetry.${name}]`).join(", ");
+    const path = posix.join(
+      runtime.buildContextPath ?? runtime.codeLocation,
+      runtime.dockerfile ?? "Dockerfile",
+    );
+    return [
+      `Runtime '${runtime.name}' reads the key of ${names} from AWS Secrets Manager on AgentCore ` +
+        `Runtime. Box reads that key with the AWS CLI (aws), which ${path} does not install. ` +
+        "Thus box cannot read the key, and it does not start the agent. Add the AWS CLI lines " +
+        "(the lines that read AWS_CLI_URL) of the agent-python-strands-box Dockerfile.template " +
+        "of this CLI to that Dockerfile. Or replace the runtime with a new runtime from the " +
+        "template of this CLI.",
+    ];
+  });
+}
+
+/**
  * Writes `<context>/<folder>` for a box image: `profileText`, the profile the image runs, each
  * policy file of `policies` at its path from the agent's local box folder, and the box release the Dockerfile downloads.
  * The folder is rewritten each time.
@@ -103,11 +154,11 @@ export async function stageBoxImage(
 
 /**
  * Stages box for build and deploy into each container runtime that runs in a box
- * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the pinned box, and
- * what the runtime profile writer writes from the runtime's Box network
- * model (the Runtime profile and a byte copy of each policy file it names). `.box/<name>/aws/`
- * gets only what the writer writes, for people to read. Returns the names of the runtimes it
- * staged.
+ * ({@link runtimeRunsInBox}): the build context's `.box-dist/` gets the pinned box (and the AWS
+ * CLI, when the Runtime profile reads a key from AWS Secrets Manager), and what the runtime
+ * profile writer writes from the runtime's Box network model (the Runtime profile and a byte copy
+ * of each policy file it names). `.box/<name>/aws/` gets only what the writer writes, for people to
+ * read. Returns the names of the runtimes it staged.
  */
 export async function stageBoxContainers(
   project: Project,
@@ -135,7 +186,11 @@ export async function stageBoxContainers(
     const folder = join(project.rootPath, ...stage.dist.split("/"));
     await rm(folder, { recursive: true, force: true });
     await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, BOX_RELEASE_ENV), boxReleaseEnv(BOX_RELEASE));
+    const network = networks.find((candidate) => candidate.runtime === stage.runtime);
+    await writeFile(
+      join(folder, BOX_RELEASE_ENV),
+      boxReleaseEnv(BOX_RELEASE) + (readsSecretsManager(network) ? awsCliReleaseEnv() : ""),
+    );
     writeProfile(stage);
   }
   return runtimes.map((runtime) => runtime.name);

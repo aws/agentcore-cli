@@ -48,7 +48,7 @@ fork of [strands-agents/box](https://github.com/strands-agents/box), then run
   [aws/agentcore-l3-cdk-constructs#481](https://github.com/aws/agentcore-l3-cdk-constructs/pull/481): it gives the
   runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
   the box cannot reach Memory.
-- `box` `0.3.0` on your `PATH`, the release the CLI pins. Use that release: the box
+- `box` `0.3.2` on your `PATH`, the release the CLI pins. Use that release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
   run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
@@ -74,30 +74,30 @@ a bundle, reports its signature as invalid (`invalid Info.plist`), and kills box
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-cli-v0.3.0-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.3.0 && cd ~/.local/share/box/0.3.0
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.0/SHA256SUMS.txt
-grep box-cli-v0.3.0-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-cli-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
+grep box-cli-v0.3.2-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
 
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
-`BOX_VERSION` is the folder you unpacked into, `0.3.0`.
+`BOX_VERSION` is the folder you unpacked into, `0.3.2`.
 
 ```
-BOX_VERSION=0.3.0
+BOX_VERSION=0.3.2
 export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
 grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
@@ -114,11 +114,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.3.0` (from
+- `box --version` should print the pinned `box 0.3.2` (from
   `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
   writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.0"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.2"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line to
 that folder.
@@ -200,6 +200,12 @@ This adds an `[egress]` entry for `api.github.com` with a `github` API key crede
 needs `destinations`. Build declares the credential from the `env://` secret, adds the
 `egress-github` gateway target, and deploy provisions the credential in AgentCore Identity.
 
+The credential takes the name of the entry, so the name of an entry with an `env://` secret must be
+a valid credential name: 3 to 128 characters, and only letters, digits, hyphens, and underscores.
+The name must not end in a credential field suffix, such as `_client_secret`. It must not give
+the same variable as a credential of the project or the credential of another entry, as
+`git-hub` and `git_hub` do, or `GitHub` and `github`. Build stops on an entry such as `[egress.w]`, and names its line.
+
 The `destinations` key lists the hosts the credential may reach. The box blocks the credential's
 egress to any host not in the list. Each entry is a `<host>` or `<host>:<port>` string. The default
 port is 443. A port must be 1 to 65535.
@@ -261,8 +267,9 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   key is set in your shell or in `agentcore/.env.local`, build adds an API key credential such as
   `openai`, and deploy provisions your key in AgentCore Identity.
 - **Failures.** A profile Box refuses stops build and deploy with box's own error. A wildcard
-  host, a plain-HTTP-only host, an unsupported secret, an MCP server that names more than one
-  host, a path, or a port other than 443, and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
+  host, a plain-HTTP-only host, an unsupported secret, an `env://` entry whose name is not a valid
+  credential name, an MCP server that names more than one host, a path, or a port other than 443,
+  and similar cases stop them too. The error starts with `Build stopped:` or `Deploy stopped:` and the
   number of problems, then gives one line for each problem: its `file:line:column` in your
   profile or policy file, what is wrong, and how to fix it. A rule of your policy file is found
   by its `@id`. For a rule that Box adds, the line names the entry that makes Box add it, such as
@@ -313,7 +320,17 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
 
   **The default X-Ray target.** With `enableOtel` on and no `cloudwatch_traces` target, the Runtime
   profile gets `[telemetry.agentcore_traces]`: box sends the spans of the agent, and its own deny,
-  permit, and trace spans, to X-Ray in the region of the Runtime. Build gives the execution role
+  permit, and trace spans, to X-Ray in the region of the Runtime. With box 0.3.2 or later
+  (`BOX_TRACES_LOG_GROUP_VERSION`), the target also names the runtime's own log group and its
+  `spans` stream, which box reads from `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so the spans go there
+  and not to `aws/spans`. The Runtime must set `OTEL_EXPORTER_OTLP_TRACES_HEADERS` with
+  `x-aws-log-group` and `x-aws-log-stream`, or box does not start. If the log group is incorrect,
+  or box cannot write to it, no span gets to a log group and box shows no error. The exporter
+  of box examines only the HTTP status. If no spans get to the `spans` stream, set
+  `STRANDS_BOX_TELEMETRY_DEBUG` to `"1"` in the `envVars` of the runtime. Then look for
+  `telemetry export failed` in the log group of the runtime. The spans get to the log group only
+  with the `logs:PutResourcePolicy` grant that the L3 runtime role has on
+  `/aws/bedrock-agentcore/runtimes/*`. The CLI adds no grant for it. Build gives the execution role
   `xray:PutSpans` and `xray:PutTraceSegments` in `agentcore/box-telemetry-policy-<runtime>.json`. To
   send the spans to a different target, add a `cloudwatch_traces` target to the local profile. To
   send no spans, set `instrumentation.enableOtel` to `false` in `agentcore.json`. When `enableOtel`
@@ -502,6 +519,11 @@ Local checks, in `agentcore/agentcore.json`:
 - `"projectType": "box"`.
 - A gateway named `agent-box-egress` with a `bedrock` passthrough target in the deploy region, and
   an `egress-github` target for `https://api.github.com`.
+- The runtime's `"modelId"`, the Bedrock model its code calls. Build writes
+  `agentcore/box-bedrock-policy.json` for the Box gateways' roles with that model only. To use
+  another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock
+  denies the call. Without a `modelId` build can scope to, the policy allows every model of the
+  account and build warns.
 - A credential named `github` with `authorizerType: ApiKeyCredentialProvider`.
 
 Live checks, after deploy. Deploy names each AWS resource after the project and the deploy target
@@ -535,8 +557,9 @@ the deny, permit, and trace records, and box signs it with the execution role.
 
 With `instrumentation.enableOtel` on, box also sends the spans of the agent and its own spans to
 X-Ray, through the target `[telemetry.agentcore_traces]`. Build gives the execution role the X-Ray
-grant for it. "The default X-Ray target" in step 4 gives the rules. CloudWatch Transaction Search
-keeps the spans in the log group `aws/spans`.
+grant for it. "The default X-Ray target" in step 4 gives the rules. With box 0.3.2 or later, the
+spans go to the stream `spans` of the runtime's own log group. With an older box, CloudWatch
+Transaction Search keeps them in the log group `aws/spans`.
 
 The CLI and the L3 constructs make no log group for box. The role that the CDK makes for the runtime
 can write to the log group of the Runtime, thus build adds no grant for it. A runtime that names an
@@ -618,6 +641,87 @@ To replace the default target with a log group that you make:
    ```
 
    To show only the deny decisions, add `--filter-pattern '"deny"'`.
+
+### Send box telemetry to Langfuse, LangSmith, or an OTLP endpoint
+
+A box profile can send spans to a third party: `kind = "langfuse"`, `"langsmith"`, or `"otlp"`.
+Box sends them from the runtime to the host directly, not through the Box gateway. Build writes no
+gateway target for a telemetry host.
+
+1. Get the keys. Use a test project and test data only.
+   - Langfuse: in your project, open **Settings > API Keys** and make a key pair. Box takes the two
+     keys as one value with a colon between them: `pk-lf-...:sk-lf-...`.
+   - LangSmith: open **Settings > API Keys** and make a key (`lsv2_...`).
+
+2. Add the targets to the box profile of the agent, `.box/agent/local/profile.toml`:
+
+   ```toml
+   [telemetry.langfuse]
+   kind = "langfuse"
+   destination = "https://us.cloud.langfuse.com"   # the address of your Langfuse Region
+   secret.ref = "env://LANGFUSE_AUTH"
+
+   [telemetry.langsmith]
+   kind = "langsmith"
+   project = "box-test"
+   secret.ref = "env://LANGSMITH_API_KEY"
+   ```
+
+3. Export the keys in the shell that runs dev, build, and deploy:
+
+   ```sh
+   export LANGFUSE_AUTH='pk-lf-...:sk-lf-...'
+   export LANGSMITH_API_KEY='lsv2_...'
+   ```
+
+   You can also put these variables in `agentcore/.env.local`. Dev and build use the value of the
+   shell when it is set. If it is not set, they use the value of `agentcore/.env.local`.
+   With `agentcore dev`, box reads each key from its environment variable, for CodeZip and container agents.
+
+4. Build and deploy. AgentCore Runtime does not have these environment variables. Thus:
+   - build copies each key into `agentcore/.env.local` as
+     `AGENTCORE_CREDENTIAL_<RUNTIME>_TELEMETRY_<TARGET>`, in capital letters with `_` for `-`, for example
+     `AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGFUSE`;
+   - deploy writes the keys into one AWS Secrets Manager secret for each runtime,
+     `agentcore/<project>/<runtime>/box`, with one field for each target, `telemetry.<target>`. The
+     secret is not in the CloudFormation stack. Thus, no key goes into a template;
+   - deploy gives the secret that it creates the tags `agentcore:created-by`,
+     `agentcore:project-name`, and `agentcore:runtime-name`. Deploy does not write or delete a
+     secret of that name that does not have these tags;
+   - the Runtime profile lists the `@box/aws-secrets-manager` plugin, and each target reads
+     `aws-secretsmanager://agentcore/<project>/<runtime>/box#telemetry.<target>`;
+   - the execution role gets `secretsmanager:GetSecretValue` on that secret only, in
+     `agentcore/box-telemetry-policy-<runtime>.json`.
+
+   When the run starts, box reads the keys with the AWS CLI, which is in the container image.
+   The agent does not see the keys. A new deploy without the environment variables keeps the keys in
+   the secret.
+   When no runtime has a key, deploy schedules the deletion of the secret.
+   Each deployment target in one account and region uses the same secret. Thus the keys of the
+   last deploy go to each of these targets. If you deploy a target for tests with a different key,
+   the production target also gets that key.
+
+5. Check the result:
+
+   ```sh
+   aws secretsmanager describe-secret --secret-id "agentcore/$PROJECT/agent/box" --query Name
+   bun run "$CLI" invoke --runtime agent --payload '{"prompt":"What is 17 times 23?"}'
+   ```
+
+   Then look in Langfuse (the **Tracing** page) and in LangSmith (the project `box-test`). If a send
+   does not succeed, set the environment variable `STRANDS_BOX_TELEMETRY_DEBUG` to `1` on the
+   runtime in `agentcore.json`. Box then writes the cause of each send that did not succeed to the log
+   of the runtime, and it hides the key.
+
+Limits:
+
+- **CodeZip:** the CodeZip Runtime has no AWS CLI, so build stops for a third-party target with a
+  key on a CodeZip runtime. Use a container runtime.
+- **PRIVATE_VPC:** the private VPC has no internet path. Build keeps the target and shows a warning:
+  box tries each send, and no send succeeds until you give the VPC a path to the host, or remove
+  `--containment private-vpc`. Build also sets `"secretsManagerEndpoint": true` in the `network` of
+  the runtime, so the L3 constructs give the VPC an AWS Secrets Manager endpoint: without it box
+  cannot read its keys, and does not start.
 
 ## 11. Tear down
 

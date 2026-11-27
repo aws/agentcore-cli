@@ -9,7 +9,10 @@ streams agent-to-UI events over HTTP. It exposes an `/invocations` endpoint that
 an AG-UI `RunAgentInput` body and streams the response back as AG-UI server-sent events,
 matching the AgentCore Runtime HTTP service contract.
 
-## Memory
+{{#if box}}
+On AgentCore Runtime the Box gateway may call only the Bedrock model in this runtime's `modelId` in `agentcore/agentcore.json`. To use another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock denies the call.
+
+{{/if}}## Memory
 
 The template provisions semantic and episodic memory. `memory/session.py` retrieves up to three
 semantic facts for the actor and five episodes for the current session. The default

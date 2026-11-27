@@ -6,9 +6,12 @@ import { boxGatewaySpec, type ProjectSpec } from "../../../projectSchemas/projec
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { boxNetworkRules } from "../boxProfileResolver-test-support";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
+import { boxSigningOf } from "./egress";
 import { boxGatewayIamWarnings, buildBoxNetwork } from "./network";
 import { parseResolvedPolicy } from "./policyParser";
 import { profilePlaces } from "./profileParser";
+import { targetOutboundAuth } from "./projectSpec";
+import { thirdPartyTelemetry } from "./telemetry";
 
 const HR = 'action == Box::Action::"http:request"';
 const NC = 'action == Box::Action::"net:connect"';
@@ -49,6 +52,8 @@ interface Options {
   readonly runtime?: Partial<ProjectRuntime>;
   /** What the check of the @aws/agentcore-cdk of the project gives; it accepts here. */
   readonly projectGatewayCheck?: PassthroughGatewayCheck;
+  /** The `[telemetry]` tables, as Box resolves them. */
+  readonly telemetry?: Record<string, unknown>;
   /** The targets that agentcore/box-gateway-targets.json names for the gateway. */
   readonly ownedTargets?: ReadonlySet<string>;
 }
@@ -71,7 +76,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     credentials: options.credentials ?? [],
     agentCoreGateways: [
       {
-        ...boxGatewaySpec("agent"),
+        ...boxGatewaySpec("agent", "strands-box"),
         targets: options.targets ?? [],
         ...(options.executionRoleArn && { executionRoleArn: options.executionRoleArn }),
       },
@@ -84,6 +89,7 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
     ...Object.keys(egress).map((name) => `[egress.${JSON.stringify(name)}]`),
     ...Object.keys(mcp).map((name) => `[mcp.${JSON.stringify(name)}]`),
   ].join("\n");
+  const telemetry = thirdPartyTelemetry({ telemetry: options.telemetry });
   const { parsed, failures } = parseResolvedPolicy(
     {
       path: PROFILE,
@@ -91,6 +97,8 @@ function model(policy: string, egress: Record<string, unknown> = {}, options: Op
       mcp,
       policyFiles: policy ? ["policy.dw"] : [],
       places: profilePlaces(profile, PROFILE),
+      thirdPartyTelemetry: telemetry.targets,
+      leftOutTelemetry: telemetry.leftOut,
     },
     `${options.boxFirst ?? ""}${policy}\n${options.packRules ?? ""}${boxNetworkRules(egress, mcp)}`,
     policy ? [{ file: ".box/agent/local/policy.dw", text: policy }] : [],
@@ -527,13 +535,119 @@ describe("outbound auth", () => {
     }
   });
 
-  test("leaves an env:// entry that cannot name an API key credential to the credentials writer", () => {
-    const invalid = model("", {
-      ab: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } },
+  test("stops build for an env:// entry whose name is not a valid credential name, at its line", () => {
+    const short = model("", {
+      w: { destinations: ["api.example.com"], secret: { ref: "env://MISSING_TOKEN" } },
     });
-    expect(invalid.failures()).toEqual([]);
-    expect(invalid.host("a.example.com")?.outboundAuth).toMatchObject({ credentialName: "ab" });
-    expect(invalid.network.envRoutes).toEqual([{ route: "ab", variable: "KEY" }]);
+    expect(short.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "w"]]);
+    expect(short.lines()).toEqual([
+      `${PROFILE}:2:1  [egress.w] reads its key from env://MISSING_TOKEN, which build keeps in ` +
+        "an API key credential named after the entry, and 'w' is not a valid credential name. " +
+        "A credential name has 3 to 128 characters, and only letters, digits, hyphens (-), and " +
+        "underscores (_). Rename the entry.",
+    ]);
+  });
+
+  test("gives an entry with an invalid name and two destinations one failure", () => {
+    const r = model("", {
+      w: {
+        destinations: ["a.example.com", "b.example.com"],
+        secret: { ref: "env://MISSING_TOKEN" },
+      },
+    });
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "w"]]);
+  });
+
+  test("stops build for an env:// [mcp] server whose name is not a valid credential name", () => {
+    const r = model(
+      "",
+      {},
+      {
+        mcp: {
+          fs: { type: "http", destinations: ["fs.example.com"], secret: { ref: "env://FS_KEY" } },
+        },
+      },
+    );
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", "fs"]]);
+  });
+
+  test.each([
+    ["a name that ends in a credential field suffix", "github_client_secret", {}, []],
+    [
+      "a name that derives the variable of a credential",
+      "git-hub",
+      {},
+      [{ authorizerType: "ApiKeyCredentialProvider", name: "git_hub" }],
+    ],
+    [
+      // The credential keeps its key in Secrets Manager, so it reserves no variable, but its name
+      // still derives AGENTCORE_CREDENTIAL_MY_KEY.
+      "a name that derives the variable of a credential that keeps its key elsewhere",
+      "my-key",
+      {},
+      [
+        {
+          authorizerType: "ApiKeyCredentialProvider",
+          name: "my_key",
+          secretRef: { secretId: "my-secret", jsonKey: "key" },
+        },
+      ],
+    ],
+    [
+      "a name of a credential that is not an API key",
+      "github",
+      {},
+      [
+        {
+          authorizerType: "OAuthCredentialProvider",
+          name: "github",
+          discoveryUrl: "https://example.com/.well-known/openid-configuration",
+        },
+      ],
+    ],
+    [
+      // The two get two gateway targets, but one credential variable, AGENTCORE_CREDENTIAL_GITHUB.
+      "a name that derives the variable of an earlier entry's new credential",
+      "GitHub",
+      { github: { destinations: ["b.example.com"], secret: { ref: "env://OTHER" } } },
+      [],
+    ],
+  ])("stops build for an env:// entry with %s", (_label, name, before, credentials) => {
+    const r = model(
+      "",
+      { ...before, [name]: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } },
+      { credentials: credentials as ProjectSpec["credentials"] },
+    );
+    expect(r.failures()).toEqual([["CREDENTIAL_NAME_INVALID", name]]);
+  });
+
+  test("gives no name failure to an [egress] entry and an [mcp] server of one name", () => {
+    const r = model(
+      "",
+      { tools: { destinations: ["a.example.com"], secret: { ref: "env://KEY" } } },
+      {
+        mcp: {
+          tools: { type: "http", destinations: ["b.example.com"], secret: { ref: "env://KEY" } },
+        },
+      },
+    );
+    // Both take the credential 'tools'. Their one target name is a different failure.
+    expect(r.failures().filter(([code]) => code === "CREDENTIAL_NAME_INVALID")).toEqual([]);
+  });
+
+  test("does not check the name of an env:// entry whose variable a credential reserves", () => {
+    const r = model(
+      "",
+      {
+        w: {
+          destinations: ["api.example.com"],
+          secret: { ref: "env://AGENTCORE_CREDENTIAL_GITHUB" },
+        },
+      },
+      { credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "github" }] },
+    );
+    expect(r.failures()).toEqual([]);
+    expect(r.host("api.example.com")?.outboundAuth).toMatchObject({ credentialName: "github" });
   });
 
   test("gives no route a credential for a host that gets no target", () => {
@@ -566,15 +680,165 @@ describe("outbound auth", () => {
     ]);
     expect(refused("api.example.com", { ref: "aws://default" })).toEqual([
       ["UNSIGNABLE_HOST", "x"],
-      "[egress.x] signs requests to api.example.com with aws://default, and the gateway signs " +
-        "only for Bedrock, AgentCore, and Lambda function URL hosts. Use an env:// secret for " +
-        "this host, or remove the secret.",
+      "[egress.x] signs requests to api.example.com with aws://default, and build cannot find " +
+        "the AWS service and the region of this host. Use an env:// secret for this host, or " +
+        "remove the secret. For an AWS API on a custom domain, add a GATEWAY_IAM_ROLE " +
+        "passthrough target for https://api.example.com to the 'agent-box-egress' gateway.",
     ]);
     expect(refused("api.example.com/v1", { ref: "env://KEY" })).toEqual([
       ["PATH_SCOPED_SECRET", "x"],
       "[egress.x] sends its secret only under /v1, and a gateway target sends its credential " +
         "on every path of the host. Remove the path from the destination.",
     ]);
+  });
+
+  test("signs aws:// on an AWS host outside the managed endpoints with the service and region Box signs it with, and grants nothing", () => {
+    const host = "s3.us-west-2.amazonaws.com";
+    const r = model("", { s3: { destinations: [host], secret: { ref: "aws://" } } });
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(host)).toMatchObject({
+      target: "egress-s3",
+      outboundAuth: { kind: "iam", service: "s3", region: "us-west-2" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set(["egress-s3"]));
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+    expect(r.network.grantedActions).toEqual([]);
+  });
+
+  test("reads the service and region of a host as Box does, except for an empty label", () => {
+    const cases: [string, { service: string; region: string } | undefined][] = [
+      ["s3.us-east-1.amazonaws.com", { service: "s3", region: "us-east-1" }],
+      ["S3.US-WEST-2.AMAZONAWS.COM.", { service: "s3", region: "us-west-2" }],
+      ["iam.amazonaws.com", { service: "iam", region: "us-east-1" }],
+      [
+        "abc123.execute-api.eu-west-1.amazonaws.com",
+        { service: "execute-api", region: "eu-west-1" },
+      ],
+      ["bedrock-runtime.us-east-2.amazonaws.com", { service: "bedrock", region: "us-east-2" }],
+      [
+        "bedrock-agent-runtime.us-west-2.amazonaws.com",
+        { service: "bedrock", region: "us-west-2" },
+      ],
+      ["bedrock-runtime.us-east-1.api.aws", { service: "bedrock", region: "us-east-1" }],
+      ["amazonaws.com", undefined],
+      ["vpce-1234.s3.us-east-1.vpce.amazonaws.com", undefined],
+      ["my-bucket.s3.us-west-2.amazonaws.com", undefined],
+      ["s3.cn-north-1.amazonaws.com.cn", undefined],
+      ["s3..amazonaws.com", undefined],
+      ["api.example.com", undefined],
+    ];
+    for (const [host, signing] of cases)
+      expect([host, boxSigningOf(host)]).toEqual([host, signing]);
+  });
+
+  const BUCKET = "my-bucket.s3.us-west-2.amazonaws.com";
+
+  test("gives aws:// on an AWS host Box does not sign no target, and warns with what to add", () => {
+    const r = model("", { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } });
+
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual([`${BUCKET} -> (none)`]);
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings).toContain(
+      `${PROFILE}:2:1: [egress.bucket] signs requests to ${BUCKET} with aws://, and Box does ` +
+        "not sign for this host name, so build cannot find its service and its region and " +
+        "makes no gateway target for it. The AgentCore Runtime box profile leaves this entry " +
+        `out, and nothing signs the requests to ${BUCKET}. To sign them, add a passthrough ` +
+        `target for https://${BUCKET} to the 'agent-box-egress' gateway in agentcore.json, with ` +
+        "protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. Give it the service and " +
+        "the region of the host. Then add an IAM policy file with the permissions for the host " +
+        "to additionalPolicies of that gateway.",
+    );
+  });
+
+  test("routes aws:// on a host with no signing service through the user's own IAM target", () => {
+    const mine = passthrough("my-bucket", `https://${BUCKET}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "s3" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(BUCKET)).toMatchObject({
+      target: "my-bucket",
+      outboundAuth: { kind: "iam", service: "s3" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+  });
+
+  test("takes the service of the user's own IAM target that has no region, and gives the host no region", () => {
+    const mine = passthrough("my-bucket", `https://${BUCKET}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "s3" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    const auth = r.host(BUCKET)!.outboundAuth;
+    expect(auth).toStrictEqual({ kind: "iam", service: "s3" });
+    expect(targetOutboundAuth(auth)).toStrictEqual({ type: "GATEWAY_IAM_ROLE", service: "s3" });
+  });
+
+  test("drops a managed target of an earlier build when the entry changes to aws:// on an AWS host Box does not sign", () => {
+    const earlier = passthrough("egress-bucket", `https://${BUCKET}`, {
+      outboundAuth: { ...GITHUB_KEY, credentialName: "bucket" },
+    });
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [earlier], ownedTargets: new Set(["egress-bucket"]) },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.targets()).toEqual([`${BUCKET} -> (none)`]);
+    expect(r.host(BUCKET)?.outboundAuth).toEqual({ kind: "none" });
+    expect(r.network.managedTargets).toEqual(new Set(["egress-bucket"]));
+    expect(r.network.warnings.join("\n")).toContain(
+      `[egress.bucket] signs requests to ${BUCKET} with aws://`,
+    );
+  });
+
+  test("routes aws:// on a host that is not an AWS host through the user's own IAM target", () => {
+    const host = "api.example.com";
+    const mine = passthrough("my-api", `https://${host}`, {
+      outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "execute-api", region: "us-west-2" },
+    });
+    const r = model(
+      "",
+      { api: { destinations: [host], secret: { ref: "aws://" } } },
+      { targets: [mine] },
+    );
+
+    expect(r.failures()).toEqual([]);
+    expect(r.host(host)).toMatchObject({
+      target: "my-api",
+      outboundAuth: { kind: "iam", service: "execute-api", region: "us-west-2" },
+    });
+    expect(r.network.managedTargets).toEqual(new Set());
+    expect(r.network.warnings.join("\n")).not.toContain("signs requests to");
+  });
+
+  test("refuses the user's own target with other auth for aws:// on a host with no signing service", () => {
+    const r = model(
+      "",
+      { bucket: { destinations: [BUCKET], secret: { ref: "aws://" } } },
+      { targets: [passthrough("my-bucket", `https://${BUCKET}`)] },
+    );
+
+    expect(r.lines()).toEqual([
+      `agentcore/agentcore.json  The gateway target 'my-bucket' for ${BUCKET} sends no ` +
+        "credential, and [egress.bucket] sends requests signed with the gateway's role. Make the " +
+        `two the same, in agentcore.json or in ${PROFILE}.`,
+    ]);
+    expect(r.failures()).toEqual([["EXISTING_TARGET_CONFLICT", "bucket"]]);
   });
 });
 
@@ -883,9 +1147,12 @@ describe("HTTP MCP servers", () => {
     );
     expect(unsigned.lines()).toEqual([
       ".box/agent/local/profile.toml:2:1  [mcp.tools] signs requests to tools.example.com with " +
-        "aws://default, and the gateway signs only for Bedrock, AgentCore, and Lambda function " +
-        "URL hosts. Use an env:// secret for this host, or remove the secret.",
+        "aws://default, and build cannot find the AWS service and the region of this host. Use " +
+        "an env:// secret for this host, or remove the secret. For an AWS API on a custom " +
+        "domain, add a GATEWAY_IAM_ROLE passthrough target for https://tools.example.com to " +
+        "the 'agent-box-egress' gateway.",
     ]);
+    expect(unsigned.failures()).toEqual([["UNSIGNABLE_HOST", "tools"]]);
   });
 
   test("stops on a server with two destinations, a path, or a wildcard, at its entry", () => {
@@ -1225,6 +1492,28 @@ describe("warnings", () => {
       expect(warningsFor(functionUrl, ["bedrock:*"])).toEqual([forService("egress-fn", "lambda")]);
     });
 
+    test("an S3 target needs an S3 grant that the user adds, and build adds none", () => {
+      const bucket = signed("egress-s3", "s3.us-west-2.amazonaws.com", "s3");
+      expect(warningsFor(bucket)).toEqual([forService("egress-s3", "s3")]);
+      expect(warningsFor(bucket, [], [BEDROCK_FILE])).toEqual([forService("egress-s3", "s3")]);
+      expect(warningsFor(bucket, ["s3:GetObject"])).toEqual([]);
+    });
+
+    test("a Bedrock target outside the managed endpoints needs a granted action, and the Bedrock file does not count", () => {
+      const KB_HOST = "bedrock-agent-runtime.us-west-2.amazonaws.com";
+      const kb = signed("egress-kb", KB_HOST, "bedrock");
+      expect(warningsFor(kb, [], [BEDROCK_FILE])).toEqual([
+        forHost("egress-kb", KB_HOST, "bedrock"),
+      ]);
+      expect(warningsFor(kb)).toEqual([forService("egress-kb", "bedrock")]);
+      expect(warningsFor(kb, ["bedrock:Retrieve"], [BEDROCK_FILE])).toEqual([]);
+      const API_HOST = "bedrock-runtime.us-east-1.api.aws";
+      const api = signed("egress-api", API_HOST, "bedrock");
+      expect(warningsFor(api, [], [BEDROCK_FILE])).toEqual([
+        forHost("egress-api", API_HOST, "bedrock"),
+      ]);
+    });
+
     test("an AgentCore target needs an AgentCore grant", () => {
       const memory = signed(
         "agentcore",
@@ -1264,7 +1553,7 @@ describe("the gateways of the project", () => {
   const TOOLS = { name: "tools", authorizerType: "AWS_IAM", targets: [] };
   const OPEN = { name: "open-tools", authorizerType: "NONE", targets: [] };
   const JWT = { name: "jwt-tools", authorizerType: "CUSTOM_JWT", targets: [] };
-  const OTHER_BOX = { ...boxGatewaySpec("other"), targets: [] };
+  const OTHER_BOX = { ...boxGatewaySpec("other", "strands-box"), targets: [] };
 
   test("gives the agent each gateway without boundRuntime, with its target and its variables", () => {
     const { network } = model("", {}, { gateways: [TOOLS, OPEN, OTHER_BOX] });
@@ -1464,7 +1753,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             {
               name: "egress-gateway-tools",
@@ -1499,7 +1788,7 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
       runtimes: [RUNTIME],
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           targets: [
             passthrough("mine", `https://${GATEWAY_HOST}`, {
               outboundAuth: {
@@ -1528,5 +1817,109 @@ describe("boxGatewayIamWarnings for a gateway of the project", () => {
         grantedActions: ["bedrock-agentcore:InvokeGateway"],
       }),
     ).toEqual([]);
+  });
+});
+
+describe("third-party telemetry", () => {
+  const LANGSMITH = { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } };
+  const COLLECTOR = { kind: "otlp", destination: "https://collector.example.com" };
+  const CONTAINER = { build: "Container", entrypoint: "main.py" } as const;
+  /** The model of a container runtime, unless `options` says otherwise. */
+  const telemetryOf = (options: Options) => {
+    const { network } = model("", {}, { runtime: CONTAINER, ...options });
+    return {
+      names: (network.thirdPartyTelemetry ?? []).map(({ name }) => name),
+      warnings: network.warnings,
+    };
+  };
+
+  test("carries no target with a key for a CodeZip runtime, which has no AWS CLI", () => {
+    const telemetry = { langsmith: LANGSMITH, collector: COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry, runtime: {} });
+
+    expect(names).toEqual(["collector"]);
+    expect(warnings).toEqual([
+      `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: Box reads its ` +
+        "key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime does not have. Use a " +
+        "container runtime.",
+    ]);
+  });
+
+  test("keeps each target of a PRIVATE_VPC runtime, and warns that the VPC has no path to its host", () => {
+    const langfuse = {
+      kind: "langfuse",
+      destination: "https://us.cloud.langfuse.com",
+      secret: { ref: "env://LANGFUSE_AUTH" },
+    };
+    const telemetry = { langfuse, langsmith: LANGSMITH };
+    const runtime = {
+      ...CONTAINER,
+      containment: "PRIVATE_VPC",
+      network: { mode: "CONTAINED" },
+    } as const;
+
+    expect(telemetryOf({ telemetry, runtime })).toEqual({
+      names: ["langfuse", "langsmith"],
+      warnings: [
+        `${PROFILE}: [telemetry.langfuse] sends to us.cloud.langfuse.com, but runtime agent uses ` +
+          "a private VPC, which has no internet path. Box tries to send, and each send fails " +
+          "until you give the VPC a path to us.cloud.langfuse.com, or remove " +
+          "`--containment private-vpc`.",
+        `${PROFILE}: [telemetry.langsmith] sends to api.smith.langchain.com, but runtime agent ` +
+          "uses a private VPC, which has no internet path. Box tries to send, and each send " +
+          "fails until you give the VPC a path to api.smith.langchain.com, or remove " +
+          "`--containment private-vpc`.",
+      ],
+    });
+  });
+
+  test("gives no private-VPC warning for a runtime on the default network", () => {
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH } })).toEqual({
+      names: ["langsmith"],
+      warnings: [],
+    });
+  });
+
+  test("carries each target the Runtime can send to, and says why it leaves out each other one", () => {
+    const telemetry = {
+      langsmith: LANGSMITH,
+      collector: COLLECTOR,
+      signed: { ...COLLECTOR, secret: { ref: "aws://my-profile" } },
+    };
+
+    expect(telemetryOf({ telemetry })).toEqual({
+      names: ["langsmith", "collector"],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.signed]: its ` +
+          "`secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
+          "key to AWS Secrets Manager.",
+      ],
+    });
+  });
+
+  test("leaves out a target whose deploy variable a credential reads, so no key goes to the wrong place", () => {
+    const credentials = [
+      { authorizerType: "ApiKeyCredentialProvider" as const, name: "agent_telemetry_langsmith" },
+    ];
+
+    expect(telemetryOf({ telemetry: { langsmith: LANGSMITH }, credentials })).toEqual({
+      names: [],
+      warnings: [
+        `${PROFILE}: the AgentCore Runtime profile leaves out [telemetry.langsmith]: deploy reads ` +
+          "its key from AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH, and a credential or " +
+          "another target reads that variable too. Rename the target.",
+      ],
+    });
+  });
+
+  test("leaves out the second of two targets with one deploy variable, and keeps one with no key", () => {
+    const telemetry = { "my-key": LANGSMITH, my_key: LANGSMITH, "my-collector": COLLECTOR };
+
+    const { names, warnings } = telemetryOf({ telemetry });
+
+    expect(names).toEqual(["my-key", "my-collector"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("leaves out [telemetry.my_key]: deploy reads its key from");
   });
 });

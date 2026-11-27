@@ -1091,8 +1091,8 @@ describe("project create wizard", () => {
     await waitForText(r.lastFrame, "model ID");
     await r.press("return"); // accept it
 
-    await waitForText(r.lastFrame, "how contained should the agent be?");
-    expect(r.lastFrame()).toContain("● sandboxed");
+    await waitForText(r.lastFrame, "choose a containment level");
+    expect(r.lastFrame()).toContain("● contained");
     await r.press("down");
     await waitForText(r.lastFrame, "● private VPC");
     await r.press("return");
@@ -1132,8 +1132,8 @@ describe("project create wizard", () => {
     await r.press("return"); // focus the (Bedrock) model id
     await waitForText(r.lastFrame, "model ID");
     await r.press("return"); // accept it
-    await waitForText(r.lastFrame, "how contained should the agent be?");
-    await r.press("return"); // sandboxed
+    await waitForText(r.lastFrame, "choose a containment level");
+    await r.press("return"); // contained
     await waitForText(r.lastFrame, "this project will be created");
     await r.press("return");
     await waitForText(r.lastFrame, "✔ project created in ./SfoApp", 5000);

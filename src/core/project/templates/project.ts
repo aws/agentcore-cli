@@ -16,8 +16,9 @@ import {
   startsInBoxOnCodeZip,
 } from "./boxProfile";
 import { mergeSpecEntries } from "./spec";
-import { boxGatewaySpec } from "../../../projectSchemas/project";
-import { BOX_PLATFORM_VERSION } from "../../../projectSchemas/runtime";
+import { BOX_TEMPLATE_TAG_VALUE, boxGatewaySpec } from "../../../projectSchemas/project";
+import { TEMPLATE_TAG_KEY } from "../../../projectSchemas/tags";
+import { BOX_PLATFORM_VERSION, DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import type { SpecEntries, Template, TemplateRenderer } from "./types";
 import type { EnvLocalEntry } from "../../../handlers/project/types";
 
@@ -54,8 +55,10 @@ export async function createProjectTree(
     }
     // Box runs only on AgentCore Runtime V2, so a box runtime pins it.
     if (hasBoxProfile(options.runtime)) {
-      for (const runtime of template.spec.runtimes ?? [])
+      for (const runtime of template.spec.runtimes ?? []) {
         runtime.platformVersion = BOX_PLATFORM_VERSION;
+        recordBoxModelId(runtime, options.runtime);
+      }
     }
     // Only a box template (a `-box` template in the shortcut table) runs its agent in a box, so
     // only it makes a Box project.
@@ -145,6 +148,19 @@ function withBoxContainerBoxVersion(template: Template): void {
     runtime.box = { version: BOX_RELEASE.version };
 }
 
+/**
+ * Records in a box runtime that calls a Bedrock model the model ID its code renders (the template
+ * default, or the scaffold input's modelId), so build lets its Box gateway call only that model. A runtime with no
+ * model provider, such as the minimal template, calls no model and gets none.
+ */
+function recordBoxModelId(
+  runtime: { modelProvider?: string; modelId?: string },
+  input: Pick<ScaffoldRuntimeInput, "modelId" | "modelProvider">,
+): void {
+  if (runtime.modelId !== undefined || runtime.modelProvider !== "Bedrock") return;
+  runtime.modelId = input.modelId ?? DEFAULT_MODEL_IDS.Bedrock;
+}
+
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
@@ -166,7 +182,13 @@ const BOX_GITIGNORE =
 export function newProjectSpec(projectName: string, entries: SpecEntries[]) {
   const { projectType, ...merged } = mergeSpecEntries(entries);
   const boxGateways =
-    projectType === "box" ? (merged.runtimes ?? []).map(({ name }) => boxGatewaySpec(name)) : [];
+    projectType === "box"
+      ? // Each Box gateway takes the template tag of its runtime: the name of its Box template, or
+        // strands-box for a runtime no template made.
+        (merged.runtimes ?? []).map(({ name, tags }) =>
+          boxGatewaySpec(name, tags?.[TEMPLATE_TAG_KEY] ?? BOX_TEMPLATE_TAG_VALUE),
+        )
+      : [];
   return {
     name: projectName,
     version: 2,

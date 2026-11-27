@@ -4,19 +4,29 @@
  * the policy files to stage, and every warning and failure. Build, deploy, and staging write from
  * it.
  */
-import { credentialEnvVarName } from "../../../projectSchemas/credential";
-import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../../projectSchemas/gateway";
+import {
+  credentialEnvironmentVariableNames,
+  credentialEnvVarName,
+  type Credential,
+} from "../../../projectSchemas/credential";
+import type {
+  AgentCoreGateway,
+  AgentCoreGatewayTarget,
+  OutboundAuth,
+} from "../../../projectSchemas/gateway";
 import type { ProjectSpec } from "../../../projectSchemas/project";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
-import { boxEgressCredentialName } from "../boxProfileCredentials";
+import { boxEgressCredentialName, boxRouteCredentialProblem } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
+import { boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
   awsEndpoint,
   boxGatewayBedrockHost,
+  hasBoxSignedSuffix,
   outboundAuthFor,
   parseEndpoint,
   targetNameFor,
@@ -29,7 +39,8 @@ import { runtimeProfileContext } from "../runtimeProfile/context";
 import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
-import { withDeployRegion, type CloudWatchTelemetry } from "./telemetry";
+import type { ParsedProfile } from "./profileParser";
+import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -52,7 +63,8 @@ export { BOX_GATEWAY_TARGETS_FILE };
 /** How the gateway authenticates its requests to a host. */
 export type BoxEgressAuth =
   | { readonly kind: "none" }
-  | { readonly kind: "iam"; readonly service: string; readonly region: string }
+  /** Absent `region` only for a target of the user's own that has no region. */
+  | { readonly kind: "iam"; readonly service: string; readonly region?: string }
   | {
       readonly kind: "apiKey";
       readonly credentialName: string;
@@ -150,6 +162,11 @@ export interface BoxNetwork {
   /** The comment lines above {@link runtimeProfile} in the staged file. */
   readonly runtimeProfileHeader?: readonly string[];
   /**
+   * The third-party targets of the profile's `[telemetry]` that the AgentCore Runtime profile
+   * carries; absent means none.
+   */
+  readonly thirdPartyTelemetry?: readonly ThirdPartyTelemetry[];
+  /**
    * The IAM actions that the gateway's `additionalPolicies` files grant its role, except the
    * policy files that build writes.
    */
@@ -230,6 +247,7 @@ export function buildBoxNetwork(
   );
   const targets = hostTargets(map.hosts, project, reached.gateways, located, parsed.profile.path);
   failures.push(...targets.failures);
+  const thirdParty = runtimeTelemetry(parsed.profile, project, targets.hosts);
   const telemetry =
     parsed.profile.telemetry &&
     withDeployRegion(parsed.profile.telemetry, project.region, parsed.profile.path);
@@ -245,6 +263,7 @@ export function buildBoxNetwork(
       hosts: targets.hosts,
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
+      thirdPartyTelemetry: thirdParty.targets,
       ruleIds: new Set(
         parsed.statements
           .filter(
@@ -279,8 +298,10 @@ export function buildBoxNetwork(
         runtimeProfile: derived.profile,
         runtimeProfileHeader: runtimeProfileHeader(context, derived.profile),
       }),
+    ...(thirdParty.targets.length > 0 && { thirdPartyTelemetry: thirdParty.targets }),
     grantedActions: project.grantedActions,
     warnings: [
+      ...thirdParty.warnings,
       ...map.hosts.flatMap(({ authority, uncheckedBy }) =>
         uncheckedBy.map((ruleId) => {
           const { place, subject } = describeRule(parsed, ruleId);
@@ -325,6 +346,89 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
     routes.push({ route, variable });
   }
   return routes;
+}
+
+/**
+ * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
+ * each one it leaves out. Box reads the key of a target on AgentCore Runtime from AWS Secrets
+ * Manager. A CodeZip runtime carries no target with a key, because its
+ * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
+ * the variable deploy reads its key from is a variable that a credential reads, or that another
+ * target of the profile reads, so deploy never sends one key to the wrong destination. A target of
+ * a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path until its owner adds one.
+ */
+function runtimeTelemetry(
+  profile: ParsedProfile,
+  project: BoxNetworkProject,
+  hosts: readonly BoxNetworkHost[],
+): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
+  const leftOut = (name: string, reason: string) =>
+    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
+  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
+    leftOut(name, reason),
+  );
+  const taken = new Set([
+    ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
+    ...hosts.flatMap(({ outboundAuth }) =>
+      outboundAuth.kind === "apiKey" ? [credentialEnvVarName(outboundAuth.credentialName)] : [],
+    ),
+  ]);
+  const targets: ThirdPartyTelemetry[] = [];
+  for (const target of profile.thirdPartyTelemetry ?? []) {
+    if (target.secret !== undefined && project.runtime.build === "CodeZip") {
+      warnings.push(
+        leftOut(
+          target.name,
+          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
+            "does not have. Use a container runtime",
+        ),
+      );
+      continue;
+    }
+    if (target.secret !== undefined) {
+      const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
+      if (taken.has(variable)) {
+        warnings.push(
+          leftOut(
+            target.name,
+            `deploy reads its key from ${variable}, and a credential or another target reads ` +
+              "that variable too. Rename the target",
+          ),
+        );
+        continue;
+      }
+      taken.add(variable);
+    }
+    if (project.runtime.containment === "PRIVATE_VPC") {
+      const host = thirdPartyHost(target);
+      warnings.push(
+        `${profile.path}: [telemetry.${target.name}] sends to ${host}, but runtime ` +
+          `${project.runtime.name} uses a private VPC, which has no internet path. Box tries to ` +
+          `send, and each send fails until you give the VPC a path to ${host}, or remove ` +
+          "`--containment private-vpc`.",
+      );
+    }
+    targets.push(target);
+  }
+  return { targets, warnings };
+}
+
+/** The address a box sends a vendor's spans to when its `[telemetry]` table names no destination. */
+const VENDOR_DESTINATIONS: Readonly<Record<string, string>> = {
+  langfuse: "https://cloud.langfuse.com",
+  langsmith: "https://api.smith.langchain.com",
+};
+
+/** The host that `target` sends to: its destination, else its vendor's default. */
+function thirdPartyHost(target: ThirdPartyTelemetry): string {
+  const named = target.keys.find(([key]) => key === "destination")?.[1];
+  const destination = typeof named === "string" ? named : VENDOR_DESTINATIONS[target.kind];
+  if (destination === undefined) return "its destination";
+  try {
+    return new URL(destination).host;
+  } catch {
+    return destination;
+  }
 }
 
 /**
@@ -449,15 +553,48 @@ function hostTargets(
    * entry that reads the credential's own variable takes the same key.
    */
   const keys = new Map<string, { readonly variable: string; readonly entry: string }>();
+  /**
+   * The API key credentials that build adds for the entries before this one, which a later entry
+   * must not derive the same variable as, and the entries that already failed for their name.
+   */
+  const pending: Credential[] = [];
+  const badNames = new Set<string>();
   const hosts = mapped.map((host, index): BoxNetworkHost => {
     let auth: BoxEgressAuth = { kind: "none" };
+    let userTarget = false;
     const entry = host.entry;
     if (entry) {
       const result = outboundAuthFor(entry.secret, host.host, (variable) =>
         boxEgressCredentialName(project.spec.credentials, entry.name, variable),
       );
-      if (result.ok) auth = result.auth;
-      else failAt(host, result.code, result.reason);
+      if (!result.ok) failAt(host, result.code, result.reason);
+      else if (result.userTarget) userTarget = true;
+      else auth = result.auth;
+      // Build names the credential after the entry when no credential reserves its variable, and
+      // deploy would have no credential for a name `agentcore credentials add` refuses.
+      if (
+        auth.kind === "apiKey" &&
+        auth.credentialName === entry.name &&
+        !badNames.has(entry.name)
+      ) {
+        const problem = boxRouteCredentialProblem(
+          [...project.spec.credentials, ...pending],
+          entry.name,
+        );
+        if (problem !== undefined) {
+          badNames.add(entry.name);
+          failAt(
+            host,
+            "CREDENTIAL_NAME_INVALID",
+            `reads its key from env://${auth.variable}, which build keeps in an API key ` +
+              `credential named after the entry, and ${problem}. Rename the entry.`,
+          );
+        } else if (
+          ![...project.spec.credentials, ...pending].some(({ name }) => name === entry.name)
+        ) {
+          pending.push({ authorizerType: "ApiKeyCredentialProvider", name: entry.name });
+        }
+      }
       const alias =
         auth.kind === "apiKey" && auth.variable !== credentialEnvVarName(auth.credentialName)
           ? auth
@@ -477,15 +614,32 @@ function hostTargets(
     }
     let target: string | undefined;
     if (host.reachable) {
+      // Only a target of the user's own signs for a host that Box does not sign.
       const held = existing.find(
-        (candidate) => !claimed.has(candidate.name) && endpointKey(candidate) === host.authority,
+        (candidate) =>
+          !claimed.has(candidate.name) &&
+          endpointKey(candidate) === host.authority &&
+          !(userTarget && isManaged(candidate)),
       );
       if (held) {
         claimed.add(held.name);
         reused.add(index);
+        // The user's target names the service and the region, and build takes them as they are.
+        const signs = held.outboundAuth;
+        const signed = signs?.type === "GATEWAY_IAM_ROLE" ? signs : undefined;
+        if (userTarget && signed?.service !== undefined) {
+          auth = {
+            kind: "iam",
+            service: signed.service,
+            ...(signed.region !== undefined && { region: signed.region }),
+          };
+        }
+        const wanted: OutboundAuth | undefined = userTarget
+          ? (signed ?? { type: "GATEWAY_IAM_ROLE" })
+          : targetOutboundAuth(auth);
         const conflict = isManaged(held)
           ? undefined
-          : targetConflict(held, host, auth, profilePath);
+          : targetConflict(held, host, wanted, profilePath);
         if (conflict) {
           failures.push({
             code: "EXISTING_TARGET_CONFLICT",
@@ -496,6 +650,30 @@ function hostTargets(
           });
         }
         target = held.name;
+      } else if (userTarget && entry && !hasBoxSignedSuffix(host.host)) {
+        failAt(
+          host,
+          "UNSIGNABLE_HOST",
+          `signs requests to ${host.host} with ${entry.secret!.ref}, and build cannot find the ` +
+            "AWS service and the region of this host. Use an env:// secret for this host, or " +
+            "remove the secret. For an AWS API on a custom domain, add a GATEWAY_IAM_ROLE " +
+            `passthrough target for https://${host.authority} to the '${project.gateway}' gateway.`,
+        );
+      } else if (userTarget && entry) {
+        const { place, reason } = located({
+          code: "UNSIGNABLE_HOST",
+          ...entryRef(entry),
+          reason:
+            `signs requests to ${host.host} with ${entry.secret!.ref}, and Box does not sign ` +
+            "for this host name, so build cannot find its service and its region and makes no " +
+            "gateway target for it. The AgentCore Runtime box profile leaves this entry out, and " +
+            `nothing signs the requests to ${host.authority}. To sign them, add a passthrough ` +
+            `target for https://${host.authority} to the '${project.gateway}' gateway in ` +
+            "agentcore.json, with protocolType CUSTOM and outboundAuth type GATEWAY_IAM_ROLE. " +
+            "Give it the service and the region of the host. Then add an IAM policy file with " +
+            "the permissions for the host to additionalPolicies of that gateway.",
+        });
+        warnings.push(`${place}: ${reason}`);
       } else {
         const proposed = entry
           ? entry.split
@@ -703,7 +881,7 @@ function unmanagedShape(target: AgentCoreGatewayTarget): string | undefined {
 function targetConflict(
   target: AgentCoreGatewayTarget,
   host: MappedHost,
-  auth: BoxEgressAuth,
+  wanted: OutboundAuth | undefined,
   profilePath: string,
 ): string | undefined {
   const endpoint = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
@@ -722,7 +900,6 @@ function targetConflict(
   }
   // A host that no entry names has no secret, so the target's own outbound auth stands.
   if (!host.entry) return undefined;
-  const wanted = targetOutboundAuth(auth);
   if (sameOutboundAuth(target.outboundAuth, wanted)) return undefined;
   return (
     `${named} sends ${outboundAuthWords(target.outboundAuth)}, and ` +
@@ -754,7 +931,7 @@ function hostWarnings(hosts: readonly BoxNetworkHost[]): string[] {
       );
       continue;
     }
-    if (host.enforcedByBox.length === 0) continue;
+    if (host.enforcedByBox.length === 0 || host.target === undefined) continue;
     warnings.push(
       `${host.authority}: the gateway allows every request to this host; Box still applies ` +
         `${rules(host.enforcedByBox)}.` +
@@ -822,9 +999,9 @@ export function boxGatewayIamWarnings(
     const at = target.passthrough?.endpoint && parseEndpoint(target.passthrough.endpoint);
     const endpoint = at && awsEndpoint(at.host);
     const host = at && hostKey(at.host, at.port);
-    if (endpoint && host ? allows(endpoint.api, host) : holds(auth.service)) continue;
+    if (endpoint && host ? allows(endpoint.api, host) : grantsService(auth.service)) continue;
     warnings.push(
-      endpoint && holds(auth.service)
+      host && holds(auth.service)
         ? `Target '${target.name}' calls ${host} with the gateway's role, which has no ` +
             `${auth.service} permissions for that host. Add an IAM policy file to ` +
             `additionalPolicies of the '${network.gateway}' gateway.`

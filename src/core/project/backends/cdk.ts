@@ -16,7 +16,7 @@ import type {
   WorkloadKey,
 } from "../../../handlers/project/types";
 import { stageBoxCodeZip } from "./boxCodeZip";
-import { stageBoxContainers } from "./boxContainer";
+import { awsCliWarnings, stageBoxContainers } from "./boxContainer";
 import { boxLocalProfileFile, otelOn, runtimeRunsInBox } from "../templates/boxProfile";
 import { agentStartsUnderOtel } from "../runtimeProfile/rules/additions";
 import { BOX_RELEASE, boxDownloadMessage, resolveBoxLinuxBuild } from "./boxRelease";
@@ -53,8 +53,13 @@ import type {
   ResolveDeployedResourcesBackendInput,
   ResolveProjectResourcesBackendInput,
 } from "./types";
-import { createCloudFormationClient } from "../../factories";
-import type { AwsCredentials, CreateCloudFormationClient } from "../../types";
+import { createCloudFormationClient, createSecretsManagerClient } from "../../factories";
+import type {
+  AwsCredentials,
+  CreateCloudFormationClient,
+  CreateSecretsManagerClient,
+} from "../../types";
+import { boxTelemetrySecrets } from "../boxTelemetrySecrets";
 import {
   assertPaymentConnectorCredentials,
   createCredentialProvisioner,
@@ -83,6 +88,18 @@ import {
   updateTargetState,
 } from "./cdk/deployedState";
 import {
+  orphanedTelemetrySecrets,
+  provisionTelemetrySecrets,
+  pruneTelemetrySecrets,
+  removeTelemetrySecrets,
+  secretsManagerCalls,
+  telemetrySecretFieldsOfOtherTargets,
+  telemetrySecretRecords,
+  telemetrySecretsOfOtherTargets,
+  type DeployedTelemetrySecrets,
+  type TelemetrySecretCalls,
+} from "./cdk/telemetrySecrets";
+import {
   bootstrapStackReader,
   createCloudFormationStackReader,
   probeBootstrap,
@@ -109,6 +126,15 @@ import {
 import { describeStack } from "./cdk/stackReader";
 
 type StackDescriber = typeof describeStack;
+
+/** The telemetry secrets of one deployment target, and how deploy reaches them. */
+interface TelemetrySecretsOfTarget {
+  readonly calls: TelemetrySecretCalls;
+  /** The secrets the target records, by name. */
+  readonly recorded: DeployedTelemetrySecrets;
+  /** The ARNs another deployment target records, which deploy never deletes. */
+  readonly kept: ReadonlySet<string>;
+}
 
 /**
  * How many trailing Toolkit lines an operation keeps for error context. Matches
@@ -167,6 +193,8 @@ export type CdkBackendConfig = {
   /** Where the CDK package.json this CLI vends is read from, as the pins to sync to. */
   source?: AssetSource;
   createCloudFormationClient?: CreateCloudFormationClient;
+  /** The Secrets Manager client deploy writes the box profiles' telemetry secrets with. */
+  createSecretsManagerClient?: CreateSecretsManagerClient;
   /** Identity client used to provision the project's credential providers. */
   identity: CredentialProviderCalls;
   cdk?: CdkRunner;
@@ -251,10 +279,13 @@ export class CdkBackend implements ProjectBackend {
   private readonly resolveContainerExecutable: () => Promise<string>;
   private readonly assertLocalCdkSupport: typeof assertCdkLocalContainerSupport;
   private readonly createCloudFormationClient: CreateCloudFormationClient;
+  private readonly createSecretsManagerClient: CreateSecretsManagerClient;
 
   constructor(config: CdkBackendConfig) {
     this.logger = config.logger;
     this.processEnv = config.processEnv ?? process.env;
+    this.createSecretsManagerClient =
+      config.createSecretsManagerClient ?? createSecretsManagerClient;
     this.runner = config.runner ?? runProcess;
     this.checkLocalBuilder = config.checkLocalBuilder ?? checkArm64Builder;
     this.resolveContainerExecutable =
@@ -335,6 +366,9 @@ export class CdkBackend implements ProjectBackend {
       await stageBoxCodeZip(project, input.boxNetworks, box);
       await stageBoxContainers(project, input.boxNetworks);
     });
+    for (const message of awsCliWarnings(project, input.boxNetworks)) {
+      yield { type: "warning", message };
+    }
   }
 
   private async *synthesize(
@@ -470,9 +504,8 @@ export class CdkBackend implements ProjectBackend {
     const { builds, local } = input.workloadBuilds
       ? { builds: input.workloadBuilds, local: input.localWorkloads ?? new Map() }
       : resolveWorkloads(project);
-    const deployedState = (await readDeployedState(this.json, project.rootPath)).targets[
-      target.name
-    ];
+    const state = await readDeployedState(this.json, project.rootPath);
+    const deployedState = state.targets[target.name];
     // CDK builds and publishes ContainerLocal images with CDK_DOCKER and the
     // BUILDX_BUILDER chosen here, so the check runs on that same builder.
     let containerExecutable: string | undefined;
@@ -508,6 +541,16 @@ export class CdkBackend implements ProjectBackend {
     const recorded = deployedState?.resources?.credentials ?? {};
     assertPaymentConnectorCredentials(project, target.name, recorded);
     const orphaned = orphanedCredentials(recorded, project.spec.credentials);
+    // Read before deploy writes the secrets, for the same reason as the credentials.
+    const secrets: TelemetrySecretsOfTarget = {
+      calls: secretsManagerCalls(
+        this.createSecretsManagerClient({ region: target.region, credentials }),
+      ),
+      recorded: state.targets[target.name]?.resources?.boxTelemetrySecrets ?? {},
+      kept: telemetrySecretsOfOtherTargets(state, target.name),
+    };
+    const declaredSecrets = boxTelemetrySecrets(project.spec.name, input.boxNetworks);
+    const orphanedSecrets = orphanedTelemetrySecrets(secrets.recorded, declaredSecrets);
 
     // Credential providers aren't stack resources; the synthesized app reads their
     // ARNs from deployed-state.json, so they must exist and be recorded before synth.
@@ -521,6 +564,19 @@ export class CdkBackend implements ProjectBackend {
     // from the spec clears the stale entry instead of leaving it advertised.
     await updateTargetState(this.json, project.rootPath, target.name, {
       resources: { credentials: provisioned },
+    });
+
+    // The box on the Runtime reads its telemetry keys from these when it starts. The orphans
+    // stay recorded until the stack no longer uses them, so a failed stack update forgets none.
+    const stored = yield* provisionTelemetrySecrets(
+      secrets.calls,
+      project,
+      declaredSecrets,
+      this.processEnv,
+    );
+    await this.recordTelemetrySecrets(project, target.name, secrets.recorded, {
+      ...orphanedSecrets,
+      ...telemetrySecretRecords(stored, secrets.recorded),
     });
 
     yield* this.synthesize(project, false, builds, input.boxNetworks);
@@ -551,7 +607,18 @@ export class CdkBackend implements ProjectBackend {
     // with nothing in it as an instruction to delete the stack, and reports that
     // as an ordinary successful deploy.
     if ((await countDeployableResources(this.json, assemblyDirectory, artifact)) === 0) {
-      return yield* this.teardown({ project, artifact, input, options, orphaned, recorded });
+      return yield* this.teardown({
+        project,
+        artifact,
+        input,
+        options,
+        orphaned,
+        recorded,
+        secrets: {
+          ...secrets,
+          recorded: { ...orphanedSecrets, ...telemetrySecretRecords(stored) },
+        },
+      });
     }
     await assertPrivateVpcs(
       this.json,
@@ -672,6 +739,18 @@ export class CdkBackend implements ProjectBackend {
       targetName: target.name,
       providers: orphaned,
     });
+    const undeleted = yield* removeTelemetrySecrets(secrets.calls, orphanedSecrets, secrets.kept);
+    yield* pruneTelemetrySecrets(
+      secrets.calls,
+      stored,
+      telemetrySecretFieldsOfOtherTargets(state, target.name),
+    );
+    await this.recordTelemetrySecrets(
+      project,
+      target.name,
+      { ...orphanedSecrets, ...telemetrySecretRecords(stored) },
+      { ...undeleted, ...telemetrySecretRecords(stored) },
+    );
 
     // Reported after the stack is up and its ARN recorded: a Quick Create
     // connector is deployed but unusable until someone follows its authorization
@@ -700,6 +779,7 @@ export class CdkBackend implements ProjectBackend {
     options,
     orphaned,
     recorded,
+    secrets,
   }: {
     project: Project;
     artifact: StackArtifact;
@@ -708,9 +788,22 @@ export class CdkBackend implements ProjectBackend {
     /** Providers recorded for this target before the deploy that the spec no longer declares. */
     orphaned: CredentialProviderRef[];
     recorded: DeployedCredentials;
+    /** Every telemetry secret recorded for this target. */
+    secrets: TelemetrySecretsOfTarget;
   }): AsyncGenerator<ProjectEvent, DeployResult> {
     const { target } = input;
     if (!(await this.describeStack(target.region, options.credentials, artifact.stackName))) {
+      // An earlier teardown removed the stack and recorded each secret it could not delete.
+      if (Object.keys(secrets.recorded).length > 0) {
+        yield {
+          type: "step",
+          message:
+            `stack ${artifact.stackName} is gone: deploy deletes the telemetry secrets that an ` +
+            "earlier teardown did not delete",
+        };
+        yield* this.removeTeardownSecrets(project, target.name, secrets);
+        return { outputs: {}, tornDown: true };
+      }
       throw new ProjectStateError(
         `Project '${project.name}' declares no resources to deploy, and no stack ` +
           `'${artifact.stackName}' exists in ${target.account}/${target.region} to remove. ` +
@@ -749,8 +842,43 @@ export class CdkBackend implements ProjectBackend {
         ),
       ],
     });
-    await removeTargetState(this.json, project.rootPath, target.name);
+    // After the stack, since its Runtime may still be reading them.
+    yield* this.removeTeardownSecrets(project, target.name, secrets);
     return { outputs: {}, tornDown: true };
+  }
+
+  /**
+   * Deletes the telemetry secrets of a target that has no stack at this time, and removes the state
+   * of the target. The state keeps only the record of each secret that deploy cannot delete, so
+   * that the next deploy of the target tries again.
+   */
+  private async *removeTeardownSecrets(
+    project: Project,
+    targetName: string,
+    secrets: TelemetrySecretsOfTarget,
+  ): AsyncGenerator<ProjectEvent, void> {
+    const undeleted = yield* removeTelemetrySecrets(secrets.calls, secrets.recorded, secrets.kept);
+    await removeTargetState(this.json, project.rootPath, targetName);
+    if (Object.keys(undeleted).length === 0) return;
+    await updateTargetState(this.json, project.rootPath, targetName, {
+      resources: { boxTelemetrySecrets: undeleted },
+    });
+  }
+
+  /**
+   * Records `next` as the telemetry secrets of `targetName`, unless neither it nor `previous` holds
+   * one, so a project with no third-party telemetry target records nothing.
+   */
+  private async recordTelemetrySecrets(
+    project: Project,
+    targetName: string,
+    previous: DeployedTelemetrySecrets,
+    next: DeployedTelemetrySecrets,
+  ): Promise<void> {
+    if (Object.keys(previous).length === 0 && Object.keys(next).length === 0) return;
+    await updateTargetState(this.json, project.rootPath, targetName, {
+      resources: { boxTelemetrySecrets: Object.keys(next).length > 0 ? next : undefined },
+    });
   }
 
   /**

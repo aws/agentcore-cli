@@ -8,7 +8,10 @@ import {
   PROJECT_TEMPLATE_NAMES,
   RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   RUNTIME_TEMPLATE_SHORTCUTS,
+  isBoxTemplate,
+  resolveRuntimeTemplateShortcut,
 } from "./shortcuts";
+import { resolveRuntimeTemplateProfile } from "./runtimeTemplateProfile";
 
 describe("template order", () => {
   test("groups by protocol, then language, framework, and build, with empty last", () => {
@@ -106,4 +109,20 @@ describe("the Box gateway target and the Memory host", () => {
       "https://bedrock-agentcore.us-west-2.amazonaws.com",
     ]);
   });
+});
+
+describe("the Box template tag", () => {
+  test.each([...RUNTIME_TEMPLATE_SHORTCUT_NAMES])(
+    "%s tags its runtime with its name only if it is a Box template",
+    (name) => {
+      const tags = resolveRuntimeTemplateProfile(resolveRuntimeTemplateShortcut(name))?.runtime
+        ?.tags;
+      if (isBoxTemplate(name)) {
+        expect(tags).toEqual({ "agentcore:template": name });
+      } else {
+        // Only the BMA template tags its runtime otherwise.
+        expect([undefined, "BedrockManagedAgents"]).toContain(tags?.["agentcore:template"]);
+      }
+    },
+  );
 });

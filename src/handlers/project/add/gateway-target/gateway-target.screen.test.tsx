@@ -322,12 +322,12 @@ describe("project add gateway-target wizard", () => {
       ...spec,
       projectType: "box",
       runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
-      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name)],
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name, "strands-box")],
     });
     const screen = renderScreen("/agentcore/add/gateway-target");
 
     await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
-    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name).name);
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name, "strands-box").name);
     expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
     screen.unmount();
   });
@@ -466,7 +466,7 @@ describe("project add gateway-target wizard", () => {
   test("refuses a target name build owns on the Box gateway", async () => {
     const projectRoot = await inProject();
     const spec = await projectSpec(projectRoot);
-    const box = boxGatewaySpec(spec.runtimes[0].name);
+    const box = boxGatewaySpec(spec.runtimes[0].name, "strands-box");
     await writeProjectSpec(projectRoot, {
       ...spec,
       projectType: "box",

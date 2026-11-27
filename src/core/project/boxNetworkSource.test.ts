@@ -3,12 +3,15 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InvalidEnvironmentError, ProjectStateError } from "../../errors/errors";
+import { credentialEnvVarName } from "../../projectSchemas/credential";
 import { boxGatewaySpec, type ProjectSpec } from "../../projectSchemas/project";
 import { boxNetworkFailureMessage, readBoxNetworks } from "./boxNetworkSource";
 import type { BoxProfileResolver } from "./boxProfileResolver";
 import { boxShowOf, FakeBoxProfileResolver } from "./boxProfileResolver-test-support";
 import { telemetryPolicyWriter } from "./boxNetworkWriters";
 import { boxTelemetryPolicyFile } from "./boxTelemetry";
+import { BOX_RELEASE } from "./backends/boxRelease";
+import { tracesToRuntimeLogGroup } from "./templates/boxProfile";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -31,7 +34,7 @@ const SPEC = {
   ],
   memories: [],
   credentials: [],
-  agentCoreGateways: [boxGatewaySpec("agent")],
+  agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
 } as unknown as ProjectSpec;
 
 /** What box resolves the profile of {@link project} to: its route `api`, which has no secret. */
@@ -72,7 +75,10 @@ function specWith(...names: string[]): ProjectSpec {
       ...SPEC.runtimes,
       ...names.map((name) => ({ ...SPEC.runtimes[0]!, name, codeLocation: `app/${name}` })),
     ],
-    agentCoreGateways: [boxGatewaySpec("agent"), ...names.map((name) => boxGatewaySpec(name))],
+    agentCoreGateways: [
+      boxGatewaySpec("agent", "strands-box"),
+      ...names.map((name) => boxGatewaySpec(name, "strands-box")),
+    ],
   } as unknown as ProjectSpec;
 }
 
@@ -118,8 +124,12 @@ describe("readBoxNetworks", () => {
     const spec = {
       ...SPEC,
       agentCoreGateways: [
-        { ...boxGatewaySpec("agent"), name: "agent-box-egress", boundRuntime: undefined },
-        { ...boxGatewaySpec("agent"), name: "renamed" },
+        {
+          ...boxGatewaySpec("agent", "strands-box"),
+          name: "agent-box-egress",
+          boundRuntime: undefined,
+        },
+        { ...boxGatewaySpec("agent", "strands-box"), name: "renamed" },
       ],
     } as unknown as ProjectSpec;
 
@@ -236,6 +246,180 @@ describe("readBoxNetworks", () => {
       "[egress.github] needs the API key credential 'github' for env://OTHER_TOKEN, and runtime " +
         "'agent' takes that credential for env://GITHUB_TOKEN. One credential holds one key. " +
         "Rename the entry in one of the two profiles.",
+    );
+  });
+
+  test.each([
+    ["git-hub", "git_hub", "AGENTCORE_CREDENTIAL_GIT_HUB"],
+    ["github", "GitHub", "AGENTCORE_CREDENTIAL_GITHUB"],
+  ])(
+    "refuses an entry whose new credential derives the variable of another runtime's, %s and %s",
+    async (first, second, variable) => {
+      const root = await project([]);
+      const entry = (name: string, variable: string, host: string) => ({
+        [name]: { destinations: [host], secret: { ref: `env://${variable}` } },
+      });
+      const profiles: Record<string, ReturnType<typeof entry>> = {
+        ".box/agent/local/profile.toml": entry(first, "A_TOKEN", "a.example.com"),
+        ".box/second/local/profile.toml": entry(second, "B_TOKEN", "b.example.com"),
+      };
+      for (const [file, egress] of Object.entries(profiles)) {
+        const [[name, { destinations, secret }]] = Object.entries(egress) as [
+          [string, { destinations: string[]; secret: { ref: string } }],
+        ];
+        await mkdir(join(root, file, ".."), { recursive: true });
+        await writeFile(
+          join(root, file),
+          `# ${file}\n[egress.${name}]\ndestinations = ${JSON.stringify(destinations)}\n` +
+            `secret.ref = "${secret.ref}"\n`,
+        );
+      }
+      const resolver: BoxProfileResolver = {
+        resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+      };
+
+      const networks = await readBoxNetworks(specWith("second"), root, resolver);
+
+      expect(
+        networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+      ).toEqual([[], [["CREDENTIAL_NAME_INVALID", ".box/second/local/profile.toml:2:1"]]]);
+      expect(networks[1]!.failures[0]!.reason).toBe(
+        `[egress.${second}] reads its key from env://B_TOKEN, which build keeps in an API key ` +
+          `credential named after the entry, and credential '${second}' would derive the same ` +
+          `variable, ${variable}, as credential '${first}', which build adds for runtime ` +
+          "'agent'. Rename the entry in one of the two profiles.",
+      );
+      expect(boxNetworkFailureMessage(networks, "build")).toStartWith("Build stopped: 1 problem");
+    },
+  );
+
+  test("does not refuse an entry against an entry of another runtime that uses an existing credential", async () => {
+    const root = await project([]);
+    // [egress.github] reads the variable of the existing credential 'mycred', so build adds no
+    // credential 'github', and [egress.GitHub] can take AGENTCORE_CREDENTIAL_GITHUB.
+    const profiles: Record<string, Record<string, unknown>> = {
+      ".box/agent/local/profile.toml": {
+        github: {
+          destinations: ["a.example.com"],
+          secret: { ref: `env://${credentialEnvVarName("mycred")}` },
+        },
+      },
+      ".box/second/local/profile.toml": {
+        GitHub: { destinations: ["b.example.com"], secret: { ref: "env://B_TOKEN" } },
+      },
+    };
+    for (const [file, egress] of Object.entries(profiles)) {
+      const [name] = Object.keys(egress);
+      await mkdir(join(root, file, ".."), { recursive: true });
+      await writeFile(join(root, file), `# ${file}\n[egress.${name}]\n`);
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => boxShowOf({ egress: profiles[profilePath] }),
+    };
+    const spec = {
+      ...specWith("second"),
+      credentials: [{ authorizerType: "ApiKeyCredentialProvider", name: "mycred" }],
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ failures }) => failures)).toEqual([[], []]);
+    expect(networks[0]!.hosts[0]!.outboundAuth).toMatchObject({ credentialName: "mycred" });
+  });
+
+  test("refuses a telemetry target whose key variable a target of another runtime reads", async () => {
+    // The two names of each pair give one variable: AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK.
+    const runtimes = { agent: "nested_TELEMETRY_sink", agent_TELEMETRY_nested: "sink" };
+    const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
+    directories.push(root);
+    for (const [runtime, target] of Object.entries(runtimes)) {
+      await mkdir(join(root, ".box", runtime, "local"), { recursive: true });
+      await writeFile(
+        join(root, ".box", runtime, "local", "profile.toml"),
+        `[telemetry.${target}]\nkind = "langsmith"\nsecret.ref = "env://KEY_OF_${runtime}"\n`,
+      );
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        const [runtime] = Object.entries(runtimes).filter(([name]) =>
+          profilePath.startsWith(`.box/${name}/`),
+        );
+        const shown = boxShowOf({});
+        const telemetry = {
+          [runtime![1]]: { kind: "langsmith", secret: { ref: `env://KEY_OF_${runtime![0]}` } },
+        };
+        return { ...shown, boxToml: { ...shown.boxToml, telemetry } };
+      },
+    };
+    const container = { ...SPEC.runtimes[0]!, build: "Container", entrypoint: "main.py" };
+    const spec = {
+      ...SPEC,
+      runtimes: Object.keys(runtimes).map((name) => ({
+        ...container,
+        name,
+        codeLocation: `app/${name}`,
+      })),
+      agentCoreGateways: Object.keys(runtimes).map((name) => boxGatewaySpec(name, "strands-box")),
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(
+      networks.map(({ failures }) => failures.map(({ code, place }) => [code, place])),
+    ).toEqual([
+      [],
+      [["TELEMETRY_KEY_VARIABLE_SHARED", ".box/agent_TELEMETRY_nested/local/profile.toml"]],
+    ]);
+    expect(networks[1]!.failures[0]!.reason).toBe(
+      "[telemetry.sink] reads its key at deploy from " +
+        "AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_NESTED_TELEMETRY_SINK, and " +
+        "[telemetry.nested_TELEMETRY_sink] of runtime 'agent' reads its key from that variable " +
+        "too. Change the name of one of the two targets.",
+    );
+  });
+
+  test("refuses a telemetry target whose key variable the credential of another runtime reads", async () => {
+    const root = await mkdtemp(join(tmpdir(), "box-network-source-"));
+    directories.push(root);
+    const egress = {
+      agent_TELEMETRY_sink: { destinations: ["api.example.com"], secret: { ref: "env://TOKEN" } },
+    };
+    const telemetry = { sink: { kind: "langsmith", secret: { ref: "env://LANGSMITH_KEY" } } };
+    for (const runtime of ["agent", "second"]) {
+      await mkdir(join(root, ".box", runtime, "local"), { recursive: true });
+      await writeFile(join(root, ".box", runtime, "local", "profile.toml"), "# profile\n");
+    }
+    const resolver: BoxProfileResolver = {
+      resolve: async (_root, profilePath) => {
+        if (profilePath.startsWith(".box/second/")) return boxShowOf({ egress });
+        const shown = boxShowOf({});
+        return { ...shown, boxToml: { ...shown.boxToml, telemetry } };
+      },
+    };
+    const container = { ...SPEC.runtimes[0]!, build: "Container", entrypoint: "main.py" };
+    const spec = {
+      ...SPEC,
+      runtimes: ["agent", "second"].map((name) => ({
+        ...container,
+        name,
+        codeLocation: `app/${name}`,
+      })),
+      agentCoreGateways: [
+        boxGatewaySpec("agent", "strands-box"),
+        boxGatewaySpec("second", "strands-box"),
+      ],
+    } as unknown as ProjectSpec;
+
+    const networks = await readBoxNetworks(spec, root, resolver);
+
+    expect(networks.map(({ failures }) => failures.map(({ code }) => code))).toEqual([
+      ["TELEMETRY_KEY_VARIABLE_SHARED"],
+      [],
+    ]);
+    expect(networks[0]!.failures[0]!.reason).toBe(
+      "[telemetry.sink] reads its key at deploy from AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_SINK, " +
+        "and the API key credential 'agent_TELEMETRY_sink' of runtime 'second' reads that " +
+        "variable too. Change the name of the target.",
     );
   });
 
@@ -371,6 +555,20 @@ describe("readBoxNetworks", () => {
 
     expect(await failuresOf(root)).toEqual([]);
   });
+
+  test("warns with what the resolver changed in box's state before Box resolved the profile", async () => {
+    const root = await project([]);
+    const note =
+      'Box had bound the profile name "demo-agent" to a copy of dev. Removed its record.';
+    const resolver = new FakeBoxProfileResolver({
+      ...boxShowOf({ egress: API_ROUTE }),
+      notes: [note],
+    });
+
+    const [network] = await readBoxNetworks(SPEC, root, resolver);
+
+    expect(network?.warnings).toEqual([note]);
+  });
 });
 
 describe("the telemetry of each box runtime", () => {
@@ -386,9 +584,9 @@ describe("the telemetry of each box runtime", () => {
         { ...SPEC.runtimes[0]!, name: "quiet", codeLocation: "app/quiet" },
       ],
       agentCoreGateways: [
-        boxGatewaySpec("agent"),
-        boxGatewaySpec("second"),
-        boxGatewaySpec("quiet"),
+        boxGatewaySpec("agent", "strands-box"),
+        boxGatewaySpec("second", "strands-box"),
+        boxGatewaySpec("quiet", "strands-box"),
       ],
     } as unknown as ProjectSpec;
     const logs = (log_group: string) => ({
@@ -476,6 +674,10 @@ describe("the default X-Ray target of a runtime with OTEL on", () => {
       region: "${{ inputs.aws.region }}",
       include: ["deny", "permit", "trace"],
       secret: { ref: "aws://" },
+      ...(tracesToRuntimeLogGroup(BOX_RELEASE.version) && {
+        log_group: "${{ inputs.runtime.traces_log_group }}",
+        log_stream: "${{ inputs.runtime.traces_log_stream }}",
+      }),
     });
     const [file] = policyOf(on!);
     expect(JSON.parse((file as { text: string }).text)).toEqual({
@@ -544,16 +746,16 @@ describe("two routes of one profile to one host", () => {
   test.each([
     [
       "two open routes",
-      '[egress.a]\ndestinations = ["api.example.com"]\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: open, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: open, beta: open },
       ".box/agent/local/profile.toml:3:1",
     ],
     [
       "a route with a secret and an open route",
-      '[egress.a]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
-        '[egress.b]\ndestinations = ["api.example.com"]\n',
-      { a: keyed, b: open },
+      '[egress.alpha]\ndestinations = ["api.example.com"]\nsecret.ref = "env://A_TOKEN"\n' +
+        '[egress.beta]\ndestinations = ["api.example.com"]\n',
+      { alpha: keyed, beta: open },
       ".box/agent/local/profile.toml:4:1",
     ],
   ])(
@@ -564,7 +766,7 @@ describe("two routes of one profile to one host", () => {
       expect(network.failures.map(({ code, reason, place }) => [code, reason, place])).toEqual([
         [
           "EGRESS_DESTINATION_OVERLAP",
-          "[egress.b] names api.example.com, and [egress.a] names it too, but one host has only " +
+          "[egress.beta] names api.example.com, and [egress.alpha] names it too, but one host has only " +
             "one entry. Keep api.example.com in only one of the two.",
           place,
         ],
@@ -576,20 +778,20 @@ describe("two routes of one profile to one host", () => {
   test("gives an entry that names its host twice one target and one route", async () => {
     const twice = { destinations: ["api.example.com", "api.example.com:443"] };
     const network = await networkOf(
-      '[egress.a]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
+      '[egress.alpha]\ndestinations = ["api.example.com", "api.example.com:443"]\n' +
         'secret.ref = "env://A_TOKEN"\n',
-      { a: { ...twice, secret: keyed.secret } },
+      { alpha: { ...twice, secret: keyed.secret } },
     );
 
     expect(network.failures).toEqual([]);
     expect(network.hosts.map(({ authority, target }) => [authority, target])).toEqual([
-      ["api.example.com", "egress-a"],
+      ["api.example.com", "egress-alpha"],
     ]);
     const routes = Object.entries(network.runtimeProfile!.egress as Record<string, any>).filter(
       ([, route]) => (route.destinations as string[]).some((host) => host === "api.example.com"),
     );
     expect(routes.map(([name, route]) => [name, route.destinations])).toEqual([
-      ["a", ["api.example.com"]],
+      ["alpha", ["api.example.com"]],
     ]);
   });
 });
@@ -602,7 +804,7 @@ describe("the record of the targets build writes", () => {
   };
   const withTarget = {
     ...SPEC,
-    agentCoreGateways: [{ ...boxGatewaySpec("agent"), targets: [mine] }],
+    agentCoreGateways: [{ ...boxGatewaySpec("agent", "strands-box"), targets: [mine] }],
   } as unknown as ProjectSpec;
   const managed = async (root: string) => [
     ...(await readBoxNetworks(withTarget, root, new FakeBoxProfileResolver()))[0]!.managedTargets,
@@ -657,7 +859,9 @@ describe("the IAM policy files of the Box gateway", () => {
     const listed = ["missing", "broken", "list", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent", "strands-box"), additionalPolicies: listed },
+      ],
     } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
@@ -691,7 +895,7 @@ describe("the IAM policy files of the Box gateway", () => {
       ...SPEC,
       agentCoreGateways: [
         {
-          ...boxGatewaySpec("agent"),
+          ...boxGatewaySpec("agent", "strands-box"),
           additionalPolicies: Object.keys(files).map((name) => `agentcore/${name}.json`),
         },
       ],
@@ -708,7 +912,10 @@ describe("the IAM policy files of the Box gateway", () => {
     const spec = {
       ...SPEC,
       agentCoreGateways: [
-        { ...boxGatewaySpec("agent"), additionalPolicies: ["agentcore/box-bedrock-policy.json"] },
+        {
+          ...boxGatewaySpec("agent", "strands-box"),
+          additionalPolicies: ["agentcore/box-bedrock-policy.json"],
+        },
       ],
     } as unknown as ProjectSpec;
 
@@ -728,7 +935,9 @@ describe("the IAM policy files of the Box gateway", () => {
     const listed = ["box-bedrock-policy", "grants"].map((name) => `agentcore/${name}.json`);
     const spec = {
       ...SPEC,
-      agentCoreGateways: [{ ...boxGatewaySpec("agent"), additionalPolicies: listed }],
+      agentCoreGateways: [
+        { ...boxGatewaySpec("agent", "strands-box"), additionalPolicies: listed },
+      ],
     } as unknown as ProjectSpec;
 
     const [network] = await readBoxNetworks(spec, root, new FakeBoxProfileResolver());
@@ -759,9 +968,9 @@ describe("boxNetworkFailureMessage", () => {
       ...SPEC,
       runtimes: [...SPEC.runtimes, { ...SPEC.runtimes[0]!, name: "second" }],
       agentCoreGateways: [
-        boxGatewaySpec("agent"),
+        boxGatewaySpec("agent", "strands-box"),
         {
-          ...boxGatewaySpec("second"),
+          ...boxGatewaySpec("second", "strands-box"),
           targets: [
             {
               name: "api",

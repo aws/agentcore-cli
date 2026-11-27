@@ -15,7 +15,7 @@ import { MemorySchema } from "./memory";
 import { OnlineEvalConfigSchema } from "./online-eval-config";
 import { PaymentManagerSchema } from "./payment";
 import { PolicyEngineSchema } from "./policy";
-import { TagsSchema } from "./tags";
+import { TagsSchema, TEMPLATE_TAG_KEY } from "./tags";
 import { uniqueBy } from "./zod-util";
 import { z } from "zod";
 export const ManagedBySchema = z.enum(["CDK"]).default("CDK");
@@ -98,18 +98,31 @@ export const BOX_GATEWAY_DISCOVERY_PREFIX = "AGENTCORE_GATEWAY_BOX";
 export const boxGatewayName = (runtimeName: string): string =>
   `${runtimeName.replace(/_/g, "-")}${BOX_GATEWAY_SUFFIX}`;
 /**
- * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
- * variable prefix, `AWS_IAM` auth, `protocolType: "None"` and its `APPLICATION_LOGS` on. The CDK
- * library binds it from `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a
- * user's `enableApplicationLogs: false` stays.
+ * The value of the {@link TEMPLATE_TAG_KEY} tag on a runtime and Box gateway of a Box project that
+ * no template made: `add runtime` writes it. `create` writes the name of the Box template instead,
+ * such as `agent-python-strands-box`, much as the BMA template writes `BedrockManagedAgents`. A
+ * runtime `add runtime` adds is a Python agent of the user's own code with no framework. The CLI
+ * owns the tag: `add runtime` refuses it in `--tags`. Build never adds it, so a runtime or gateway
+ * made before the CLI wrote it has none.
  */
-export const boxGatewaySpec = (runtimeName: string) => ({
+export const BOX_TEMPLATE_TAG_VALUE = "strands-box";
+/**
+ * The Box gateway entry of a runtime, as the CLI writes it: bound to that runtime, under the fixed
+ * variable prefix, `AWS_IAM` auth, `protocolType: "None"`, its `APPLICATION_LOGS` on, and the tag
+ * {@link TEMPLATE_TAG_KEY} with `template`, the value of that tag on the runtime: the name of the
+ * Box template the runtime was made from, or {@link BOX_TEMPLATE_TAG_VALUE} when no template made
+ * it, so a runtime and its Box gateway carry the same value. The CDK library binds it from
+ * `boundRuntime` and `discoveryPrefix`. Build changes only its targets, so a user's
+ * `enableApplicationLogs: false` and tags stay.
+ */
+export const boxGatewaySpec = (runtimeName: string, template: string) => ({
   name: boxGatewayName(runtimeName),
   authorizerType: "AWS_IAM" as const,
   protocolType: "None" as const,
   boundRuntime: runtimeName,
   discoveryPrefix: BOX_GATEWAY_DISCOVERY_PREFIX,
   enableApplicationLogs: true,
+  tags: { [TEMPLATE_TAG_KEY]: template },
   targets: [],
 });
 /**
@@ -286,7 +299,14 @@ export const ProjectSpecSchema = z
             `boundRuntime "${runtime.name}" for each runtime, and a deploy without it would delete ` +
             `the deployed gateway. Add this entry to "agentCoreGateways" in agentcore.json, or ` +
             `delete the runtime from "runtimes" by hand:\n` +
-            JSON.stringify(boxGatewaySpec(runtime.name), null, 2),
+            JSON.stringify(
+              boxGatewaySpec(
+                runtime.name,
+                runtime.tags?.[TEMPLATE_TAG_KEY] ?? BOX_TEMPLATE_TAG_VALUE,
+              ),
+              null,
+              2,
+            ),
           path: ["agentCoreGateways"],
         });
       }
@@ -517,10 +537,10 @@ function containmentIssues(spec: {
       });
     }
   });
-  const contained = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
-  if (contained.length > 1) {
+  const privateVpc = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
+  if (privateVpc.length > 1) {
     issues.push({
-      message: `${PRIVATE_VPC_LIMIT} Found ${contained.map((runtime) => runtime.name).join(", ")}.`,
+      message: `${PRIVATE_VPC_LIMIT} Found ${privateVpc.map((runtime) => runtime.name).join(", ")}.`,
       path: ["runtimes"],
     });
   }

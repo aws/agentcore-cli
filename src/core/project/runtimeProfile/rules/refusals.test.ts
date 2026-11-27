@@ -5,7 +5,8 @@ import type { ProjectRuntime } from "../../../../projectSchemas/runtime";
 import { cloudWatchTelemetry, withDeployRegion } from "../../boxNetwork";
 import { profileKeyPlaces, runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
-import type { RuntimeProfileProblem, TomlTable } from "../types";
+import type { ThirdPartyTelemetry } from "../../boxNetwork";
+import type { RuntimeProfileContext, RuntimeProfileProblem, TomlTable } from "../types";
 import { apply } from "./refusals";
 
 const CODEZIP = {
@@ -402,23 +403,61 @@ describe("the refusals rule", () => {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "collector", "kind"],
           reason:
-            '[telemetry.collector] kind is "otlp". At this time, a box on AgentCore Runtime can ' +
-            'send telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". ' +
-            "Remove [telemetry.collector], or change its kind to one of these.",
+            '[telemetry.collector] kind is "otlp", and build cannot carry this target to ' +
+            "AgentCore Runtime: the warning for [telemetry.collector] gives the reason. Correct " +
+            'that, remove [telemetry.collector], or change its kind to "cloudwatch_logs" or ' +
+            '"cloudwatch_traces".',
           place: `${PROFILE}:7:1`,
         },
         {
           code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
           key: ["telemetry", "local", "kind"],
           reason:
-            "[telemetry.local] kind is not set. At this time, a box on AgentCore Runtime can send " +
-            'telemetry only to CloudWatch: kind "cloudwatch_logs" or "cloudwatch_traces". Remove ' +
-            "[telemetry.local], or change its kind to one of these.",
+            "[telemetry.local] kind is not set. A box on AgentCore Runtime sends telemetry to " +
+            'CloudWatch (kind "cloudwatch_logs" or "cloudwatch_traces") or to a third party ' +
+            '(kind "otlp", "langfuse", or "langsmith"). Remove [telemetry.local], or change its ' +
+            "kind to one of these.",
           place: `${PROFILE}:10:1`,
         },
       ]);
     },
   );
+
+  describe("a third-party [telemetry] target, which goes to AgentCore Runtime only through AWS Secrets Manager", () => {
+    const text = toml(
+      "[telemetry.langfuse]",
+      'kind = "langfuse"',
+      'destination = "https://cloud.langfuse.com"',
+      'secret.ref = "env://LANGFUSE_KEY"',
+    );
+    const carried: ThirdPartyTelemetry = {
+      name: "langfuse",
+      kind: "langfuse",
+      keys: [["destination", "https://cloud.langfuse.com"]],
+      secret: { variable: "LANGFUSE_KEY", keys: [] },
+    };
+    const problems = (context: Partial<RuntimeProfileContext>) =>
+      apply(parse(text) as TomlTable, { ...contextOf(text, CONTAINER), ...context }).problems;
+
+    test("stops for no target that the Box network model carries", () => {
+      expect(problems({ thirdPartyTelemetry: [carried] })).toEqual([]);
+    });
+
+    test("names the warning of the Box network model when the model leaves the target out", () => {
+      expect(problems({ thirdPartyTelemetry: [] })).toEqual([
+        {
+          code: "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+          key: ["telemetry", "langfuse", "kind"],
+          reason:
+            '[telemetry.langfuse] kind is "langfuse", and build cannot carry this target to ' +
+            "AgentCore Runtime: the warning for [telemetry.langfuse] gives the reason. Correct " +
+            'that, remove [telemetry.langfuse], or change its kind to "cloudwatch_logs" or ' +
+            '"cloudwatch_traces".',
+          place: `${PROFILE}:2:1`,
+        },
+      ]);
+    });
+  });
 
   test("reads no path of [egress], of an HTTP [mcp], or of [telemetry]: other rules write them", () => {
     const text = toml(

@@ -26,6 +26,35 @@ describe("boxDevSecrets", () => {
     ).toEqual({ GITHUB_TOKEN: "ghp_1", TOOLS_TOKEN: "tk_1" });
   });
 
+  test("returns a third-party telemetry target's env:// variable, so container dev can send to it", () => {
+    const langfuse =
+      '[telemetry.langfuse]\nkind = "langfuse"\nsecret.ref = "env://LANGFUSE_AUTH"\n' +
+      '[telemetry.records]\nkind = "file"\ndestination = "/tmp/records.jsonl"\n';
+
+    expect(fromShell(langfuse, { LANGFUSE_AUTH: "dummy-pk:dummy-sk" })).toEqual({
+      env: { LANGFUSE_AUTH: "dummy-pk:dummy-sk" },
+      missing: [],
+      shadowed: [],
+    });
+    expect(fromShell(langfuse, {}).missing).toEqual([
+      { variable: "LANGFUSE_AUTH", table: "[telemetry.langfuse]" },
+    ]);
+  });
+
+  test("returns a telemetry target's secret:// variable, which box reads as env://", () => {
+    const langsmith =
+      '[telemetry.langsmith]\nkind = "langsmith"\nsecret.ref = "secret://LANGSMITH_KEY"\n';
+
+    expect(fromShell(langsmith, { LANGSMITH_KEY: "dummy-key" })).toEqual({
+      env: { LANGSMITH_KEY: "dummy-key" },
+      missing: [],
+      shadowed: [],
+    });
+    expect(fromShell(langsmith, {}).missing).toEqual([
+      { variable: "LANGSMITH_KEY", table: "[telemetry.langsmith]" },
+    ]);
+  });
+
   test("names one variable once when two tables read it", () => {
     const profile =
       GITHUB_ROUTE +

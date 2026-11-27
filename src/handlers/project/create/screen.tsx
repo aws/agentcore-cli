@@ -88,7 +88,7 @@ function emptyCreateProjectForm(region?: string): CreateProjectFormValues {
     model: emptyHarnessModel(),
     template: DEFAULT_TEMPLATE,
     runtimeModel: emptyRuntimeModel(region),
-    containment: "sandboxed",
+    containment: "contained",
   };
 }
 
@@ -119,8 +119,8 @@ const DEFAULT_TEMPLATE: TemplateName = "agent-python-strands";
 
 const CONTAINMENT_CHOICES: Choice<ContainmentLevel>[] = [
   {
-    value: "sandboxed",
-    label: "sandboxed",
+    value: "contained",
+    label: "contained",
     description:
       "runs in Box · every model and tool call goes through its own Box gateway · $0 idle",
   },
@@ -207,7 +207,7 @@ function summaryOf(values: CreateProjectFormValues): Record<string, string> {
     template: values.template,
     ...(templateTakesModelProvider(values.template) && runtimeModelSummary(values.runtimeModel)),
     ...(isBoxTemplate(values.template) && {
-      containment: values.containment === "private-vpc" ? "private VPC" : "sandboxed",
+      containment: values.containment === "private-vpc" ? "private VPC" : "contained",
     }),
     directory: `./${values.name}`,
   };
@@ -345,7 +345,7 @@ export function ProjectCreateScreen({ ctx, core }: ScreenProps) {
       )}
 
       {values.kind === "agent" && isBoxTemplate(values.template) && (
-        <Step stepKey="containment" prompt="how contained should the agent be?">
+        <Step stepKey="containment" prompt="choose a containment level">
           <ChoiceField<ContainmentLevel>
             choices={CONTAINMENT_CHOICES}
             value={values.containment}
