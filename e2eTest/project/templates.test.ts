@@ -785,6 +785,38 @@ describe.skipIf(!BOX_DEPLOYS)(
       },
     );
 
+    // A Memory added with `add memory` is a project Memory like the default one: the runtime gets its
+    // ID, and box sends the agent's calls to it to Memory directly, signed with the execution role.
+    // The minimal template has no Memory of its own, so this Memory is the project's only one.
+    test.concurrent(
+      "a Memory added with add memory takes and returns an event of the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
+        const added = parseResult(
+          OperationSchema,
+          await cli.run(["add", "memory", "--name", "notes", "--json"], projectDir),
+        );
+        expect(added.operation).toBe("add");
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), MEMORY_AGENT);
+        const note = `note-${Date.now().toString(36)}`;
+        await deployed(projectDir, async () => {
+          await retry(
+            async () => {
+              const reply = JSON.parse(
+                await ask(projectDir, CREATED_RUNTIME_NAME, getSessionId("box-notes"), note),
+              ) as { stored?: string[]; error?: string };
+              expect(reply.error).toBeUndefined();
+              expect(reply.stored).toContain(note);
+            },
+            3 * TIMEOUT_MS.PROJECT_INVOKE,
+            15 * 1000,
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
     // The template's agent keeps the conversation in Memory: short-term events within a session, and
     // facts that long-term extraction makes available to a new session of the same actor.
     test.concurrent(
@@ -865,6 +897,50 @@ def invoke(payload, context):
         with urllib.request.urlopen("${ECHO_URL}", timeout=20) as response:
             headers = json.load(response).get("headers", {})
             return {"status": response.status, "authorization": headers.get("Authorization")}
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/**
+ * An agent that writes the prompt as an event to the `notes` Memory, which `add memory` adds, and
+ * returns the texts of the session's events that Memory gives back.
+ */
+const MEMORY_AGENT = `import os
+from datetime import datetime, timezone
+
+import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        memory = boto3.client("bedrock-agentcore")
+        where = {
+            "memoryId": os.environ["MEMORY_NOTES_ID"],
+            "actorId": "e2e",
+            "sessionId": context.session_id,
+        }
+        memory.create_event(
+            **where,
+            eventTimestamp=datetime.now(timezone.utc),
+            payload=[{"conversational": {"content": {"text": payload["prompt"]}, "role": "USER"}}],
+        )
+        events = memory.list_events(**where, includePayloads=True)["events"]
+        return {
+            "stored": [
+                part["conversational"]["content"]["text"]
+                for event in events
+                for part in event.get("payload", [])
+                if "conversational" in part
+            ]
+        }
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
