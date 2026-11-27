@@ -683,6 +683,30 @@ describe.skipIf(!BOX_DEPLOYS)(
       return replyText(response.body);
     }
 
+    /**
+     * Invokes the agent of `projectDir`, whose `main.py` a scenario replaced with one that calls a
+     * component and answers in JSON, and checks the reply with `check`. Retried, since a component
+     * the deploy just made can take a moment to answer.
+     */
+    async function askAgent<T extends { error?: string }>(
+      projectDir: string,
+      session: string,
+      prompt: string,
+      check: (reply: T) => void,
+    ): Promise<void> {
+      await retry(
+        async () => {
+          const reply = JSON.parse(
+            await ask(projectDir, CREATED_RUNTIME_NAME, session, prompt),
+          ) as T;
+          expect(reply.error).toBeUndefined();
+          check(reply);
+        },
+        3 * TIMEOUT_MS.PROJECT_INVOKE,
+        15 * 1000,
+      );
+    }
+
     const DEPLOY_TEST_TIMEOUT =
       TIMEOUT_MS.PROJECT_CREATE +
       6 * TIMEOUT_MS.PROJECT_INVOKE +
@@ -817,6 +841,94 @@ describe.skipIf(!BOX_DEPLOYS)(
       },
     );
 
+    // A runtime reaches the AWS-managed Code Interpreter through a `codeInterpreter` connection in
+    // agentcore.json, which grants its role the tool. Its calls go to the AgentCore host, which box
+    // sends directly, signed with the execution role, because the project has a Memory.
+    test.concurrent(
+      "a Code Interpreter connection runs code for the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        await addConnection(projectDir, "codeInterpreter");
+        await writeFile(
+          join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"),
+          CODE_INTERPRETER_AGENT,
+        );
+        await deployed(projectDir, async () => {
+          await askAgent<{ output?: string; error?: string }>(
+            projectDir,
+            getSessionId("box-code"),
+            "run",
+            (reply) => expect(reply.output).toContain("42"),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
+    // A runtime reaches the AWS-managed Browser through a `browser` connection. The agent starts a
+    // session over the AgentCore host, then drives the browser over the session's automation
+    // WebSocket on the same host, which box signs as it signs the other calls to that host.
+    test.concurrent(
+      "a Browser connection opens a browser that the boxed agent drives",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        await addConnection(projectDir, "browser");
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), BROWSER_AGENT);
+        await deployed(projectDir, async () => {
+          await askAgent<{ product?: string; error?: string }>(
+            projectDir,
+            getSessionId("box-browser"),
+            "run",
+            (reply) => expect(reply.product).toMatch(/Chrom/i),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
+    // A gateway added with `add gateway` reaches a boxed runtime through its Box gateway: build gives
+    // the Box gateway a target for it, and the runtime its URL. The gateway's target is a public MCP
+    // server, so the agent lists that server's tools through both gateways.
+    test.concurrent(
+      "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
+        for (const args of [
+          ["add", "gateway", "--name", "tools", "--authorizer-type", "AWS_IAM", "--json"],
+          [
+            "add",
+            "gateway-target",
+            "--gateway",
+            "tools",
+            "--name",
+            "docs",
+            "--endpoint",
+            MCP_SERVER_URL,
+            "--outbound-auth",
+            "none",
+            "--json",
+          ],
+        ]) {
+          expect(parseResult(OperationSchema, await cli.run(args, projectDir)).operation).toBe(
+            "add",
+          );
+        }
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), GATEWAY_AGENT);
+        await deployed(projectDir, async () => {
+          await askAgent<{ tools?: string[]; error?: string }>(
+            projectDir,
+            getSessionId("box-gateway"),
+            "run",
+            (reply) => expect(reply.tools?.some((name) => name.startsWith("docs___"))).toBe(true),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
     // The template's agent keeps the conversation in Memory: short-term events within a session, and
     // facts that long-term extraction makes available to a new session of the same actor.
     test.concurrent(
@@ -941,6 +1053,196 @@ def invoke(payload, context):
                 if "conversational" in part
             ]
         }
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/** Adds a connection to the AWS-managed tool `type` to the created runtime in agentcore.json. */
+async function addConnection(projectDir: string, type: "codeInterpreter" | "browser") {
+  const specPath = join(projectDir, "agentcore", "agentcore.json");
+  const spec = JSON.parse(await readFile(specPath, "utf8")) as {
+    runtimes: { name: string; connections?: { to: { type: string } }[] }[];
+  };
+  const runtime = spec.runtimes.find((entry) => entry.name === CREATED_RUNTIME_NAME);
+  if (!runtime) throw new Error(`agentcore.json has no runtime ${CREATED_RUNTIME_NAME}`);
+  runtime.connections = [...(runtime.connections ?? []), { to: { type } }];
+  await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
+}
+
+/** An agent that runs `print(6 * 7)` in the AWS-managed Code Interpreter and returns its output. */
+const CODE_INTERPRETER_AGENT = `import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+TOOL = "aws.codeinterpreter.v1"
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        client = boto3.client("bedrock-agentcore")
+        session = client.start_code_interpreter_session(
+            codeInterpreterIdentifier=TOOL, sessionTimeoutSeconds=300
+        )["sessionId"]
+        try:
+            response = client.invoke_code_interpreter(
+                codeInterpreterIdentifier=TOOL,
+                sessionId=session,
+                name="executeCode",
+                arguments={"language": "python", "code": "print(6 * 7)"},
+            )
+            output = [
+                item.get("text", "")
+                for event in response["stream"]
+                for item in event.get("result", {}).get("content", [])
+            ]
+            return {"output": "".join(output)}
+        finally:
+            client.stop_code_interpreter_session(codeInterpreterIdentifier=TOOL, sessionId=session)
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/**
+ * An agent that starts a session of the AWS-managed Browser, sends the Chrome DevTools command
+ * \`Browser.getVersion\` over its automation WebSocket, and returns the browser's product. The
+ * WebSocket client is the standard library's, through the proxy that box gives the agent, so the
+ * agent needs no package beyond the template's.
+ */
+const BROWSER_AGENT = `import base64
+import http.client
+import json
+import os
+import ssl
+import struct
+import urllib.parse
+
+import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+TOOL = "aws.browser.v1"
+
+
+def devtools(url, message):
+    target = urllib.parse.urlsplit(url)
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    context = ssl.create_default_context()
+    if proxy:
+        via = urllib.parse.urlsplit(proxy)
+        connection = http.client.HTTPSConnection(via.hostname, via.port, context=context, timeout=30)
+        connection.set_tunnel(target.hostname, target.port or 443)
+    else:
+        connection = http.client.HTTPSConnection(target.hostname, target.port or 443, context=context, timeout=30)
+    path = target.path + (f"?{target.query}" if target.query else "")
+    connection.request(
+        "GET",
+        path,
+        headers={
+            "Upgrade": "websocket",
+            "Connection": "Upgrade",
+            "Sec-WebSocket-Key": base64.b64encode(os.urandom(16)).decode(),
+            "Sec-WebSocket-Version": "13",
+        },
+    )
+    response = connection.getresponse()
+    if response.status != 101:
+        raise RuntimeError(f"WebSocket handshake answered {response.status}: {response.read()[:300]!r}")
+    data = json.dumps(message).encode()
+    size = len(data)
+    if size < 126:
+        header = bytes([0x81, 0x80 | size])
+    elif size < 65536:
+        header = bytes([0x81, 0x80 | 126]) + struct.pack("!H", size)
+    else:
+        header = bytes([0x81, 0x80 | 127]) + struct.pack("!Q", size)
+    mask = os.urandom(4)
+    connection.sock.sendall(header + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+    def exactly(count):
+        chunk = response.fp.read(count)
+        if len(chunk) < count:
+            raise EOFError("the automation WebSocket closed")
+        return chunk
+
+    while True:
+        first, second = exactly(2)
+        length = second & 0x7F
+        if length == 126:
+            length = struct.unpack("!H", exactly(2))[0]
+        elif length == 127:
+            length = struct.unpack("!Q", exactly(8))[0]
+        if second & 0x80:
+            exactly(4)
+        body = exactly(length)
+        if first & 0x0F == 0x8:
+            raise EOFError(f"the automation WebSocket closed: {body!r}")
+        if first & 0x0F == 0x1:
+            reply = json.loads(body)
+            if reply.get("id") == message["id"]:
+                return reply
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        client = boto3.client("bedrock-agentcore")
+        started = client.start_browser_session(browserIdentifier=TOOL, sessionTimeoutSeconds=300)
+        session = started["sessionId"]
+        try:
+            url = started["streams"]["automationStream"]["streamEndpoint"]
+            reply = devtools(url, {"id": 1, "method": "Browser.getVersion"})
+            return {"product": reply["result"]["product"]}
+        finally:
+            client.stop_browser_session(browserIdentifier=TOOL, sessionId=session)
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/** A public MCP server with no authentication, for the gateway target of the gateway scenario. */
+const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
+
+/**
+ * An agent that lists the tools of the project gateway \`tools\` at the URL the runtime gets, with
+ * no credential of its own: box sends the call through the Box gateway, whose role signs it.
+ */
+const GATEWAY_AGENT = `import json
+import os
+import urllib.request
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        request = urllib.request.Request(
+            os.environ["AGENTCORE_GATEWAY_TOOLS_URL"],
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(),
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            text = response.read().decode()
+        lines = [line[len("data:"):] for line in text.splitlines() if line.startswith("data:")]
+        message = json.loads(lines[-1] if lines else text)
+        if "error" in message:
+            return {"error": json.dumps(message["error"])}
+        return {"tools": [tool["name"] for tool in message["result"]["tools"]]}
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
