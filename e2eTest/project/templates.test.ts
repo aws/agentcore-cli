@@ -364,44 +364,57 @@ describe(
 );
 
 // In CI, the AgentCore Runtime logs of the LangChain box agent hold OpenTelemetry's "Failed to
-// detach context" at ERROR level, which the log check of the flow refuses, so the flow leaves it
-// out in CI until the template or the check handles that message. Its dev test below still runs
-// there.
-const FLOW_TEMPLATES = BOX_TEMPLATES.filter(
+// detach context" at ERROR level, which the log check of the deploy refuses, so the deploy tests
+// leave it out in CI until the template or the check handles that message. Its dev test below
+// still runs there.
+const DEPLOY_TEMPLATES = BOX_TEMPLATES.filter(
   (t) => !(process.env.CI === "true" && t.name === "agent_python_langchain_box"),
 );
+// The templates that run the whole flow, dev before and after build and deploy in one project: one
+// CodeZip and the container one. Each other template runs build and deploy here, and dev in its own
+// test below, so its deploy does not wait for a dev step on the shared box ingress port.
+const FULL_FLOW_TEMPLATES = new Set([
+  "agent-python-minimal-box",
+  "agent-python-strands-box-container",
+]);
+const fullFlow = (t: RuntimeTemplateTestCase) => FULL_FLOW_TEMPLATES.has(t.template);
 
 // The Strands Box templates run their agent in a box, locally and on AgentCore Runtime. Each test
-// takes one project through the flow a user follows: create, dev and invoke --local, build, deploy,
-// invoke, checks that the Runtime started the agent in a box, then runs dev and invoke --local
-// again. Dev, build and deploy run in one project because dev leaves state that build and deploy
-// then read (box binds each profile name to the file that ran it). The dev step waits for the other
-// tests on its box ingress port (withDevPort); the deploys run concurrently. The container template
-// skips dev without a container tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in,
-// a Box-capable @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
+// takes one project through build, deploy, invoke, and checks that the Runtime started the agent
+// in a box. The FULL_FLOW_TEMPLATES also run dev and invoke --local before build and again after
+// deploy, in the same project, as a user does: dev leaves state that build and deploy then read
+// (box binds each profile name to the file that ran it), and build and deploy leave state that dev
+// must still run beside. Their dev steps wait for the other tests on their box ingress port
+// (withDevPort); every deploy runs concurrently. The container template skips dev without a
+// container tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable
+// @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
 describe.skipIf(!BOX_DEPLOYS)(
-  "create, dev, build, deploy, invoke for Strands Box templates",
+  "build, deploy, invoke for Strands Box templates, with dev before and after for some",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
     const cli = new CliRunner();
-    const templates = FLOW_TEMPLATES;
+    const cases = DEPLOY_TEMPLATES.map((runtime) => ({
+      ...runtime,
+      flow: fullFlow(runtime) ? "dev, build, deploy, dev" : "build, deploy",
+    }));
 
-    test.concurrent.each(templates)(
-      "$name",
+    test.concurrent.each(cases)(
+      "$name: $flow",
       {
-        // Each dev step may wait for every other test on its port.
+        // A dev step may wait for every other dev step on its port.
         timeout:
           TIMEOUT_MS.PROJECT_CREATE +
-          2 * templates.length * (TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE) +
+          2 * BOX_TEMPLATES.length * (TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE) +
           2 * TIMEOUT_MS.PROJECT_INVOKE +
           3 * TIMEOUT_MS.PROJECT_DEPLOY +
           TIMEOUT_MS.PROJECT_REMOVE,
       },
       async (runtime) => {
         const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        const withDev = fullFlow(runtime);
         let scenarioCompleted = false;
         try {
-          await devInBox(cli, runtime, projectDir);
+          if (withDev) await devInBox(cli, runtime, projectDir);
 
           // Build after dev, as a user does: build runs box on the local profile that dev ran.
           parseResult(JsonObjectSchema, await cli.run(["build", "--json"], projectDir));
@@ -442,7 +455,7 @@ describe.skipIf(!BOX_DEPLOYS)(
 
           // Dev again after build and deploy: they leave state (box's profile bindings, the
           // Runtime profile, .box-dist) that dev must still run beside.
-          await devInBox(cli, runtime, projectDir);
+          if (withDev) await devInBox(cli, runtime, projectDir);
           scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.
@@ -453,17 +466,18 @@ describe.skipIf(!BOX_DEPLOYS)(
   },
 );
 
-// `agentcore dev` for each Strands Box template that the flow tests above do not run: every
-// template on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and the ones
-// the flow leaves out (FLOW_TEMPLATES) on one that can. Box runs the agent on the developer's
-// machine. Box listens on the protocol's fixed ingress port, so these tests run one at a time, and
-// wait for the flow's dev steps on the same port. The container template's dev builds and runs its
-// image, so it needs a container tool, which the CI macOS runner does not have (no nested
-// virtualization). They need `box` on PATH and a machine where `box run` can start its sandbox.
+// `agentcore dev` for each Strands Box template that the tests above do not run dev for: every
+// template on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and on one
+// that can, each template outside FULL_FLOW_TEMPLATES and each one the deploy tests leave out. Box
+// runs the agent on the developer's machine. Box listens on the protocol's fixed ingress port, so
+// these tests run one at a time, and wait for the other dev steps on the same port. The container
+// template's dev builds and runs its image, so it needs a container tool, which the CI macOS
+// runner does not have (no nested virtualization). They need `box` on PATH and a machine where
+// `box run` can start its sandbox.
 const DEV_ONLY_TEMPLATES = BOX_TEMPLATES.filter(
   (t) =>
     (CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container") &&
-    !(BOX_DEPLOYS && FLOW_TEMPLATES.includes(t)),
+    !(BOX_DEPLOYS && DEPLOY_TEMPLATES.includes(t) && fullFlow(t)),
 );
 describe.skipIf(!BOX_ON_PATH || DEV_ONLY_TEMPLATES.length === 0)(
   "create and dev for Strands Box templates",
