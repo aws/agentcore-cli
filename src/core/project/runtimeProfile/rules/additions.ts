@@ -412,7 +412,8 @@ function credentialProblems(
     if (isBuildTarget(name, context)) continue;
     const target = context.gateway.targets.find((entry) => entry.name === name);
     const type = target?.outboundAuth?.type;
-    if (type !== "API_KEY" && type !== "OAUTH") continue;
+    // Fail closed: any credential other than the gateway role's signature, or none, is the user's.
+    if (type === undefined || type === "GATEWAY_IAM_ROLE" || type === "NONE") continue;
     reported.add(name);
     const source = record.sources[0];
     const key =

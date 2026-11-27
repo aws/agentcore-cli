@@ -830,6 +830,46 @@ describe("build writes the Box network of the box profile", () => {
     },
   );
 
+  // The case from review: a Memory that is not the runtime's default one, a policy that lets the
+  // AgentCore host through with no secret, and a target of the user that signs that host with its
+  // own API key. Box would send the calls to the host directly, past the target, so build stops.
+  test("stops for a user target that signs the AgentCore host with an API key, beside a non-default Memory", async () => {
+    const { manager, root, box } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.memories = spec.memories.map((memory: object) => ({ ...memory, name: "notes" }));
+    spec.credentials = [
+      ...(spec.credentials ?? []),
+      { authorizerType: "ApiKeyCredentialProvider", name: "tools" },
+    ];
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const policy =
+      `@id("tools_connect") permit (principal, ${NC}, resource) when { context.input.host == "${AGENTCORE_HOST}" };\n` +
+      `@id("tools_request") permit (principal, ${HR}, resource) when { context.input.host == "${AGENTCORE_HOST}" };\n`;
+    await editProfile(root, { policy });
+    await editGateway(root, (gateway) => {
+      gateway.targets.push(
+        userTarget("tools", `https://${AGENTCORE_HOST}`, {
+          outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+        }),
+      );
+    });
+    box.answer = shows({}, policy);
+    const before = await text(root, SPEC);
+
+    const error = await build(manager, root).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(
+      `agentcore/agentcore.json  Target 'tools' of gateway '${GATEWAY}' in agentcore.json signs ` +
+        `the calls to ${AGENTCORE_HOST} with its API_KEY credential.`,
+    );
+    expect(await text(root, SPEC)).toBe(before);
+    expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
+  });
+
   test("stops for a user target named agentcore, the name of the Memory route, and keeps it", async () => {
     const { manager, root, box } = await strandsProject();
     const mine = {
