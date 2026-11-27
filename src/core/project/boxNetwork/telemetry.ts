@@ -160,7 +160,10 @@ export interface ThirdPartyTelemetry {
 /** A third-party target that the AgentCore Runtime profile leaves out, and why. */
 export interface LeftOutTelemetry {
   readonly name: string;
+  /** The cause, after `[telemetry.<name>]`. */
   readonly reason: string;
+  /** The step that corrects the cause. */
+  readonly fix: string;
 }
 
 /** The keys of a third-party table that Box takes, besides `kind` and `secret`. */
@@ -223,7 +226,10 @@ export function thirdPartyTelemetry(boxToml: Readonly<Record<string, unknown>>):
     if (uncopied.length > 0) {
       leftOut.push({
         name,
-        reason: `Box resolves its \`${uncopied[0]}\` to a value build cannot copy`,
+        reason: `sets '${uncopied[0]}' to a value that build cannot copy to AgentCore Runtime`,
+        fix:
+          `Set '${uncopied[0]}' to a string, a list of strings, or a table of strings, or ` +
+          `remove [telemetry.${name}]`,
       });
       continue;
     }
@@ -239,17 +245,17 @@ export function thirdPartyTelemetry(boxToml: Readonly<Record<string, unknown>>):
       leftOut.push({
         name,
         reason:
-          "its `secret.ref` names no `env://` or `secret://` variable, and build moves only such a " +
-          "key to AWS Secrets Manager",
+          "reads its key from a secret.ref that is not an env:// or secret:// variable, and on " +
+          "AgentCore Runtime build can pass on only such a key",
+        fix: `Set secret.ref to env://<VARIABLE>, or remove [telemetry.${name}]`,
       });
       continue;
     }
     if (!SECRET_TARGET_NAME.test(name)) {
       leftOut.push({
         name,
-        reason:
-          "its name cannot name the variable deploy reads its key from. Use only letters, " +
-          "digits, `_`, and `-`, at most 128 characters",
+        reason: "has a name that deploy cannot use for its key",
+        fix: "Use only letters, digits, _ and -, at most 128 characters, in the name of the table",
       });
       continue;
     }

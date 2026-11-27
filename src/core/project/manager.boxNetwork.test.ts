@@ -1513,7 +1513,7 @@ describe("build writes the telemetry policy of the box profile", () => {
 
   test("writes no file and lists nothing when the profile sends no telemetry to CloudWatch", async () => {
     const { manager, root, box } = await otelOffProject();
-    box.answer = showsTelemetry({ langfuse: { kind: "langfuse", secret: { ref: "env://KEY" } } });
+    box.answer = showsTelemetry({ langfuse: { kind: "langfuse" } });
 
     const { steps } = await build(manager, root);
 
@@ -1921,9 +1921,67 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
     expect(warnings).toContain(
       ".box/agent_python_strands/local/profile.toml: the AgentCore Runtime profile leaves out " +
-        "[telemetry.collector]: its `secret.ref` names no `env://` or `secret://` variable, and " +
-        "build moves only such a key to AWS Secrets Manager.",
+        "[telemetry.collector], which reads its key from a secret.ref that is not an env:// or " +
+        "secret:// variable, and on AgentCore Runtime build can pass on only such a key. Set " +
+        "secret.ref to env://<VARIABLE>, or remove [telemetry.collector].",
     );
+  });
+
+  test("carries a target with a key on a CodeZip runtime as on a container, and warns that its image has no aws program", async () => {
+    const { manager, root, box } = await otelOffProject({
+      env: { LANGFUSE_AUTH: "dummy-pk:dummy-sk" },
+    });
+    const langfuse = {
+      kind: "langfuse",
+      destination: "https://us.cloud.langfuse.com",
+      secret: { ref: "env://LANGFUSE_AUTH" },
+    };
+    await editProfile(root, {
+      tables:
+        '\n[telemetry.langfuse]\nkind = "langfuse"\n' +
+        'destination = "https://us.cloud.langfuse.com"\nsecret.ref = "env://LANGFUSE_AUTH"\n',
+    });
+    box.answer = showsTelemetry({ langfuse });
+    const START = "app/agent_python_strands/start.py";
+    const start = await text(root, START);
+
+    const { steps, warnings } = await build(manager, root);
+
+    const profile = await runtimeProfile(root);
+    expect(profile.telemetry).toEqual({
+      agentcore: DEFAULT_TARGET,
+      langfuse: {
+        ...langfuse,
+        secret: { ref: `aws-secretsmanager://${SECRET}#telemetry.langfuse` },
+      },
+    });
+    expect(profile.plugins).toEqual(["@box/aws-secrets-manager"]);
+    expect(JSON.parse(await text(root, TELEMETRY_POLICY))).toEqual({
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Sid: "BoxTelemetrySecrets",
+          Effect: "Allow",
+          Action: ["secretsmanager:GetSecretValue"],
+          Resource: [`arn:aws:secretsmanager:us-west-2:*:secret:${SECRET}-??????`],
+        },
+      ],
+    });
+    // Deploy writes this key to the telemetry.langfuse field of the secret.
+    const variable = "AGENTCORE_CREDENTIAL_AGENT_PYTHON_STRANDS_TELEMETRY_LANGFUSE";
+    expect(steps).toContain(`writing ${variable} to ${ENV_LOCAL_RELATIVE_PATH}`);
+    expect(await text(root, "agentcore/.env.local")).toMatch(new RegExp(`^${variable}=.`, "m"));
+    // Build adds no AWS CLI, and start.py stays as create wrote it.
+    expect(existsSync(path(root, "app/agent_python_strands/.box-dist/box-release.env"))).toBe(
+      false,
+    );
+    expect(await text(root, START)).toBe(start);
+    expect(warnings).toEqual([
+      ".box/agent_python_strands/local/profile.toml: [telemetry.langfuse]: on AgentCore " +
+        "Runtime, box reads this key with its @box/aws-secrets-manager plugin, which runs the " +
+        "aws program. The CodeZip image of runtime 'agent_python_strands' has no aws program. " +
+        "Put aws on PATH in start.py before box run, or use a container runtime.",
+    ]);
   });
 });
 describe("build writes the Bedrock and Memory targets for the region it builds for", () => {

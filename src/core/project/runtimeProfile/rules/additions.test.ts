@@ -570,11 +570,8 @@ describe("deriveRuntimeProfile on a third-party target", () => {
     ({ label, local, old }) => {
       const template = label.split(" ")[0] as RuntimeTemplateShortcutName;
       const runtime = createdRuntime(resolveRuntimeTemplateShortcut(template, {}), false);
-      // As the Box network model carries them with the switch on: a CodeZip runtime carries no
-      // target with a key, because its Runtime has no AWS CLI for box to read the key with.
-      const carried = thirdPartyTelemetry(local).targets.filter(
-        ({ secret }) => runtime.build !== "CodeZip" || secret === undefined,
-      );
+      // The Box network model carries each target, on CodeZip and on a container.
+      const carried = thirdPartyTelemetry(local).targets;
 
       const { profile, problems } = deriveRuntimeProfile(
         local,
@@ -582,23 +579,21 @@ describe("deriveRuntimeProfile on a third-party target", () => {
       );
 
       const expected = withApiKeySignIn(withRuntimeRegion(old));
-      const refused = thirdPartyTelemetry(local).targets.filter(
-        ({ name }) => !carried.some((target) => target.name === name),
-      );
-      // The old renderer left out a target that the model does not carry. The derivation keeps
-      // it, and the refusals rule stops build for it: nothing is dropped with no message.
-      expect(problems.map(({ code, key }) => [code, key])).toEqual(
-        refused.map(({ name }) => [
-          "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
-          ["telemetry", name, "kind"],
-        ]),
-      );
-      const kept = structuredClone(profile) as TomlTable;
-      for (const { name } of refused) delete (kept.telemetry as TomlTable)[name];
+      // The old renderer left out a target with a key on CodeZip, which the derivation carries.
+      const telemetry = expected.telemetry as TomlTable;
+      const secret = `aws-secretsmanager://agentcore/demo/${runtime.name}/box#telemetry`;
+      for (const { name } of carried.filter(({ secret: key }) => key !== undefined)) {
+        if (Object.hasOwn(telemetry, name)) continue;
+        const target = (local.telemetry as TomlTable)[name] as TomlTable;
+        const key = { ...(target.secret as TomlTable), ref: `${secret}.${name}` };
+        telemetry[name] = { ...target, secret: key };
+        expected.plugins = ["@box/aws-secrets-manager"];
+      }
+      expect(problems).toEqual([]);
       // This feature owns the telemetry targets and the plugin. The other keys of the old renderer
       // predate box-integration's derivation rules, whose own tests compare them.
       for (const key of ["telemetry", "plugins"])
-        expect([key, kept[key]]).toEqual([key, expected[key] ?? undefined]);
+        expect([key, profile[key]]).toEqual([key, expected[key] ?? undefined]);
     },
   );
 

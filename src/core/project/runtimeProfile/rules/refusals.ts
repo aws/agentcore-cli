@@ -29,7 +29,7 @@ import {
   programOf,
   type PathProblem,
 } from "../projectPaths";
-import { THIRD_PARTY_KINDS } from "../../boxNetwork/telemetry";
+import { THIRD_PARTY_KINDS, type LeftOutTelemetry } from "../../boxNetwork/telemetry";
 import type {
   RuleResult,
   RuntimeProfileContext,
@@ -53,8 +53,12 @@ const RUNTIME_TELEMETRY_KINDS: ReadonlySet<string> = new Set([
 export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext): RuleResult {
   const problems: RuntimeProfileProblem[] = [];
   const warnings: string[] = [];
-  const problem = (code: RuntimeProfileProblemCode, key: readonly string[], reason: string) =>
-    problems.push({ code, key, reason: `${keyLabel(key)} ${reason}`, place: context.placeOf(key) });
+  const problem = (
+    code: RuntimeProfileProblemCode,
+    key: readonly string[],
+    reason: string,
+    label = keyLabel(key),
+  ) => problems.push({ code, key, reason: `${label} ${reason}`, place: context.placeOf(key) });
 
   for (const { key, table: process } of processTables(table)) {
     const network = process.network;
@@ -93,6 +97,18 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
       continue;
     // The additions rule carries each third-party target that the Box network model carries.
     if (context.thirdPartyTelemetry?.some((carried) => carried.name === name)) continue;
+    if (THIRD_PARTY_KINDS.some((candidate) => candidate === kind)) {
+      problem(
+        "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
+        ["telemetry", name, "kind"],
+        notCarried(
+          name,
+          context.leftOutTelemetry?.find((leftOut) => leftOut.name === name),
+        ),
+        `[telemetry.${name}]`,
+      );
+      continue;
+    }
     problem(
       "RUNTIME_TELEMETRY_NOT_CLOUDWATCH",
       ["telemetry", name, "kind"],
@@ -207,19 +223,16 @@ function inRuntimeCode(path: string, paths: RuntimeProfileContext["paths"]): boo
   return path === paths.runtimeCode || path.startsWith(`${paths.runtimeCode}/`);
 }
 
-/**
- * Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. For a third-party target,
- * the warning of the Box network model gives the reason build cannot carry it.
- */
-function notCloudWatch(name: string, kind: unknown): string {
-  const thirdParty = THIRD_PARTY_KINDS.some((candidate) => candidate === kind);
-  if (thirdParty) {
-    return (
-      `is ${JSON.stringify(kind)}, and build cannot carry this target to AgentCore Runtime: the ` +
-      `warning for [telemetry.${name}] gives the reason. Correct that, remove ` +
-      `[telemetry.${name}], or change its kind to "cloudwatch_logs" or "cloudwatch_traces".`
-    );
+/** Why build cannot copy the third-party `[telemetry.<name>]` to AgentCore Runtime. */
+function notCarried(name: string, leftOut: LeftOutTelemetry | undefined): string {
+  if (leftOut === undefined) {
+    return `is a target that build cannot copy to AgentCore Runtime. Remove [telemetry.${name}].`;
   }
+  return `${leftOut.reason}. ${leftOut.fix}.`;
+}
+
+/** Why `[telemetry.<name>]` of kind `kind` cannot go to AgentCore Runtime. */
+function notCloudWatch(name: string, kind: unknown): string {
   return (
     `${typeof kind === "string" ? `is ${JSON.stringify(kind)}` : "is not set"}. A box on ` +
     'AgentCore Runtime sends telemetry to CloudWatch (kind "cloudwatch_logs" or ' +

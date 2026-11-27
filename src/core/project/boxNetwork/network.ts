@@ -20,7 +20,8 @@ import { BOX_GATEWAY_TARGETS_FILE } from "../boxGatewayTargets";
 import { BOX_BEDROCK_POLICY_FILE } from "../boxMemory";
 import { boxEgressCredentialName, boxRouteCredentialProblem } from "../boxProfileCredentials";
 import type { BoxEnvRoute } from "../boxProfileEgress";
-import { boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
+import { BOX_SECRETS_MANAGER_PLUGIN, boxTelemetrySecretVariable } from "../boxTelemetrySecrets";
+import { BOX_CODEZIP_ENTRYPOINT } from "../templates/boxProfile";
 import { buildHostMap, entryLabel, entryRef, type MappedHost } from "./hostMap";
 import {
   BOX_EGRESS_TARGET_PREFIX,
@@ -40,7 +41,12 @@ import { deriveRuntimeProfile } from "../runtimeProfile/derive";
 import { defaultTracesTelemetry, runtimeProfileHeader } from "../runtimeProfile/rules/additions";
 import type { TomlTable } from "../runtimeProfile/types";
 import type { ParsedProfile } from "./profileParser";
-import { withDeployRegion, type CloudWatchTelemetry, type ThirdPartyTelemetry } from "./telemetry";
+import {
+  withDeployRegion,
+  type CloudWatchTelemetry,
+  type LeftOutTelemetry,
+  type ThirdPartyTelemetry,
+} from "./telemetry";
 import type { PassthroughGatewayCheck } from "../backends/cdk/compatibility";
 import { projectGatewaysOf, type BoxProjectGateway } from "./projectGateways";
 import { outboundAuthWords, sameOutboundAuth, targetOutboundAuth } from "./projectSpec";
@@ -264,6 +270,7 @@ export function buildBoxNetwork(
       projectGateways: reached.gateways,
       telemetry: telemetry?.telemetry ?? [],
       thirdPartyTelemetry: thirdParty.targets,
+      leftOutTelemetry: thirdParty.leftOut,
       ruleIds: new Set(
         parsed.statements
           .filter(
@@ -351,22 +358,20 @@ function envRoutesOf(hosts: readonly BoxNetworkHost[]): BoxEnvRoute[] {
 /**
  * The third-party telemetry targets that the AgentCore Runtime profile carries, and a warning for
  * each one it leaves out. Box reads the key of a target on AgentCore Runtime from AWS Secrets
- * Manager. A CodeZip runtime carries no target with a key, because its
- * Runtime has no AWS CLI for Box to read the key with. A target with a key is also left out when
- * the variable deploy reads its key from is a variable that a credential reads, or that another
- * target of the profile reads, so deploy never sends one key to the wrong destination. A target of
- * a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path until its owner adds one.
+ * Manager. A target with a key is left out when the variable deploy reads its key from is a
+ * variable that a credential reads, or that another target of the profile reads, so deploy never
+ * sends one key to the wrong destination. A target with a key on a CodeZip runtime stays, with a
+ * warning: the plugin that reads the key runs the aws program, which the CodeZip image does not
+ * have. A target of a PRIVATE_VPC runtime stays, with a warning: the VPC has no internet path
+ * until its owner adds one.
  */
 function runtimeTelemetry(
   profile: ParsedProfile,
   project: BoxNetworkProject,
   hosts: readonly BoxNetworkHost[],
-): { targets: ThirdPartyTelemetry[]; warnings: string[] } {
-  const leftOut = (name: string, reason: string) =>
-    `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}]: ${reason}.`;
-  const warnings = (profile.leftOutTelemetry ?? []).map(({ name, reason }) =>
-    leftOut(name, reason),
-  );
+): { targets: ThirdPartyTelemetry[]; leftOut: LeftOutTelemetry[]; warnings: string[] } {
+  const leftOut: LeftOutTelemetry[] = [...(profile.leftOutTelemetry ?? [])];
+  const warnings: string[] = [];
   const taken = new Set([
     ...project.spec.credentials.flatMap(credentialEnvironmentVariableNames),
     ...hosts.flatMap(({ outboundAuth }) =>
@@ -375,29 +380,27 @@ function runtimeTelemetry(
   ]);
   const targets: ThirdPartyTelemetry[] = [];
   for (const target of profile.thirdPartyTelemetry ?? []) {
-    if (target.secret !== undefined && project.runtime.build === "CodeZip") {
-      warnings.push(
-        leftOut(
-          target.name,
-          "Box reads its key on AgentCore Runtime with the AWS CLI, which a CodeZip runtime " +
-            "does not have. Use a container runtime",
-        ),
-      );
-      continue;
-    }
     if (target.secret !== undefined) {
       const variable = boxTelemetrySecretVariable(project.runtime.name, target.name);
       if (taken.has(variable)) {
-        warnings.push(
-          leftOut(
-            target.name,
-            `deploy reads its key from ${variable}, and a credential or another target reads ` +
-              "that variable too. Rename the target",
-          ),
-        );
+        leftOut.push({
+          name: target.name,
+          reason:
+            `needs the variable ${variable} for its key, and another entry uses that variable ` +
+            "too",
+          fix: `Rename [telemetry.${target.name}]`,
+        });
         continue;
       }
       taken.add(variable);
+      if (project.runtime.build === "CodeZip") {
+        warnings.push(
+          `${profile.path}: [telemetry.${target.name}]: on AgentCore Runtime, box reads this ` +
+            `key with its ${BOX_SECRETS_MANAGER_PLUGIN} plugin, which runs the aws program. The ` +
+            `CodeZip image of runtime '${project.runtime.name}' has no aws program. Put aws on ` +
+            `PATH in ${BOX_CODEZIP_ENTRYPOINT} before box run, or use a container runtime.`,
+        );
+      }
     }
     if (project.runtime.containment === "PRIVATE_VPC") {
       const host = thirdPartyHost(target);
@@ -410,7 +413,12 @@ function runtimeTelemetry(
     }
     targets.push(target);
   }
-  return { targets, warnings };
+  const leftOutWarnings = leftOut.map(
+    ({ name, reason, fix }) =>
+      `${profile.path}: the AgentCore Runtime profile leaves out [telemetry.${name}], which ` +
+      `${reason}. ${fix}.`,
+  );
+  return { targets, leftOut, warnings: [...leftOutWarnings, ...warnings] };
 }
 
 /** The address a box sends a vendor's spans to when its `[telemetry]` table names no destination. */
