@@ -537,10 +537,10 @@ function containmentIssues(spec: {
       });
     }
   });
-  const contained = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
-  if (contained.length > 1) {
+  const privateVpc = spec.runtimes.filter((runtime) => runtime.containment === "PRIVATE_VPC");
+  if (privateVpc.length > 1) {
     issues.push({
-      message: `${PRIVATE_VPC_LIMIT} Found ${contained.map((runtime) => runtime.name).join(", ")}.`,
+      message: `${PRIVATE_VPC_LIMIT} Found ${privateVpc.map((runtime) => runtime.name).join(", ")}.`,
       path: ["runtimes"],
     });
   }

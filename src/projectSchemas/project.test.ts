@@ -412,7 +412,7 @@ describe("project custom validation", () => {
 
 describe("containment", () => {
   const box = { ...minimalProject, projectType: "box" };
-  const contained = { ...runtime, containment: "PRIVATE_VPC" };
+  const privateVpc = { ...runtime, containment: "PRIVATE_VPC" };
   const boxProject = (
     runtimes: ({ name: string } & Record<string, unknown>)[],
     fields: Record<string, unknown> = {},
@@ -422,9 +422,10 @@ describe("containment", () => {
     agentCoreGateways: runtimes.map(({ name }) => boxGatewaySpec(name, "strands-box")),
     ...fields,
   });
-  const withNetwork = (network: Record<string, unknown>) => boxProject([{ ...contained, network }]);
+  const withNetwork = (network: Record<string, unknown>) =>
+    boxProject([{ ...privateVpc, network }]);
   test.each([
-    ["PRIVATE_VPC in a Box project", boxProject([contained])],
+    ["PRIVATE_VPC in a Box project", boxProject([privateVpc])],
     [
       "PRIVATE_VPC with every network field",
       withNetwork({
@@ -434,10 +435,10 @@ describe("containment", () => {
         ipAddressType: "DUAL_STACK",
       }),
     ],
-    ["SANDBOXED", boxProject([{ ...runtime, containment: "SANDBOXED" }])],
+    ["CONTAINED", boxProject([{ ...runtime, containment: "CONTAINED" }])],
     [
-      "a contained runtime next to a sandboxed runtime and a harness",
-      boxProject([contained, { ...runtime, name: "helper" }], {
+      "a PRIVATE_VPC runtime next to a CONTAINED runtime and a harness",
+      boxProject([privateVpc, { ...runtime, name: "helper" }], {
         harnesses: [{ name: "support", path: "app/support" }],
       }),
     ],
@@ -453,12 +454,12 @@ describe("containment", () => {
   test.each([
     [
       "containment without projectType box",
-      { ...minimalProject, runtimes: [{ ...runtime, containment: "SANDBOXED" }] },
+      { ...minimalProject, runtimes: [{ ...runtime, containment: "CONTAINED" }] },
       'requires "projectType": "box"',
     ],
     [
       "two PRIVATE_VPC runtimes",
-      boxProject([contained, { ...contained, name: "billing" }]),
+      boxProject([privateVpc, { ...privateVpc, name: "billing" }]),
       "only one runtime",
     ],
     [
@@ -476,8 +477,8 @@ describe("containment", () => {
       "Availability Zone ID",
     ],
     [
-      "a contained runtime with its own network",
-      boxProject([{ ...contained, networkMode: "PUBLIC" }]),
+      "a PRIVATE_VPC runtime with its own network",
+      boxProject([{ ...privateVpc, networkMode: "PUBLIC" }]),
       "networkMode and networkConfig",
     ],
   ])("rejects containment with %s", (_name, project, message) => {
