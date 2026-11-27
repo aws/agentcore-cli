@@ -1891,9 +1891,12 @@ describe("build moves the key of a third-party telemetry target to AWS Secrets M
     );
     expect(warnings).toContain(
       ".box/agent_python_strands/local/profile.toml: [telemetry.langfuse] sends to " +
-        "us.cloud.langfuse.com, but runtime agent_python_strands uses a private VPC, which has no " +
-        "internet path. Box tries to send, and each send fails until you give the VPC a path to " +
-        "us.cloud.langfuse.com, or remove `--containment private-vpc`.",
+        "us.cloud.langfuse.com, but runtime agent_python_strands uses a private VPC. Box tries " +
+        "to send, but no data gets to us.cloud.langfuse.com. The VPC has no internet path, and " +
+        "its DNS firewall resolves only the names of the VPC endpoints. To send to " +
+        'us.cloud.langfuse.com, use the default network: remove "containment" and "network" ' +
+        "from runtime agent_python_strands in agentcore.json. You can also use " +
+        "`agentcore create` again without `--containment private-vpc`.",
     );
 
     // Without a third-party target the endpoint goes again.
