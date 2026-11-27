@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: box-integration
+      region:
+        description: AWS region to deploy and test in; empty uses the E2E_REGION variable, else us-east-1
+        required: false
+        type: string
+        default: ""
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN:
         required: true
@@ -48,6 +53,10 @@ on:
         description: aws/agentcore-l3-cdk-constructs ref the Box tests deploy with (branch, tag, or commit)
         type: string
         default: box-integration
+      region:
+        description: AWS region to deploy and test in; empty uses the E2E_REGION variable, else us-east-1
+        type: string
+        default: ""
 
 concurrency:
   group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
@@ -134,7 +143,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
-          aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
+          aws-region: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
       # the Box tests. They skip on a runner with no box on PATH.
@@ -237,11 +246,11 @@ jobs:
         if: inputs.tags == ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
-          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e
       - name: Run tagged E2E tests
         if: inputs.tags != ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
-          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"
