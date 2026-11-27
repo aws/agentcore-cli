@@ -24,7 +24,7 @@
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
 import { posix } from "node:path";
-import { agentCoreDataPlaneHost } from "../../boxNetwork/egress";
+import { BOX_EGRESS_TARGET_PREFIX, agentCoreDataPlaneHost } from "../../boxNetwork/egress";
 import { BOX_MEMORY_ROUTE_NAME, hasProjectMemory } from "../../boxMemory";
 import { parseDestination } from "../../boxNetwork/egress";
 import {
@@ -345,12 +345,13 @@ function memoryRoutes(
 }
 
 /**
- * A problem for each entry of the profile that sends a credential of its own to the AgentCore host,
- * such as the `env://` API key of an MCP server on another AgentCore Runtime. With the default
- * Memory, every call of the box to that host goes there directly, signed with the execution role,
- * and box cannot route one host both ways. So the key would never be sent, and the server would
- * refuse the call. The Box network model records the API key of the host; an entry that still
- * holds a secret other than `aws://` names one too.
+ * A problem for each entry of the profile, and each target of the Box gateway that the user wrote,
+ * that sends a credential of its own to the AgentCore host, such as the `env://` API key of an MCP
+ * server on another AgentCore Runtime. With a Memory in the project, every call of the box to that
+ * host goes there directly, signed with the execution role, and box cannot route one host both
+ * ways. So the credential would never be sent, and the server would refuse the call. The Box
+ * network model records the API key of the host; an entry that still holds a secret other than
+ * `aws://` names one too, and a target names its outboundAuth.
  */
 function credentialProblems(
   host: string,
@@ -383,6 +384,12 @@ function credentialProblems(
         named.set(`${kind}.${name}`, { key: [kind, name], secret: ref });
     }
   }
+  const direct =
+    `On AgentCore Runtime, runtime '${context.runtime.name}' gets every Memory of the project, so ` +
+    "box sends every call to that host directly, signed with the execution role, and not through " +
+    "the Box gateway.";
+  const noKey =
+    "No boxed runtime of a project with a Memory can send a credential of its own to that host.";
   for (const { key, secret } of named.values()) {
     const label = `[${key.join(".")}]`;
     problems.push({
@@ -390,14 +397,46 @@ function credentialProblems(
       key,
       place: context.placeOf(key),
       reason:
-        `${label} sends ${secret} to ${host}. On AgentCore Runtime, runtime ` +
-        `'${context.runtime.name}' gets the Memories of the project, so box sends every call to that host ` +
-        "directly, signed with the execution role, and not through the Box gateway. Box cannot " +
-        "route one host both ways, so the key would not be sent. Remove the secret from " +
-        `${label} if the service takes the execution role's signature, or remove the Memories ` +
-        `of the project from agentcore.json, which runtime '${context.runtime.name}' gets.`,
+        `${label} sends ${secret} to ${host}. ${direct} Box cannot route one host both ways, so ` +
+        `the key would not be sent. Remove the secret from ${label} if the service takes the ` +
+        `execution role's signature. ${noKey}`,
     });
   }
+  // A target of the Box gateway that the user wrote in agentcore.json can carry the credential
+  // instead of the profile: the profile then lets the host through with no secret, and the target
+  // signs with its API key or OAuth token. Box would send the calls past that target.
+  const reported = new Set<string>();
+  for (const record of context.hosts) {
+    const name = record.target;
+    if (record.host !== host || name === undefined || reported.has(name)) continue;
+    if (isBuildTarget(name, context)) continue;
+    const target = context.gateway.targets.find((entry) => entry.name === name);
+    const type = target?.outboundAuth?.type;
+    if (type !== "API_KEY" && type !== "OAUTH") continue;
+    reported.add(name);
+    const source = record.sources[0];
+    const key =
+      source?.kind === "entry"
+        ? ["egress", source.egressEntry]
+        : source?.kind === "mcp"
+          ? ["mcp", source.mcpEntry]
+          : ["agentCoreGateways", context.gateway.name, "targets", name];
+    problems.push({
+      code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+      key,
+      place: "agentcore/agentcore.json",
+      reason:
+        `Target '${name}' of gateway '${context.gateway.name}' in agentcore.json signs the calls ` +
+        `to ${host} with its ${type} credential. ${direct} So the target's credential would not ` +
+        "be sent. Set the outboundAuth of the target to GATEWAY_IAM_ROLE or NONE if the service " +
+        `takes the execution role's signature. ${noKey}`,
+    });
+  }
+}
+
+/** Whether build writes and owns target `name` of the Box gateway (BoxNetwork.managedTargets). */
+function isBuildTarget(name: string, context: RuntimeProfileContext): boolean {
+  return context.gateway.managed?.has(name) ?? name.startsWith(BOX_EGRESS_TARGET_PREFIX);
 }
 
 /**

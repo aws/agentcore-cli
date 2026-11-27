@@ -822,7 +822,7 @@ describe("build writes the Box network of the box profile", () => {
       expect(error).toBeInstanceOf(InputValidationError);
       expect((error as Error).message).toContain(
         `${label} sends env://TOOLS_TOKEN to ${AGENTCORE_HOST}. On AgentCore Runtime, runtime ` +
-          "'agent_python_strands' gets the Memories of the project, so box sends every call to that host " +
+          "'agent_python_strands' gets every Memory of the project, so box sends every call to that host " +
           "directly, signed with the execution role",
       );
       // Build provisions no credential that nothing would send.
