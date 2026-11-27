@@ -22,8 +22,10 @@ export function parseTimeString(input: string, now: () => number = Date.now): nu
   }
   if (/^\d{13,}$/.test(trimmed)) return parseInt(trimmed, 10);
 
-  const timestamp = Date.parse(trimmed);
-  if (!Number.isNaN(timestamp)) return timestamp;
+  if (!/^\d+$/.test(trimmed)) {
+    const timestamp = Date.parse(trimmed);
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
 
   throw new InputValidationError(
     `Invalid time string: "${input}". Use relative durations (5m, 1h, 2d), ` +
