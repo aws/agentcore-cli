@@ -175,7 +175,7 @@ export const createAddRuntimeHandler = (config: AddProjectResourceConfig) =>
       ),
       flag(
         "filesystem-configurations",
-        "filesystem mount configurations (JSON); an s3BucketMount needs --platform-version V2",
+        "filesystem mount configurations (JSON); public EFS and S3 Files access-point mounts require --network-mode PUBLIC and --platform-version V2 (Preview, commercial Regions only)",
         z.string().optional(),
         { group: ENVIRONMENT },
       ),

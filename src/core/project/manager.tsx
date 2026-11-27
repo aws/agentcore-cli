@@ -73,7 +73,7 @@ import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
 import { PolicyEngineSchema, PolicySchema } from "../../projectSchemas/policy";
-import { RuntimeEndpointSchema } from "../../projectSchemas/runtime";
+import { RuntimeEndpointSchema, type ProjectRuntime } from "../../projectSchemas/runtime";
 import { defaultExportProjectName, enclosingProjectRoot, projectSpecPath } from "./fsUtils";
 import { parseArn } from "../arn";
 import {
@@ -272,6 +272,21 @@ const CN_SUPPORTED_SPEC_COLLECTIONS = new Set([
   "agentCoreGateways",
   "toolRuntimes",
 ]);
+
+export const PUBLIC_BYO_MOUNTS_CN_MESSAGE =
+  "PUBLIC EFS and S3 Files access-point mounts are not available in China regions " +
+  "(cn-north-1, cn-northwest-1). Use VPC mode or deploy to a supported commercial region.";
+
+function hasPublicByoAccessPointMount(
+  runtime: Pick<ProjectRuntime, "networkMode" | "filesystemConfigurations">,
+): boolean {
+  return (
+    runtime.networkMode === "PUBLIC" &&
+    (runtime.filesystemConfigurations ?? []).some(
+      (mount) => "efsAccessPoint" in mount || "s3FilesAccessPoint" in mount,
+    )
+  );
+}
 
 /**
  * Shown when a Gateway Target of type `connector` is added to, or deployed from, a
@@ -673,6 +688,9 @@ export class FsProjectManager implements ProjectManager {
     if (await this.isChinaProject(project, options.region)) {
       if (input.resourceType === "harness") {
         throw new RegionUnsupportedFeatureError(HARNESS_CN_MESSAGE);
+      }
+      if (input.resourceType === "runtime" && hasPublicByoAccessPointMount(input.resourceConfig)) {
+        throw new RegionUnsupportedFeatureError(PUBLIC_BYO_MOUNTS_CN_MESSAGE);
       }
       // One allowlist decides what is refused (CN_SUPPORTED_ADD_KINDS); the
       // input decides which message: a connector-backed Gateway Target gets
@@ -1635,6 +1653,14 @@ export class FsProjectManager implements ProjectManager {
     // modelProvider (BYO, provider-free, hand-edited, or scaffolded by an
     // older CLI) cannot be classified and only get an informational note.
     if (isChinaRegion(target.region)) {
+      const publicByoMountRuntimes = project.spec.runtimes.filter(hasPublicByoAccessPointMount);
+      if (publicByoMountRuntimes.length > 0) {
+        throw new RegionUnsupportedFeatureError(
+          `Cannot deploy to China region ${target.region}: ` +
+            `${publicByoMountRuntimes.map((runtime) => `runtime '${runtime.name}'`).join(", ")} uses ` +
+            `PUBLIC EFS or S3 Files access-point mounts. ${PUBLIC_BYO_MOUNTS_CN_MESSAGE}`,
+        );
+      }
       const bmaRuntimes = project.spec.runtimes.filter(
         (runtime) => runtime.bedrockManagedAgents === true,
       );

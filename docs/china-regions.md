@@ -41,5 +41,6 @@
   China target fails with an explicit message. Those `add` subcommands say "not available in
   China regions" in their help, and the `agentcore add` menu warns when the project has a China
   deployment target.
+- **PUBLIC filesystem mounts:** The EFS and S3 Files access-point PUBLIC-mode preview is available only in commercial Regions. `agentcore add runtime` rejects PUBLIC EFS or S3 Files mounts when the project targets China, and `agentcore deploy` rechecks the saved runtime configuration.
 - **Telemetry** is always disabled when the ambient AWS region or any deployment target is a
   China region.
