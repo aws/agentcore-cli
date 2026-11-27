@@ -790,13 +790,15 @@ describe.skipIf(!BOX_DEPLOYS)(
 
     // A runtime reaches the AWS-managed Browser through a `browser` connection. The agent starts a
     // session over the AgentCore host, then drives the browser over the session's automation
-    // WebSocket on the same host, which box signs as it signs the other calls to that host.
+    // WebSocket on the same host. A route permits no WebSocket, and build adds no permit for one,
+    // so the user writes it in a policy of the local profile, as this test does.
     test.concurrent(
       "a Browser connection opens a browser that the boxed agent drives",
       { timeout: DEPLOY_TEST_TIMEOUT },
       async () => {
         const projectDir = await createTemplateProject(cli, strands, { deploys: true });
         await addConnection(projectDir, "browser");
+        await allowBrowserWebSocket(projectDir);
         await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), BROWSER_AGENT);
         await deployed(cli, projectDir, async () => {
           await askAgent<{ product?: string; error?: string }>(
@@ -997,6 +999,31 @@ async function addConnection(projectDir: string, type: "codeInterpreter" | "brow
   if (!runtime) throw new Error(`agentcore.json has no runtime ${CREATED_RUNTIME_NAME}`);
   runtime.connections = [...(runtime.connections ?? []), { to: { type } }];
   await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
+}
+
+/**
+ * Lets the agent of `projectDir` open the Browser's automation WebSocket, as a user does: a
+ * `policy.dw` beside the local profile permits `websocket:connect` to the AgentCore host of the
+ * profile's region, on the browser stream paths only, and the profile lists it under `policies`.
+ */
+async function allowBrowserWebSocket(projectDir: string): Promise<void> {
+  const local = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local");
+  const profilePath = join(local, "profile.toml");
+  const profile = await readFile(profilePath, "utf8");
+  const region = /^bedrock\.region = "([a-z0-9-]+)"$/m.exec(profile)?.[1];
+  if (!region) throw new Error(`${profilePath} names no bedrock.region`);
+  const created = 'policies = ["aws-metadata-block.dw"]\n';
+  if (!profile.includes(created)) throw new Error(`${profilePath} lacks ${created.trim()}`);
+  await writeFile(
+    join(local, "policy.dw"),
+    '@id("browser_automation") permit (principal, action == Box::Action::"websocket:connect", resource)\n' +
+      `when { context.input.host == "bedrock-agentcore.${region}.amazonaws.com" && ` +
+      'context.input.path like "/browser-streams/*" };\n',
+  );
+  await writeFile(
+    profilePath,
+    profile.replace(created, 'policies = ["aws-metadata-block.dw", "policy.dw"]\n'),
+  );
 }
 
 /** An agent that runs `print(6 * 7)` in the AWS-managed Code Interpreter and returns its output. */
