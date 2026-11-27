@@ -98,6 +98,26 @@ export function syncRuntimeBuild(
   const next: ProjectRuntime = { ...runtime };
   const reasons: Partial<Record<SyncedField, string>> = {};
   const warnings: string[] = [];
+
+  // A pre-built image is the complete container artifact: local manifests,
+  // Dockerfiles, and build contexts take no part in deploying it, so nothing is
+  // inferred from them. runtimeVersion does not apply to a container image.
+  if (runtime.containerUri !== undefined) {
+    if (next.runtimeVersion === undefined) return { runtime: next, changes: [], warnings };
+    delete next.runtimeVersion;
+    return {
+      runtime: next,
+      changes: [
+        {
+          field: "runtimeVersion",
+          from: runtime.runtimeVersion,
+          to: undefined,
+          reason: "pre-built container image",
+        },
+      ],
+      warnings,
+    };
+  }
   const context = contextDir(runtime, projectRoot);
   const contextLabel = displayPath(projectRoot, context);
 
@@ -551,7 +571,7 @@ export function prepareRuntimes(
     const pointAtReadme = (found: string[]) =>
       problems.push(...found.map((problem) => `${problem.replace(/\.?$/, ".")} See ${readme}.`));
     const folder = resolve(projectRoot, runtime.codeLocation);
-    if (!isDirectory(folder)) {
+    if (runtime.containerUri === undefined && !isDirectory(folder)) {
       pointAtReadme([
         `runtime "${runtime.name}": ${displayPath(projectRoot, folder)}/ does not exist.`,
       ]);
@@ -589,6 +609,7 @@ function runtimeProblems(
   const folder = resolve(projectRoot, runtime.codeLocation);
   const folderLabel = `${displayPath(projectRoot, folder)}/`;
   const problems: string[] = [];
+  if (runtime.containerUri !== undefined) return problems;
   if (isContainerBuild(runtime)) {
     const context = contextDir(runtime, projectRoot);
     const dockerfile = runtime.dockerfile ?? DOCKERFILE_NAME;

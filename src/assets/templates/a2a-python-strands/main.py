@@ -21,6 +21,7 @@ _MOUNT_PATHS = [
     {{#if sessionStorageMountPath}}"{{sessionStorageMountPath}}",{{/if}}
     {{#each efsMounts}}"{{mountPath}}",{{/each}}
     {{#each s3Mounts}}"{{mountPath}}",{{/each}}
+    {{#each s3BucketMounts}}"{{mountPath}}",{{/each}}
 ]
 
 def _safe_resolve(path: str) -> str:
@@ -79,6 +80,7 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{#if sessionStorageMountPath}}- {{sessionStorageMountPath}}: ephemeral session storage (lost when session ends)
 {{/if}}{{#each efsMounts}}- {{mountPath}}: EFS persistent storage (persists across sessions and agent restarts)
 {{/each}}{{#each s3Mounts}}- {{mountPath}}: S3 Files persistent storage (durable, backed by S3)
+{{/each}}{{#each s3BucketMounts}}- {{mountPath}}: S3 bucket mount (durable, backed by S3; write whole files, no appending or in-place edits)
 {{/each}}{{/if}}
 """
 

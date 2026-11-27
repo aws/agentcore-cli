@@ -132,6 +132,7 @@ type HarnessOptions = {
    * since most projects here are in-memory; `"real"` uses the project manager's.
    */
   syncRuntimeBuilds?: "real" | ProjectManager["syncRuntimeBuilds"];
+  fetch?: DevProjectHandlerConfig["fetch"];
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -216,6 +217,11 @@ function harness(options: HarnessOptions = {}) {
     waitReady: async () => {
       await Bun.sleep(5);
     },
+    fetch:
+      options.fetch ??
+      (async (url) => {
+        throw new Error(`unexpected HTTP call to ${url}`);
+      }),
   });
   const ctx = ValueContext.EmptyContext()
     .withValue(GlobalConfigAccessorKey, new TestGlobalConfigAccessor())
@@ -271,7 +277,24 @@ async function inspectorStatus(subject: ReturnType<typeof harness>): Promise<{ n
   return status.agents;
 }
 
+const prebuiltRuntime = (name = "image"): ProjectRuntime => ({
+  ...runtime(name, "Container"),
+  containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+});
+
 describe("project dev build settings sync", () => {
+  test("pre-built images fail before any local builder, environment, or listener starts", async () => {
+    const subject = harness({ project: project(runtime("orders"), prebuiltRuntime()) });
+    await expect(subject.run({ agent: "image" })).rejects.toThrow(
+      "Runtime 'image' uses a pre-built containerUri. Deploy it with agentcore deploy, then use agentcore invoke.",
+    );
+    expect(subject.container.inputs).toEqual([]);
+    expect(subject.codeZip.inputs).toEqual([]);
+    expect(subject.environmentInputs).toEqual([]);
+    expect(subject.collector.starts).toEqual([]);
+    expect(subject.ui.starts).toEqual([]);
+  });
+
   async function codeProject(files: Record<string, string>) {
     const root = await mkdtemp(join(tmpdir(), "dev-sync-"));
     for (const [path, content] of Object.entries(files)) {
@@ -469,6 +492,87 @@ describe("project dev selection and dispatch", () => {
   });
 });
 
+describe("project dev build warmup hook", () => {
+  const withHook = (): ProjectRuntime => ({
+    ...runtime("orders"),
+    hooksConfiguration: { build: { warmup: { action: { httpPost: { path: "/warmup" } } } } },
+  });
+  const healthy = () =>
+    new Response(JSON.stringify({ status: "Healthy" }), {
+      headers: { "content-type": "application/json" },
+    });
+  /** A runner that serves briefly and then exits, so a successful run of `dev --agent` returns. */
+  const briefRunner = () => {
+    const inputs: DevServerInput[] = [];
+    const runner: DevRunner = {
+      run: async function* (input) {
+        inputs.push(input);
+        yield { type: "stdout", line: "serving" };
+        await Bun.sleep(100);
+      },
+    };
+    return { runner, inputs };
+  };
+
+  test("dev --agent waits for /ping, then sends memory and disk warmup calls", async () => {
+    const calls: string[] = [];
+    const subject = harness({
+      project: project(withHook()),
+      codeZip: briefRunner(),
+      fetch: async (url, init) => {
+        const type = (init.headers as Record<string, string> | undefined)?.[
+          "x-amzn-bedrock-agentcore-runtime-warmup-type"
+        ];
+        calls.push(`${init.method} ${url}${type ? ` ${type}` : ""}`);
+        return url.endsWith("/ping") ? healthy() : new Response("{}");
+      },
+    });
+    await subject.run({ agent: "orders" });
+
+    expect(calls).toEqual([
+      "GET http://127.0.0.1:8080/ping",
+      "POST http://127.0.0.1:8080/warmup memory",
+      "POST http://127.0.0.1:8080/warmup disk",
+    ]);
+    expect(subject.io.stderr()).toContain("Warmup hook for 'orders' succeeded");
+  });
+
+  test("dev --agent stops the agent and fails when the warmup hook fails", async () => {
+    const codeZip = stayingRunner([{ type: "stdout", line: "serving" }]);
+    const subject = harness({
+      project: project(withHook()),
+      codeZip,
+      fetch: async (url) =>
+        url.endsWith("/ping") ? healthy() : new Response("not ready", { status: 503 }),
+    });
+    await expect(subject.run({ agent: "orders" })).rejects.toThrow(
+      "Agent 'orders' failed to start: The warmup memory call (POST /warmup on port 8080) returned 503: not ready.",
+    );
+    expect(codeZip.inputs[0]?.signal.aborted).toBe(true);
+  });
+
+  test("dev --agent warns when hooksConfiguration has no warmup it recognizes", async () => {
+    const subject = harness({
+      project: project({
+        ...runtime("orders"),
+        hooksConfiguration: { Build: { Warmup: {} } } as ProjectRuntime["hooksConfiguration"],
+      }),
+      codeZip: briefRunner(),
+    });
+    await subject.run({ agent: "orders" });
+    expect(subject.io.stderr()).toContain(
+      "Warning: Runtime 'orders' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect(subject.io.stderr()).not.toContain("GET /ping");
+  });
+
+  test("dev --agent without a warmup hook makes no HTTP calls", async () => {
+    const subject = harness({ codeZip: briefRunner() });
+    await subject.run({ agent: "orders" });
+    expect(subject.io.stderr()).not.toContain("GET /ping");
+  });
+});
+
 describe("project dev headless multi-agent", () => {
   const twoRuntimes = () => project(runtime("orders"), runtime("support", "Container"));
 
@@ -514,6 +618,34 @@ describe("project dev headless multi-agent", () => {
     expect(subject.collector.state.closed).toBe(1);
   });
 
+  test("a mixed project without --agent skips pre-built runtimes and runs the rest", async () => {
+    const codeZip = stayingRunner();
+    const container = stayingRunner();
+    const subject = harness({
+      project: project(runtime("orders"), prebuiltRuntime(), runtime("support", "Container")),
+      codeZip,
+      container,
+    });
+    const { pending } = await supervised(subject);
+
+    expect(subject.io.stderr()).toContain(
+      "Skipping runtime 'image': it deploys a pre-built image. Deploy it with agentcore deploy, then use agentcore invoke.",
+    );
+    expect(codeZip.inputs.map(({ runtime }) => runtime.name)).toEqual(["orders"]);
+    expect(container.inputs.map(({ runtime }) => runtime.name)).toEqual(["support"]);
+
+    process.emit("SIGINT", "SIGINT");
+    await expect(pending).rejects.toMatchObject({ exitCode: 130 });
+  });
+
+  test("a project of only pre-built runtimes gives the deploy-and-invoke guidance", async () => {
+    const subject = harness({ project: project(prebuiltRuntime("a"), prebuiltRuntime("b")) });
+    await expect(subject.run()).rejects.toThrow(
+      "Runtime 'a' uses a pre-built containerUri. Deploy it with agentcore deploy",
+    );
+    expect(subject.container.inputs).toEqual([]);
+  });
+
   test("assigns distinct ports to runtimes launched together", async () => {
     const codeZip = stayingRunner();
     const container = stayingRunner();
@@ -539,6 +671,20 @@ describe("project dev headless multi-agent", () => {
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);
+  });
+
+  test("refuses CodeZip agents whose warmup hooks share their own port, before starting any", async () => {
+    const ownPort = (name: string): ProjectRuntime => ({
+      ...runtime(name),
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 9000 } } } },
+      },
+    });
+    const codeZip = stayingRunner();
+    const subject = harness({ project: project(ownPort("ta"), ownPort("tb")), codeZip });
+
+    await expect(subject.run()).rejects.toThrow("('ta' and 'tb' on port 9000)");
+    expect(codeZip.inputs).toHaveLength(0);
   });
 
   test("exits non-zero when every agent fails to start", async () => {
@@ -715,6 +861,21 @@ describe("project dev Inspector UI mode", () => {
       "support",
     ]);
     expect(subject.codeZip.inputs).toHaveLength(0);
+
+    process.emit("SIGINT", "SIGINT");
+    await pending.catch(() => undefined);
+  });
+
+  test("a reload never passes a newly added pre-built runtime to the local runner", async () => {
+    const subject = harness({
+      reloadedRuntimes: [runtime("orders"), prebuiltRuntime()],
+    });
+    const { pending } = await runUi(subject);
+
+    subject.watchers[0]!.onChange();
+    await Bun.sleep(5);
+
+    expect((await inspectorStatus(subject)).map((agent) => agent.name)).toEqual(["orders"]);
 
     process.emit("SIGINT", "SIGINT");
     await pending.catch(() => undefined);

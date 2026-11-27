@@ -50,6 +50,7 @@ import {
 } from "./containerTool";
 import { isDirectory, isFile, resolvePathWithinProject } from "./path";
 import { DEV_PORTS } from "./port";
+import { containerHookPort } from "./readiness";
 
 const AWS_ENV_KEYS = [
   "AWS_ACCESS_KEY_ID",
@@ -315,6 +316,7 @@ export class ContainerDevRunner implements DevRunner {
       containerName,
       "-p",
       `127.0.0.1:${input.port}:${containerPort}`,
+      ...hookPortMapping(input),
       // Docker Engine on Linux does not define host.docker.internal (Desktop,
       // Podman, and Finch do); the mapping makes the OTLP endpoint rewrite
       // resolve everywhere and is harmless where the name already exists.
@@ -528,4 +530,11 @@ function hashString(value: string): string {
 
 function sanitizeImageNameComponent(value: string): string {
   return value.replace(/_{3,}/g, "__");
+}
+
+/** The extra `-p` for a warmup hook on its own port, so dev can call it from the host. */
+function hookPortMapping(input: DevServerInput): string[] {
+  const hookPort = containerHookPort(input.runtime);
+  if (hookPort === undefined || input.hookPort === undefined) return [];
+  return ["-p", `127.0.0.1:${input.hookPort}:${hookPort}`];
 }

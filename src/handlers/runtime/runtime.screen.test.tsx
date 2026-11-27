@@ -42,6 +42,7 @@ function getRuntimeResponse(
     lastUpdatedAt: new Date("2026-07-20T12:34:56.000Z"),
     roleArn: "arn:aws:iam::123456789012:role/runtime-role",
     networkConfiguration: { networkMode: "PUBLIC" },
+    platformVersion: "V2",
     status: "READY",
     protocolConfiguration: { serverProtocol: "HTTP" },
     lifecycleConfiguration: {
@@ -164,7 +165,14 @@ describe("runtime picker", () => {
 describe("runtime hub", () => {
   test("fetches the route ID with exact Core options and renders its summary", async () => {
     const core = new TestCoreClient();
-    core.runtime.setGetResponse(getRuntimeResponse());
+    core.runtime.setGetResponse(
+      getRuntimeResponse({
+        resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+        hooksConfiguration: {
+          build: { warmup: { action: { httpPost: { path: "/warmup", port: 8080 } } } },
+        },
+      }),
+    );
     const r = renderScreen("/agentcore/runtime/get/runtime-123", {
       core,
       endpointUrl: runtimeEndpointUrl,
@@ -176,6 +184,9 @@ describe("runtime hub", () => {
     expect(r.lastFrame()).toMatch(/version\s+7/);
     expect(r.lastFrame()).toMatch(/protocol\s+HTTP/);
     expect(r.lastFrame()).toMatch(/network\s+PUBLIC/);
+    expect(r.lastFrame()).toMatch(/platform\s+V2/);
+    expect(r.lastFrame()).toMatch(/memory\s+4096 MiB/);
+    expect(r.lastFrame()).toMatch(/hooks\s+build\.warmup POST \/warmup:8080/);
     expect(r.lastFrame()).not.toContain("failureReason");
     await waitFor(() => core.runtime.calls.some((call) => call.method === "getRuntime"));
     expect(core.runtime.calls.find((call) => call.method === "getRuntime")).toEqual({

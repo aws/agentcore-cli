@@ -918,7 +918,8 @@ export class FsProjectManager implements ProjectManager {
           ? boxRuntimeInput(projectSpec, input.resourceConfig)
           : undefined;
         const outputPath = join(project.rootPath, "app", input.resourceConfig.name);
-        // The folder may hold the user's own code, but never another resource's.
+        // The folder may hold the user's own code, but never another resource's. A
+        // pre-built runtime writes no files but still records app/<name> as its codeLocation.
         const owner = appFolderOwner(projectSpec, project.rootPath, outputPath);
         if (owner !== undefined) {
           throw new InputValidationError(
@@ -927,6 +928,14 @@ export class FsProjectManager implements ProjectManager {
           );
         }
         if (boxInput) await this.assertNoOtherStartScript(outputPath, input.resourceConfig.name);
+        if (
+          isRuntimeDocsConfig(input.resourceConfig) &&
+          input.resourceConfig.containerUri !== undefined
+        ) {
+          projectSpec.runtimes.push(buildDocsRuntimeSpec(input.resourceConfig));
+          yield { type: "step", message: "configuring runtime from the existing ECR image" };
+          break;
+        }
         // Rollback removes only what this add created, never a folder the user already had.
         const folderExisted = existsSync(outputPath);
         if (isRuntimeDocsConfig(input.resourceConfig)) {

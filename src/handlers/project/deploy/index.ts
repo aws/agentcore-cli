@@ -177,6 +177,7 @@ export function recordBuildTypeCounts(ctx: Context, builds: WorkloadBuilds): voi
     project_runtime_codezip_count: count("runtime", "CodeZip"),
     project_runtime_container_count: count("runtime", "Container"),
     project_runtime_container_local_count: count("runtime", "ContainerLocal"),
+    project_runtime_container_uri_count: count("runtime", "ContainerUri"),
     project_harness_container_count: count("harness", "Container"),
     project_harness_container_local_count: count("harness", "ContainerLocal"),
   });

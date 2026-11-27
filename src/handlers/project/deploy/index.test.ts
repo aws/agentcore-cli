@@ -519,6 +519,37 @@ describe("project deploy handler", () => {
     });
   });
 
+  test("counts pre-built image Runtimes as ContainerUri", async () => {
+    const subject = await testDeployCommand({ outputs: {} });
+    await inProjectWithTargets();
+    const add = createRootHandler(new TestCoreClient(), {
+      io: testIO().io,
+      globalConfigAccessor: new TestGlobalConfigAccessor(),
+      logger: createSilentLogger(),
+    });
+    await add.route([
+      "node",
+      "agentcore",
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--build-config",
+      '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1"}',
+    ]);
+
+    await subject.run();
+
+    expect(subject.calls[0]?.input.workloadBuilds).toMatchObject({
+      "runtime/image": "ContainerUri",
+    });
+    await assertMetricEmitted(subject.telemetryFilePath, "cli.command_run", {
+      command_path: "/agentcore/deploy",
+      project_runtime_container_uri_count: 1,
+      project_runtime_container_count: 0,
+    });
+  });
+
   test("passes the global config's transactionSearch flag into the deploy", async () => {
     const enabled = await testDeployCommand({ outputs: {} });
     await inProjectWithTargets();

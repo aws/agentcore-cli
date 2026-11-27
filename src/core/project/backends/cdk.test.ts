@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import type { Stack } from "@aws-sdk/client-cloudformation";
+import { ListStackResourcesCommand, type Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
 import { boxGatewaySpec, ProjectSpecSchema } from "../../../projectSchemas/project";
@@ -205,9 +205,12 @@ async function writeLocalImageManifest(p: Project): Promise<void> {
 }
 
 type HarnessOptions = {
+  assertCdkFeatures?: CdkBackendConfig["assertCdkFeatures"];
   deployedTemplate?: object | null;
   /** Thrown by GetTemplate instead of returning the deployed template. */
   getTemplateError?: Error;
+  /** Resources ListStackResources reports for the deployed stack. */
+  stackResources?: { ResourceType: string; PhysicalResourceId: string }[];
   checkLocalBuilder?: CdkBackendConfig["checkLocalBuilder"];
   resolveContainerExecutable?: CdkBackendConfig["resolveContainerExecutable"];
   account?: string;
@@ -260,10 +263,13 @@ function harness(options: HarnessOptions = {}) {
 
   const backend = new CdkBackend({
     logger: createSilentLogger(),
-    assertLocalCdkSupport: () => {},
+    assertCdkFeatures: options.assertCdkFeatures ?? (async () => {}),
     createCloudFormationClient: () =>
       ({
-        send: async () => {
+        send: async (command: unknown) => {
+          if (command instanceof ListStackResourcesCommand) {
+            return { StackResourceSummaries: options.stackResources ?? [] };
+          }
           if (options.getTemplateError) throw options.getTemplateError;
           return {
             TemplateBody:
@@ -533,6 +539,31 @@ describe("CdkBackend.build", () => {
     expect(message).toContain("Build context: app/agent/");
     expect(message).toContain("Dockerfile: app/agent/Dockerfile.agent");
     expect(message).toContain("COPY requirements.txt: not found");
+  });
+  test("checks CDK support for a pre-built image Runtime and builds nothing locally", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "image",
+        build: "Container",
+        codeLocation: "app/image",
+        entrypoint: "main.py",
+        containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+      }),
+    );
+    await writeAssembly(p, [TARGET.name]);
+    const probed: unknown[] = [];
+    const h = harness({
+      assertCdkFeatures: async (_directory, features) => {
+        probed.push(features);
+      },
+      resolveContainerExecutable: async () => {
+        throw new Error("must not detect a builder");
+      },
+    });
+    await collect(h.backend.build(p, NO_BOX_NETWORKS));
+    expect(probed).toEqual([["Runtime containerUri"]]);
+    expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
   });
   test("builds no images when no workload builds locally", async () => {
     const p = await project();
@@ -1121,6 +1152,64 @@ describe("CdkBackend.deploy", () => {
     expect(h.stackReads[0]?.stackName).toBe("CustomOrders");
     expect(h.runs).toHaveLength(0);
   });
+  describe("a deployed Container Runtime switching to a containerUri", () => {
+    const deployedContainerRuntime = {
+      Metadata: { "agentcore:builds": { "runtime/agent": "Container" } },
+      Resources: {
+        AgentRepository: {
+          Type: "AWS::ECR::Repository",
+          Properties: { RepositoryName: { "Fn::Join": ["", ["example/", "agent"]] } },
+        },
+      },
+    };
+    const stackResources = [
+      { ResourceType: "AWS::ECR::Repository", PhysicalResourceId: "example/default/agent" },
+    ];
+    async function switchedProject(containerUri: string) {
+      const p = await project();
+      p.spec.runtimes.push(
+        ProjectRuntimeSchema.parse({
+          name: "agent",
+          build: "Container",
+          codeLocation: "app/agent",
+          entrypoint: "main.py",
+          containerUri,
+        }),
+      );
+      await writeAssembly(p, [TARGET.name]);
+      return p;
+    }
+
+    test("is rejected before any deploy when the image is in the repository the stack manages", async () => {
+      const p = await switchedProject(
+        `${TARGET.account}.dkr.ecr.${TARGET.region}.amazonaws.com/example/default/agent:latest`,
+      );
+      const h = harness({ deployedTemplate: deployedContainerRuntime, stackResources });
+      await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+        "that image is in the ECR repository 'example/default/agent', which the CLI created for " +
+          "the Container build. This deploy deletes that repository and its images",
+      );
+      expect(h.runs).toHaveLength(0);
+    });
+
+    test.each([
+      [
+        "another repository",
+        `${TARGET.account}.dkr.ecr.${TARGET.region}.amazonaws.com/mine/agent:v1`,
+      ],
+      ["another account", "444455556666.dkr.ecr.us-east-1.amazonaws.com/example/default/agent:v1"],
+      [
+        "another region",
+        `${TARGET.account}.dkr.ecr.us-west-2.amazonaws.com/example/default/agent:v1`,
+      ],
+      ["public ECR", "public.ecr.aws/example/default/agent:v1"],
+    ])("is allowed for an image in %s", async (_case, containerUri) => {
+      const p = await switchedProject(containerUri);
+      const h = harness({ deployedTemplate: deployedContainerRuntime, stackResources });
+      await collectDeploy(h.backend.deploy(p, deployInput()));
+      expect(h.runs.map(({ operation }) => operation.kind)).toContain("deploy");
+    });
+  });
   test("inspects the live stack by name, not a recorded ARN of a deleted stack", async () => {
     const p = await project();
     p.spec.runtimes.push(
@@ -1145,6 +1234,34 @@ describe("CdkBackend.deploy", () => {
     );
     expect(h.stackReads[0]?.stackName).toBe("AgentCore-example-default-0");
     expect(h.runs).toHaveLength(0);
+  });
+  test("checks CDK feature support before provisioning credentials", async () => {
+    const p = await project();
+    p.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "image",
+        build: "Container",
+        codeLocation: "app/image",
+        entrypoint: "main.py",
+        containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1",
+      }),
+    );
+    let provisioned = false;
+    const h = harness({
+      assertCdkFeatures: async () => {
+        throw new Error("CDK package lacks Runtime containerUri");
+      },
+      provisionCredentials: async function* () {
+        provisioned = true;
+        yield { type: "step", message: "provisioning credentials" };
+        return {};
+      },
+    });
+    await expect(collectDeploy(h.backend.deploy(p, deployInput()))).rejects.toThrow(
+      "lacks Runtime containerUri",
+    );
+    expect(provisioned).toBe(false);
+    expect(h.commands).toHaveLength(0);
   });
   test("refuses an unavailable local builder before provisioning credentials or invoking Toolkit", async () => {
     const p = await project();

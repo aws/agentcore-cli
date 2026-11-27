@@ -1,6 +1,9 @@
 import {
+  ContainerUriSchema,
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
+  type PlatformVersion,
+  PlatformVersionSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
   SECURITY_GROUP_ID_PATTERN,
@@ -191,12 +194,45 @@ export const S3FilesAccessPointConfigSchema = z.object({
     ),
 });
 export type S3FilesAccessPointConfig = z.infer<typeof S3FilesAccessPointConfigSchema>;
+// Only the shape is checked here; the CDK app and the service check the bucket and prefix rules.
+// Strict so a misspelled optional key, such as s3BucketOwner, fails instead of being dropped.
+export const S3BucketMountConfigSchema = z.strictObject({
+  /** General purpose or directory bucket name. */
+  bucket: z.string().min(3).max(63),
+  mountPath: z
+    .string()
+    .min(6)
+    .max(200)
+    .regex(
+      /^\/mnt\/[a-zA-Z0-9._-]+\/?$/,
+      "Must be a path under /mnt with exactly one subdirectory (e.g. /mnt/bucket)",
+    ),
+  /**
+   * Key prefix to mount; the whole bucket when omitted. {runtimeSessionId} gives each session
+   * its own prefix (e.g. "data/{runtimeSessionId}/").
+   */
+  prefix: z.string().min(1).max(1024).optional(),
+  /** Account that must own the bucket; defaults to the runtime's account. */
+  s3BucketOwner: z
+    .string()
+    .regex(/^[0-9]{12}$/, "Must be a 12-digit AWS account ID")
+    .optional(),
+  /** Region of the bucket; defaults to the runtime's Region. */
+  s3BucketRegion: z
+    .string()
+    .min(1)
+    .max(32)
+    .regex(/^([a-z]+-){2,3}\d+$/, "Must be an AWS Region code (e.g. us-west-2)")
+    .optional(),
+});
+export type S3BucketMountConfig = z.infer<typeof S3BucketMountConfigSchema>;
 export const MAX_EFS_MOUNTS = 2;
 export const MAX_S3_MOUNTS = 2;
 export const FilesystemConfigurationSchema = z.union([
   z.strictObject({ sessionStorage: SessionStorageSchema }),
   z.strictObject({ efsAccessPoint: EfsAccessPointConfigSchema }),
   z.strictObject({ s3FilesAccessPoint: S3FilesAccessPointConfigSchema }),
+  z.strictObject({ s3BucketMount: S3BucketMountConfigSchema }),
 ]);
 export type FilesystemConfiguration = z.infer<typeof FilesystemConfigurationSchema>;
 export const LIFECYCLE_TIMEOUT_MIN = 60;
@@ -223,6 +259,28 @@ export const LifecycleConfigurationSchema = z
     }
   });
 export type LifecycleConfiguration = z.infer<typeof LifecycleConfigurationSchema>;
+
+// Shape only, and loose: the service validates sizes, paths, ports and the V2 requirement, and
+// fields it adds later pass through to it without a CLI release.
+export const ResourceConfigurationSchema = z.looseObject({
+  minimumMemoryInMiB: z.number().int().positive(),
+});
+export type ResourceConfiguration = z.infer<typeof ResourceConfigurationSchema>;
+
+export const LifecycleHookSchema = z.looseObject({
+  action: z.looseObject({
+    httpPost: z.looseObject({
+      path: z.string().min(1),
+      port: z.number().int().optional(),
+    }),
+  }),
+});
+export type LifecycleHook = z.infer<typeof LifecycleHookSchema>;
+
+export const RuntimeHooksConfigurationSchema = z.looseObject({
+  build: z.looseObject({ warmup: LifecycleHookSchema.optional() }).optional(),
+});
+export type RuntimeHooksConfiguration = z.infer<typeof RuntimeHooksConfigurationSchema>;
 export const RuntimeEndpointNameSchema = z
   .string()
   .min(1, "Endpoint name is required")
@@ -298,12 +356,6 @@ export type Containment = z.infer<typeof ContainmentSchema>;
 export const PRIVATE_VPC_LIMIT =
   'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each PRIVATE_VPC runtime.';
 
-/**
- * The AgentCore Runtime platform a runtime runs on, set as `PlatformVersion` on its
- * `AWS::BedrockAgentCore::Runtime`. No field leaves the choice to the service.
- */
-export const PlatformVersionSchema = z.enum(["V1", "V2"]);
-export type PlatformVersion = z.infer<typeof PlatformVersionSchema>;
 /** The platform a runtime of a Box project needs: Box runs only on AgentCore Runtime V2. */
 export const BOX_PLATFORM_VERSION: PlatformVersion = "V2";
 
@@ -355,6 +407,40 @@ export const ContainedNetworkSchema = z
   })
   .strict();
 export type ContainedNetwork = z.infer<typeof ContainedNetworkSchema>;
+/**
+ * The rules for a pre-built image (`containerUri`): it is the whole container
+ * artifact, so it needs `build: "Container"` and excludes every local build
+ * setting. Shared by agentcore.json and `add runtime --build-config`. The CDK
+ * package's Runtime schema applies the same cross-field rules, and its
+ * ContainerUriSchema enforces the same image URI grammar as ContainerUriSchema
+ * in constants.ts (tag, digest, repository length, whitespace, total length);
+ * keep the two in sync.
+ */
+export function containerUriIssues(data: {
+  containerUri?: string;
+  build?: string;
+  dockerfile?: unknown;
+  buildContextPath?: unknown;
+  customDockerBuildArgs?: unknown;
+}): { message: string; path: string[] }[] {
+  if (data.containerUri === undefined) return [];
+  const issues: { message: string; path: string[] }[] = [];
+  // Messages and paths match @aws/agentcore-cdk's AgentEnvSpecSchema. An omitted
+  // build (add runtime --build-config) defaults to Container.
+  if (data.build !== undefined && data.build !== "Container") {
+    issues.push({
+      message:
+        "containerUri requires build 'Container' (it cannot be used with CodeZip or ContainerLocal)",
+      path: ["containerUri"],
+    });
+  }
+  for (const field of ["dockerfile", "buildContextPath", "customDockerBuildArgs"] as const) {
+    if (data[field] !== undefined) {
+      issues.push({ message: `${field} cannot be used with containerUri`, path: [field] });
+    }
+  }
+  return issues;
+}
 
 export const ProjectRuntimeSchema = z
   .object({
@@ -383,6 +469,12 @@ export const ProjectRuntimeSchema = z
     build: BuildTypeSchema,
     entrypoint: EntrypointSchema,
     codeLocation: DirectoryPathSchema,
+    /**
+     * An existing private or public ECR image to deploy, with `build: "Container"`.
+     * Deployment then skips local source, the Dockerfile, CodeBuild, and the
+     * CDK-managed ECR repository.
+     */
+    containerUri: ContainerUriSchema.optional(),
     dockerfile: DockerfilePathSchema.optional(),
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
@@ -395,6 +487,11 @@ export const ProjectRuntimeSchema = z
      * `agentcore create` writes the box release this CLI pins.
      */
     box: z.object({ version: BoxVersionSchema }).optional(),
+    /**
+     * Removing this keeps a deployed runtime on its current version; set V1 to move back. Every
+     * runtime of a Box project needs `"V2"`; create writes it.
+     */
+    platformVersion: PlatformVersionSchema.optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
     networkConfig: NetworkConfigSchema.optional(),
@@ -409,14 +506,16 @@ export const ProjectRuntimeSchema = z
     authorizerConfiguration: AuthorizerConfigSchema.optional(),
     tags: TagsSchema.optional(),
     lifecycleConfiguration: LifecycleConfigurationSchema.optional(),
+    /** Each update replaces this, so removing it returns sessions to consumption-based pricing. */
+    resourceConfigurations: z.array(ResourceConfigurationSchema).optional(),
+    /** Each update replaces this, so removing it removes the hooks. */
+    hooksConfiguration: RuntimeHooksConfigurationSchema.optional(),
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),
     containment: ContainmentSchema.optional(),
     /** Only with `"containment": "PRIVATE_VPC"`. */
     network: ContainedNetworkSchema.optional(),
-    /** No default. Every runtime of a Box project needs `"V2"`; create writes it. */
-    platformVersion: PlatformVersionSchema.optional(),
   })
   .superRefine((data, ctx) => {
     if (data.network && data.containment !== "PRIVATE_VPC") {
@@ -451,9 +550,11 @@ export const ProjectRuntimeSchema = z
         path: ["networkConfig"],
       });
     }
+    // Only a Runtime CodeBuild builds has the CodeBuild VPC limits; a pre-built image does not.
+    const codeBuildContainer = data.build === "Container" && data.containerUri === undefined;
     if (
       data.networkMode === "VPC" &&
-      data.build === "Container" &&
+      codeBuildContainer &&
       data.networkConfig &&
       data.networkConfig.securityGroups.length > MAX_CONTAINER_BUILD_SECURITY_GROUPS
     ) {
@@ -465,7 +566,7 @@ export const ProjectRuntimeSchema = z
     }
     // Mirrors the CDK, which feeds networkConfig.vpcId to the CodeBuild project's
     // VpcConfig. Only `build: "Container"` reaches that path, so CodeZip is exempt.
-    if (data.networkMode === "VPC" && data.build === "Container" && !data.networkConfig?.vpcId) {
+    if (data.networkMode === "VPC" && codeBuildContainer && !data.networkConfig?.vpcId) {
       ctx.addIssue({
         code: "custom",
         message:
@@ -511,6 +612,7 @@ export const ProjectRuntimeSchema = z
         });
       }
     }
+    for (const issue of containerUriIssues(data)) ctx.addIssue({ code: "custom", ...issue });
     // Reserved by the CodeBuild build environment; ContainerLocal builds locally.
     // Keep in step with the @aws/agentcore-cdk schema.
     for (const key of Object.keys(data.customDockerBuildArgs ?? {})) {
@@ -569,7 +671,9 @@ export const ProjectRuntimeSchema = z
           ? fc.sessionStorage.mountPath
           : "efsAccessPoint" in fc
             ? fc.efsAccessPoint.mountPath
-            : fc.s3FilesAccessPoint.mountPath
+            : "s3FilesAccessPoint" in fc
+              ? fc.s3FilesAccessPoint.mountPath
+              : fc.s3BucketMount.mountPath
         ).replace(/\/$/, ""),
       );
       if (new Set(mountPaths).size !== mountPaths.length) {

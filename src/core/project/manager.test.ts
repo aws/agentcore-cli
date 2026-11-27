@@ -3526,6 +3526,32 @@ describe("docs-only runtimes", () => {
     await expect(runAdd(subject, project, docsRuntime())).resolves.toBeDefined();
   });
 
+  test("refuses a pre-built runtime whose folder overlaps a harness", async () => {
+    const { manager: subject } = manager();
+    const created = await emptyProject(subject);
+    const specPath = join(created.rootPath, "agentcore", "agentcore.json");
+    const spec = JSON.parse(await readFile(specPath, "utf-8"));
+    spec.harnesses = [{ name: "search", path: "app/search" }];
+    await writeFile(specPath, JSON.stringify(spec));
+    const project = (await subject.resolve({ filePath: created.rootPath }))!;
+
+    await expect(
+      runAdd(
+        subject,
+        project,
+        docsRuntime({
+          build: "Container",
+          containerUri: "123456789012.dkr.ecr.us-west-2.amazonaws.com/search:v1",
+        }),
+      ),
+    ).rejects.toThrow(
+      new InputValidationError(
+        "cannot add runtime 'search': 'app/search' overlaps the files of harness 'search'. " +
+          "Choose a different --name.",
+      ),
+    );
+  });
+
   test("an import into an existing folder that fails partway removes only what it wrote", async () => {
     const { manager: subject } = manager();
     const project = await emptyProject(subject);

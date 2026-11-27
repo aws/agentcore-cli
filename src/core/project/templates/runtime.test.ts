@@ -77,6 +77,24 @@ const mounts = {
 } as const;
 
 describe("runtime templates", () => {
+  test.each(["mcp-python-fastmcp", "a2a-python-strands"] as const)(
+    "%s gives its file tools access to an S3 bucket mount",
+    async (template) => {
+      const { appDir } = await addTemplate("my_agent", template, {
+        infra: {
+          platformVersion: "V2",
+          filesystemConfigurations: [
+            { s3BucketMount: { bucket: "amzn-s3-demo-bucket", mountPath: "/mnt/bucket" } },
+          ],
+        } as Partial<RuntimeInput>,
+      });
+      const main = await Bun.file(join(appDir, "main.py")).text();
+      expect(main).toMatch(/_MOUNT_PATHS = \[\s*"\/mnt\/bucket",\s*\]/);
+      if (template === "a2a-python-strands")
+        expect(main).toContain("- /mnt/bucket: S3 bucket mount");
+    },
+  );
+
   test.each<[RuntimeTemplateShortcutName, Record<string, unknown>, Partial<RuntimeInput>]>([
     ["agent-python-minimal", { build: "CodeZip", runtimeVersion: "PYTHON_3_14" }, {}],
     ["agent-python-strands", { build: "CodeZip", protocol: "HTTP" }, {}],
@@ -173,6 +191,7 @@ describe("runtime templates", () => {
     const { runtime, appDir, core } = await addTemplate("my_bma", "environment-python-bma", {
       infra: {
         lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+        platformVersion: "V2",
         additionalPolicies: ["custom-policy.json"],
         tags: { team: "agents" },
       },
@@ -184,6 +203,7 @@ describe("runtime templates", () => {
       dockerfile: "Dockerfile",
       protocol: "HTTP",
       lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+      platformVersion: "V2",
       additionalPolicies: ["bma-acr-policy.json", "custom-policy.json"],
       tags: { "agentcore:template": "BedrockManagedAgents", team: "agents" },
     });
@@ -283,6 +303,21 @@ describe("runtime templates", () => {
     const loadModel = await Bun.file(join(appDir, "model", "load.py")).text();
     expect(loadModel).toContain('"base_url": "https://api.deepseek.com/v1"');
   });
+
+  test.each<[ModelProvider, string, string]>([
+    ["Bedrock", "agui_agent = _build_agui_agent()", "_LazyAguiAgent"],
+    ["Anthropic", "agui_agent = _LazyAguiAgent()", "agui_agent = _build_agui_agent()"],
+  ])(
+    "agui-python-strands with %s builds the agent at the right time for a V2 snapshot",
+    async (modelProvider, expected, unexpected) => {
+      const { appDir } = await addTemplate("my_agent", "agui-python-strands", {
+        model: { modelProvider, ...(modelProvider !== "Bedrock" && { apiKey: "test-api-key" }) },
+      });
+      const main = await Bun.file(join(appDir, "main.py")).text();
+      expect(main).toContain(expected);
+      expect(main).not.toContain(unexpected);
+    },
+  );
 
   test("an API base is refused with a provider other than OpenAICompatible", () => {
     expect(() =>

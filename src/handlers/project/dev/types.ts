@@ -15,6 +15,8 @@ export type DevServerInput = {
    */
   boxProject: boolean;
   port: number;
+  /** Host port mapped to a container's warmup hook when the hook has its own port. */
+  hookPort?: number;
   env?: Record<string, string>;
   signal: AbortSignal;
 };

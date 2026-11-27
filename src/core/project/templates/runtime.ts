@@ -135,6 +135,7 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(infra.envVars && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
+    ...(infra.platformVersion && { platformVersion: infra.platformVersion }),
     ...(infra.authorizerType && { authorizerType: infra.authorizerType }),
     ...(infra.authorizerConfiguration && {
       authorizerConfiguration: infra.authorizerConfiguration,
@@ -142,6 +143,8 @@ function buildRuntimeSpec(input: RuntimeResourceConfig): ProjectRuntime {
     ...(infra.protocol && { protocol: infra.protocol }),
     ...(infra.requestHeaderAllowlist && { requestHeaderAllowlist: infra.requestHeaderAllowlist }),
     ...(lifecycleConfiguration && { lifecycleConfiguration }),
+    ...(infra.resourceConfigurations && { resourceConfigurations: infra.resourceConfigurations }),
+    ...(infra.hooksConfiguration && { hooksConfiguration: infra.hooksConfiguration }),
     ...(infra.filesystemConfigurations && {
       filesystemConfigurations: infra.filesystemConfigurations,
     }),
@@ -430,11 +433,17 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
         : [],
     );
+    const s3BucketMounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3BucketMount" in configuration
+        ? [{ mountPath: configuration.s3BucketMount.mountPath }]
+        : [],
+    );
     const context = {
       name: toPythonPackageName(input.name),
       sessionStorageMountPath,
       efsMounts,
       s3Mounts,
+      s3BucketMounts,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
       // container launches main.py as the `main` module under
@@ -470,6 +479,11 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
         ? [{ mountPath: configuration.s3FilesAccessPoint.mountPath }]
         : [],
     );
+    const s3BucketMounts = filesystemConfigurations.flatMap((configuration) =>
+      "s3BucketMount" in configuration
+        ? [{ mountPath: configuration.s3BucketMount.mountPath }]
+        : [],
+    );
     const memory = input.scaffoldRuntimeInput.memory;
     const modelScaffold = resolveModelProviderScaffold(input);
     const modelProvider = input.scaffoldRuntimeInput.modelProvider ?? "Bedrock";
@@ -486,6 +500,7 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       sessionStorageMountPath,
       efsMounts,
       s3Mounts,
+      s3BucketMounts,
       // The README says that the Box gateway calls only the model in modelId.
       box: input.scaffoldRuntimeInput.boxTemplate === true,
       needsOs: filesystemConfigurations.length > 0,

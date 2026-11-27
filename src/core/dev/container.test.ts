@@ -277,6 +277,37 @@ describe("ContainerDevRunner", () => {
     expect(run.command.join(" ")).not.toContain("test-secret-key");
   });
 
+  test.each([
+    ["a hook on its own port", 9300, 9301, ["-p", "127.0.0.1:9301:9300"]],
+    ["a hook on the serving port", 8080, 9301, []],
+    ["no host port for the hook", 9300, undefined, []],
+  ] as const)(
+    "publishes a warmup hook port only for %s",
+    async (_label, hookPort, hostPort, extra) => {
+      const projectRuntime = runtime({
+        hooksConfiguration: {
+          build: { warmup: { action: { httpPost: { path: "/warmup", port: hookPort } } } },
+        },
+      } as RuntimeOverrides);
+      const root = await projectRoot(projectRuntime);
+      const { calls, runner } = harness();
+
+      await collect(
+        runner.run({
+          ...input(root, projectRuntime),
+          ...(hostPort !== undefined && { hookPort: hostPort }),
+        }),
+      );
+
+      const run = commandCall(calls, "run");
+      expect(run.command.slice(5, 7 + extra.length)).toEqual([
+        "-p",
+        "127.0.0.1:3000:8080",
+        ...extra,
+      ]);
+    },
+  );
+
   test("uses a shared AWS config and rejects missing credentials", async () => {
     const projectRuntime = runtime();
     const root = await projectRoot(projectRuntime);
