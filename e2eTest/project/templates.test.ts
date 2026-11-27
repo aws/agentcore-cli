@@ -364,8 +364,9 @@ describe(
 );
 
 // In CI, the AgentCore Runtime logs of the LangChain box agent hold OpenTelemetry's "Failed to
-// detach context" at ERROR level, which the log check of the flow refuses, so the flow leaves it out
-// in CI until the template or the check handles that message. Its dev test below still runs there.
+// detach context" at ERROR level, which the log check of the flow refuses, so the flow leaves it
+// out in CI until the template or the check handles that message. Its dev test below still runs
+// there.
 const FLOW_TEMPLATES = BOX_TEMPLATES.filter(
   (t) => !(process.env.CI === "true" && t.name === "agent_python_langchain_box"),
 );
@@ -374,10 +375,10 @@ const FLOW_TEMPLATES = BOX_TEMPLATES.filter(
 // takes one project through the flow a user follows: create, dev and invoke --local, build, deploy,
 // invoke, checks that the Runtime started the agent in a box, then runs dev and invoke --local
 // again. Dev, build and deploy run in one project because dev leaves state that build and deploy
-// then read (box binds each profile name to the file that ran it). The dev step waits for the other tests on its box ingress port
-// (withDevPort); the deploys run concurrently. The container template skips dev without a container
-// tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable
-// @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
+// then read (box binds each profile name to the file that ran it). The dev step waits for the other
+// tests on its box ingress port (withDevPort); the deploys run concurrently. The container template
+// skips dev without a container tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in,
+// a Box-capable @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
 describe.skipIf(!BOX_DEPLOYS)(
   "create, dev, build, deploy, invoke for Strands Box templates",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
@@ -452,13 +453,13 @@ describe.skipIf(!BOX_DEPLOYS)(
   },
 );
 
-// `agentcore dev` for each Strands Box template that the flow tests above do not run: every template
-// on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and the ones the flow
-// leaves out (FLOW_TEMPLATES) on one that can. Box runs the agent on the developer's machine. Box
-// listens on the protocol's fixed ingress port, so these tests run one at a time, and wait for the
-// flow's dev steps on the same port. The container template's dev builds and runs its image, so it
-// needs a container tool, which the CI macOS runner does not have (no nested virtualization). They
-// need `box` on PATH and a machine where `box run` can start its sandbox.
+// `agentcore dev` for each Strands Box template that the flow tests above do not run: every
+// template on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and the ones
+// the flow leaves out (FLOW_TEMPLATES) on one that can. Box runs the agent on the developer's
+// machine. Box listens on the protocol's fixed ingress port, so these tests run one at a time, and
+// wait for the flow's dev steps on the same port. The container template's dev builds and runs its
+// image, so it needs a container tool, which the CI macOS runner does not have (no nested
+// virtualization). They need `box` on PATH and a machine where `box run` can start its sandbox.
 const DEV_ONLY_TEMPLATES = BOX_TEMPLATES.filter(
   (t) =>
     (CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container") &&
@@ -613,9 +614,9 @@ describe.skipIf(!BOX_DEPLOYS)(
       },
     );
 
-    // The profile's egress entry names an env:// key: build stops until deploy has stored it, deploy
-    // stores it as an API key credential, and the Box gateway sends it to the host. The agent never
-    // holds the key, so the echoed header can only come from the gateway.
+    // The profile's egress entry names an env:// key: build stops until deploy has stored it,
+    // deploy stores it as an API key credential, and the Box gateway sends it to the host. The
+    // agent never holds the key, so the echoed header can only come from the gateway.
     test(
       "an egress route with an env:// key reaches its host with the key the Box gateway adds",
       { timeout: DEPLOY_TEST_TIMEOUT },
@@ -662,13 +663,59 @@ describe.skipIf(!BOX_DEPLOYS)(
         );
       },
     );
+
+    // A gateway added with `add gateway` reaches a boxed runtime through its Box gateway: build
+    // gives the Box gateway a target for it, and the runtime its URL. The gateway's target is a
+    // public MCP server, so the agent lists that server's tools through both gateways. That server
+    // is a public host, and deploy syncs the target's tools from it, so the test has the box-egress
+    // tag.
+    test(
+      "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        for (const args of [
+          ["add", "gateway", "--name", "tools", "--authorizer-type", "AWS_IAM", "--json"],
+          [
+            "add",
+            "gateway-target",
+            "--gateway",
+            "tools",
+            "--name",
+            "docs",
+            "--endpoint",
+            MCP_SERVER_URL,
+            "--outbound-auth",
+            "none",
+            "--json",
+          ],
+        ]) {
+          expect(parseResult(OperationSchema, await cli.run(args, projectDir)).operation).toBe(
+            "add",
+          );
+        }
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), GATEWAY_AGENT);
+        await deployed(cli, projectDir, async () => {
+          await askAgent<{ tools?: string[]; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-gateway"),
+            "run",
+            (reply) => expect(reply.tools?.some((name) => name.startsWith("docs___"))).toBe(true),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
   },
 );
 
 // Box project scenarios on AgentCore Runtime that a user hits beyond one template's happy path: a
-// second runtime beside the first's Memory, an egress route that the Box gateway signs with a stored
-// API key, and Memory that recalls within a session and across sessions. Each deploys its own
-// project; they run concurrently. They need the AGENTCORE_E2E_BOX_CDK opt-in, as the flow tests do.
+// second runtime beside the first's Memory, a Memory added with `add memory`, a Code Interpreter
+// and a Browser connection, and Memory that recalls within a session and across sessions. Each
+// deploys its own project; they run concurrently. They reach only AWS hosts; the scenarios that
+// need a public host are in the box-egress suite above. They need the AGENTCORE_E2E_BOX_CDK
+// opt-in, as the flow tests do.
 describe.skipIf(!BOX_DEPLOYS)(
   "Box project scenarios on AgentCore Runtime",
   { tags: [TAGS.BOX] },
@@ -705,7 +752,8 @@ describe.skipIf(!BOX_DEPLOYS)(
           "memory",
           "parse.py",
         ]) {
-          // The first's code must reach the second; the other files only when the template has them.
+          // The first's code must reach the second; the other files only when the template has
+          // them.
           if (entry === "main.py" || existsSync(join(from, entry))) {
             await cp(join(from, entry), join(to, entry), { recursive: true });
           }
@@ -730,9 +778,10 @@ describe.skipIf(!BOX_DEPLOYS)(
       },
     );
 
-    // A Memory added with `add memory` is a project Memory like the default one: the runtime gets its
-    // ID, and box sends the agent's calls to it to Memory directly, signed with the execution role.
-    // The minimal template has no Memory of its own, so this Memory is the project's only one.
+    // A Memory added with `add memory` is a project Memory like the default one: the runtime gets
+    // its ID, and box sends the agent's calls to it to Memory directly, signed with the execution
+    // role. The minimal template has no Memory of its own, so this Memory is the project's only
+    // one.
     test.concurrent(
       "a Memory added with add memory takes and returns an event of the boxed agent",
       { timeout: DEPLOY_TEST_TIMEOUT },
@@ -746,16 +795,12 @@ describe.skipIf(!BOX_DEPLOYS)(
         await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), MEMORY_AGENT);
         const note = `note-${Date.now().toString(36)}`;
         await deployed(cli, projectDir, async () => {
-          await retry(
-            async () => {
-              const reply = JSON.parse(
-                await ask(cli, projectDir, CREATED_RUNTIME_NAME, getSessionId("box-notes"), note),
-              ) as { stored?: string[]; error?: string };
-              expect(reply.error).toBeUndefined();
-              expect(reply.stored).toContain(note);
-            },
-            3 * TIMEOUT_MS.PROJECT_INVOKE,
-            15 * 1000,
+          await askAgent<{ stored?: string[]; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-notes"),
+            note,
+            (reply) => expect(reply.stored).toContain(note),
           );
           await assertRunsInBox(cli, projectDir);
         });
@@ -813,50 +858,8 @@ describe.skipIf(!BOX_DEPLOYS)(
       },
     );
 
-    // A gateway added with `add gateway` reaches a boxed runtime through its Box gateway: build gives
-    // the Box gateway a target for it, and the runtime its URL. The gateway's target is a public MCP
-    // server, so the agent lists that server's tools through both gateways.
-    test.concurrent(
-      "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
-        for (const args of [
-          ["add", "gateway", "--name", "tools", "--authorizer-type", "AWS_IAM", "--json"],
-          [
-            "add",
-            "gateway-target",
-            "--gateway",
-            "tools",
-            "--name",
-            "docs",
-            "--endpoint",
-            MCP_SERVER_URL,
-            "--outbound-auth",
-            "none",
-            "--json",
-          ],
-        ]) {
-          expect(parseResult(OperationSchema, await cli.run(args, projectDir)).operation).toBe(
-            "add",
-          );
-        }
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), GATEWAY_AGENT);
-        await deployed(cli, projectDir, async () => {
-          await askAgent<{ tools?: string[]; error?: string }>(
-            cli,
-            projectDir,
-            getSessionId("box-gateway"),
-            "run",
-            (reply) => expect(reply.tools?.some((name) => name.startsWith("docs___"))).toBe(true),
-          );
-          await assertRunsInBox(cli, projectDir);
-        });
-      },
-    );
-
-    // The template's agent keeps the conversation in Memory: short-term events within a session, and
-    // facts that long-term extraction makes available to a new session of the same actor.
+    // The template's agent keeps the conversation in Memory: short-term events within a session,
+    // and facts that long-term extraction makes available to a new session of the same actor.
     test.concurrent(
       "Memory recalls a fact within a session and from a new session",
       { timeout: DEPLOY_TEST_TIMEOUT + 10 * 60 * 1000 },
@@ -1307,11 +1310,6 @@ async function assertRunsInBox(
   expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);
 }
 
-/**
- * Given a template test case, creates a project scaffolded from it and returns its path. A Box
- * project that `deploys` gets the AGENTCORE_E2E_BOX_CDK build; one that only runs `agentcore dev`
- * has no use for it.
- */
 /** Deploys `projectDir`, runs `scenario`, and tears the stack down even when a step fails. */
 async function deployed(
   cli: CliRunner,
@@ -1425,6 +1423,11 @@ function randomSuffix(): string {
   return Array.from(randomBytes(6), (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
+/**
+ * Given a template test case, creates a project scaffolded from it and returns its path. A Box
+ * project that `deploys` gets the AGENTCORE_E2E_BOX_CDK build; one that only runs `agentcore dev`
+ * has no use for it.
+ */
 async function createTemplateProject(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
