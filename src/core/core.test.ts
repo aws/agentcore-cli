@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import {
   GetAgentRuntimeCommand,
   type BedrockAgentCoreControlClient,
@@ -879,6 +879,52 @@ test("CUSTOM_JWT non-2xx cancels the response body and returns status metadata",
     },
     ["secret payload", "secret-token", "secret-header-value", "runtime-session-value"],
   );
+});
+
+describe("CUSTOM_JWT rejected responses surface the error type and message", () => {
+  const request: RuntimeInvokeRequest = {
+    runtimeId: "runtime-123",
+    accountId: "123456789012",
+    qualifier: "DEFAULT",
+    payload: new TextEncoder().encode("{}"),
+    contentType: "application/json",
+    bearerToken: "secret-token",
+  };
+  const rejected = async (body: string, headers: Record<string, string> = {}) => {
+    const core = customJwtCore(async () => new Response(body, { status: 401, headers }));
+    return core.runtime.invokeRuntime(request, { region: "us-east-1" });
+  };
+
+  test("reads a JSON-RPC body and the x-amzn-errortype header", async () => {
+    const response = await rejected(
+      '{"jsonrpc":"2.0","error":{"code":-32001,"message":"Token has expired"}}',
+      { "x-amzn-errortype": "UnrecognizedClientException:http://internal.amazon.com/" },
+    );
+    expect(response).toMatchObject({
+      kind: "rejected",
+      error: { errorType: "UnrecognizedClientException", message: "Token has expired" },
+    });
+  });
+
+  test("reads a plain JSON body", async () => {
+    const response = await rejected('{"message":"Access denied"}');
+    expect(response).toMatchObject({ kind: "rejected", error: { message: "Access denied" } });
+  });
+
+  test.each(["", "not json", "[1,2]", '{"message":42}'])(
+    "falls back to the status line for body %j",
+    async (body) => {
+      const response = await rejected(body);
+      expect(response).toMatchObject({ kind: "rejected", statusCode: 401 });
+      expect((response as { error: object }).error).not.toHaveProperty("message");
+    },
+  );
+
+  test("reads only a bounded amount of the body", async () => {
+    const response = await rejected(`{"message":"${"x".repeat(100_000)}"}`);
+    expect(response).toMatchObject({ kind: "rejected" });
+    expect((response as { error: object }).error).not.toHaveProperty("message");
+  });
 });
 
 test("CUSTOM_JWT transport failures are visible without exposing arbitrary causes", async () => {

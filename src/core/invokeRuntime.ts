@@ -51,6 +51,8 @@ export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
   kind: "rejected";
   error: {
     requestId?: string;
+    errorType?: string;
+    message?: string;
   };
 };
 
@@ -175,7 +177,8 @@ async function invokeRuntimeWithCustomJwt(
       response.headers.get("x-amzn-requestid") ??
       response.headers.get("x-amz-request-id") ??
       undefined;
-    await response.body?.cancel().catch(() => undefined);
+    const errorType = response.headers.get("x-amzn-errortype")?.split(":")[0]?.trim() || undefined;
+    const message = await readRejectedMessage(response);
     return {
       kind: "rejected",
       statusCode: response.status,
@@ -190,6 +193,8 @@ async function invokeRuntimeWithCustomJwt(
       baggage: response.headers.get("baggage") ?? undefined,
       error: {
         ...(requestId !== undefined && { requestId }),
+        ...(errorType !== undefined && { errorType }),
+        ...(message !== undefined && { message }),
       },
     };
   }
@@ -208,6 +213,54 @@ async function invokeRuntimeWithCustomJwt(
     baggage: response.headers.get("baggage") ?? undefined,
     body: signal ? abortable(body, signal) : body,
   };
+}
+
+const REJECTED_BODY_MAX_BYTES = 4096;
+const REJECTED_MESSAGE_MAX_CHARS = 500;
+const REJECTED_BODY_TIMEOUT_MS = 2000;
+
+// Reads at most REJECTED_BODY_MAX_BYTES of a rejected response and returns the error message from a
+// JSON-RPC (`error.message`) or plain JSON (`message`) body. Anything else yields undefined so the
+// caller falls back to the status line.
+async function readRejectedMessage(response: Response): Promise<string | undefined> {
+  const body = response.body;
+  if (!body) return undefined;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let timer: unknown;
+  try {
+    const deadline = new Promise<undefined>((resolve) => {
+      timer = setTimeout(resolve, REJECTED_BODY_TIMEOUT_MS);
+    });
+    while (size < REJECTED_BODY_MAX_BYTES) {
+      const next = await Promise.race([reader.read(), deadline]);
+      if (next === undefined || next.done) break;
+      const { value } = next;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer as Parameters<typeof clearTimeout>[0]);
+    await reader.cancel().catch(() => undefined);
+  }
+  try {
+    const text = new TextDecoder().decode(
+      Buffer.concat(chunks).subarray(0, REJECTED_BODY_MAX_BYTES),
+    );
+    const parsed: unknown = JSON.parse(text);
+    const record = (value: unknown): Record<string, unknown> | undefined =>
+      typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+    const root = record(parsed);
+    const candidate = record(root?.error)?.message ?? root?.message ?? root?.Message;
+    if (typeof candidate !== "string") return undefined;
+    const message = candidate.replace(/\s+/g, " ").trim().slice(0, REJECTED_MESSAGE_MAX_CHARS);
+    return message || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function invokeRuntimeWithIam(

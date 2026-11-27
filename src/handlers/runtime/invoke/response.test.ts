@@ -284,6 +284,24 @@ describe("Runtime invoke response output", () => {
     },
   );
 
+  test("includes the error type and message in the rejected Runtime summary", async () => {
+    const stderr = capture();
+    const pending = writeRuntimeInvokeResponse(
+      rejectedResponse({
+        error: {
+          requestId: "request-123",
+          errorType: "UnrecognizedClientException",
+          message: "Token has expired",
+        },
+      }),
+      { stdout: capture().stream, stderr: stderr.stream, json: true },
+    );
+    await expect(pending).rejects.toThrow("HTTP 401");
+    expect(stderr.bytes().toString()).toContain(
+      "error=HTTP 401 UnrecognizedClientException: Token has expired request-id=request-123\n",
+    );
+  });
+
   test("does not create an output file for a rejected Runtime response", async () => {
     const file = join(tmpdir(), `runtime-invoke-rejected-${process.pid}-${files.length}`);
     files.push(file);

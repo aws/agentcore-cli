@@ -53,6 +53,8 @@ export type RuntimeInvokeRejectedResponse = RuntimeInvokeResponseMetadata & {
   kind: "rejected";
   error: {
     requestId?: string;
+    errorType?: string;
+    message?: string;
   };
 };
 
