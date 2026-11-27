@@ -26,8 +26,7 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
-  for (const raw of text.split("\n")) {
-    // strip # and ; from region value
+  for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/(^|\s)[#;].*$/, "").trim();
     if (line.startsWith("[") && line.endsWith("]")) {
       inSection = line.slice(1, -1).trim() === wanted;

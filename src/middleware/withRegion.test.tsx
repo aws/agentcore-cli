@@ -103,14 +103,20 @@ describe("region resolution precedence", () => {
     },
   );
 
-  test("strips inline comments from named profile headers and region values", async () => {
-    clearAwsEnv();
-    process.env.AWS_CONFIG_FILE = writeConfigFile(
-      "[default]\nregion = ca-central-1\n\n[profile work] # work profile\nregion = eu-central-1 ; main region\n",
-    );
-    process.env.AWS_PROFILE = "work";
-    expect(await resolvedRegion([])).toBe("eu-central-1");
-  });
+  test.each(["\n", "\r\n"])(
+    "strips inline comments from named profile headers and region values with %j line endings",
+    async (lineEnding) => {
+      clearAwsEnv();
+      process.env.AWS_CONFIG_FILE = writeConfigFile(
+        "[default]\nregion = ca-central-1\n\n[profile work] # work profile\nregion = eu-central-1 ; main region\n".replaceAll(
+          "\n",
+          lineEnding,
+        ),
+      );
+      process.env.AWS_PROFILE = "work";
+      expect(await resolvedRegion([])).toBe("eu-central-1");
+    },
+  );
 
   test("ignores keys that only start with region", async () => {
     clearAwsEnv();
