@@ -26,10 +26,10 @@ function parseCommand(value: string): { executable: string; baseArgs: string[] }
 export class CliRunner {
   private readonly command = parseCommand(requireEnv("AGENTCORE_CLI_PATH"));
 
-  /** Given arguments and a working directory, runs the CLI and captures its result. */
-  run(args: string[], cwd: string): Promise<RunResult> {
+  /** Given arguments, a working directory and extra environment, runs the CLI and captures its result. */
+  run(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): Promise<RunResult> {
     return new Promise((resolve, reject) => {
-      const child = this.start(args, cwd);
+      const child = this.start(args, cwd, env);
       let stdout = "";
       let stderr = "";
       child.stdout!.on("data", (chunk) => (stdout += chunk));
@@ -39,11 +39,11 @@ export class CliRunner {
     });
   }
 
-  /** Given arguments and a working directory, starts the CLI and returns its child process. */
-  start(args: string[], cwd: string) {
+  /** Given arguments, a working directory and extra environment, starts the CLI and returns its child process. */
+  start(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}) {
     return spawn(this.command.executable, [...this.command.baseArgs, ...args], {
       cwd,
-      env: { ...process.env, AGENTCORE_TELEMETRY_DISABLED: "1", FORCE_COLOR: "0" },
+      env: { ...process.env, ...env, AGENTCORE_TELEMETRY_DISABLED: "1", FORCE_COLOR: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
   }
