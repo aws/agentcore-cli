@@ -145,6 +145,10 @@ jobs:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
+          # A `box || box-egress` run passes an hour, as the egress tests on the Runtime deploy one
+          # after another, and the default session is one hour: a call after it fails with an
+          # expired token. The role's MaxSessionDuration must allow this length.
+          role-duration-seconds: 7200
       # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
       # the Box tests. They skip on a runner with no box on PATH.
       - name: Install box
