@@ -18,14 +18,14 @@
  * | `plugins` | the user's plugins, then @box/aws-secrets-manager when a carried target has a key |
  * | `[telemetry.agentcore]` | added when no target is `cloudwatch_logs`: the runtime's own log group and log stream |
  * | `[telemetry.agentcore_traces]` | added with OTEL on when no target is `cloudwatch_traces`: X-Ray in the Runtime's region, to the runtime's own log group and spans stream when the box takes them |
- * | `[egress.agentcore]` | added when the runtime has its default Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
- * | a route to the AgentCore host | with a default Memory, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
+ * | `[egress.agentcore]` | added when the project has a Memory and no route of the profile has the AgentCore host: that host, which box signs with a bare `aws://` and sends to directly, not through the Box gateway |
+ * | a route to the AgentCore host | with a Memory in the project, it goes to the host directly, signed with a bare `aws://`, with its name and other keys |
  *
  * It moves no path: the paths rule runs after it and moves each path of the user.
  */
 import { posix } from "node:path";
-import { agentCoreDataPlaneHost } from "../../boxNetwork/egress";
-import { BOX_MEMORY_ROUTE_NAME, hasDefaultMemory } from "../../boxMemory";
+import { BOX_EGRESS_TARGET_PREFIX, agentCoreDataPlaneHost } from "../../boxNetwork/egress";
+import { BOX_MEMORY_ROUTE_NAME, hasProjectMemory } from "../../boxMemory";
 import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
@@ -190,7 +190,7 @@ export function runtimeProfileHeader(
     `${Object.keys(RUNTIME_AWS_STAND_INS).join(" and ")} are stand-ins so boto3 in the box can ` +
       "build its requests. They authenticate nothing: box signs each request with the execution " +
       "role. Every AWS route goes to the Box gateway" +
-      (hasDefaultMemory(context.spec, context.runtime)
+      (hasProjectMemory(context.spec)
         ? `, except ${routesToHost(profile, agentCoreDataPlaneHost(context.region))}: box sends ` +
           "the calls to that host directly, so Memory can hold each call to the session of the " +
           "runtime."
@@ -276,7 +276,7 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 }
 
 /**
- * `[egress]` and `[mcp]` for the agent's Memory calls when the runtime has its default Memory. They
+ * `[egress]` and `[mcp]` for the agent's Memory calls when the project has a Memory. They
  * go to the AgentCore data-plane host directly, signed with the execution role, not through the Box
  * gateway, whose role would sign them and keep Memory from holding each call to the session of the
  * runtime. Box chooses where a connection goes from its host alone, before it sees a path, and the
@@ -296,7 +296,7 @@ function memoryRoutes(
   problems: RuntimeProfileProblem[],
 ): Pick<TomlTable, "egress" | "mcp"> {
   const { egress, mcp } = table;
-  if (!hasDefaultMemory(context.spec, context.runtime)) return { egress, mcp };
+  if (!hasProjectMemory(context.spec)) return { egress, mcp };
   // box refuses `[egress]` or `[mcp]` that is not a table before build gets the profile.
   if ((egress !== undefined && !isTable(egress)) || (mcp !== undefined && !isTable(mcp))) {
     return { egress, mcp };
@@ -345,12 +345,13 @@ function memoryRoutes(
 }
 
 /**
- * A problem for each entry of the profile that sends a credential of its own to the AgentCore host,
- * such as the `env://` API key of an MCP server on another AgentCore Runtime. With the default
- * Memory, every call of the box to that host goes there directly, signed with the execution role,
- * and box cannot route one host both ways. So the key would never be sent, and the server would
- * refuse the call. The Box network model records the API key of the host; an entry that still
- * holds a secret other than `aws://` names one too.
+ * A problem for each entry of the profile, and each target of the Box gateway that the user wrote,
+ * that sends a credential of its own to the AgentCore host, such as the `env://` API key of an MCP
+ * server on another AgentCore Runtime. With a Memory in the project, every call of the box to that
+ * host goes there directly, signed with the execution role, and box cannot route one host both
+ * ways. So the credential would never be sent, and the server would refuse the call. The Box
+ * network model records the API key of the host; an entry that still holds a secret other than
+ * `aws://` names one too, and a target names its outboundAuth.
  */
 function credentialProblems(
   host: string,
@@ -383,6 +384,12 @@ function credentialProblems(
         named.set(`${kind}.${name}`, { key: [kind, name], secret: ref });
     }
   }
+  const direct =
+    `On AgentCore Runtime, runtime '${context.runtime.name}' gets every Memory of the project, so ` +
+    "box sends every call to that host directly, signed with the execution role, and not through " +
+    "the Box gateway.";
+  const noKey =
+    "No boxed runtime of a project with a Memory can send a credential of its own to that host.";
   for (const { key, secret } of named.values()) {
     const label = `[${key.join(".")}]`;
     problems.push({
@@ -390,14 +397,47 @@ function credentialProblems(
       key,
       place: context.placeOf(key),
       reason:
-        `${label} sends ${secret} to ${host}. On AgentCore Runtime, runtime ` +
-        `'${context.runtime.name}' has its default Memory, so box sends every call to that host ` +
-        "directly, signed with the execution role, and not through the Box gateway. Box cannot " +
-        "route one host both ways, so the key would not be sent. Remove the secret from " +
-        `${label} if the service takes the execution role's signature, or remove the default ` +
-        `Memory of runtime '${context.runtime.name}' from agentcore.json.`,
+        `${label} sends ${secret} to ${host}. ${direct} Box cannot route one host both ways, so ` +
+        `the key would not be sent. Remove the secret from ${label} if the service takes the ` +
+        `execution role's signature. ${noKey}`,
     });
   }
+  // A target of the Box gateway that the user wrote in agentcore.json can carry the credential
+  // instead of the profile: the profile then lets the host through with no secret, and the target
+  // signs with its API key or OAuth token. Box would send the calls past that target.
+  const reported = new Set<string>();
+  for (const record of context.hosts) {
+    const name = record.target;
+    if (record.host !== host || name === undefined || reported.has(name)) continue;
+    if (isBuildTarget(name, context)) continue;
+    const target = context.gateway.targets.find((entry) => entry.name === name);
+    const type = target?.outboundAuth?.type;
+    // Fail closed: any credential other than the gateway role's signature, or none, is the user's.
+    if (type === undefined || type === "GATEWAY_IAM_ROLE" || type === "NONE") continue;
+    reported.add(name);
+    const source = record.sources[0];
+    const key =
+      source?.kind === "entry"
+        ? ["egress", source.egressEntry]
+        : source?.kind === "mcp"
+          ? ["mcp", source.mcpEntry]
+          : ["agentCoreGateways", context.gateway.name, "targets", name];
+    problems.push({
+      code: "RUNTIME_AGENTCORE_HOST_CREDENTIAL",
+      key,
+      place: "agentcore/agentcore.json",
+      reason:
+        `Target '${name}' of gateway '${context.gateway.name}' in agentcore.json signs the calls ` +
+        `to ${host} with its ${type} credential. ${direct} So the target's credential would not ` +
+        "be sent. Set the outboundAuth of the target to GATEWAY_IAM_ROLE or NONE if the service " +
+        `takes the execution role's signature. ${noKey}`,
+    });
+  }
+}
+
+/** Whether build writes and owns target `name` of the Box gateway (BoxNetwork.managedTargets). */
+function isBuildTarget(name: string, context: RuntimeProfileContext): boolean {
+  return context.gateway.managed?.has(name) ?? name.startsWith(BOX_EGRESS_TARGET_PREFIX);
 }
 
 /**

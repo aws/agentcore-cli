@@ -1309,6 +1309,22 @@ describe("WebSocket", () => {
     }
   });
 
+  // A Browser session's automation stream is a WebSocket to the AgentCore host, which the user
+  // permits in a policy of the local profile. The gateway carries no WebSocket, so the rule gets no
+  // target and no warning; box enforces it alone.
+  test("takes a websocket:connect rule and gives it no target", () => {
+    const stream = rule(
+      "browser_automation",
+      'permit (principal, action == Box::Action::"websocket:connect", resource) when { ' +
+        'context.input.host == "bedrock-agentcore.us-west-2.amazonaws.com" && ' +
+        'context.input.path like "/browser-streams/*" };',
+    );
+    const r = model(stream);
+    expect(r.failures()).toEqual([]);
+    expect(r.network.hosts).toEqual([]);
+    expect(r.network.warnings).toEqual([]);
+  });
+
   test("skips the websocket:send and websocket:receive rules", () => {
     const messages = rule(
       "messages",
