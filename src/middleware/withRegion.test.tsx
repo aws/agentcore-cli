@@ -94,6 +94,49 @@ describe("region resolution precedence", () => {
     expect(await resolvedRegion([])).toBe("eu-central-1");
   });
 
+  test.each([" # main region", " ; main region", "\t# main region"])(
+    "strips an inline comment from the default profile's region: %s",
+    async (comment) => {
+      clearAwsEnv();
+      process.env.AWS_CONFIG_FILE = writeConfigFile(`[default]\nregion = us-west-2${comment}\n`);
+      expect(await resolvedRegion([])).toBe("us-west-2");
+    },
+  );
+
+  test("strips inline comments from named profile headers and region values", async () => {
+    clearAwsEnv();
+    process.env.AWS_CONFIG_FILE = writeConfigFile(
+      "[default]\nregion = ca-central-1\n\n[profile work] # work profile\nregion = eu-central-1 ; main region\n",
+    );
+    process.env.AWS_PROFILE = "work";
+    expect(await resolvedRegion([])).toBe("eu-central-1");
+  });
+
+  test("ignores keys that only start with region", async () => {
+    clearAwsEnv();
+    process.env.AWS_CONFIG_FILE = writeConfigFile(
+      "[default]\nregion_name = eu-west-1\nregional_endpoint = eu-central-1\nregion = us-west-2\n",
+    );
+    expect(await resolvedRegion([])).toBe("us-west-2");
+  });
+
+  test("falls back when the region value is only a comment", async () => {
+    clearAwsEnv();
+    process.env.AWS_CONFIG_FILE = writeConfigFile("[default]\nregion = # no region configured\n");
+    expect(await resolvedRegion([])).toBe("us-east-1");
+  });
+
+  test.each(["#", ";"])(
+    "preserves %s inside a value without preceding whitespace",
+    async (marker) => {
+      clearAwsEnv();
+      process.env.AWS_CONFIG_FILE = writeConfigFile(
+        `[default]\nregion = us-west-2${marker}literal\n`,
+      );
+      expect(await resolvedRegion([])).toBe(`us-west-2${marker}literal`);
+    },
+  );
+
   test("env AWS_REGION wins over the shared config file", async () => {
     clearAwsEnv();
     process.env.AWS_CONFIG_FILE = writeConfigFile("[default]\nregion = ca-central-1\n");
