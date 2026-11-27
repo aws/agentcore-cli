@@ -1142,7 +1142,9 @@ const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
 
 /**
  * An agent that lists the tools of the project gateway \`tools\` at the URL the runtime gets, with
- * no credential of its own: box sends the call through the Box gateway, whose role signs it.
+ * no credential of its own: box sends the calls through the Box gateway, whose role signs them. It
+ * opens an MCP session first (initialize), as an MCP client does, and returns the gateway's raw
+ * answer when a step has no result, so a failure says what the gateway said.
  */
 const GATEWAY_AGENT = `import json
 import os
@@ -1153,22 +1155,52 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 app = BedrockAgentCoreApp()
 
 
+def rpc(url, body, session=None):
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if session:
+        headers["Mcp-Session-Id"] = session
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        text = response.read().decode()
+        session = response.headers.get("Mcp-Session-Id") or session
+    if "id" not in body:
+        return None, session, text
+    messages = []
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            messages.append(json.loads(line[len("data:"):]))
+    if not messages and text.strip():
+        messages.append(json.loads(text))
+    reply = next((m for m in messages if m.get("id") == body["id"]), None)
+    return reply, session, text
+
+
 @app.entrypoint
 def invoke(payload, context):
+    url = os.environ.get("AGENTCORE_GATEWAY_TOOLS_URL")
+    if not url:
+        names = sorted(name for name in os.environ if name.startswith("AGENTCORE_GATEWAY_"))
+        return {"error": f"no AGENTCORE_GATEWAY_TOOLS_URL; the gateway variables are {names}"}
     try:
-        request = urllib.request.Request(
-            os.environ["AGENTCORE_GATEWAY_TOOLS_URL"],
-            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(),
-            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            text = response.read().decode()
-        lines = [line[len("data:"):] for line in text.splitlines() if line.startswith("data:")]
-        message = json.loads(lines[-1] if lines else text)
-        if "error" in message:
-            return {"error": json.dumps(message["error"])}
-        return {"tools": [tool["name"] for tool in message["result"]["tools"]]}
+        init, session, raw = rpc(url, {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e", "version": "1.0"},
+            },
+        })
+        if not init or "result" not in init:
+            return {"error": f"initialize answered {raw[:500]}"}
+        rpc(url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, session)
+        listed, _, raw = rpc(url, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, session)
+        if not listed or "result" not in listed:
+            return {"error": f"tools/list answered {raw[:500]}"}
+        return {"tools": [tool["name"] for tool in listed["result"]["tools"]]}
+    except urllib.error.HTTPError as error:
+        return {"error": f"HTTP {error.code} from {url}: {error.read()[:500]!r}"}
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
