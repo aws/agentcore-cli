@@ -8,7 +8,6 @@ import {
 } from "../../handlers/project/shortcuts";
 import type { AgentCoreGateway, AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
 import { isBoundGateway, type ProjectSpec } from "../../projectSchemas/project";
-import { defaultMemoryName } from "../../projectSchemas/memory";
 import type { ProjectRuntime } from "../../projectSchemas/runtime";
 import { BOX_EGRESS_TARGET_PREFIX } from "./boxNetwork/egress";
 import { runtimeRunsInBox } from "./templates/boxProfile";
@@ -32,9 +31,13 @@ const BEDROCK_INVOKE_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithR
 /** The IAM policy variable for the account of the gateway role. */
 const PRINCIPAL_ACCOUNT = "${aws:PrincipalAccount}";
 
-/** Whether the project has the default Memory create scaffolds for `runtime`. */
-export function hasDefaultMemory(spec: ProjectSpec, runtime: ProjectRuntime): boolean {
-  return spec.memories.some((memory) => memory.name === defaultMemoryName(runtime.name));
+/**
+ * Whether the runtimes of the project get a Memory. The constructs bind every Memory of the project
+ * to every runtime, so each runtime gets the ID of each Memory, whichever runtime create named it
+ * for, and its agent can call Memory.
+ */
+export function hasProjectMemory(spec: ProjectSpec): boolean {
+  return spec.memories.length > 0;
 }
 
 /**

@@ -1321,11 +1321,23 @@ describe("the additions rule", () => {
       expect(egress.github).toEqual({ destinations: ["api.github.com"] });
     });
 
-    test("adds no Memory route for a runtime with no default Memory", () => {
+    test("adds no Memory route when the project has no Memory", () => {
       const none = apply(createdProfile(CODEZIP), contextOf(CODEZIP)).table;
-      const other = apply(createdProfile(CODEZIP), contextOf(CODEZIP, { memories: ["shared"] }));
       expect(none.egress).not.toHaveProperty(MEMORY_ROUTE);
-      expect(other.table.egress).not.toHaveProperty(MEMORY_ROUTE);
+    });
+
+    // The constructs give every runtime the ID of every Memory of the project, so a runtime that
+    // `add runtime` added beside the first calls the first's Memory, and box must let it.
+    test("adds the Memory route for a runtime when the project's Memory is named for another runtime", () => {
+      const { table, problems } = apply(
+        createdProfile(CODEZIP),
+        contextOf(CODEZIP, { memories: ["secondMemory"] }),
+      );
+      expect(problems).toEqual([]);
+      expect(table.egress).toHaveProperty(MEMORY_ROUTE, {
+        destinations: [`bedrock-agentcore.${BUILD_REGION}.amazonaws.com`],
+        secret: { ref: "aws://" },
+      });
     });
 
     test("sends a route or HTTP MCP server of the profile to the AgentCore host directly, with its name, and adds no second route", () => {
@@ -1400,11 +1412,11 @@ describe("the additions rule", () => {
             place: PROFILE_FILE,
             reason:
               `[${kind}.tools] sends env://TOOLS_TOKEN to ${host}. On AgentCore Runtime, runtime ` +
-              "'agent' has its default Memory, so box sends every call to that host directly, " +
+              "'agent' gets the Memories of the project, so box sends every call to that host directly, " +
               "signed with the execution role, and not through the Box gateway. Box cannot route " +
               "one host both ways, so the key would not be sent. Remove the secret from " +
               `[${kind}.tools] if the service takes the execution role's signature, or remove the ` +
-              "default Memory of runtime 'agent' from agentcore.json.",
+              "Memories of the project from agentcore.json, which runtime 'agent' gets.",
           },
         ]);
       },
