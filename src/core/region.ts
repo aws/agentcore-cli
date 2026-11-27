@@ -1,9 +1,31 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readTextFile } from "../io";
+import type { AwsCredentialSource } from "../handlers/project/types";
 
 // DEFAULT_REGION is the final fallback when no region is configured anywhere.
 export const DEFAULT_REGION = "us-east-1";
+
+/** The shared config profile the AWS SDK reads: $AWS_PROFILE, else "default". */
+export function activeProfile(): string {
+  return process.env.AWS_PROFILE || "default";
+}
+
+/**
+ * Where the default AWS SDK credential chain takes credentials from. It skips
+ * access keys in the environment whenever AWS_PROFILE is set, so only a key
+ * pair without AWS_PROFILE counts as environment credentials.
+ */
+export function activeCredentialSource(): AwsCredentialSource {
+  if (
+    !process.env.AWS_PROFILE &&
+    process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY
+  ) {
+    return { credentialSource: "environment" };
+  }
+  return { credentialSource: "profile", profile: activeProfile() };
+}
 
 /**
  * Reads the `region` setting for the active profile from the shared AWS config
@@ -22,7 +44,7 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
 
   // In ~/.aws/config the default profile is "[default]" and named profiles are
   // "[profile name]".
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = activeProfile();
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
