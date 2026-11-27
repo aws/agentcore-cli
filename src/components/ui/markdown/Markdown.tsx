@@ -85,8 +85,10 @@ function parseInline(line: string): InlineToken[] {
     ) {
       i++;
     }
-    if (i > start) tokens.push({ type: "text", text: line.slice(start, i) });
-    else i++; // safety
+    // Nothing was consumed only when line[i] is a marker that opens no span
+    // (an unclosed `*`, a `[` that is not a link): keep it as literal text.
+    if (i === start) i++;
+    tokens.push({ type: "text", text: line.slice(start, i) });
   }
 
   return tokens;
