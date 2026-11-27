@@ -1,16 +1,16 @@
 {
   "box": {
     "repo": "strands-agents/box",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "linux": {
       "target": "aarch64-unknown-linux-gnu",
-      "asset": "box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz",
-      "sha256": "5db4623989377c2990c639fbfa8d533546c70c67319e016ad113769dc807c985"
+      "asset": "box-cli-v0.3.3-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "98fbaab4a44e5568c8f29227c8a100a8b2df2b8c51566f919f6161423d8d3734"
     },
     "darwin": {
       "target": "aarch64-apple-darwin",
-      "asset": "box-cli-v0.3.2-aarch64-apple-darwin.tar.gz",
-      "sha256": "3f65565737411fa17f743e7beb1b39e1bc35e43f8e2755fc62595d41326f6262"
+      "asset": "box-cli-v0.3.3-aarch64-apple-darwin.tar.gz",
+      "sha256": "369010f5f64646e79dd534f8c2c41df98bb8bbd58d25e18da49b749fe9255d6b"
     }
   }
 }

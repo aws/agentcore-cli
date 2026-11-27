@@ -271,8 +271,8 @@ describe("the pinned releases", () => {
   test("the install hint names the box-cli archive of the pinned release", () => {
     // macOS and Linux come from the same release, so the hint names no other macOS release.
     expect(BOX_INSTALL_HINT).toBe(
-      "Install box: download box-cli-v0.3.2-<target>.tar.gz for your machine from " +
-        "https://github.com/strands-agents/box/releases/tag/v0.3.2 (not a box-v0.3.2-* archive, " +
+      "Install box: download box-cli-v0.3.3-<target>.tar.gz for your machine from " +
+        "https://github.com/strands-agents/box/releases/tag/v0.3.3 (not a box-v0.3.3-* archive, " +
         "which has no packs), unpack it into a folder (tar -xzf <archive> -C <folder>), and add " +
         "that folder to your PATH.",
     );
