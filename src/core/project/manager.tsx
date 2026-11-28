@@ -69,6 +69,7 @@ import {
   credentialEnvironmentVariableNames,
 } from "../../projectSchemas/credential";
 import { MemorySchema } from "../../projectSchemas/memory";
+import { KnowledgeBaseSchema } from "../../projectSchemas/knowledge-base";
 import { EvaluatorSchema } from "../../projectSchemas/evaluator";
 import { OnlineEvalConfigSchema } from "../../projectSchemas/online-eval-config";
 import { PaymentConnectorSchema, PaymentManagerSchema } from "../../projectSchemas/payment";
@@ -919,6 +920,10 @@ export class FsProjectManager implements ProjectManager {
       }
       case "memory": {
         projectSpec.memories.push(parseResource(MemorySchema, input.resourceConfig));
+        break;
+      }
+      case "knowledge-base": {
+        projectSpec.knowledgeBases.push(parseResource(KnowledgeBaseSchema, input.resourceConfig));
         break;
       }
       case "evaluator": {
@@ -2002,6 +2007,8 @@ function toProjectSpecKey(resourceType: ProjectResource) {
       return "onlineEvalConfigs";
     case "memory":
       return "memories";
+    case "knowledge-base":
+      return "knowledgeBases";
     case "evaluator":
       return "evaluators";
     case "gateway":

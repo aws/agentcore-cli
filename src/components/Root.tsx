@@ -124,6 +124,7 @@ import { AddMenuScreen } from "../handlers/project/add/screen.tsx";
 import { AddRuntimeScreen } from "../handlers/project/add/runtime/screen.tsx";
 import { AddRuntimeEndpointScreen } from "../handlers/project/add/runtime-endpoint/screen.tsx";
 import { AddMemoryScreen } from "../handlers/project/add/memory/screen.tsx";
+import { AddKnowledgeBaseScreen } from "../handlers/project/add/knowledge-base/screen.tsx";
 import { AddGatewayScreen } from "../handlers/project/add/gateway/screen.tsx";
 import { AddGatewayTargetScreen } from "../handlers/project/add/gateway-target/screen.tsx";
 import { AddGatewayConnectorScreen } from "../handlers/project/add/gateway-connector/screen.tsx";
@@ -889,6 +890,10 @@ function RouteTable({ ctx, core }: ScreenProps) {
         element={<AddRuntimeEndpointScreen ctx={ctx} core={core} />}
       />
       <Route path="agentcore/add/memory" element={<AddMemoryScreen ctx={ctx} core={core} />} />
+      <Route
+        path="agentcore/add/knowledge-base"
+        element={<AddKnowledgeBaseScreen ctx={ctx} core={core} />}
+      />
       <Route path="agentcore/add/gateway" element={<AddGatewayScreen ctx={ctx} core={core} />} />
       <Route
         path="agentcore/add/gateway-target"

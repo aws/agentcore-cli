@@ -53,6 +53,7 @@ export const createRemoveProjectHandler = (config: RemoveProjectResourceConfig) 
             "config-bundle",
             "online-eval",
             "memory",
+            "knowledge-base",
             "evaluator",
             "gateway",
             "gateway-target",
