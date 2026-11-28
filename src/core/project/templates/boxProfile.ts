@@ -723,7 +723,10 @@ interface ServiceOtelVariable {
   readonly input: string;
   /** What the variable sets, for the input's description. */
   readonly description: string;
-  /** The value of the Runtime, which the agent gets where the Runtime does not set it. */
+  /**
+   * The default: the value that the Runtime sets. The agent gets it where the variable is not set,
+   * for example in a local run of the Runtime profile.
+   */
   readonly default: string;
 }
 
@@ -775,14 +778,12 @@ const agentOtelInputs = (): string =>
   Object.entries(AGENT_OTEL_ENV)
     .filter((entry): entry is [string, ServiceOtelVariable] => typeof entry[1] !== "string")
     .map(
-      ([name, variable]) => `
-
-[inputs.otel.${variable.input}]
+      ([name, variable]) => `[inputs.otel.${variable.input}]
 description = ${str(variable.description)}
 from = ${str(`env:${name}`)}
 default = ${str(variable.default)}`,
     )
-    .join("");
+    .join("\n\n");
 
 /** The variable in which AgentCore Runtime names the resource of the runtime's spans. */
 const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
@@ -860,6 +861,14 @@ export function agentCorePackEnvSources(
   );
 }
 
+/** The options of {@link renderAgentCorePack}. */
+export interface AgentCorePackOptions {
+  /** The version of the box that runs the pack; absent: the box that build stages. */
+  readonly boxVersion?: string;
+  /** The build region, whose partition gives the default of `AWS_DNS_SUFFIX`. */
+  readonly region?: string;
+}
+
 /**
  * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
  * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
@@ -885,14 +894,14 @@ export function renderAgentCorePack(
   spec: ProjectSpec,
   runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
-  boxVersion?: string,
-  region?: string,
+  { boxVersion, region }: AgentCorePackOptions = {},
 ): string {
   const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
   const memoryInputs = memories
     .map(
       (memory) => `
+
 [inputs.memory.${tomlKey(memory.name)}.id]
 description = ${str(`The deployed '${memory.name}' Memory ID.`)}
 from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
@@ -901,8 +910,9 @@ from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
   const otelInput = otel
     ? `
 
-# The ADOT settings of the agent, which the Runtime sets as for an agent outside a box. Each
-# default is the value of the Runtime, for where the Runtime does not set it.${agentOtelInputs()}
+# The ADOT settings of the agent, which the Runtime sets as for an agent outside a box. Where a
+# variable is not set, the agent gets the default, which is the value that the Runtime sets.
+${agentOtelInputs()}
 
 # The resource of the agent's spans, which the Runtime names so the console links them to it.
 [inputs.runtime.resource_attributes]
@@ -943,10 +953,10 @@ from = ${str(`env:${gateway.variablePrefix}_HOST`)}
 pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
     })
     .join("");
-  const env = Object.entries(agentCorePackEnv(spec, runtime, gateways))
+  // The pack always gives the agent at least AWS_EXECUTION_ENV and AWS_DNS_SUFFIX.
+  const agentEnv = Object.entries(agentCorePackEnv(spec, runtime, gateways))
     .map(([name, value]) => `${name} = ${str(value)}`)
     .join("\n");
-  const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.
 [pack]
@@ -999,7 +1009,10 @@ default = ${str(RUNTIME_EXECUTION_ENV_VALUE)}
 description = "The DNS domain of the AWS partition of the runtime."
 from = ${str(`env:${RUNTIME_DNS_SUFFIX_ENV}`)}
 default = ${str(runtimeDnsSuffix(region))}${memoryInputs}${otelInput}${gatewayInputs}
-${agentEnv}`;
+
+[agent.env]
+${agentEnv}
+`;
 }
 
 /**

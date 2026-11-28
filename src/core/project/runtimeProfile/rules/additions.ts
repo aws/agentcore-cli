@@ -275,7 +275,9 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   if (routes.mcp !== undefined) result.mcp = routes.mcp;
   const plugins = runtimePlugins(result.plugins, context);
   if (plugins !== undefined) result.plugins = plugins;
-  result.agent = withRuntimeEnvVars(result.agent, result, context, warnings);
+  // The telemetry rule moved each third-party key to Secrets Manager, so the profile that came in
+  // still names it as a credential, and the result does not.
+  result.agent = withRuntimeEnvVars(result.agent, [table, result], context, warnings);
   return { table: result, problems, warnings };
 }
 
@@ -311,11 +313,11 @@ function boxSetsEnv(name: string): boolean {
 }
 
 /**
- * Whether `name` is a variable of the dynamic loader, `LD_*`. The loader reads it for each program
- * in the box, so box refuses an `[agent.env]` entry for it.
+ * Whether `name` is a variable of the dynamic loader, `LD_*` or `DYLD_*`. The loader reads it for
+ * each program in the box, so box refuses an `[agent.env]` entry for it, on each OS.
  */
 function loaderEnv(name: string): boolean {
-  return name.startsWith("LD_");
+  return name.startsWith("LD_") || name.startsWith("DYLD_");
 }
 
 /**
@@ -342,31 +344,40 @@ const AWS_CREDENTIAL_ENV_NAMES: ReadonlySet<string> = new Set([
  *
  * - `AWS_REGION` and `AWS_DEFAULT_REGION`: the agent gets the region of the Runtime.
  * - a variable that the @box/agentcore pack sets to a fixed value: the pack's value stays.
+ * - a variable that box sets itself, or a variable of the dynamic loader.
+ * - a credential: of a route, a server, a telemetry target, or a secret source of `profiles` or of
+ *   the Box network model, or of AWS.
+ * - `AWS_PROFILE`, `LOCAL_DEV`, and the port variable of the protocol.
+ * - a variable that `[agent.env]` already sets: that value stays.
  *
  * A variable that the pack reads from the Runtime under the same name, such as a Memory ID or
  * `OTEL_PYTHON_DISTRO`, needs no forward and gives no warning: the agent gets it through the pack.
- * - a variable that box sets itself, or a variable of the dynamic loader.
- * - a credential: of a route or a server of `profile` or of the Box network model, or of AWS.
- * - `AWS_PROFILE`, `LOCAL_DEV`, and the port variable of the protocol.
- * - a variable that `[agent.env]` already sets: that value stays.
+ * With no `[agent]` table, or an `[agent.env]` that is not a table, no variable goes to the agent,
+ * and one warning says so.
  */
 function withRuntimeEnvVars(
   agent: unknown,
-  profile: Readonly<TomlTable>,
+  profiles: readonly Readonly<TomlTable>[],
   context: RuntimeProfileContext,
   warnings: string[],
 ): unknown {
   const envVars = context.runtime.envVars ?? [];
-  if (envVars.length === 0 || !isTable(agent)) return agent;
-  const env = agent.env;
-  if (env !== undefined && !isTable(env)) return agent;
+  if (envVars.length === 0) return agent;
+  const env = isTable(agent) ? agent.env : undefined;
+  if (!isTable(agent) || (env !== undefined && !isTable(env))) {
+    warnings.push(
+      `The envVars of runtime "${context.runtime.name}" in agentcore.json do not go to the agent ` +
+        `in the box: ${context.profileFile} has no [agent] table with an [agent.env] table.`,
+    );
+    return agent;
+  }
   const result: TomlTable = { ...env };
   const packSources = agentCorePackEnvSources(
     context.spec,
     context.runtime,
     context.projectGateways,
   );
-  const credentials = credentialVariables(profile, context);
+  const credentials = credentialVariables(profiles, context);
   const port = PORT_ENV[context.runtime.protocol ?? "HTTP"] ?? "PORT";
   const skip = (name: string, reason: string) =>
     warnings.push(
@@ -389,7 +400,7 @@ function withRuntimeEnvVars(
       skip(name, "box sets it for the agent itself");
     } else if (loaderEnv(name)) {
       skip(name, "box does not let the profile set a variable of the dynamic loader");
-    } else if (credentials.has(name) || AWS_CREDENTIAL_ENV_NAMES.has(name)) {
+    } else if (credentials(name) || AWS_CREDENTIAL_ENV_NAMES.has(name)) {
       skip(name, "it is a credential, which box keeps from the agent");
     } else if (name === AWS_PROFILE) {
       skip(name, "AgentCore Runtime has no AWS profiles, and box signs each AWS call");
@@ -410,33 +421,59 @@ function withRuntimeEnvVars(
   return { ...agent, env: result };
 }
 
-/** The scheme of a credential that box reads from a variable of its own environment. */
-const ENV_SECRET_SCHEME = "env://";
+/** The schemes of a credential that box reads from a variable of its own environment. */
+const VARIABLE_SECRET_SCHEMES = ["env://", "secret://"] as const;
+
+/** The variable that `reference`, a secret reference, reads, as box reads it: trimmed. */
+function referenceVariable(reference: unknown): string | undefined {
+  if (typeof reference !== "string") return undefined;
+  const trimmed = reference.trim();
+  const scheme = VARIABLE_SECRET_SCHEMES.find((candidate) => trimmed.startsWith(candidate));
+  return scheme === undefined ? undefined : trimmed.slice(scheme.length).trim() || undefined;
+}
 
 /**
- * The variable of each `env://` credential: of `profile`, a Runtime profile; of each route that the
- * Box network model gives an API key; and of each MCP server of the network model. A pack or the
- * profile can declare each route and server.
+ * Whether a variable is a credential that box keeps from the agent, as box finds them. In each of
+ * `profiles`: an `env://` or `secret://` reference, the `env` of a secret table (the variable that
+ * gets the stand-in), and each `pass-secret-env` entry of a secret source, where `NAME*` takes each
+ * variable that starts with `NAME`. In the Box network model: the variable of each route that gets
+ * an API key, and the reference of each MCP server. In `context.thirdPartyTelemetry`: the variable
+ * of each key, which the Runtime profile reads from Secrets Manager.
  */
 function credentialVariables(
-  profile: Readonly<TomlTable>,
+  profiles: readonly Readonly<TomlTable>[],
   context: RuntimeProfileContext,
-): Set<string> {
+): (name: string) => boolean {
   const variables = new Set<string>();
-  const visit = (value: unknown) => {
-    if (typeof value === "string") {
-      if (value.startsWith(ENV_SECRET_SCHEME)) variables.add(value.slice(ENV_SECRET_SCHEME.length));
-    } else if (Array.isArray(value)) value.forEach(visit);
-    else if (isTable(value)) Object.values(value).forEach(visit);
+  const prefixes: string[] = [];
+  const add = (variable: string | undefined) => {
+    if (variable !== undefined) variables.add(variable);
   };
-  visit(profile);
+  const visit = (value: unknown) => {
+    if (typeof value === "string") add(referenceVariable(value));
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (isTable(value)) {
+      if (typeof value.ref === "string" && typeof value.env === "string") add(value.env.trim());
+      const passed = value["pass-secret-env"];
+      if (Array.isArray(passed)) {
+        for (const entry of passed) {
+          if (typeof entry !== "string") continue;
+          if (entry.endsWith("*")) prefixes.push(entry.slice(0, -1));
+          else add(entry);
+        }
+      }
+      Object.values(value).forEach(visit);
+    }
+  };
+  profiles.forEach(visit);
   for (const host of context.hosts) {
-    if (host.outboundAuth.kind === "apiKey") variables.add(host.outboundAuth.variable);
+    if (host.outboundAuth.kind === "apiKey") add(host.outboundAuth.variable);
     for (const source of host.sources) {
-      if (source.kind === "mcp") visit(source.secret?.ref);
+      if (source.kind === "mcp") add(referenceVariable(source.secret?.ref));
     }
   }
-  return variables;
+  for (const target of context.thirdPartyTelemetry ?? []) add(target.secret?.variable);
+  return (name) => variables.has(name) || prefixes.some((prefix) => name.startsWith(prefix));
 }
 
 /**

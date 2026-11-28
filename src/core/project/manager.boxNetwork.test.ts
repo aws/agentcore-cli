@@ -1679,6 +1679,23 @@ describe("build with OTEL on, as create writes a box runtime", () => {
   };
   const PACK = "app/agent_python_strands/.box-dist/resources/packs/agentcore/pack.toml";
 
+  test.each([
+    ["us-west-2", "amazonaws.com"],
+    ["cn-north-1", "amazonaws.com.cn"],
+  ])(
+    "gives AWS_DNS_SUFFIX the domain of the partition of the build region %s by default",
+    async (region, suffix) => {
+      const { manager, root } = await strandsProject({ env: { AWS_REGION: region } });
+
+      await build(manager, root);
+
+      const pack = parse(await text(root, PACK)) as {
+        inputs: { aws: { dns_suffix: { default: string } } };
+      };
+      expect(pack.inputs.aws.dns_suffix.default).toBe(suffix);
+    },
+  );
+
   test("starts the agent under opentelemetry-instrument, sets up its ADOT SDK, and sends its spans to X-Ray with the grant", async () => {
     const { manager, root } = await strandsProject();
     expect(JSON.parse(await text(root, SPEC)).runtimes[0].instrumentation).toBeUndefined();

@@ -1238,7 +1238,82 @@ describe("the additions rule", () => {
       ]);
     });
 
-    test("leaves a profile with no [agent] table, or a non-table [agent.env], as it is", () => {
+    test("leaves out the key of a third-party telemetry target, which the Runtime reads from Secrets Manager", () => {
+      const runtime = withEnvVars(CONTAINER, "LANGFUSE_KEY");
+      const local: TomlTable = {
+        ...createdProfile(runtime),
+        telemetry: {
+          langfuse: {
+            kind: "langfuse",
+            destination: "https://cloud.langfuse.com",
+            secret: { ref: "env://LANGFUSE_KEY" },
+          },
+        },
+      };
+
+      const { profile, warnings } = deriveRuntimeProfile(
+        local,
+        contextOf(runtime, { thirdPartyTelemetry: thirdPartyTelemetry(local).targets }),
+      );
+
+      // The Runtime profile names the key only as a Secrets Manager reference.
+      expect(JSON.stringify(profile.telemetry)).not.toContain("env://LANGFUSE_KEY");
+      expect(agentOf(profile).env).not.toHaveProperty("LANGFUSE_KEY");
+      expect(warnings).toContain(
+        skipped("LANGFUSE_KEY", "it is a credential, which box keeps from the agent"),
+      );
+    });
+
+    test("finds each credential as box does: secret://, a trimmed reference, a stand-in env, and pass-secret-env", () => {
+      const runtime = withEnvVars(
+        CONTAINER,
+        "ALIAS_KEY",
+        "TRIMMED",
+        "PLACEHOLDER",
+        "OP_SESSION_abc",
+        "EXACT_PASSED",
+        "TABLE_NAME",
+      );
+      const local: TomlTable = {
+        agent: { env: {} },
+        egress: {
+          alias: { destinations: ["a.example.com"], secret: { ref: "secret://ALIAS_KEY" } },
+          trimmed: { destinations: ["t.example.com"], secret: { ref: "  env://TRIMMED " } },
+          placeholder: {
+            destinations: ["p.example.com"],
+            secret: { ref: "op://vault/item/key", env: "PLACEHOLDER" },
+          },
+        },
+        "secret-source": { op: { "pass-secret-env": ["OP_SESSION_*", "EXACT_PASSED"] } },
+      };
+
+      const { table, warnings } = apply(local, contextOf(runtime));
+
+      const reason = "it is a credential, which box keeps from the agent";
+      expect(warnings).toEqual(
+        ["ALIAS_KEY", "TRIMMED", "PLACEHOLDER", "OP_SESSION_abc", "EXACT_PASSED"].map((name) =>
+          skipped(name, reason),
+        ),
+      );
+      expect(Object.keys(agentOf(table).env).filter((name) => !name.startsWith("AWS_"))).toEqual([
+        "TABLE_NAME",
+      ]);
+    });
+
+    test("leaves out a variable of the macOS dynamic loader, DYLD_*, and says so", () => {
+      const runtime = withEnvVars(CONTAINER, "DYLD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES");
+
+      const { table, warnings } = apply({ agent: { env: {} } }, contextOf(runtime));
+
+      expect(agentOf(table).env).not.toHaveProperty("DYLD_LIBRARY_PATH");
+      const loader = "box does not let the profile set a variable of the dynamic loader";
+      expect(warnings).toEqual([
+        skipped("DYLD_LIBRARY_PATH", loader),
+        skipped("DYLD_INSERT_LIBRARIES", loader),
+      ]);
+    });
+
+    test("leaves a profile with no [agent] table as it is, and an [agent.env] that is not a table, with a warning", () => {
       const runtime = withEnvVars(CONTAINER, "TABLE_NAME");
 
       expect(apply({ packs: ["@box/base"] }, contextOf(runtime)).table.agent).toEqual({
@@ -1250,9 +1325,12 @@ describe("the additions rule", () => {
           TABLE_NAME: forward("TABLE_NAME"),
         },
       });
-      expect(apply({ agent: { env: "odd" } }, contextOf(runtime)).table.agent).toEqual({
-        env: "odd",
-      });
+      const odd = apply({ agent: { env: "odd" } }, contextOf(runtime));
+      expect(odd.table.agent).toEqual({ env: "odd" });
+      expect(odd.warnings).toEqual([
+        `The envVars of runtime "agent" in agentcore.json do not go to the agent in the box: ` +
+          `${PROFILE_FILE} has no [agent] table with an [agent.env] table.`,
+      ]);
     });
   });
 
@@ -2051,7 +2129,9 @@ describe("the additions rule", () => {
           ),
         ].map(([, name]) => name);
         const { inputs } = parse(
-          renderAgentCorePack(context.spec, runtime, [], BOX_TRACES_LOG_GROUP_VERSION),
+          renderAgentCorePack(context.spec, runtime, [], {
+            boxVersion: BOX_TRACES_LOG_GROUP_VERSION,
+          }),
         ) as { inputs: { runtime: TomlTable } };
 
         expect(named).not.toEqual([]);

@@ -682,13 +682,9 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
           { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
           {
             path: `${dist}/${AGENTCORE_PACK_PATH}`,
-            text: renderAgentCorePack(
-              spec,
-              entry,
-              network?.projectGateways,
-              undefined,
-              network?.region,
-            ),
+            text: renderAgentCorePack(spec, entry, network?.projectGateways, {
+              region: network?.region,
+            }),
           },
           ...(kind === "codezip"
             ? [
