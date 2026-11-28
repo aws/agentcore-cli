@@ -19,6 +19,12 @@ describe("parseTimeString", () => {
     expect(() => parseTimeString(" ", now)).toThrow(InputValidationError);
     expect(() => parseTimeString("5x", now)).toThrow('Invalid time string: "5x"');
   });
+
+  test("rejects a number without a unit instead of reading it as a calendar date", () => {
+    expect(() => parseTimeString("5", now)).toThrow('Invalid time string: "5"');
+    expect(() => parseTimeString("60", now)).toThrow('Invalid time string: "60"');
+    expect(() => parseTimeString("120", now)).toThrow('Invalid time string: "120"');
+  });
 });
 
 describe("resolveTimeWindow", () => {

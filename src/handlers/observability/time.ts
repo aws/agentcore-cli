@@ -22,7 +22,9 @@ export function parseTimeString(input: string, now: () => number = Date.now): nu
   }
   if (/^\d{13,}$/.test(trimmed)) return parseInt(trimmed, 10);
 
-  const timestamp = Date.parse(trimmed);
+  // Date.parse reads a bare number leniently ("5" is May 2001, "60" is 1960), so
+  // a duration missing its unit would silently become a calendar date.
+  const timestamp = /^\d+$/.test(trimmed) ? NaN : Date.parse(trimmed);
   if (!Number.isNaN(timestamp)) return timestamp;
 
   throw new InputValidationError(
