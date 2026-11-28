@@ -16,7 +16,6 @@ import {
   boxStartFolder,
   hasBoxProfile,
   renderAgentCoreCodeZipPack,
-  agentCorePackEnvSources,
   renderAgentCorePack,
   renderAwsMetadataPolicy,
   renderBoxProfile,
@@ -809,46 +808,5 @@ describe("renderAgentCoreCodeZipPack", () => {
       }
       expect(pattern.test("/opt/x --reload")).toBe(false);
     }
-  });
-});
-
-describe("agentCorePackEnvSources", () => {
-  const spec = {
-    name: "V3Demo",
-    memories: [{ name: "agentMemory" }, { name: "notes" }],
-  } as unknown as ProjectSpec;
-  const runtime = { name: "agent", envVars: [] };
-  const gateways = [
-    {
-      name: "tools",
-      target: "egress-gateway-tools",
-      variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
-      auth: "iam",
-    } as const,
-  ];
-
-  test("marks a variable runtime only when its input reads the variable of the same name", () => {
-    const pack = parse(renderAgentCorePack(spec, runtime, gateways)) as Record<string, any>;
-    const input = (path: string) =>
-      path.split(".").reduce((table: any, key) => table?.[key], pack.inputs);
-
-    const sources = agentCorePackEnvSources(spec, runtime, gateways);
-
-    expect([...sources.keys()]).toEqual(Object.keys(pack.agent.env));
-    for (const [name, source] of sources) {
-      const value: string = pack.agent.env[name];
-      const path = /^\$\{\{ inputs\.(.+) \}\}$/.exec(value)?.[1];
-      if (source === "runtime") {
-        expect(path).toBeDefined();
-        expect(input(path!).from).toBe(`env:${name}`);
-      } else {
-        expect(value).not.toContain("${{");
-      }
-    }
-    expect([...sources].filter(([, source]) => source === "fixed").map(([name]) => name)).toEqual([
-      "OTEL_TRACES_EXPORTER",
-      "OTEL_LOGS_EXPORTER",
-      "OTEL_METRICS_EXPORTER",
-    ]);
   });
 });

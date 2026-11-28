@@ -289,22 +289,10 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
     `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
     ingress on `0.0.0.0` on the port of the protocol;
-  - each variable of the runtime's `envVars` in `agentcore.json` gets `{ from = "env:<name>" }` in
-    `[agent.env]`. The Runtime sets these variables for box, and box gives the agent only the
-    variables that the profile names. Box copies the value as it is, with no `${{ }}` expansion.
-    Build leaves out these variables, and gives a warning for each one: `AWS_REGION` and
-    `AWS_DEFAULT_REGION` (the agent gets the region of the Runtime), a variable that your
-    `[agent.env]` sets or that the `@box/agentcore` pack sets to a fixed value (that value stays),
-    a variable that
-    box sets itself (`HOME`, `TMPDIR`, `PWD`, `USER`, the proxy and CA bundle variables, each
-    `OTEL_EXPORTER_OTLP_*`), each `LD_*` and `DYLD_*` variable, the credential of a route, a
-    server, a secret source, or a third-party telemetry target, an AWS
-    credential such as `AWS_BEARER_TOKEN_BEDROCK`, `AWS_PROFILE`, `LOCAL_DEV`, and the port
-    variable of the protocol. Box refuses to start with most of these names in `[agent.env]`. A
-    variable that the pack reads from the Runtime, such as `OTEL_PYTHON_DISTRO` or a Memory ID,
-    needs no forward, and gives no warning.
-    `agentcore dev` does not give the `envVars` to the agent in the box yet. Set them in
-    `[agent.env]` to test with dev;
+  - the agent does not get the runtime's `envVars` from `agentcore.json`. The Runtime sets them
+    for box, and box gives the agent only the variables that the profile names. To give the agent a
+    variable, set it in `[agent.env]` of `.box/<runtime>/local/profile.toml`. Then the agent gets it
+    with `agentcore dev` and on the Runtime;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;

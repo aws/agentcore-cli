@@ -90,9 +90,6 @@ export const BOX_BEDROCK_ROUTE = "bedrock";
  */
 export const BOX_BEDROCK_API_KEY_ROUTE = "bedrock-api-key";
 
-/** The variable that the secret of {@link BOX_BEDROCK_API_KEY_ROUTE} reads its key from. */
-export const BOX_BEDROCK_API_KEY_ENV = "AWS_BEARER_TOKEN_BEDROCK";
-
 /** The `bedrock.sign-in` of the Runtime profile, which selects {@link BOX_BEDROCK_API_KEY_ROUTE}. */
 export const BOX_BEDROCK_RUNTIME_SIGN_IN = "api-key";
 
@@ -839,26 +836,6 @@ function agentCorePackEnv(
       ]),
     ),
   };
-}
-
-/**
- * Where the agent gets each variable that the {@link renderAgentCorePack} pack sets in
- * `[agent.env]`, by name. `runtime`: from an input that reads the variable of the same name, which
- * AgentCore Runtime sets, so the agent gets the value of the Runtime. `fixed`: a value of the pack
- * that box needs. The Runtime profile does not forward a variable of the runtime's `envVars` under
- * one of these names.
- */
-export function agentCorePackEnvSources(
-  spec: ProjectSpec,
-  runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">,
-  gateways: readonly BoxProjectGateway[] = [],
-): Map<string, "runtime" | "fixed"> {
-  return new Map(
-    Object.entries(agentCorePackEnv(spec, runtime, gateways)).map(([name, value]) => [
-      name,
-      value.startsWith("${{ inputs.") ? "runtime" : "fixed",
-    ]),
-  );
 }
 
 /** The options of {@link renderAgentCorePack}. */
