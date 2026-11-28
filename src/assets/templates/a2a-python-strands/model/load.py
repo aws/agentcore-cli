@@ -1,3 +1,23 @@
+{{!-- The API key of a boxed agent, which every keyed provider below includes. --}}
+{{#*inline "boxApiKey"}}
+
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+def _get_api_key() -> str:
+    """
+    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
+    real key on each model call as it leaves the box, so the agent never holds it.
+    """
+    api_key = os.getenv(IDENTITY_ENV_VAR)
+    if not api_key:
+        raise RuntimeError(
+            f"{IDENTITY_ENV_VAR} is not set: set it to your API key in agentcore/.env.local, "
+            "then run agentcore dev or agentcore deploy again. The box gives the agent a "
+            "stand-in key under this name, and puts the real key on each model call."
+        )
+    return api_key
+{{/inline}}
 {{#if (eq modelProvider "Bedrock")}}
 from strands.models.bedrock import BedrockModel
 
@@ -10,6 +30,9 @@ def load_model() -> BedrockModel:
 import os
 
 from strands.models.anthropic import AnthropicModel
+{{#if box}}
+{{> boxApiKey}}
+{{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
 IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].providerNameEnvVarName}}", "{{identityProviders.[0].name}}")
@@ -35,12 +58,19 @@ def _get_api_key() -> str:
             )
         return api_key
     return _agentcore_identity_api_key_provider()
+{{/if}}
 
 
 def load_model() -> AnthropicModel:
     """Get authenticated Anthropic model client."""
     return AnthropicModel(
+{{#if box}}
+        # The box puts the real key in x-api-key. Given api_key=, anthropic 2.x sends the key as
+        # Authorization: Bearer instead, so the box would leave the stand-in key in place.
+        client_args={"default_headers": {"x-api-key": _get_api_key()}},
+{{else}}
         client_args={"api_key": _get_api_key()},
+{{/if}}
         model_id={{safeJson modelId}},
         max_tokens=5000,
     )
@@ -49,6 +79,9 @@ def load_model() -> AnthropicModel:
 import os
 
 from strands.models.openai import OpenAIModel
+{{#if box}}
+{{> boxApiKey}}
+{{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
 IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].providerNameEnvVarName}}", "{{identityProviders.[0].name}}")
@@ -74,6 +107,7 @@ def _get_api_key() -> str:
             )
         return api_key
     return _agentcore_identity_api_key_provider()
+{{/if}}
 
 
 def load_model() -> OpenAIModel:
@@ -87,6 +121,9 @@ def load_model() -> OpenAIModel:
 import os
 
 from strands.models.gemini import GeminiModel
+{{#if box}}
+{{> boxApiKey}}
+{{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
 IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].providerNameEnvVarName}}", "{{identityProviders.[0].name}}")
@@ -112,6 +149,7 @@ def _get_api_key() -> str:
             )
         return api_key
     return _agentcore_identity_api_key_provider()
+{{/if}}
 
 
 def load_model() -> GeminiModel:
@@ -128,6 +166,9 @@ import os
 {{/if}}
 from strands.models.litellm import LiteLLMModel
 {{#if identityProviders.[0].name}}
+{{#if box}}
+{{> boxApiKey}}
+{{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
 IDENTITY_PROVIDER_NAME = os.environ.get("{{identityProviders.[0].providerNameEnvVarName}}", "{{identityProviders.[0].name}}")
@@ -153,6 +194,7 @@ def _get_api_key() -> str:
             )
         return api_key
     return _agentcore_identity_api_key_provider()
+{{/if}}
 {{/if}}
 
 

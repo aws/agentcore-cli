@@ -13,6 +13,8 @@ import { importScaffoldRuntimeInput } from "../../../handlers/project/importBedr
 import type { ModelProvider } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { readEnvFile } from "../../../io/envFile";
+import { parse } from "smol-toml";
+import { renderBoxProfile } from "./boxProfile";
 
 // Runtime templates are scaffolded by `agentcore create --template` (and its
 // wizard, which adds model overrides) and by `add runtime --agent-id` (a Bedrock Agent import). These
@@ -292,6 +294,89 @@ describe("runtime templates", () => {
         apiBase: "https://example.com/v1",
       }),
     ).toThrow(/only supported with the openai_compatible model provider/);
+  });
+
+  // The create wizard is the only way to give a box template a model provider key. A boxed agent
+  // cannot read AgentCore Identity: it reads the stand-in key the box sets under the credential's
+  // variable, and the box puts the real key on each model call.
+  const BOX_PROVIDERS: ModelProvider[] = [
+    "OpenAI",
+    "OpenAICompatible",
+    "Anthropic",
+    "Gemini",
+    "LiteLLM",
+  ];
+  test.each<[RuntimeTemplateShortcutName, ModelProvider]>([
+    ...BOX_PROVIDERS.flatMap((provider) =>
+      (
+        ["agent-python-strands-box", "a2a-python-strands-box", "agui-python-strands-box"] as const
+      ).map((template): [RuntimeTemplateShortcutName, ModelProvider] => [template, provider]),
+    ),
+    ["agent-python-strands-box-container", "OpenAI"],
+  ])(
+    "%s with %s reads its API key from the box, not AgentCore Identity",
+    async (template, provider) => {
+      const model = {
+        modelProvider: provider,
+        apiKey: "test-api-key",
+        ...(provider === "OpenAICompatible" && {
+          modelId: "deepseek-chat",
+          apiBase: "https://api.deepseek.com/v1",
+        }),
+        ...(provider === "LiteLLM" && { modelId: "openai/gpt-4o" }),
+      };
+      const { appDir } = await addTemplate("my_agent", template, { model });
+      const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+      expect(loadPy).not.toContain("requires_api_key");
+      expect(loadPy).not.toContain("LOCAL_DEV");
+      expect(loadPy).toContain("api_key = os.getenv(IDENTITY_ENV_VAR)");
+      if (provider === "OpenAICompatible") {
+        expect(loadPy).toContain('"base_url": "https://api.deepseek.com/v1"');
+      }
+
+      // load.py reads the variable that the box profile's model route names in its secret.ref.
+      const profile = parse(
+        renderBoxProfile(
+          "Demo",
+          resolveRuntimeTemplateShortcut(template, { runtimeName: "my_agent", ...model }),
+          "us-west-2",
+        )!,
+      ) as { egress: Record<string, { secret?: { ref: string } }> };
+      const refs = Object.values(profile.egress).flatMap(({ secret }) =>
+        secret?.ref.startsWith("env://") ? [secret.ref.slice("env://".length)] : [],
+      );
+      expect(refs).toHaveLength(1);
+      expect(loadPy).toContain(`IDENTITY_ENV_VAR = "${refs[0]}"`);
+    },
+  );
+
+  test.each<RuntimeTemplateShortcutName>([
+    "agent-python-strands",
+    "a2a-python-strands",
+    "agui-python-strands",
+  ])("%s with a model provider key still reads it from AgentCore Identity", async (template) => {
+    const { appDir } = await addTemplate("my_agent", template, {
+      model: { modelProvider: "OpenAI", apiKey: "test-api-key" },
+    });
+    const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+    expect(loadPy).toContain("@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)");
+    expect(loadPy).toContain('if os.getenv("LOCAL_DEV") == "1":');
+  });
+
+  // The box's Anthropic route puts the real key in x-api-key. Given api_key=, anthropic 2.x sends
+  // the key as Authorization: Bearer, which the box leaves alone, so the stand-in key reaches
+  // Anthropic.
+  test.each<[RuntimeTemplateShortcutName, string]>([
+    ["agent-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["a2a-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["agui-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["agent-python-strands", 'client_args={"api_key": _get_api_key()}'],
+  ])("%s sends the Anthropic key with %s", async (template, clientArgs) => {
+    const { appDir } = await addTemplate("my_agent", template, {
+      model: { modelProvider: "Anthropic", apiKey: "test-api-key" },
+    });
+    const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+    expect(loadPy).toContain(clientArgs);
   });
 
   test.each<ModelProvider>(["Anthropic", "OpenAI", "Gemini"])(
