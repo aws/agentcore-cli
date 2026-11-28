@@ -67,6 +67,24 @@ If you set `WORKSPACE_DIRECTORY` to a path on session storage, the Runtime must 
 server cannot create the workspace, and the session fails. If `BMA_STATE_DIR` is not on a mounted path, or the server
 cannot create it, the server keeps `state.json` in `.bma` in `BMA_HOME_DIR`.
 
+## Platform version V2
+
+On platform version V2, AgentCore prepares the Runtime once and starts each session from a snapshot of it. Without a
+warmup hook, a new session reads the Codex and CloudWatch agent binaries from disk the first time it runs them, which
+can take seconds. The lifecycle server has a build warmup hook, `POST /warmup`, that loads both binaries into memory
+before the snapshot and warms their start-up files after it. To use it, set these on the Runtime in
+`agentcore/agentcore.json`:
+
+```json
+"platformVersion": "V2",
+"hooksConfiguration": { "build": { "warmup": { "action": { "httpPost": { "path": "/warmup" } } } } }
+```
+
+The hook keeps about 520 MiB of binaries in the snapshot, and starts no processes before it, so sessions still start
+their own exec-server and collector. In tests in us-east-1 and ap-southeast-2, the first `codex --version` in a new session took 4-5 ms
+with the hook and up to 14 s without it, and the CloudWatch agent's 38-47 ms with the hook and up to 37 s without it.
+On V1, leave `hooksConfiguration` unset: AgentCore rejects it.
+
 # Environment variables
 
 To change a setting of the server, add the variable to `envVars` of the agent in `agentcore/agentcore.json`. Then run

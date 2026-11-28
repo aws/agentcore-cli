@@ -131,16 +131,20 @@ export async function runtimeDocsTree(
  * The agentcore.json entry for a docs-only runtime, with starting values: a
  * CodeZip build on the latest runtime for the language. dev, build, and deploy
  * update build, runtimeVersion, and entrypoint from the code once it exists.
+ * With containerUri, a Container build of that image; codeLocation and
+ * entrypoint are schema-required placeholders that nothing reads.
  */
 export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
   const { name, language, ...infra } = input;
   return {
     name,
     codeLocation: `app/${name}` as ProjectRuntime["codeLocation"],
-    build: input.build ?? "CodeZip",
-    ...((input.build === undefined || input.build === "CodeZip") && {
-      runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
-    }),
+    build: input.build ?? (input.containerUri ? "Container" : "CodeZip"),
+    ...(input.containerUri && { containerUri: input.containerUri }),
+    ...(input.containerUri === undefined &&
+      (input.build === undefined || input.build === "CodeZip") && {
+        runtimeVersion: language === "TypeScript" ? LATEST_NODE : LATEST_PYTHON,
+      }),
     ...(input.dockerfile && {
       dockerfile: input.buildContextPath ? input.dockerfile : "Dockerfile",
     }),
@@ -156,12 +160,15 @@ export function buildDocsRuntimeSpec(input: RuntimeDocsConfig): ProjectRuntime {
     ...(infra.envVars?.length && { envVars: infra.envVars }),
     ...(infra.networkMode && { networkMode: infra.networkMode }),
     ...(infra.networkConfig && { networkConfig: infra.networkConfig }),
+    ...(infra.platformVersion && { platformVersion: infra.platformVersion }),
     ...(infra.authorizerType && { authorizerType: infra.authorizerType }),
     ...(infra.authorizerConfiguration && {
       authorizerConfiguration: infra.authorizerConfiguration,
     }),
     ...(infra.requestHeaderAllowlist && { requestHeaderAllowlist: infra.requestHeaderAllowlist }),
     ...(infra.lifecycleConfiguration && { lifecycleConfiguration: infra.lifecycleConfiguration }),
+    ...(infra.resourceConfigurations && { resourceConfigurations: infra.resourceConfigurations }),
+    ...(infra.hooksConfiguration && { hooksConfiguration: infra.hooksConfiguration }),
     ...(infra.filesystemConfigurations && {
       filesystemConfigurations: infra.filesystemConfigurations,
     }),

@@ -49,8 +49,13 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(dockerfile).toContain("https://chatgpt.com/codex/install.sh");
   expect(dockerfile).toContain("amazon-cloudwatch-agent.rpm");
   expect(dockerfile).toContain("COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/");
-  // Python is installed before pyproject.toml is copied, so requires-python sets a minimum and does not pin the image.
-  expect(dockerfile).toMatch(/RUN uv python install --default\n[\s\S]*COPY pyproject\.toml/);
+  // AL2023's Python links the base image's snapshot-safe OpenSSL, and uv must use it rather than
+  // download a standalone Python that bundles its own OpenSSL.
+  expect(dockerfile).toMatch(/RUN dnf install -y [^\n]*python3\.14/);
+  expect(dockerfile).toContain(
+    "ENV UV_PYTHON=python3.14 UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never",
+  );
+  expect(dockerfile).not.toContain("uv python install");
   expect(dockerfile).toContain("RUN uv sync --no-dev");
   expect(dockerfile).toContain("COPY lifecycle/ lifecycle/");
   expect(dockerfile).toContain("COPY otel/ otel/");
@@ -59,6 +64,11 @@ test("Bedrock Managed Agents assets preserve the environment and lifecycle contr
   expect(dockerfile).toContain(
     'CMD ["uv", "run", "--no-sync", "opentelemetry-instrument", "python", "-u", "lifecycle/server.py"]',
   );
+  // The V2 build warmup hook keeps both binaries in memory in the snapshot and starts no process.
+  expect(server).toContain('if self.path == "/warmup":');
+  expect(server).toContain('WARMUP_TYPE_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type"');
+  expect(server).toContain("mmap.mmap(handle.fileno(), 0, prot=mmap.PROT_READ)");
+  expect(server).toContain('[str(BMA_CODEX_BINARY), "--version"]');
   expect(dockerignore).toContain(".venv/");
   expect(dockerignore).toContain(".env");
   expect(dockerignore).toContain(".git/");

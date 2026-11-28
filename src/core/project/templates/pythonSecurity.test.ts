@@ -35,19 +35,19 @@ test.each([
   });
 });
 
-test("the Strands container updates OS packages and removes uv after installing dependencies", async () => {
+test("the Strands container updates OS packages, uses snapshot-safe OpenSSL and removes uv after installing dependencies", async () => {
   const dockerfile = renderer.render(
     await source.read("templates/agent-python-strands/Dockerfile.template"),
     { entrypoint: "main" },
   );
 
   expect(dockerfile).toMatch(
-    /RUN apt-get update && apt-get upgrade -y[\s\S]*USER bedrock_agentcore/,
+    /RUN dnf upgrade -y[\s\S]*dnf swap -y openssl-libs openssl-snapsafe-libs[\s\S]*USER bedrock_agentcore/,
   );
   expect(dockerfile).toMatch(
     /UV_NO_CACHE=1[\s\S]*RUN uv sync --frozen --no-dev --no-install-project/,
   );
   expect(dockerfile).toMatch(
-    /RUN uv sync --frozen --no-dev && \/usr\/local\/bin\/python -m pip uninstall -y uv[\s\S]*USER bedrock_agentcore/,
+    /RUN uv sync --frozen --no-dev && \/usr\/bin\/python3\.12 -m pip uninstall -y uv[\s\S]*USER bedrock_agentcore/,
   );
 });

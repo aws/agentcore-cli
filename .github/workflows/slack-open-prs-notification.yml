@@ -14,5 +14,5 @@ jobs:
   call:
     uses: aws/agentcore-devx-devtools/.github/workflows/reusable-slack-open-prs-notification.yml@db12e119f4802fc59da3f8e48cc02c43b225d71d
     with:
-      runner: codebuild
+      runner: ubuntu
     secrets: inherit

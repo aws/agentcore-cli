@@ -2,7 +2,7 @@
 
 # AgentCore CLI command reference
 
-This reference was generated from `agentcore --help` for version `1.2.0`.
+This reference was generated from `agentcore --help` for version `1.3.0`.
 
 ## Table of contents
 
@@ -316,15 +316,18 @@ add a Runtime to the current project
 **Options**
 
 - `--name <name>`: the name of the Runtime (required)
-- `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent)
+- `--language <language>`: language you will write the Runtime in: python or typescript (required unless --agent-id imports a Bedrock Agent or --build-config sets containerUri)
 - `--protocol <protocol>`: protocol the Runtime serves: HTTP (default), MCP, A2A, or AGUI
 - `--description <description>`: an optional description of the Runtime
 - `--tags <tags...>`: tags as repeated key=value entries or one JSON object
 - `--environment-variables <environment-variables>`: environment variables (JSON object of key/value strings)
 - `--network-mode <network-mode>`: network mode for the Runtime environment (PUBLIC or VPC)
 - `--network-config <network-config>`: VPC network configuration (JSON)
+- `--platform-version <platform-version>`: Runtime platform version: V1 or V2. If unset, the service picks the version for your account
 - `--lifecycle-configuration <lifecycle-configuration>`: session idle timeout and instance lifetime configuration (JSON)
-- `--filesystem-configurations <filesystem-configurations>`: filesystem mount configurations (JSON)
+- `--resource-configurations <resource-configurations>`: committed per-session memory baseline, e.g. [{"minimumMemoryInMiB":4096}] (JSON, V2 only)
+- `--hooks-configuration <hooks-configuration>`: lifecycle hooks, e.g. a build warmup hook (JSON, V2 only)
+- `--filesystem-configurations <filesystem-configurations>`: filesystem mount configurations (JSON); an s3BucketMount needs --platform-version V2
 - `--role-arn <role-arn>`: IAM role ARN that provides permissions for the Runtime
 - `--additional-policies <additional-policies...>`: additional IAM policy ARNs or policy document paths for the execution role
 - `--authorizer-type <authorizer-type>`: inbound authorizer type (AWS\_IAM or CUSTOM\_JWT)
@@ -333,7 +336,7 @@ add a Runtime to the current project
 - `--agent-id <agent-id>`: Bedrock Agent ID to import; translates that agent version into runtime code instead of writing docs
 - `--agent-alias-id <agent-alias-id>`: Bedrock Agent Alias ID selecting the version to import; must point at a prepared version, not DRAFT (requires --agent-id)
 - `--framework <framework>`: agent framework for an imported Bedrock Agent: strands or langgraph (requires --agent-id)
-- `--build-config <build-config>`: advanced build settings (JSON object): build (CodeZip, Container, or ContainerLocal), dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
+- `--build-config <build-config>`: advanced build settings (JSON object): build (CodeZip, Container, or ContainerLocal), containerUri, dockerfile, buildContextPath, customDockerBuildArgs. Without buildContextPath, dockerfile is a path relative to the current directory, copied once to app/&lt;name&gt;/Dockerfile (app/&lt;name&gt;/ is the build context). With buildContextPath (relative to the project root), dockerfile is relative to that build context and used in place. Build args are not secret: they appear in logs and image metadata
 
 #### `agentcore add runtime-endpoint`
 

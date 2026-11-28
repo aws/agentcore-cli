@@ -7,6 +7,14 @@ import { findFreePort, resolveDevPort, resolveDevPorts } from "../../../core/dev
 import { projectSpecPath } from "../../../core/project/fsUtils";
 import type { V0DeployRunner } from "../../../core/project/legacy/deploy";
 import { DevSupervisor, type SupervisorConfig } from "../../../core/dev/supervisor";
+import {
+  HookPortReserver,
+  hooksConfigurationWarning,
+  type HttpFetch,
+  planWarmup,
+  sharedHookPortError,
+  waitUntilReady,
+} from "../../../core/dev/readiness";
 import type { ProjectRuntime } from "../../../projectSchemas/runtime";
 import {
   AgentCoreCLIError,
@@ -19,6 +27,7 @@ import {
   SilentCLIError,
 } from "../../../errors";
 import type { AppIO, BrowserOpener, FileWatcher, PortChecker, startHttpServer } from "../../../io";
+import { waitForPort } from "../../../io";
 import { createHandler, flag, ProjectKey, type Context, type Middleware } from "../../../router";
 import { withUserCancellation } from "../../../runnable";
 import { JsonRendererKey, type JsonRenderer } from "../../../tui";
@@ -57,6 +66,8 @@ export type DevProjectHandlerConfig = {
   harness: Pick<CoreHarnessClient, "getHarness" | "invokeHarness">;
   /** Overrides how the supervisor decides an agent is ready (defaults to a real TCP poll). */
   waitReady?: SupervisorConfig["waitReady"];
+  /** HTTP client for the `/ping` check and warmup hook calls; defaults to the global fetch. */
+  fetch?: HttpFetch;
   /** Runs the final v0 deployer when harness dev is opened from a v0 project. */
   runV0Deploy?: V0DeployRunner;
 };
@@ -71,8 +82,10 @@ function otelEnvForRuntime(
 }
 
 function supportsLocalDev(runtime: ProjectRuntime): boolean {
-  return !isBmaRuntime(runtime);
+  return !isBmaRuntime(runtime) && runtime.containerUri === undefined;
 }
+
+const PREBUILT_DEV_GUIDANCE = "Deploy it with agentcore deploy, then use agentcore invoke.";
 
 /** An agent's own output, always tagged with the agent that produced it. */
 function renderAgentEvent({
@@ -231,6 +244,13 @@ function resolveAgentSelection(project: Project, agent?: string): AgentSelection
     );
   }
   const supportedRuntimes = selectedRuntimes.filter(supportsLocalDev);
+  const prebuilt = selectedRuntimes.find((runtime) => runtime.containerUri !== undefined);
+  if (!supportedRuntimes.length && prebuilt) {
+    throw new InputValidationError(
+      `Runtime '${prebuilt.name}' uses a pre-built containerUri. ${PREBUILT_DEV_GUIDANCE} ` +
+        "For local dev, select a runtime with local source using --agent <name>.",
+    );
+  }
   if (!supportedRuntimes.length) {
     throw new NotImplementedError(
       `Local dev is not supported for runtime '${selectedRuntimes[0]!.name}' (${BMA_TEMPLATE_NAME}). ` +
@@ -376,7 +396,10 @@ async function runRuntimeDev({
           )) {
             renderStatus({
               io: config.io,
-              message: `Skipping runtime '${runtime.name}': local dev is not supported for ${BMA_TEMPLATE_NAME}.`,
+              message:
+                runtime.containerUri !== undefined
+                  ? `Skipping runtime '${runtime.name}': it deploys a pre-built image. ${PREBUILT_DEV_GUIDANCE}`
+                  : `Skipping runtime '${runtime.name}': local dev is not supported for ${BMA_TEMPLATE_NAME}.`,
               json,
             });
           }
@@ -394,6 +417,18 @@ async function runRuntimeDev({
         const runtimes = synced.project.spec.runtimes.filter(({ name }) =>
           runtimeNames.includes(name),
         );
+        for (const runtime of runtimes) {
+          const warning = hooksConfigurationWarning(runtime);
+          if (warning) renderStatus({ io: config.io, message: `Warning: ${warning}`, json });
+        }
+        const sharedHookPort = runtimes.length > 1 ? sharedHookPortError(runtimes) : undefined;
+        // Headless starts every agent at once; the Inspector starts them one by one on request.
+        if (sharedHookPort && input.mode === "headless" && !input.agent) {
+          throw new InputValidationError(sharedHookPort);
+        }
+        if (sharedHookPort) {
+          renderStatus({ io: config.io, message: `Warning: ${sharedHookPort}`, json });
+        }
 
         collector = input.traces
           ? await startRuntimeTraceCollector({ config, project, runtimes, json })
@@ -431,6 +466,9 @@ async function runRuntimeDev({
           input.mode === "headless"
             ? await resolveDevPorts(runtimes, input.port, config.checkPort, signal)
             : undefined;
+        // Container warmup hooks on their own port get host ports that can't collide with a dev
+        // port or each other, including agents the Inspector starts later.
+        const hookPorts = new HookPortReserver(config.checkPort, signal, assignedPorts?.values());
         const supervisor = new DevSupervisor({
           runtimes,
           projectRoot: project.rootPath,
@@ -446,10 +484,19 @@ async function runRuntimeDev({
               }
               return assignedPort;
             }
-            return (await resolveDevPort(runtime.protocol, input.port, config.checkPort, signal))
-              .port;
+            const { port } = await resolveDevPort(
+              runtime.protocol,
+              input.port,
+              async (candidate, checkSignal) =>
+                !hookPorts.isReserved(candidate) && config.checkPort(candidate, checkSignal),
+              signal,
+            );
+            hookPorts.add(port);
+            return port;
           },
+          reserveHookPort: (_runtime, hookPort) => hookPorts.reserve(hookPort),
           waitReady: config.waitReady,
+          fetch: config.fetch,
           signal,
         });
 
@@ -622,17 +669,58 @@ async function runWithoutUi({
     });
   }
 
+  // Resolved before the agent starts, so an unreachable hook fails without launching it.
+  const { hookPort, target: warmup } = await planWarmup(runtime, devPort.port, (preferred) =>
+    new HookPortReserver(config.checkPort, signal, [devPort.port]).reserve(preferred),
+  );
   const env = await options.environment(runtime);
   signal.throwIfAborted();
 
-  const runner = config.runners[isContainerBuild(runtime) ? "Container" : "CodeZip"];
-  for await (const event of runner.run({
-    runtime,
-    projectRoot: project.rootPath,
-    port: devPort.port,
-    env,
-    signal,
-  })) {
-    renderAgentEvent({ io: config.io, event, agent: runtime.name, json });
+  // A failed warmup stops the agent and fails the command, the way it fails a V2 deploy.
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", onParentAbort, { once: true });
+  let lastActivityAt = Date.now();
+  let warmupError: Error | undefined;
+  if (warmup) {
+    void waitUntilReady({
+      name: runtime.name,
+      devPort: devPort.port,
+      warmup,
+      waitForPort: () =>
+        (config.waitReady ?? waitForPort)(devPort.port, controller.signal, () => lastActivityAt),
+      signal: controller.signal,
+      fetchImpl: config.fetch ?? fetch,
+      onStatus: (message) => renderStatus({ io: config.io, message, json }),
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      warmupError = error instanceof Error ? error : new Error(String(error));
+      controller.abort(warmupError);
+    });
   }
+
+  const runner = config.runners[isContainerBuild(runtime) ? "Container" : "CodeZip"];
+  try {
+    for await (const event of runner.run({
+      runtime,
+      projectRoot: project.rootPath,
+      port: devPort.port,
+      ...(hookPort !== undefined && { hookPort }),
+      env,
+      signal: controller.signal,
+    })) {
+      lastActivityAt = Date.now();
+      renderAgentEvent({ io: config.io, event, agent: runtime.name, json });
+    }
+  } catch (error) {
+    if (warmupError)
+      throw new AgentCoreCLIError(
+        `Agent '${runtime.name}' failed to start: ${warmupError.message}`,
+      );
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onParentAbort);
+  }
+  if (warmupError)
+    throw new AgentCoreCLIError(`Agent '${runtime.name}' failed to start: ${warmupError.message}`);
 }

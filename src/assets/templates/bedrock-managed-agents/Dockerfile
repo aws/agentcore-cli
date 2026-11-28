@@ -1,7 +1,9 @@
 FROM public.ecr.aws/lambda/microvms:al2023-minimal
 
-# OS setup
-RUN dnf install -y tar gzip findutils shadow-utils ca-certificates \
+# OS setup. The base image ships snapshot-safe OpenSSL (openssl-snapsafe-libs), which reseeds its
+# random number generator after a platform version V2 snapshot restore. AL2023's Python links it,
+# unlike a standalone Python that bundles its own OpenSSL.
+RUN dnf install -y tar gzip findutils shadow-utils ca-certificates python3.14 \
  && dnf clean all \
  && useradd -m -u 1000 app
 
@@ -23,8 +25,7 @@ RUN arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 ARG UV_DEFAULT_INDEX
 ARG UV_INDEX
-ENV UV_PYTHON_INSTALL_DIR=/opt/python UV_PYTHON_BIN_DIR=/usr/local/bin
-RUN uv python install --default
+ENV UV_PYTHON=python3.14 UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never
 
 # Application. The layout of /opt/bma is the same as the layout of this directory.
 WORKDIR /opt/bma

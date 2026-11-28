@@ -65,6 +65,144 @@ async function runtimeOf(projectRoot: string, name: string) {
   return spec.runtimes.find((candidate: { name: string }) => candidate.name === name);
 }
 
+describe("runtime pre-built image (--build-config containerUri)", () => {
+  const privateUri = "123456789012.dkr.ecr.us-west-2.amazonaws.com/team/agent:v1";
+
+  test.each([
+    privateUri,
+    "public.ecr.aws/example/agent:v1",
+    `${privateUri.split(":")[0]}@sha256:${"a".repeat(64)}`,
+  ])("adds a pre-built image without language or local scaffolding: %s", async (containerUri) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io, core } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--build-config",
+      JSON.stringify({ containerUri }),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toEqual({
+      name: "image",
+      codeLocation: "app/image",
+      entrypoint: "main.py",
+      build: "Container",
+      protocol: "HTTP",
+      containerUri,
+    });
+    expect(await Bun.file(join(projectRoot, "app", "image", "README.md")).exists()).toBe(false);
+    expect(core.projectCommands).toEqual([]);
+    expect(io.stderr()).toContain("from a pre-built ECR image");
+    expect(io.stderr()).not.toContain("write your agent");
+  });
+
+  test("keeps the other add runtime flags, including CodeBuild-free VPC settings", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const networkConfig = {
+      subnets: ["subnet-0123456789abcdef0"],
+      securityGroups: Array.from({ length: 6 }, (_, i) => `sg-${String(i).padStart(17, "0")}`),
+    };
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "image",
+      "--language",
+      "typescript",
+      "--protocol",
+      "MCP",
+      "--network-mode",
+      "VPC",
+      "--network-config",
+      JSON.stringify(networkConfig),
+      "--build-config",
+      JSON.stringify({ build: "Container", containerUri: privateUri }),
+    ]);
+    expect(await runtimeOf(projectRoot, "image")).toMatchObject({
+      build: "Container",
+      containerUri: privateUri,
+      entrypoint: "main.js",
+      protocol: "MCP",
+      networkMode: "VPC",
+      networkConfig,
+    });
+  });
+
+  test.each<[string, Record<string, unknown>, string]>([
+    ["build CodeZip", { build: "CodeZip" }, "containerUri requires build 'Container'"],
+    [
+      "build ContainerLocal",
+      { build: "ContainerLocal" },
+      "containerUri requires build 'Container'",
+    ],
+    ["a Dockerfile", { dockerfile: "Dockerfile" }, "dockerfile cannot be used with containerUri"],
+    [
+      "a build context",
+      { buildContextPath: "app" },
+      "buildContextPath cannot be used with containerUri",
+    ],
+    [
+      "build args",
+      { customDockerBuildArgs: { VERSION: "1" } },
+      "customDockerBuildArgs cannot be used with containerUri",
+    ],
+  ])("rejects containerUri with %s before writing anything", async (_label, extra, message) => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const before = await specOf(projectRoot);
+    await expectError(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--build-config",
+        JSON.stringify({ containerUri: privateUri, ...extra }),
+      ]),
+      message,
+      InputValidationError,
+    );
+    expect(await specOf(projectRoot)).toEqual(before);
+  });
+
+  test.each([
+    '{"containerUri":"https://example.com/image:v1"}',
+    '{"containerUri":"docker.io/library/python:3.12"}',
+    '{"container_uri":"typo"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1 "}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent:v1!"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/agent@sha256:XYZ"}',
+    '{"containerUri":"123456789012.dkr.ecr.us-west-2.amazonaws.com/a:v1"}',
+  ])("rejects an invalid image setting: %s", async (value) => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expectError(
+      run(["add", "runtime", "--name", "image", "--build-config", value]),
+      "--build-config",
+      InputValidationError,
+    );
+  });
+
+  test("rejects pre-built images with a Bedrock Agent import", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await expect(
+      run([
+        "add",
+        "runtime",
+        "--name",
+        "image",
+        "--agent-id",
+        "A1B2C3D4E5",
+        "--build-config",
+        JSON.stringify({ containerUri: privateUri }),
+      ]),
+    ).rejects.toThrow(/--build-config cannot be combined/);
+  });
+});
+
 describe("project add runtime", () => {
   test.each(["Container", "ContainerLocal"])(
     "--build-config with build %s persists it and copies the Dockerfile",
@@ -327,6 +465,8 @@ describe("project add runtime", () => {
     "VPC",
     "--network-config",
     '{"subnets":["subnet-0123456789abcdef0"],"securityGroups":["sg-0123456789abcdef0"]}',
+    "--platform-version",
+    "V2",
     "--authorizer-type",
     "CUSTOM_JWT",
     "--authorizer-configuration",
@@ -335,6 +475,10 @@ describe("project add runtime", () => {
     "X-Custom-Header",
     "--lifecycle-configuration",
     '{"idleRuntimeSessionTimeout":300,"maxLifetime":3600}',
+    "--resource-configurations",
+    '[{"minimumMemoryInMiB":4096}]',
+    "--hooks-configuration",
+    '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup","port":8080}}}}}',
     "--environment-variables",
     '{"LOG_LEVEL":"debug","APP_ENV":"staging"}',
     "--filesystem-configurations",
@@ -430,6 +574,46 @@ describe("project add runtime", () => {
     },
   );
 
+  test("warns when --hooks-configuration has no warmup hook in camelCase, and still adds it", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "pascal_hooks",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--hooks-configuration",
+      '{"Build":{"Warmup":{"Action":{"HttpPost":{"Path":"/warmup"}}}}}',
+    ]);
+
+    expect(io.stderr()).toContain(
+      "Warning: Runtime 'pascal_hooks' has a hooksConfiguration without build.warmup.action.httpPost.path",
+    );
+    expect((await runtimeOf(projectRoot, "pascal_hooks"))?.hooksConfiguration).toEqual({
+      Build: { Warmup: { Action: { HttpPost: { Path: "/warmup" } } } },
+    });
+  });
+
+  test("a recognized warmup hook adds without a warning", async () => {
+    const { cleanup } = await initProject();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "add",
+      "runtime",
+      "--name",
+      "camel_hooks",
+      "--language",
+      "python",
+      "--hooks-configuration",
+      '{"build":{"warmup":{"action":{"httpPost":{"path":"/warmup"}}}}}',
+    ]);
+    expect(io.stderr()).not.toContain("Warning:");
+  });
+
   test("infrastructure flags are written to the spec entry", async () => {
     const { projectRoot, cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -458,6 +642,7 @@ describe("project add runtime", () => {
         subnets: ["subnet-0123456789abcdef0"],
         securityGroups: ["sg-0123456789abcdef0"],
       },
+      platformVersion: "V2",
       authorizerType: "CUSTOM_JWT",
       authorizerConfiguration: {
         customJwtAuthorizer: {
@@ -467,6 +652,10 @@ describe("project add runtime", () => {
       },
       requestHeaderAllowlist: ["X-Custom-Header"],
       lifecycleConfiguration: { idleRuntimeSessionTimeout: 300, maxLifetime: 3600 },
+      resourceConfigurations: [{ minimumMemoryInMiB: 4096 }],
+      hooksConfiguration: {
+        build: { warmup: { action: { httpPost: { path: "/warmup", port: 8080 } } } },
+      },
       envVars: [
         { name: "LOG_LEVEL", value: "debug" },
         { name: "APP_ENV", value: "staging" },
@@ -474,6 +663,35 @@ describe("project add runtime", () => {
       filesystemConfigurations: [{ sessionStorage: { mountPath: "/mnt/data" } }],
       tags: { team: "ml", env: "test" },
     });
+  });
+
+  test("an S3 bucket mount is written to the spec entry", async () => {
+    const { projectRoot, cleanup } = await initProject();
+    cleanups.push(cleanup);
+    await run([
+      "add",
+      "runtime",
+      "--name",
+      "s3_agent",
+      "--language",
+      "python",
+      "--platform-version",
+      "V2",
+      "--filesystem-configurations",
+      JSON.stringify([
+        {
+          s3BucketMount: {
+            bucket: "amzn-s3-demo-bucket",
+            mountPath: "/mnt/data",
+            prefix: "sessions/{runtimeSessionId}/",
+            s3BucketOwner: "123456789012",
+            s3BucketRegion: "us-west-2",
+          },
+        },
+      ]),
+    ]);
+
+    expect(await runtimeOf(projectRoot, "s3_agent")).toMatchSnapshot();
   });
 
   test("an existing folder keeps the user's files; only missing docs are added", async () => {
@@ -554,6 +772,18 @@ describe("project add runtime", () => {
       "invalid JSON in --network-config",
       ["--name", "my_agent", "--language", "python", "--network-config", "{bad}"],
     ],
+    [
+      "an empty hook path in --hooks-configuration",
+      [
+        "--name",
+        "my_agent",
+        "--language",
+        "python",
+        "--hooks-configuration",
+        '{"build":{"warmup":{"action":{"httpPost":{"path":""}}}}}',
+      ],
+      "path",
+    ],
   ])("%s", async (...[_label, flags, requiredMessage]) => {
     const { cleanup } = await initProject();
     cleanups.push(cleanup);
@@ -566,6 +796,7 @@ describe("project add runtime", () => {
     ["--model-provider", "anthropic"],
     ["--language", "rust"],
     ["--protocol", "GRPC"],
+    ["--platform-version", "v2"],
     ["--type", "create"],
     ["--type", "import"],
   ])("rejects %s %s and writes nothing", async (flagName, value) => {

@@ -26,14 +26,14 @@ export async function regionFromConfigFile(): Promise<string | undefined> {
   const wanted = profile === "default" ? "default" : `profile ${profile}`;
 
   let inSection = false;
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)[#;].*$/, "").trim();
     if (line.startsWith("[") && line.endsWith("]")) {
       inSection = line.slice(1, -1).trim() === wanted;
       continue;
     }
-    if (inSection && line.startsWith("region")) {
-      const value = line.split("=")[1]?.trim();
+    if (inSection) {
+      const value = /^region\s*=\s*(.*)$/.exec(line)?.[1]?.trim();
       if (value) return value;
     }
   }
