@@ -89,6 +89,9 @@ export const BOX_BEDROCK_ROUTE = "bedrock";
  */
 export const BOX_BEDROCK_API_KEY_ROUTE = "bedrock-api-key";
 
+/** The variable that the secret of {@link BOX_BEDROCK_API_KEY_ROUTE} reads its key from. */
+export const BOX_BEDROCK_API_KEY_ENV = "AWS_BEARER_TOKEN_BEDROCK";
+
 /** The `bedrock.sign-in` of the Runtime profile, which selects {@link BOX_BEDROCK_API_KEY_ROUTE}. */
 export const BOX_BEDROCK_RUNTIME_SIGN_IN = "api-key";
 

@@ -10,7 +10,7 @@
  * | `[options] bedrock.sign-in` | `api-key`, beside `bedrock.region`: the gateway signs each Bedrock call, and box refuses the `aws://` route of @box/bedrock beside its backend |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
- * | `[agent.env]`, the runtime's `envVars` | each variable of the `envVars` in agentcore.json that the profile and the @box/agentcore pack do not set comes in as `{ from = "env:<name>" }`, so the agent gets the value that the Runtime sets; one that box refuses to give the agent stays out, with a warning |
+ * | `[agent.env]`, the runtime's `envVars` | each variable of the `envVars` in agentcore.json comes in as `{ from = "env:<name>" }`, so the agent gets the value that the Runtime sets; one that the profile or the @box/agentcore pack already sets, or that box refuses to give the agent, stays out, with a warning |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
@@ -32,6 +32,7 @@ import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
   agentCorePackEnvNames,
+  BOX_BEDROCK_API_KEY_ENV,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_RUNTIME_SIGN_IN,
   boxIngressPort,
@@ -279,13 +280,15 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
 }
 
 /**
- * The variables that box sets for the agent itself: its home and temporary folders, the user, its
- * proxy, its CA bundles, and each `OTEL_EXPORTER_OTLP_*` variable ({@link boxSetsEnv}). Box
- * refuses an `[agent.env]` entry for most of them, and the others must name a folder of the box.
+ * The variables that box sets for the agent itself: its home, temporary, and current folders, the
+ * user, its proxy, its CA bundles, and each `OTEL_EXPORTER_OTLP_*` variable ({@link boxSetsEnv}).
+ * Box refuses an `[agent.env]` entry for most of them, and `HOME` and `TMPDIR` must name a folder
+ * of the box.
  */
 const BOX_ENV_NAMES: ReadonlySet<string> = new Set([
   "HOME",
   "TMPDIR",
+  "PWD",
   "USER",
   "HTTP_PROXY",
   "HTTPS_PROXY",
@@ -308,26 +311,41 @@ function boxSetsEnv(name: string): boolean {
 }
 
 /**
- * The AWS credential variables that @box/aws-secrets-manager passes to its program. Box refuses to
- * give the agent one of them, and the agent needs none: box signs each AWS call.
+ * Whether `name` is a variable of the dynamic loader, `LD_*`. The loader reads it for each program
+ * in the box, so box refuses an `[agent.env]` entry for it.
+ */
+function loaderEnv(name: string): boolean {
+  return name.startsWith("LD_");
+}
+
+/**
+ * The AWS credential variables. Box refuses to give the agent the ones that the
+ * @box/aws-secrets-manager plugin protects, and the agent needs none: box signs each AWS call.
+ * The Bedrock API key is one of them: on the Runtime, build turns on the API key route of
+ * @box/bedrock, whose secret reads it, and that route is in no table of the profile.
  */
 const AWS_CREDENTIAL_ENV_NAMES: ReadonlySet<string> = new Set([
   "AWS_ACCESS_KEY_ID",
   "AWS_SECRET_ACCESS_KEY",
   "AWS_SESSION_TOKEN",
   "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+  BOX_BEDROCK_API_KEY_ENV,
 ]);
 
 /**
  * `agent`, with each variable of the runtime's `envVars` in agentcore.json forwarded into
  * `[agent.env]` as `{ from = "env:<name>" }`. AgentCore Runtime sets each one in the environment of
- * box, and box gives the agent only the variables that the profile names. A forwarded value is
- * copied literally, and a variable that the Runtime does not set gives no entry.
+ * box, and box gives the agent only the variables that the profile names. Box copies a forwarded
+ * value literally when the run starts.
  *
- * A variable that `[agent.env]` already sets keeps that value, and one that the @box/agentcore pack
- * sets keeps the pack's value. A variable that box refuses to give the agent stays out, with a
- * warning: one that box sets itself, a credential of a route or a server of `profile`, an AWS
- * credential, and `LOCAL_DEV`, `AWS_PROFILE`, and the port variable of the protocol.
+ * Each variable that does not go to the agent gives a warning:
+ *
+ * - `AWS_REGION` and `AWS_DEFAULT_REGION`: the agent gets the region of the Runtime.
+ * - a variable that the @box/agentcore pack sets: the pack's value stays.
+ * - a variable that box sets itself, or a variable of the dynamic loader.
+ * - a credential: of a route or a server of `profile` or of the Box network model, or of AWS.
+ * - `AWS_PROFILE`, `LOCAL_DEV`, and the port variable of the protocol.
+ * - a variable that `[agent.env]` already sets: that value stays.
  */
 function withRuntimeEnvVars(
   agent: unknown,
@@ -351,8 +369,9 @@ function withRuntimeEnvVars(
         `agent in the box: ${reason}.`,
     );
   for (const name of new Set(envVars.map((envVar) => envVar.name))) {
-    if (Object.hasOwn(result, name)) continue;
-    if (packNames.has(name)) {
+    if (REGION_ENV_NAMES.has(name)) {
+      skip(name, "the agent gets the region of the Runtime, which the profile routes");
+    } else if (packNames.has(name)) {
       skip(
         name,
         `the ${AGENTCORE_PACK_NAME} pack sets it. To give the agent another value, set it in ` +
@@ -360,6 +379,8 @@ function withRuntimeEnvVars(
       );
     } else if (boxSetsEnv(name)) {
       skip(name, "box sets it for the agent itself");
+    } else if (loaderEnv(name)) {
+      skip(name, "box does not let the profile set a variable of the dynamic loader");
     } else if (credentials.has(name) || AWS_CREDENTIAL_ENV_NAMES.has(name)) {
       skip(name, "it is a credential, which box keeps from the agent");
     } else if (name === AWS_PROFILE) {
@@ -368,6 +389,12 @@ function withRuntimeEnvVars(
       skip(name, "it tells the agent that it runs under agentcore dev");
     } else if (name === port) {
       skip(name, "the agent listens on the port that box sends the requests of the Runtime to");
+    } else if (Object.hasOwn(result, name)) {
+      skip(
+        name,
+        `[agent.env] of the Runtime profile sets it, from ${context.profileFile} or for the ` +
+          "Runtime, and the agent gets that value",
+      );
     } else {
       result[name] = { from: `env:${name}` };
     }
@@ -379,8 +406,9 @@ function withRuntimeEnvVars(
 const ENV_SECRET_SCHEME = "env://";
 
 /**
- * The variable of each `env://` credential of `profile`, a Runtime profile, and of each route that
- * the Box network model gives an API key, whether a pack or the profile declares the route.
+ * The variable of each `env://` credential: of `profile`, a Runtime profile; of each route that the
+ * Box network model gives an API key; and of each MCP server of the network model. A pack or the
+ * profile can declare each route and server.
  */
 function credentialVariables(
   profile: Readonly<TomlTable>,

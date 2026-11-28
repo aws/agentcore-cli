@@ -979,19 +979,43 @@ describe("the additions rule", () => {
       expect(agentOf(parse(text) as TomlTable).env.TABLE_NAME).toEqual(forward("TABLE_NAME"));
     });
 
-    test("keeps the value that [agent.env] sets, the template's, the user's, and the Runtime's", () => {
-      const runtime = withEnvVars(CODEZIP, "LOG_LEVEL", "PORT", "AWS_REGION", "PYTHONPATH");
+    test("keeps the value that [agent.env] sets, the template's, the user's, and the Runtime's, and says so", () => {
+      const runtime = withEnvVars(CODEZIP, "LOG_LEVEL", "PYTHONUTF8", "PYTHONPATH");
       const local = createdProfile(runtime);
       agentOf(local).env = { ...agentOf(local).env, LOG_LEVEL: "debug" };
 
-      const { table, warnings } = apply({ ...local, packs: ["@box/base"] }, contextOf(runtime));
+      const { table, warnings } = apply(local, contextOf(runtime));
 
       const env = agentOf(table).env;
       expect(env.LOG_LEVEL).toBe("debug");
-      expect(env.PORT).toBe("8081");
-      expect(env.AWS_REGION).toBe("${{ inputs.aws.region }}");
+      expect(env.PYTHONUTF8).toBe("1");
       expect(env.PYTHONPATH).toBe("${{ inputs.code.dir }}");
-      expect(warnings).toEqual([]);
+      const reason =
+        `[agent.env] of the Runtime profile sets it, from ${PROFILE_FILE} or for the Runtime, ` +
+        "and the agent gets that value";
+      expect(warnings).toEqual(
+        ["LOG_LEVEL", "PYTHONUTF8", "PYTHONPATH"].map((name) => skipped(name, reason)),
+      );
+    });
+
+    test("gives the agent the region of the Runtime, with @box/bedrock and without it, and says so", () => {
+      const runtime = withEnvVars(CODEZIP, "AWS_REGION", "AWS_DEFAULT_REGION");
+      const reason = "the agent gets the region of the Runtime, which the profile routes";
+
+      for (const packs of [["@box/base"], ["@box/base", BOX_BEDROCK_PACK]]) {
+        const { table, warnings } = apply({ packs, agent: { env: {} } }, contextOf(runtime));
+
+        const env = agentOf(table).env;
+        // @box/bedrock sets AWS_REGION itself, so the profile neither sets nor forwards it.
+        expect(env.AWS_REGION).toBe(
+          packs.includes(BOX_BEDROCK_PACK) ? undefined : "${{ inputs.aws.region }}",
+        );
+        expect(env.AWS_DEFAULT_REGION).toBe("${{ inputs.aws.region }}");
+        expect(warnings).toEqual([
+          skipped("AWS_REGION", reason),
+          skipped("AWS_DEFAULT_REGION", reason),
+        ]);
+      }
     });
 
     test("keeps the value of the @box/agentcore pack, and says how to change it", () => {
@@ -1074,6 +1098,7 @@ describe("the additions rule", () => {
         skipped("DOCS_TOKEN", reason),
         skipped("MODEL_KEY", reason),
         skipped("AWS_SESSION_TOKEN", reason),
+        skipped("AWS_ACCESS_KEY_ID", reason),
       ]);
     });
 
@@ -1101,6 +1126,100 @@ describe("the additions rule", () => {
           "A2A_PORT",
           "the agent listens on the port that box sends the requests of the Runtime to",
         ),
+      ]);
+    });
+
+    test("keeps the URL of a gateway of the project that the @box/agentcore pack sets", () => {
+      const runtime = withEnvVars(CONTAINER, "AGENTCORE_GATEWAY_TOOLS_URL");
+      const gateway = {
+        name: "tools",
+        target: "egress-gateway-tools",
+        variablePrefix: "AGENTCORE_GATEWAY_TOOLS",
+        auth: "iam",
+      } as const;
+
+      const { table, warnings } = apply(
+        { agent: { env: {} } },
+        { ...contextOf(runtime), projectGateways: [gateway] },
+      );
+
+      expect(agentOf(table).env).not.toHaveProperty("AGENTCORE_GATEWAY_TOOLS_URL");
+      expect(warnings).toEqual([
+        skipped(
+          "AGENTCORE_GATEWAY_TOOLS_URL",
+          `the @box/agentcore pack sets it. To give the agent another value, set it in ` +
+            `[agent.env] of ${PROFILE_FILE}`,
+        ),
+      ]);
+    });
+
+    test("forwards an OTEL variable when the envVars turn observability off, so the pack sets none", () => {
+      const otel = runtimeOf("Container", "HTTP", "Bedrock", true);
+      const runtime: ProjectRuntime = {
+        ...otel,
+        envVars: [
+          { name: "DISABLE_ADOT_OBSERVABILITY", value: "true" },
+          { name: "OTEL_PYTHON_DISTRO", value: "other" },
+        ],
+      };
+
+      const { table, warnings } = apply({ agent: { env: {} } }, contextOf(runtime));
+
+      expect(agentOf(table).env.OTEL_PYTHON_DISTRO).toEqual(forward("OTEL_PYTHON_DISTRO"));
+      expect(warnings).toEqual([]);
+    });
+
+    test("leaves out a variable of the dynamic loader, and PWD, and says so", () => {
+      const runtime = withEnvVars(CONTAINER, "LD_LIBRARY_PATH", "LD_PRELOAD", "PWD");
+
+      const { table, warnings } = apply({ agent: { env: {} } }, contextOf(runtime));
+
+      for (const name of ["LD_LIBRARY_PATH", "LD_PRELOAD", "PWD"]) {
+        expect(agentOf(table).env).not.toHaveProperty(name);
+      }
+      const loader = "box does not let the profile set a variable of the dynamic loader";
+      expect(warnings).toEqual([
+        skipped("LD_LIBRARY_PATH", loader),
+        skipped("LD_PRELOAD", loader),
+        skipped("PWD", "box sets it for the agent itself"),
+      ]);
+    });
+
+    test("leaves out the Bedrock API key, which the API key route of @box/bedrock reads on the Runtime", () => {
+      const runtime = withEnvVars(CODEZIP, "AWS_BEARER_TOKEN_BEDROCK");
+
+      const { table, warnings } = apply(createdProfile(runtime), contextOf(runtime));
+
+      expect(agentOf(table).env).not.toHaveProperty("AWS_BEARER_TOKEN_BEDROCK");
+      expect(warnings).toEqual([
+        skipped("AWS_BEARER_TOKEN_BEDROCK", "it is a credential, which box keeps from the agent"),
+      ]);
+    });
+
+    test("leaves out the credential of a server that only the Box network model has", () => {
+      const runtime = withEnvVars(CONTAINER, "PACK_TOKEN");
+      const host = {
+        host: "docs.example.com",
+        authority: "docs.example.com",
+        sources: [
+          {
+            kind: "mcp",
+            mcpEntry: "docs",
+            destinations: ["docs.example.com"],
+            secret: { ref: "env://PACK_TOKEN" },
+          },
+        ],
+        outboundAuth: { kind: "none" },
+      } as unknown as BoxNetworkHost;
+
+      const { table, warnings } = apply(
+        { agent: { env: {} } },
+        { ...contextOf(runtime), hosts: [host] },
+      );
+
+      expect(agentOf(table).env).not.toHaveProperty("PACK_TOKEN");
+      expect(warnings).toEqual([
+        skipped("PACK_TOKEN", "it is a credential, which box keeps from the agent"),
       ]);
     });
 
