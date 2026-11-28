@@ -1,3 +1,23 @@
+{{!-- The API key of a boxed agent, which every keyed provider below includes. --}}
+{{#*inline "boxApiKey"}}
+
+IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
+
+
+def _get_api_key() -> str:
+    """
+    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
+    real key on each model call as it leaves the box, so the agent never holds it.
+    """
+    api_key = os.getenv(IDENTITY_ENV_VAR)
+    if not api_key:
+        raise RuntimeError(
+            f"{IDENTITY_ENV_VAR} is not set: set it to your API key in agentcore/.env.local, "
+            "then run agentcore dev or agentcore deploy again. The box gives the agent a "
+            "stand-in key under this name, and puts the real key on each model call."
+        )
+    return api_key
+{{/inline}}
 {{#if (eq modelProvider "Bedrock")}}
 from strands.models.bedrock import BedrockModel
 
@@ -11,19 +31,7 @@ import os
 
 from strands.models.anthropic import AnthropicModel
 {{#if box}}
-
-IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
-
-
-def _get_api_key() -> str:
-    """
-    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
-    real key on each model call as it leaves the box, so the agent never holds it.
-    """
-    api_key = os.getenv(IDENTITY_ENV_VAR)
-    if not api_key:
-        raise RuntimeError(f"{IDENTITY_ENV_VAR} not found: the box profile sets it for the agent")
-    return api_key
+{{> boxApiKey}}
 {{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
@@ -66,19 +74,7 @@ import os
 
 from strands.models.openai import OpenAIModel
 {{#if box}}
-
-IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
-
-
-def _get_api_key() -> str:
-    """
-    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
-    real key on each model call as it leaves the box, so the agent never holds it.
-    """
-    api_key = os.getenv(IDENTITY_ENV_VAR)
-    if not api_key:
-        raise RuntimeError(f"{IDENTITY_ENV_VAR} not found: the box profile sets it for the agent")
-    return api_key
+{{> boxApiKey}}
 {{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
@@ -120,19 +116,7 @@ import os
 
 from strands.models.gemini import GeminiModel
 {{#if box}}
-
-IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
-
-
-def _get_api_key() -> str:
-    """
-    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
-    real key on each model call as it leaves the box, so the agent never holds it.
-    """
-    api_key = os.getenv(IDENTITY_ENV_VAR)
-    if not api_key:
-        raise RuntimeError(f"{IDENTITY_ENV_VAR} not found: the box profile sets it for the agent")
-    return api_key
+{{> boxApiKey}}
 {{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 
@@ -177,19 +161,7 @@ import os
 from strands.models.litellm import LiteLLMModel
 {{#if identityProviders.[0].name}}
 {{#if box}}
-
-IDENTITY_ENV_VAR = "{{identityProviders.[0].envVarName}}"
-
-
-def _get_api_key() -> str:
-    """
-    The box gives the agent a stand-in key under IDENTITY_ENV_VAR and puts the
-    real key on each model call as it leaves the box, so the agent never holds it.
-    """
-    api_key = os.getenv(IDENTITY_ENV_VAR)
-    if not api_key:
-        raise RuntimeError(f"{IDENTITY_ENV_VAR} not found: the box profile sets it for the agent")
-    return api_key
+{{> boxApiKey}}
 {{else}}
 from bedrock_agentcore.identity.auth import requires_api_key
 

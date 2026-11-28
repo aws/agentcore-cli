@@ -13,6 +13,8 @@ import { importScaffoldRuntimeInput } from "../../../handlers/project/importBedr
 import type { ModelProvider } from "../../../handlers/project/types";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { readEnvFile } from "../../../io/envFile";
+import { parse } from "smol-toml";
+import { renderBoxProfile } from "./boxProfile";
 
 // Runtime templates are scaffolded by `agentcore create --template` (and its
 // wizard, which adds model overrides) and by `add runtime --agent-id` (a Bedrock Agent import). These
@@ -297,27 +299,54 @@ describe("runtime templates", () => {
   // The create wizard is the only way to give a box template a model provider key. A boxed agent
   // cannot read AgentCore Identity: it reads the stand-in key the box sets under the credential's
   // variable, and the box puts the real key on each model call.
+  const BOX_PROVIDERS: ModelProvider[] = [
+    "OpenAI",
+    "OpenAICompatible",
+    "Anthropic",
+    "Gemini",
+    "LiteLLM",
+  ];
   test.each<[RuntimeTemplateShortcutName, ModelProvider]>([
-    ["agent-python-strands-box", "OpenAI"],
-    ["agent-python-strands-box", "Anthropic"],
-    ["agent-python-strands-box", "Gemini"],
-    ["agent-python-strands-box", "LiteLLM"],
+    ...BOX_PROVIDERS.flatMap((provider) =>
+      (
+        ["agent-python-strands-box", "a2a-python-strands-box", "agui-python-strands-box"] as const
+      ).map((template): [RuntimeTemplateShortcutName, ModelProvider] => [template, provider]),
+    ),
     ["agent-python-strands-box-container", "OpenAI"],
-    ["a2a-python-strands-box", "OpenAI"],
-    ["agui-python-strands-box", "OpenAI"],
   ])(
     "%s with %s reads its API key from the box, not AgentCore Identity",
     async (template, provider) => {
-      const { appDir } = await addTemplate("my_agent", template, {
-        model: { modelProvider: provider, apiKey: "test-api-key" },
-      });
+      const model = {
+        modelProvider: provider,
+        apiKey: "test-api-key",
+        ...(provider === "OpenAICompatible" && {
+          modelId: "deepseek-chat",
+          apiBase: "https://api.deepseek.com/v1",
+        }),
+        ...(provider === "LiteLLM" && { modelId: "openai/gpt-4o" }),
+      };
+      const { appDir } = await addTemplate("my_agent", template, { model });
       const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
       expect(loadPy).not.toContain("requires_api_key");
       expect(loadPy).not.toContain("LOCAL_DEV");
-      expect(loadPy).toContain(
-        `IDENTITY_ENV_VAR = "${credentialEnvVarName(`my_agent${provider}ApiKey`)}"`,
-      );
       expect(loadPy).toContain("api_key = os.getenv(IDENTITY_ENV_VAR)");
+      if (provider === "OpenAICompatible") {
+        expect(loadPy).toContain('"base_url": "https://api.deepseek.com/v1"');
+      }
+
+      // load.py reads the variable that the box profile's model route names in its secret.ref.
+      const profile = parse(
+        renderBoxProfile(
+          "Demo",
+          resolveRuntimeTemplateShortcut(template, { runtimeName: "my_agent", ...model }),
+          "us-west-2",
+        )!,
+      ) as { egress: Record<string, { secret?: { ref: string } }> };
+      const refs = Object.values(profile.egress).flatMap(({ secret }) =>
+        secret?.ref.startsWith("env://") ? [secret.ref.slice("env://".length)] : [],
+      );
+      expect(refs).toHaveLength(1);
+      expect(loadPy).toContain(`IDENTITY_ENV_VAR = "${refs[0]}"`);
     },
   );
 
