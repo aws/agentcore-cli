@@ -363,13 +363,9 @@ describe(
   },
 );
 
-// In CI, the AgentCore Runtime logs of the LangChain box agent hold OpenTelemetry's "Failed to
-// detach context" at ERROR level, which the log check of the deploy refuses, so the deploy tests
-// leave it out in CI until the template or the check handles that message. Its dev test below
-// still runs there.
-const DEPLOY_TEMPLATES = BOX_TEMPLATES.filter(
-  (t) => !(process.env.CI === "true" && t.name === "agent_python_langchain_box"),
-);
+// Every Box template deploys, the LangChain one too: the log check ignores the OpenTelemetry noise
+// its agent logs at ERROR level (RUNTIME_LOG_NOISE).
+const DEPLOY_TEMPLATES = BOX_TEMPLATES;
 // The templates that run the whole flow, dev before and after build and deploy in one project: one
 // CodeZip and the container one. Each other template runs build and deploy here, and dev in its own
 // test below, so its deploy does not wait for a dev step on the shared box ingress port.
@@ -1360,8 +1356,19 @@ async function assertRunsInBox(
   );
   const errors = await logs('?ERROR ?"blocked by egress control" ?AccessDenied');
   expect(errors.exitCode).toBe(0);
-  expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);
+  const failures = errors.stdout
+    .split("\n")
+    .filter((line) => /ERROR|blocked by egress control|AccessDenied/.test(line))
+    .filter((line) => !RUNTIME_LOG_NOISE.some((noise) => line.includes(noise)));
+  expect(failures).toEqual([]);
 }
+
+/**
+ * Runtime log lines at ERROR level that say nothing about the agent: OpenTelemetry's context
+ * warning, which the LangChain agent logs when a span ends in another async context than it
+ * started in, while the request itself succeeds.
+ */
+const RUNTIME_LOG_NOISE = ["Failed to detach context"];
 
 /** Deploys `projectDir`, runs `scenario`, and tears the stack down even when a step fails. */
 async function deployed(
