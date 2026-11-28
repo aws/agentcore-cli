@@ -294,6 +294,46 @@ describe("runtime templates", () => {
     ).toThrow(/only supported with the openai_compatible model provider/);
   });
 
+  // The create wizard is the only way to give a box template a model provider key. A boxed agent
+  // cannot read AgentCore Identity: it reads the stand-in key the box sets under the credential's
+  // variable, and the box puts the real key on each model call.
+  test.each<[RuntimeTemplateShortcutName, ModelProvider]>([
+    ["agent-python-strands-box", "OpenAI"],
+    ["agent-python-strands-box", "Anthropic"],
+    ["agent-python-strands-box", "Gemini"],
+    ["agent-python-strands-box", "LiteLLM"],
+    ["agent-python-strands-box-container", "OpenAI"],
+    ["a2a-python-strands-box", "OpenAI"],
+    ["agui-python-strands-box", "OpenAI"],
+  ])(
+    "%s with %s reads its API key from the box, not AgentCore Identity",
+    async (template, provider) => {
+      const { appDir } = await addTemplate("my_agent", template, {
+        model: { modelProvider: provider, apiKey: "test-api-key" },
+      });
+      const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+      expect(loadPy).not.toContain("requires_api_key");
+      expect(loadPy).not.toContain("LOCAL_DEV");
+      expect(loadPy).toContain(
+        `IDENTITY_ENV_VAR = "${credentialEnvVarName(`my_agent${provider}ApiKey`)}"`,
+      );
+      expect(loadPy).toContain("api_key = os.getenv(IDENTITY_ENV_VAR)");
+    },
+  );
+
+  test.each<RuntimeTemplateShortcutName>([
+    "agent-python-strands",
+    "a2a-python-strands",
+    "agui-python-strands",
+  ])("%s with a model provider key still reads it from AgentCore Identity", async (template) => {
+    const { appDir } = await addTemplate("my_agent", template, {
+      model: { modelProvider: "OpenAI", apiKey: "test-api-key" },
+    });
+    const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+    expect(loadPy).toContain("@requires_api_key(provider_name=IDENTITY_PROVIDER_NAME)");
+    expect(loadPy).toContain('if os.getenv("LOCAL_DEV") == "1":');
+  });
+
   test.each<ModelProvider>(["Anthropic", "OpenAI", "Gemini"])(
     "%s scaffolds agent-python-strands with an API-key credential",
     async (provider) => {
