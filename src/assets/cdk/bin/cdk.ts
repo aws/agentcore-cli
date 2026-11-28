@@ -9,7 +9,7 @@ try {
   const app = new App();
   // Box: every file asset of the stack (the agent code, the container build source, and the template)
   // goes under strands-box/, so the runtime's code location shows it runs in Strands Box.
-  const boxProject = (project.agentCoreJson as { projectType?: string }).projectType === 'box';
+  const boxProject = isBoxProject(project.agentCoreJson);
   for (const stack of resolveTargetStacks({
     projectName: project.projectName,
     targets: project.targets,
@@ -31,4 +31,14 @@ try {
 } catch (error) {
   console.error('AgentCore CDK synthesis failed:', error instanceof Error ? error.message : error);
   process.exit(1);
+}
+
+/** Whether agentcore.json has `"projectType": "box"`. readAgentCoreProject returns it as `unknown`. */
+function isBoxProject(agentCoreJson: unknown): boolean {
+  return (
+    typeof agentCoreJson === 'object' &&
+    agentCoreJson !== null &&
+    'projectType' in agentCoreJson &&
+    agentCoreJson.projectType === 'box'
+  );
 }

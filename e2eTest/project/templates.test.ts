@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import spawn from "cross-spawn";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -418,6 +418,7 @@ describe.skipIf(!BOX_DEPLOYS)(
 
           // Build after dev, as a user does: build runs box on the local profile that dev ran.
           parseResult(JsonObjectSchema, await cli.run(["build", "--json"], projectDir));
+          await assertStrandsBoxAssets(projectDir);
 
           const deployment = parseResult(
             DeployResponseSchema,
@@ -1278,6 +1279,38 @@ function assertEgressReply(body: string): void {
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent,
  * then checks they show no box error. The logs arrive a little after the invoke, so it retries.
  */
+/**
+ * The synthesized stack of a Box project puts every file asset under the `strands-box/` S3 key (the
+ * vended CDK app's bucketPrefix), and tags the image of each container runtime `strands-box-<hash>`
+ * (the L3's image tag prefix), so the runtime's code or image URI shows that it belongs to a Strands
+ * Box project. Reads `agentcore build`'s output in agentcore/cdk/cdk.out.
+ */
+async function assertStrandsBoxAssets(projectDir: string): Promise<void> {
+  const cdkOut = join(projectDir, "agentcore", "cdk", "cdk.out");
+  const manifestFiles = (await readdir(cdkOut)).filter((file) => file.endsWith(".assets.json"));
+  expect(manifestFiles.length).toBeGreaterThan(0);
+  for (const file of manifestFiles) {
+    const manifest = JSON.parse(await readFile(join(cdkOut, file), "utf-8")) as {
+      files?: Record<string, { destinations: Record<string, { objectKey: string }> }>;
+    };
+    const keys = Object.values(manifest.files ?? {}).flatMap((asset) =>
+      Object.values(asset.destinations).map((destination) => destination.objectKey),
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(key).toMatch(/^strands-box\//);
+  }
+
+  const spec = JSON.parse(
+    await readFile(join(projectDir, "agentcore", "agentcore.json"), "utf-8"),
+  ) as { runtimes: { build: string }[] };
+  if (!spec.runtimes.some((runtime) => runtime.build === "Container")) return;
+  const templates = (await readdir(cdkOut)).filter((file) => file.endsWith(".template.json"));
+  const templateText = (
+    await Promise.all(templates.map((file) => readFile(join(cdkOut, file), "utf-8")))
+  ).join("\n");
+  expect(templateText).toMatch(/:strands-box-[0-9a-f]{64}"/);
+}
+
 async function assertRunsInBox(
   cli: CliRunner,
   projectDir: string,
