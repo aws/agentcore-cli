@@ -1,6 +1,6 @@
 from strands import Agent, tool
 from strands.multiagent.a2a.executor import StrandsA2AExecutor
-from bedrock_agentcore.runtime import serve_a2a
+from bedrock_agentcore.runtime import BedrockAgentCoreContext, serve_a2a
 from model.load import load_model
 from memory.session import get_memory_session_manager
 {{#if needsOs}}
@@ -82,11 +82,16 @@ You have access to the following mounted filesystems. Use file_read, file_write,
 {{/each}}{{/if}}
 """
 
+# Memory keeps the conversation under the AgentCore Runtime session that serve_a2a reads from the
+# request (X-Amzn-Bedrock-AgentCore-Runtime-Session-Id), as an HTTP agent does: a runtime in a box
+# may read and write only the Memory events of its own session. With no runtime session, as in a
+# local run, it uses the A2A context_id.
 def create_agent(context_id: str) -> Agent:
+    session_id = BedrockAgentCoreContext.get_session_id() or context_id
     return Agent(
         name="{{ name }}",
         model=load_model(),
-        session_manager=get_memory_session_manager(context_id, "default-user"),
+        session_manager=get_memory_session_manager(session_id, "default-user"),
         system_prompt=SYSTEM_PROMPT,
         tools=tools,
     )

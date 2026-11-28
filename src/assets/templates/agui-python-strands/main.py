@@ -1,7 +1,8 @@
 import os
+from contextvars import ContextVar
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from strands import Agent, tool
 from ag_ui_strands import StrandsAgent, StrandsAgentConfig, add_ping, add_strands_fastapi_endpoint
@@ -21,11 +22,19 @@ agent = Agent(
     tools=[add_numbers],
 )
 
-# The AG-UI protocol carries a per-conversation thread_id; each thread gets its
-# own session manager so history is scoped to the conversation. Returns None
+# The AgentCore Runtime session of the request, from its
+# X-Amzn-Bedrock-AgentCore-Runtime-Session-Id header (see the middleware below).
+_runtime_session_id: ContextVar[str | None] = ContextVar("runtime_session_id", default=None)
+
+
+# Each AG-UI thread gets its own session manager. Memory keeps the conversation
+# under the AgentCore Runtime session, as an HTTP agent does: a runtime in a box
+# may read and write only the Memory events of its own session. With no runtime
+# session, as in a local run, it uses the AG-UI thread_id. Returns None
 # (in-process history only) until the deployed MEMORY_ID env var is set.
 def session_manager_provider(input_data):
-    return get_memory_session_manager(input_data.thread_id, "default-user")
+    session_id = _runtime_session_id.get() or input_data.thread_id
+    return get_memory_session_manager(session_id, "default-user")
 
 
 config = StrandsAgentConfig(session_manager_provider=session_manager_provider)
@@ -42,6 +51,13 @@ app = FastAPI(title="AWS Strands - {{ name }}", telemetry={"auto_configure": Fal
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+
+
+@app.middleware("http")
+async def read_runtime_session(request: Request, call_next):
+    _runtime_session_id.set(request.headers.get("x-amzn-bedrock-agentcore-runtime-session-id"))
+    return await call_next(request)
+
 # The AG-UI endpoint at /invocations and a health check at /ping, matching the
 # AgentCore Runtime HTTP service contract on 8080.
 add_strands_fastapi_endpoint(app, agui_agent, "/invocations")
