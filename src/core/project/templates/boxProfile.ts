@@ -1,4 +1,5 @@
 import { join, posix } from "node:path";
+import { partition } from "@aws-sdk/util-endpoints";
 import semver from "semver";
 import { callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
@@ -735,9 +736,30 @@ const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
 const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
 
 /**
- * The `[agent.env]` of the {@link renderAgentCorePack} pack, by name: the ID of each project
- * memory, the OTEL variables with OTEL on for `runtime`, and the URL of each gateway of the
- * project that the agent calls through the Box gateway.
+ * The variable in which AgentCore Runtime tells the AWS SDKs where the agent runs. botocore adds its
+ * value to the user agent of each AWS call.
+ */
+const RUNTIME_EXECUTION_ENV = "AWS_EXECUTION_ENV";
+
+/** The value of {@link RUNTIME_EXECUTION_ENV} that AgentCore Runtime sets. */
+const RUNTIME_EXECUTION_ENV_VALUE = "AWS_BedrockAgentCore_Runtime";
+
+/** The variable in which AgentCore Runtime names the DNS domain of its partition. */
+const RUNTIME_DNS_SUFFIX_ENV = "AWS_DNS_SUFFIX";
+
+/** The DNS domain of the commercial partition, for a pack that build renders with no region. */
+const DEFAULT_DNS_SUFFIX = "amazonaws.com";
+
+/** The DNS domain of the partition of `region`, or of the commercial partition with no region. */
+function runtimeDnsSuffix(region?: string): string {
+  return region === undefined ? DEFAULT_DNS_SUFFIX : partition(region).dnsSuffix;
+}
+
+/**
+ * The `[agent.env]` of the {@link renderAgentCorePack} pack, by name: where the agent runs and the
+ * DNS domain of its partition, as AgentCore Runtime gives them to an agent outside a box; the ID of
+ * each project memory; the OTEL variables with OTEL on for `runtime`; and the URL of each gateway
+ * of the project that the agent calls through the Box gateway.
  */
 function agentCorePackEnv(
   spec: ProjectSpec,
@@ -745,6 +767,8 @@ function agentCorePackEnv(
   gateways: readonly BoxProjectGateway[],
 ): Record<string, string> {
   return {
+    [RUNTIME_EXECUTION_ENV]: "${{ inputs.runtime.execution_env }}",
+    [RUNTIME_DNS_SUFFIX_ENV]: "${{ inputs.aws.dns_suffix }}",
     ...Object.fromEntries(
       (spec.memories ?? []).map((memory) => [
         memoryEnvVarName(memory.name),
@@ -785,7 +809,10 @@ export function agentCorePackEnvNames(
  * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. With
  * OTEL on and {@link tracesToRuntimeLogGroup}, the `runtime.traces_log_group` and
  * `runtime.traces_log_stream` inputs each read one key of {@link RUNTIME_TRACES_HEADERS_ENV}, for
- * the default X-Ray target. One
+ * the default X-Ray target. The `runtime.execution_env` and `aws.dns_suffix` inputs carry
+ * {@link RUNTIME_EXECUTION_ENV} and {@link RUNTIME_DNS_SUFFIX_ENV} into the agent's environment,
+ * each with a default, so the profile resolves also where they are not set: the Runtime's own
+ * value, and the DNS domain of the partition of `region`, the build region. One
  * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
  * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
  * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
@@ -799,6 +826,7 @@ export function renderAgentCorePack(
   runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
   boxVersion?: string,
+  region?: string,
 ): string {
   const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
@@ -893,7 +921,21 @@ key = "x-aws-log-stream"
 [inputs.runtime.url]
 description = "The URL an A2A agent card advertises on the Runtime."
 from = "env:AGENTCORE_RUNTIME_URL"
-default = "http://localhost:9000/"${memoryInputs}${otelInput}${gatewayInputs}
+default = "http://localhost:9000/"
+
+# Where the agent runs, which botocore adds to the user agent of each AWS call. The Runtime sets
+# ${RUNTIME_EXECUTION_ENV}; the default is its value, so the agent gets it also where it is not set.
+[inputs.runtime.execution_env]
+description = "The execution environment that AgentCore Runtime names for the AWS SDKs."
+from = ${str(`env:${RUNTIME_EXECUTION_ENV}`)}
+default = ${str(RUNTIME_EXECUTION_ENV_VALUE)}
+
+# The DNS domain of the partition of the Runtime. The Runtime sets ${RUNTIME_DNS_SUFFIX_ENV}; the
+# default is the domain of the partition of the build region.
+[inputs.aws.dns_suffix]
+description = "The DNS domain of the AWS partition of the runtime."
+from = ${str(`env:${RUNTIME_DNS_SUFFIX_ENV}`)}
+default = ${str(runtimeDnsSuffix(region))}${memoryInputs}${otelInput}${gatewayInputs}
 ${agentEnv}`;
 }
 

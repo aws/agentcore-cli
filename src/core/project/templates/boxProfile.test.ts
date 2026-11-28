@@ -515,6 +515,8 @@ describe("renderAgentCorePack", () => {
 
     test("gives the agent the URL under the name a runtime without a box reads, beside the memory IDs", () => {
       expect(withTools([{ name: "notes" }]).agent.env).toEqual({
+        AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+        AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
         MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
         AGENTCORE_GATEWAY_TOOLS_URL: "${{ inputs.gateways.tools.url }}",
       });
@@ -613,20 +615,54 @@ describe("renderAgentCorePack", () => {
     expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");
     expect(toml.inputs.memory.notes.id.from).toBe("env:MEMORY_NOTES_ID");
     expect(toml.agent.env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
       MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
       MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
     });
   });
 
-  test("has no agent.env when the project has no memory and OTEL is off", () => {
-    expect(pack([]).agent).toBeUndefined();
+  test("gives the agent only where it runs and its DNS suffix when the project has no memory and OTEL is off", () => {
+    expect(pack([]).agent.env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
+    });
     expect(pack([]).inputs.runtime).not.toHaveProperty("resource_attributes");
   });
+
+  test("reads AWS_EXECUTION_ENV and AWS_DNS_SUFFIX from the Runtime, with a default for each", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime.execution_env).toEqual({
+      description: "The execution environment that AgentCore Runtime names for the AWS SDKs.",
+      from: "env:AWS_EXECUTION_ENV",
+      default: "AWS_BedrockAgentCore_Runtime",
+    });
+    expect(inputs.aws.dns_suffix).toEqual({
+      description: "The DNS domain of the AWS partition of the runtime.",
+      from: "env:AWS_DNS_SUFFIX",
+      default: "amazonaws.com",
+    });
+  });
+
+  test.each([
+    ["us-west-2", "amazonaws.com"],
+    ["us-gov-west-1", "amazonaws.com"],
+    ["cn-north-1", "amazonaws.com.cn"],
+  ])(
+    "gives AWS_DNS_SUFFIX the domain of the partition of the build region %s by default",
+    (region, suffix) => {
+      const spec = { name: "V3Demo" } as unknown as ProjectSpec;
+      const text = renderAgentCorePack(spec, { name: "agent" }, [], undefined, region);
+      expect((parse(text) as Record<string, any>).inputs.aws.dns_suffix.default).toBe(suffix);
+    },
+  );
 
   test("with OTEL on, sets up the agent's ADOT SDK and sets no OTEL_EXPORTER_OTLP_ variable, which box owns", () => {
     const { env } = pack([{ name: "agentMemory" }], true).agent;
 
     expect(env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
       MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
       OTEL_PYTHON_DISTRO: "aws_distro",
       OTEL_PYTHON_CONFIGURATOR: "aws_configurator",

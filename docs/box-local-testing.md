@@ -306,6 +306,11 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role;
+  - the `@box/agentcore` pack gives the agent `AWS_EXECUTION_ENV` and `AWS_DNS_SUFFIX`, which the
+    Runtime sets for an agent outside a box. botocore adds `AWS_EXECUTION_ENV` to the user agent
+    of each AWS call. Each one has a default, so box starts also where the Runtime does not set
+    it: `AWS_BedrockAgentCore_Runtime`, and the DNS domain of the partition of the build region,
+    such as `amazonaws.com` or `amazonaws.com.cn`;
   - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
     the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
     Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`

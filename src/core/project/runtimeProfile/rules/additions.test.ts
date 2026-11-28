@@ -1020,7 +1020,12 @@ describe("the additions rule", () => {
 
     test("keeps the value of the @box/agentcore pack, and says how to change it", () => {
       const otel = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
-      const runtime = withEnvVars(otel, "OTEL_PYTHON_DISTRO", memoryEnvVarName("notes"));
+      const runtime = withEnvVars(
+        otel,
+        "OTEL_PYTHON_DISTRO",
+        memoryEnvVarName("notes"),
+        "AWS_EXECUTION_ENV",
+      );
 
       const { table, warnings } = apply(
         createdProfile(runtime),
@@ -1030,12 +1035,14 @@ describe("the additions rule", () => {
       const env = agentOf(table).env;
       expect(env).not.toHaveProperty("OTEL_PYTHON_DISTRO");
       expect(env).not.toHaveProperty(memoryEnvVarName("notes"));
+      expect(env).not.toHaveProperty("AWS_EXECUTION_ENV");
       const reason =
         `the @box/agentcore pack sets it. To give the agent another value, set it in ` +
         `[agent.env] of ${PROFILE_FILE}`;
       expect(warnings).toEqual([
         skipped("OTEL_PYTHON_DISTRO", reason),
         skipped(memoryEnvVarName("notes"), reason),
+        skipped("AWS_EXECUTION_ENV", reason),
       ]);
     });
 

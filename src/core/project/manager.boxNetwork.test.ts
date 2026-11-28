@@ -1718,7 +1718,11 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect(JSON.stringify(profile.agent)).not.toContain("opentelemetry-instrument");
     expect(profile.telemetry).not.toHaveProperty("agentcore_traces");
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
-    expect(Object.keys(pack.agent.env)).toEqual(["MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID"]);
+    expect(Object.keys(pack.agent.env)).toEqual([
+      "AWS_EXECUTION_ENV",
+      "AWS_DNS_SUFFIX",
+      "MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID",
+    ]);
     expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
   });
 
