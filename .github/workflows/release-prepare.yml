@@ -34,8 +34,8 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          if [[ "$BRANCH" != main && "$BRANCH" != v0.x ]]; then
-            echo "::error::v0 releases must run from main or v0.x, not $BRANCH"
+          if [[ "$BRANCH" != v0.x ]]; then
+            echo "::error::v0 releases must run from v0.x, not $BRANCH"
             exit 1
           fi
           if [[ "$BUMP" != patch && "$BUMP" != minor ]]; then

@@ -172,7 +172,8 @@ new session and prints its ID.
 uv run client.py --runtime <ACR ARN> --session-id <BMA session ID> --input "List the files in the workspace."
 ```
 
-If you add a Gateway, add `--gateway <Gateway MCP URL>` with the URL from the output of `agentcore deploy`. BMA adds
-the Gateway tools when it creates the session, so the flag has no effect on a session that exists.
+If you add a Gateway, add `--gateway <Gateway ARN>` with the ARN from the output of `agentcore deploy`. Use the
+flag only for a new session. The Gateway must support MCP version `2025-03-26`. If it does not, the agent gets no Gateway
+tools, and BMA does not show an error.
 
 To delete the session after the turn, add `--delete`. To print each stream event as JSON, add `--raw`.

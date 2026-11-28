@@ -64,12 +64,12 @@ export function AddMemoryFlow({ isInteractive = true, onExit, onBack, onDev, onD
           <Box flexDirection="column">
             <Text color="yellow">
               Note: See{' '}
-              <Link url="https://github.com/aws/agentcore-cli/blob/main/docs/memory.md#swapping-or-changing-memory-strands">
+              <Link url="https://github.com/aws/agentcore-cli/blob/v0.x/docs/memory.md#swapping-or-changing-memory-strands">
                 <Text color="cyan">docs/memory.md</Text>
               </Link>{' '}
               to learn how to connect memory to your agent.
             </Text>
-            <Text dimColor>https://github.com/aws/agentcore-cli/blob/main/docs/memory.md</Text>
+            <Text dimColor>https://github.com/aws/agentcore-cli/blob/v0.x/docs/memory.md</Text>
             <Text color="yellow">
               Once you deploy, the memory resource will be created in your account, but it is not automatically
               connected to your agent. You must configure your agent code to use this memory.

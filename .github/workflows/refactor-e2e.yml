@@ -30,7 +30,7 @@ on:
       artifactRef:
         description: git reference (commit, branch, or tag) to build the CLI from
         type: string
-        default: refactor
+        default: v1.x
       testRef:
         description: git reference (commit, branch, or tag) to run E2E tests from, defaults to artifactRef
         type: string
@@ -46,8 +46,8 @@ on:
 
 concurrency:
   group:
-    e2e-test-${{ inputs.artifactRef || 'refactor' }}-${{ inputs.testRef || inputs.artifactRef || 'refactor' }}-${{
-    inputs.tags || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
+    e2e-test-${{ inputs.artifactRef || 'v1.x' }}-${{ inputs.testRef || inputs.artifactRef || 'v1.x' }}-${{ inputs.tags
+    || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
   cancel-in-progress: false
 
 env:
@@ -110,11 +110,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.testRef || inputs.artifactRef || 'refactor' }}
+          ref: ${{ inputs.testRef || inputs.artifactRef || 'v1.x' }}
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.artifactRef || 'refactor' }}
+          ref: ${{ inputs.artifactRef || 'v1.x' }}
           path: artifact
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2

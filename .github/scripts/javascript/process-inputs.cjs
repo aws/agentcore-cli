@@ -31,15 +31,15 @@ async function getIssueInfo(github, context, inputs) {
 }
 
 async function determineBranch(github, context, issueId, mode, isPullRequest) {
-  let branchName = 'main';
+  let branchName = 'v0.x';
 
   if (mode === 'implementer' && !isPullRequest) {
     branchName = `agent-tasks/${issueId}`;
 
-    const mainRef = await github.rest.git.getRef({
+    const v0Ref = await github.rest.git.getRef({
       owner: context.repo.owner,
       repo: context.repo.repo,
-      ref: 'heads/main',
+      ref: 'heads/v0.x',
     });
 
     try {
@@ -47,7 +47,7 @@ async function determineBranch(github, context, issueId, mode, isPullRequest) {
         owner: context.repo.owner,
         repo: context.repo.repo,
         ref: `refs/heads/${branchName}`,
-        sha: mainRef.data.object.sha,
+        sha: v0Ref.data.object.sha,
       });
       console.log(`Created branch ${branchName}`);
     } catch (error) {

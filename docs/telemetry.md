@@ -19,7 +19,7 @@ One event per command you run, containing:
   attached to every event — see the audit-mode output for the full set of keys.
 
 The full list of attributes for every command lives in
-[`src/cli/telemetry/schemas/`](https://github.com/aws/agentcore-cli/tree/main/src/cli/telemetry/schemas).
+[`src/cli/telemetry/schemas/`](https://github.com/aws/agentcore-cli/tree/v0.x/src/cli/telemetry/schemas).
 
 ## What is not collected
 
