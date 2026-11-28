@@ -1740,7 +1740,9 @@ describe("the additions rule", () => {
           ),
         ].map(([, name]) => name);
         const { inputs } = parse(
-          renderAgentCorePack(context.spec, runtime, [], BOX_TRACES_LOG_GROUP_VERSION),
+          renderAgentCorePack(context.spec, runtime, [], {
+            boxVersion: BOX_TRACES_LOG_GROUP_VERSION,
+          }),
         ) as { inputs: { runtime: TomlTable } };
 
         expect(named).not.toEqual([]);

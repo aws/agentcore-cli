@@ -515,6 +515,8 @@ describe("renderAgentCorePack", () => {
 
     test("gives the agent the URL under the name a runtime without a box reads, beside the memory IDs", () => {
       expect(withTools([{ name: "notes" }]).agent.env).toEqual({
+        AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+        AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
         MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
         AGENTCORE_GATEWAY_TOOLS_URL: "${{ inputs.gateways.tools.url }}",
       });
@@ -613,31 +615,91 @@ describe("renderAgentCorePack", () => {
     expect(toml.inputs.memory.agentMemory.id.from).toBe("env:MEMORY_AGENTMEMORY_ID");
     expect(toml.inputs.memory.notes.id.from).toBe("env:MEMORY_NOTES_ID");
     expect(toml.agent.env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
       MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
       MEMORY_NOTES_ID: "${{ inputs.memory.notes.id }}",
     });
   });
 
-  test("has no agent.env when the project has no memory and OTEL is off", () => {
-    expect(pack([]).agent).toBeUndefined();
+  test("gives the agent only where it runs and its DNS suffix when the project has no memory and OTEL is off", () => {
+    expect(pack([]).agent.env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
+    });
     expect(pack([]).inputs.runtime).not.toHaveProperty("resource_attributes");
   });
+
+  test("reads AWS_EXECUTION_ENV and AWS_DNS_SUFFIX from the Runtime, with a default for each", () => {
+    const { inputs } = pack([]);
+    expect(inputs.runtime.execution_env).toEqual({
+      description: "The execution environment that AgentCore Runtime names for the AWS SDKs.",
+      from: "env:AWS_EXECUTION_ENV",
+      default: "AWS_BedrockAgentCore_Runtime",
+    });
+    expect(inputs.aws.dns_suffix).toEqual({
+      description: "The DNS domain of the AWS partition of the runtime.",
+      from: "env:AWS_DNS_SUFFIX",
+      default: "amazonaws.com",
+    });
+  });
+
+  test.each([
+    ["us-west-2", "amazonaws.com"],
+    ["us-gov-west-1", "amazonaws.com"],
+    ["cn-north-1", "amazonaws.com.cn"],
+  ])(
+    "gives AWS_DNS_SUFFIX the domain of the partition of the build region %s by default",
+    (region, suffix) => {
+      const spec = { name: "V3Demo" } as unknown as ProjectSpec;
+      const text = renderAgentCorePack(spec, { name: "agent" }, [], { region });
+      expect((parse(text) as Record<string, any>).inputs.aws.dns_suffix.default).toBe(suffix);
+    },
+  );
 
   test("with OTEL on, sets up the agent's ADOT SDK and sets no OTEL_EXPORTER_OTLP_ variable, which box owns", () => {
     const { env } = pack([{ name: "agentMemory" }], true).agent;
 
     expect(env).toEqual({
+      AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
+      AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
       MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
-      OTEL_PYTHON_DISTRO: "aws_distro",
-      OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
-      AGENT_OBSERVABILITY_ENABLED: "true",
+      OTEL_PYTHON_DISTRO: "${{ inputs.otel.python_distro }}",
+      OTEL_PYTHON_CONFIGURATOR: "${{ inputs.otel.python_configurator }}",
+      AGENT_OBSERVABILITY_ENABLED: "${{ inputs.otel.agent_observability_enabled }}",
       OTEL_TRACES_EXPORTER: "otlp",
       OTEL_LOGS_EXPORTER: "otlp",
       OTEL_METRICS_EXPORTER: "none",
-      OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+      OTEL_PYTHON_EXCLUDED_URLS: "${{ inputs.otel.python_excluded_urls }}",
       OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
     });
     expect(Object.keys(env).filter((name) => name.startsWith("OTEL_EXPORTER_OTLP_"))).toEqual([]);
+  });
+
+  test("with OTEL on, reads the ADOT settings of the Runtime, with the value of the Runtime by default", () => {
+    expect(pack([], true).inputs.otel).toEqual({
+      python_distro: {
+        description: "The OpenTelemetry distro of Python auto-instrumentation.",
+        from: "env:OTEL_PYTHON_DISTRO",
+        default: "aws_distro",
+      },
+      python_configurator: {
+        description: "The OpenTelemetry configurator of Python auto-instrumentation.",
+        from: "env:OTEL_PYTHON_CONFIGURATOR",
+        default: "aws_configurator",
+      },
+      agent_observability_enabled: {
+        description: "Whether the ADOT SDK runs in its agent observability mode.",
+        from: "env:AGENT_OBSERVABILITY_ENABLED",
+        default: "true",
+      },
+      python_excluded_urls: {
+        description: "The URL paths that Python auto-instrumentation does not trace.",
+        from: "env:OTEL_PYTHON_EXCLUDED_URLS",
+        default: "/ping",
+      },
+    });
+    expect(pack([]).inputs).not.toHaveProperty("otel");
   });
 
   test("with OTEL on, reads the Runtime's OTEL_RESOURCE_ATTRIBUTES, with the runtime's name when the Runtime sets none", () => {
@@ -674,7 +736,7 @@ describe("renderAgentCorePack", () => {
           { name: "V3Demo" } as unknown as ProjectSpec,
           { name: "agent", ...(!otel && { instrumentation: { enableOtel: false } }) },
           [],
-          version,
+          { boxVersion: version },
         ),
       ).inputs as Record<string, any>;
 
@@ -707,7 +769,7 @@ describe("renderAgentCorePack", () => {
         instrumentation: { enableOtel: true },
       }),
     );
-    expect(text).toContain('OTEL_PYTHON_DISTRO = "aws_distro"');
+    expect(text).toContain('OTEL_PYTHON_DISTRO = "${{ inputs.otel.python_distro }}"');
   });
 });
 

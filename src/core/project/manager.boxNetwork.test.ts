@@ -1679,6 +1679,23 @@ describe("build with OTEL on, as create writes a box runtime", () => {
   };
   const PACK = "app/agent_python_strands/.box-dist/resources/packs/agentcore/pack.toml";
 
+  test.each([
+    ["us-west-2", "amazonaws.com"],
+    ["cn-north-1", "amazonaws.com.cn"],
+  ])(
+    "gives AWS_DNS_SUFFIX the domain of the partition of the build region %s by default",
+    async (region, suffix) => {
+      const { manager, root } = await strandsProject({ env: { AWS_REGION: region } });
+
+      await build(manager, root);
+
+      const pack = parse(await text(root, PACK)) as {
+        inputs: { aws: { dns_suffix: { default: string } } };
+      };
+      expect(pack.inputs.aws.dns_suffix.default).toBe(suffix);
+    },
+  );
+
   test("starts the agent under opentelemetry-instrument, sets up its ADOT SDK, and sends its spans to X-Ray with the grant", async () => {
     const { manager, root } = await strandsProject();
     expect(JSON.parse(await text(root, SPEC)).runtimes[0].instrumentation).toBeUndefined();
@@ -1694,7 +1711,7 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect((profile.telemetry as Record<string, unknown>).agentcore_traces).toEqual(DEFAULT_TRACES);
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
     expect(pack.agent.env).toMatchObject({
-      OTEL_PYTHON_DISTRO: "aws_distro",
+      OTEL_PYTHON_DISTRO: "${{ inputs.otel.python_distro }}",
       OTEL_TRACES_EXPORTER: "otlp",
       OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
     });
@@ -1718,7 +1735,11 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect(JSON.stringify(profile.agent)).not.toContain("opentelemetry-instrument");
     expect(profile.telemetry).not.toHaveProperty("agentcore_traces");
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
-    expect(Object.keys(pack.agent.env)).toEqual(["MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID"]);
+    expect(Object.keys(pack.agent.env)).toEqual([
+      "AWS_EXECUTION_ENV",
+      "AWS_DNS_SUFFIX",
+      "MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID",
+    ]);
     expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
   });
 

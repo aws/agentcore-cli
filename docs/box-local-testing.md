@@ -289,16 +289,33 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
     `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
     ingress on `0.0.0.0` on the port of the protocol;
+  - the agent does not get the runtime's `envVars` from `agentcore.json`. The Runtime sets them
+    for box, and box gives the agent only the variables that the profile names. To give the agent a
+    variable, set it in `[agent.env]` of `.box/<runtime>/local/profile.toml`. Then the agent gets it
+    with `agentcore dev` and on the Runtime;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role;
+  - the `@box/agentcore` pack gives the agent `AWS_EXECUTION_ENV` and `AWS_DNS_SUFFIX`, which the
+    Runtime sets for an agent outside a box. botocore adds `AWS_EXECUTION_ENV` to the user agent
+    of each AWS call. Each one has a default, so box starts also where the Runtime does not set
+    it: `AWS_BedrockAgentCore_Runtime`, and the DNS domain of the partition of the build region,
+    such as `amazonaws.com` or `amazonaws.com.cn`. When you run the Runtime profile on your own
+    computer, the agent also gets `AWS_BedrockAgentCore_Runtime`, so its AWS calls name AgentCore
+    Runtime in their user agent;
   - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
     the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
     Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`
-    pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES` that the Runtime
-    sets. When your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
+    pack gives the agent the values that the Runtime sets for `OTEL_PYTHON_DISTRO`,
+    `OTEL_PYTHON_CONFIGURATOR`, `AGENT_OBSERVABILITY_ENABLED`, `OTEL_PYTHON_EXCLUDED_URLS`, and
+    `OTEL_RESOURCE_ATTRIBUTES`. Where a variable is not set, for example in a local run, the agent
+    gets the default, which is the value that the Runtime sets: `aws_distro`, `aws_configurator`,
+    `true`, `/ping`, and `service.name=<runtime>`. The
+    pack sets fixed values for `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` (`otlp`), and for
+    `OTEL_METRICS_EXPORTER` (`none`), because the receiver of box takes only spans and logs. When
+    your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
     `OTEL_EXPORTER_OTLP_*` variable, because box sets each one;
   - each other gateway of the project gets `[mcp.<gateway>]`, to the host that `@box/agentcore`
     reads from `AGENTCORE_GATEWAY_<NAME>_HOST`, through its `egress-gateway-<name>` target. The agent
