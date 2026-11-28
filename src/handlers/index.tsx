@@ -14,6 +14,7 @@ import { createUpdateHandler } from "./update/index.tsx";
 import { renderTui } from "../tui";
 import {
   withRegion,
+  withErrorReport,
   withJsonRenderer,
   withLogging,
   withGlobalConfigAccessor,
@@ -69,6 +70,7 @@ export function createRootHandler(core: Core, config: RootHandlerConfig): Router
   // override behavior). EndpointKey + its plumbing stay defined so re-enabling
   // is adding it back here.
   root.groupFlags(RegionKey, DebugKey, JsonKey);
+  root.use(withErrorReport());
 
   // Resolve the effective AWS region (flag -> env -> config file) and pin it on
   // the context for every command beneath the root.

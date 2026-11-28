@@ -1,4 +1,10 @@
 import { AgentCoreCLIError, ExitCode, SilentCLIError, UserCancellationError } from "../errors";
+import { formatDebugDetails } from "./debugDetails";
+
+export interface ErrorReport {
+  debug: boolean;
+  logFile?: string;
+}
 
 /** Runs an operation with SIGINT and SIGTERM mapped to UserCancellationError. */
 export async function withUserCancellation<T>(
@@ -45,6 +51,7 @@ export function runRunnable(
 // runWithExitCode safely runs the given function with exit code handling.
 export async function runWithExitCode(
   fn: (argv: string[]) => Promise<void>,
+  report?: ErrorReport,
   argv: string[] = process.argv,
 ): Promise<number> {
   try {
@@ -52,7 +59,9 @@ export async function runWithExitCode(
     return ExitCode.SUCCESS;
   } catch (caught) {
     const error = AgentCoreCLIError.fromError(caught);
-    if (!(error instanceof SilentCLIError)) console.error(`Error: ${error.message}`);
+    if (error instanceof SilentCLIError) return error.exitCode;
+    console.error(`Error: ${error.message}`);
+    if (report?.debug) console.error(formatDebugDetails(error, report.logFile));
     return error.exitCode;
   }
 }

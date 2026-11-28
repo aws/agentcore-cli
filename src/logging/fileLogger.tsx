@@ -42,7 +42,9 @@ function wrapWinstonLogger(
  * @param config - Logger configuration (file path, rotation limits, level).
  * @returns A {@link AsyncLogger} that writes to a rotating file via winston.
  */
-export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
+export function createFileLogger(
+  config: FileLoggerConfig,
+): AsyncLogger & { currentFile: () => string | undefined } {
   const maxSizeInMB = config.maxSizeInMB ?? 5;
   const maxFileCount = config.maxFileCount ?? 10;
   const bindings = config.bindings ?? {};
@@ -54,6 +56,10 @@ export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
     maxSize: `${maxSizeInMB}m`,
     maxFiles: maxFileCount,
     createSymlink: false,
+  });
+  let currentFile: string | undefined;
+  transport.on("new", (file: string) => {
+    currentFile = file;
   });
 
   const jsonFormat = winston.format.printf((info) => {
@@ -67,5 +73,7 @@ export function createFileLogger(config: FileLoggerConfig): AsyncLogger {
     transports: [transport],
   });
 
-  return wrapWinstonLogger(logger, transport, bindings);
+  return Object.assign(wrapWinstonLogger(logger, transport, bindings), {
+    currentFile: () => currentFile,
+  });
 }

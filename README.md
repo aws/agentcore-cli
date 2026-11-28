@@ -142,7 +142,7 @@ Global flags, available on every command:
 | ---------- | ------------------------------------------------------------------------------------------------------------------- |
 | `--region` | AWS region. Resolved from this flag, then `AWS_REGION`, `AWS_DEFAULT_REGION`, the active profile, then `us-east-1`. |
 | `--json`   | Emit JSON instead of opening the TUI.                                                                               |
-| `--debug`  | Debug logging.                                                                                                      |
+| `--debug`  | On failure, also print the error name, HTTP status, request ID and the log file holding the full entry.             |
 
 ## Extending the CDK app
 
