@@ -1,0 +1,58 @@
+import { chmodSync, copyFileSync, cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join, posix } from "node:path";
+import type { Project } from "../../../handlers/project/types";
+import type { BoxNetwork } from "../boxNetwork";
+import { BOX_CODEZIP_DIST, runtimeRunsInBox } from "../templates/boxProfile";
+import { BOX_BINARIES, type BoxLinuxBuild } from "./boxRelease";
+import { stagedRuntimeProfiles } from "./boxStaging";
+
+/** The `.gitignore` staged into `.box-dist/`: build and deploy rewrite the folder every time. */
+export const BOX_DIST_GITIGNORE =
+  "# Written by agentcore build and deploy, which rewrite this folder.\n*\n";
+
+/**
+ * Stages box into each CodeZip runtime that runs in a box ({@link runtimeRunsInBox}),
+ * so the zip carries it: `<codeLocation>/.box-dist/` gets box, its helpers, its
+ * packs, and what the runtime profile writer writes from the runtime's Box network
+ * model (the Runtime profile and a byte copy of each policy file it names).
+ * `.box/<name>/aws/` gets only what the writer writes, for people to read. Both
+ * folders are rewritten on every build and deploy. `box` is asked for only when a
+ * runtime needs it. Returns the names of the runtimes it staged.
+ */
+export async function stageBoxCodeZip(
+  project: Project,
+  networks: readonly BoxNetwork[],
+  box: () => Promise<BoxLinuxBuild>,
+): Promise<string[]> {
+  const runtimes = project.spec.runtimes.filter(
+    (runtime) => runtime.build === "CodeZip" && runtimeRunsInBox(project.spec, runtime),
+  );
+  if (runtimes.length === 0) return [];
+  const staged = runtimes.map((runtime) => ({
+    runtime: runtime.name,
+    dist: posix.join(runtime.codeLocation, BOX_CODEZIP_DIST),
+    // A CodeZip deploy reads the deployed resources, its Python and its code path through the
+    // @box/agentcore and @box/agentcore-codezip packs.
+    kind: "codezip" as const,
+  }));
+  const writeProfile = stagedRuntimeProfiles(project, networks, staged);
+  // Every runtime ships the pinned box, which downloads once.
+  const build = await box();
+
+  for (const stage of staged) {
+    const { dist } = stage;
+    const folder = join(project.rootPath, ...dist.split("/"));
+    rmSync(folder, { recursive: true, force: true });
+    mkdirSync(folder, { recursive: true });
+    // Keeps the staged box out of git in every project, whatever its own .gitignore says. The zip
+    // still carries the folder: the CodeZip packager does not read .gitignore files.
+    writeFileSync(join(folder, ".gitignore"), BOX_DIST_GITIGNORE);
+    for (const binary of BOX_BINARIES) {
+      copyFileSync(join(build.binaries, binary), join(folder, binary));
+      chmodSync(join(folder, binary), 0o755);
+    }
+    cpSync(build.resources, join(folder, "resources"), { recursive: true });
+    writeProfile(stage);
+  }
+  return runtimes.map((runtime) => runtime.name);
+}

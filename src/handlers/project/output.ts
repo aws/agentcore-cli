@@ -1,4 +1,4 @@
-import type { AddResourceInput, Project, RemoveResourceInput } from "./types";
+import type { AddResourceInput, Project, RemovedGateway, RemoveResourceInput } from "./types";
 
 export type ProjectMutationResourceType = AddResourceInput["resourceType"] | "gateway-connector";
 
@@ -32,6 +32,8 @@ export type ProjectMutationResult =
       project: ProjectReference;
       resource: ProjectMutationResource | { type: "all" };
       removedEnvironmentKeys: string[];
+      /** Gateways bound to a removed runtime, removed with it. Only on `remove runtime`. */
+      removedGateways?: RemovedGateway[];
     };
 
 export function projectReference(project: Project): ProjectReference {

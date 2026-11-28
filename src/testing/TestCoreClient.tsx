@@ -227,6 +227,8 @@ import type { Logger } from "../logging";
 import type { ReadWriteJson } from "../io";
 import { createSilentLogger } from "./logging";
 import { FsProjectManager, type ProjectBackend } from "../core/project";
+import type { BoxProfileResolver } from "../core/project/boxProfileResolver";
+import { FakeBoxProfileResolver } from "../core/project/boxProfileResolver-test-support";
 import { FsProjectMigrator } from "../core/project/migrate";
 import type { ProjectMigrator } from "../handlers/project/migrate/types";
 import type {
@@ -1398,6 +1400,8 @@ type TestCoreClientOptions = {
   backends?: Partial<Record<ManagedBy, ProjectBackend>>;
   createCloudFormationClient?: CreateCloudFormationClient;
   resolveAccount?: (region: string) => Promise<string>;
+  /** Defaults to a box that resolves a profile to no routes and no rules. */
+  boxProfileResolver?: BoxProfileResolver;
 };
 
 export class TestIdentityClient implements CoreIdentityClient {
@@ -2800,6 +2804,8 @@ export class TestCoreClient implements Core {
       // Deploy synthesizes the default target through STS; stub the lookup so
       // tests stay hermetic.
       resolveAccount: options?.resolveAccount ?? (async () => "111122223333"),
+      // CI hosts don't have box installed.
+      boxProfileResolver: options?.boxProfileResolver ?? new FakeBoxProfileResolver(),
     });
   }
 }

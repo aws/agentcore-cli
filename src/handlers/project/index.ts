@@ -7,6 +7,7 @@ import {
   watchFile,
   type AppIO,
 } from "../../io";
+import { BoxDevRunner } from "../../core/dev/box";
 import { CodeZipDevRunner } from "../../core/dev/codezip";
 import { ContainerDevRunner } from "../../core/dev/container";
 import { InspectorAssets } from "../../core/dev/inspectorAssets";
@@ -62,7 +63,7 @@ export function createProjectHandlers(
       io,
       middlewares: [withProjectMiddleware],
       runners: {
-        CodeZip: new CodeZipDevRunner(),
+        CodeZip: new BoxDevRunner({ fallback: new CodeZipDevRunner() }),
         Container: new ContainerDevRunner(),
       },
       loadDevEnvironment,

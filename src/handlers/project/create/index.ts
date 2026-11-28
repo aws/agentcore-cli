@@ -13,10 +13,14 @@ import { runWithProgress } from "../../../tui/progress";
 import {
   EMPTY_TEMPLATE_NAME,
   PROJECT_TEMPLATE_NAMES,
+  RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   formatTemplateParameterHelp,
+  isBoxTemplate,
   resolveRuntimeTemplateShortcut,
 } from "../shortcuts";
 import {
+  CONTAINMENT_LEVELS,
+  PRIVATE_VPC_NOTE,
   type CreateProjectInput,
   type ModelProvider,
   type ProjectManager,
@@ -34,7 +38,11 @@ import { InputValidationError, RegionUnsupportedFeatureError } from "../../../er
 import { JsonKey, RegionKey } from "../../keys";
 import { renderResult } from "../../utils";
 import { projectReference, type ProjectMutationResult } from "../output";
-import { stripCreateRegionUnavailableDefaults, validateCreateRegionSupport } from "./region";
+import {
+  boxRegionWarning,
+  stripCreateRegionUnavailableDefaults,
+  validateCreateRegionSupport,
+} from "./region";
 import { chinaModelProviderRestriction } from "../../../core/project/manager";
 import { isChinaRegion } from "../../../core/partition";
 import { harnessApiKeyCredentialName } from "../../../core/project/templates/harness";
@@ -116,6 +124,11 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         { help: formatTemplateParameterHelp({ includeEmpty: true }) },
       ),
       flag(
+        "containment",
+        "the containment level of the agent: contained (in Box, egress only through its Box gateway) or private-vpc (also a private VPC with no internet path)",
+        z.enum(CONTAINMENT_LEVELS).default("contained"),
+      ),
+      flag(
         "skip-install",
         "skip installing dependencies (npm install, uv sync)",
         z.boolean().default(false),
@@ -132,10 +145,13 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         });
       }
 
+      const region = ctx.require(RegionKey);
       const base = {
         name,
         skipInstall: flags["skip-install"],
         skipGit: flags["skip-git"],
+        containment: flags["containment"],
+        region,
       };
 
       const createInput: CreateProjectInput =
@@ -148,7 +164,12 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
               }),
             };
 
-      const region = ctx.require(RegionKey);
+      if (flags["containment"] === "private-vpc" && !isBoxTemplate(template)) {
+        throw new InputValidationError(
+          `--containment private-vpc needs a box template: ${RUNTIME_TEMPLATE_SHORTCUT_NAMES.filter(isBoxTemplate).join(", ")}.`,
+        );
+      }
+
       try {
         validateCreateRegionSupport(createInput, region);
       } catch (error) {
@@ -168,6 +189,8 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
       }
       const stripped = stripCreateRegionUnavailableDefaults(createInput, region);
       if (stripped !== undefined) config.io.stderr.write(`${stripped}\n`);
+      const boxWarning = boxRegionWarning(createInput, region);
+      if (boxWarning !== undefined) config.io.stderr.write(`Warning: ${boxWarning}\n`);
 
       // Same driver as build and deploy: a live step list in a TTY, and the previous plain
       // line-per-step output when stderr is not a TTY or --json wants no ANSI on it.
@@ -185,12 +208,14 @@ export const createCreateProjectHandler = (config: CreateProjectHandlerConfig) =
         () => {
           if (template === EMPTY_TEMPLATE_NAME) {
             config.io.stderr.write(emptyProjectCreatedMessage(name, isChinaRegion(region)));
-            return;
+          } else {
+            config.io.stderr.write(`created project '${name}' in ./${name}\n`);
+            config.io.stderr.write(
+              `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
+            );
           }
-          config.io.stderr.write(`created project '${name}' in ./${name}\n`);
-          config.io.stderr.write(
-            `next steps:\n  cd ${name}\n  ${createNextStep(createInput.scaffoldRuntimeInput !== undefined)}\n`,
-          );
+          if (flags["containment"] === "private-vpc")
+            config.io.stderr.write(`${PRIVATE_VPC_NOTE}\n`);
         },
       );
     },

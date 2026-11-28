@@ -21,8 +21,9 @@ import {
   waitForFlatText,
   waitForText,
 } from "../../testing";
-import type { BuildProjectInput, DeployResult, Project, ProjectEvent } from "./types";
+import type { DeployResult, Project, ProjectEvent } from "./types";
 import { ProjectKey } from "../../router";
+import { RegionKey } from "../keys";
 import { TuiHandoffKey } from "../../tui/handoff";
 
 // The build and deploy screens run the same ProjectManager generators the
@@ -44,7 +45,7 @@ type FakeBackendOptions = {
 
 function fakeBackend(options: FakeBackendOptions = {}) {
   const deploys: { project: Project; input: DeployBackendInput; confirmed?: boolean }[] = [];
-  const builds: (BuildProjectInput | undefined)[] = [];
+  const builds: Parameters<ProjectBackend["build"]>[1][] = [];
   const backend: ProjectBackend = {
     async *build(_project, input) {
       builds.push(input);
@@ -176,6 +177,25 @@ describe("project build screen", () => {
     r.unmount();
   });
 
+  test("builds for the region the launch context resolved, as the command does", async () => {
+    const { backend } = fakeBackend();
+    const core = new TestCoreClient({ backends: { CDK: backend } });
+    await inProject(core);
+    const build = core.projectManager.build.bind(core.projectManager);
+    const regions: (string | undefined)[] = [];
+    core.projectManager.build = (project, options) => {
+      regions.push(options?.region);
+      return build(project, options);
+    };
+    const r = renderScreen("/agentcore/build", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "eu-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "✔ built project 'orders'");
+    expect(regions).toEqual(["eu-west-1"]);
+  });
+
   test("passes the global config's disableDependencyManagement flag into the build", async () => {
     const { backend, builds } = fakeBackend();
     const core = new TestCoreClient({ backends: { CDK: backend } });
@@ -186,7 +206,7 @@ describe("project build screen", () => {
     });
 
     await waitForText(r.lastFrame, "✔ built project 'orders'");
-    expect(builds).toEqual([{ disableDependencyManagement: true }]);
+    expect(builds).toEqual([{ disableDependencyManagement: true, boxNetworks: [] }]);
     r.unmount();
   });
 
@@ -307,6 +327,7 @@ describe("project deploy screen", () => {
       is_tui: true,
       project_runtime_count: 1,
       project_memory_count: 0,
+      // agent-python-minimal is not a box template, so the project has no Box gateway.
       project_gateway_count: 0,
       project_harness_count: 0,
     });

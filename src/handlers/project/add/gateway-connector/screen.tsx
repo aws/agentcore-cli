@@ -22,6 +22,7 @@ import type { Project } from "../../types";
 import { ProjectGate, projectQueryKey } from "../../ProjectGate";
 import { toAddGatewayConnectorInput, type GatewayConnectorShortcutInput } from "./index";
 import { RegionKey } from "../../../keys";
+import { boundRuntimeNote, defaultGatewayChoice } from "../shared";
 
 const BREADCRUMB = ["agentcore", "add", "gateway-connector"];
 const DESCRIPTION = "add a connector-backed Target to a project Gateway";
@@ -72,7 +73,7 @@ function gatewayChoices(gateways: readonly AgentCoreGateway[]): Choice<string>[]
   return gateways.map((gateway) => ({
     value: gateway.name,
     label: gateway.name,
-    description: `${gateway.targets.length} ${gateway.targets.length === 1 ? "Target" : "Targets"}`,
+    description: `${gateway.targets.length} ${gateway.targets.length === 1 ? "Target" : "Targets"}${boundRuntimeNote(gateway)}`,
   }));
 }
 
@@ -148,7 +149,7 @@ function AddGatewayConnectorWizard({
   );
 
   const [values, setValues] = useState<GatewayConnectorFormValues>({
-    gateway: gateways[0]?.name ?? "",
+    gateway: defaultGatewayChoice(gateways),
     connector: "web-search",
     knowledgeBase: "",
     name: "web-search",

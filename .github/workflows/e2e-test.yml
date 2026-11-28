@@ -22,6 +22,16 @@ on:
         required: false
         type: boolean
         default: false
+      l3Ref:
+        description: aws/agentcore-l3-cdk-constructs ref the Box tests deploy with (branch, tag, or commit)
+        required: false
+        type: string
+        default: box-integration
+      region:
+        description: AWS region to deploy and test in; empty uses the E2E_REGION variable, else us-east-1
+        required: false
+        type: string
+        default: ""
     secrets:
       WORKFLOW_SECRETS_READER_ROLE_ARN:
         required: true
@@ -39,6 +49,14 @@ on:
         description: Run E2E tests only on Linux
         type: boolean
         default: false
+      l3Ref:
+        description: aws/agentcore-l3-cdk-constructs ref the Box tests deploy with (branch, tag, or commit)
+        type: string
+        default: box-integration
+      region:
+        description: AWS region to deploy and test in; empty uses the E2E_REGION variable, else us-east-1
+        type: string
+        default: ""
 
 concurrency:
   group: e2e-test-${{ inputs.ref || github.ref }}-${{ inputs.tags || 'all' }}-${{ inputs.linuxOnly && 'linux-only' || 'all-os' }}
@@ -90,6 +108,7 @@ jobs:
         matrix.name == 'Linux' && '["ubuntu-latest"]'
         || matrix.name == 'Windows' && '["windows-latest"]'
         || matrix.name == 'macOS' && '["macos-latest"]'
+        || matrix.name == 'Linux-arm64' && '["ubuntu-24.04-arm"]'
       ) }}
     permissions:
       id-token: write
@@ -97,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Windows","macOS"]') }}
+        name: ${{ fromJSON(inputs.linuxOnly && '["Linux"]' || '["Linux","Linux-arm64","Windows","macOS"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,6 +130,9 @@ jobs:
         with:
           # Keep template installs on the newest Python supported by AgentCore CodeZip.
           python-version: "3.14"
+          # A run whose tag filter leaves nothing to install with uv (for example `box` on Windows,
+          # which has no box) has no cache to save, which setup-uv otherwise reports as a failure.
+          ignore-nothing-to-cache: true
       - run: bun install --frozen-lockfile
       - name: Fetch E2E role from Secrets Manager
         uses: aws/agentcore-devx-devtools/.github/actions/fetch-secrets@e68d09b0c33dfb7a798448d50e6b48beedf00a3b
@@ -121,8 +143,95 @@ jobs:
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ env.E2E_AWS_ROLE_ARN }}
-          aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
+          aws-region: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
           unset-current-credentials: true
+      # box ships only arm64 builds, so only the macOS (Apple silicon) and Linux arm64 runners can run
+      # the Box tests. They skip on a runner with no box on PATH.
+      - name: Install box
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        env:
+          # The build's key in boxRelease.json, which pins its archive and SHA-256.
+          BUILD: ${{ matrix.name == 'macOS' && 'darwin' || 'linux' }}
+        run: |
+          PIN=src/core/project/backends/boxRelease.json
+          REPO=$(jq -er .box.repo "$PIN")
+          # A build may name its own release, for a release whose build of this machine is broken.
+          VER=$(jq -er ".box.${BUILD}.version // .box.version" "$PIN")
+          ASSET=$(jq -er ".box.${BUILD}.asset" "$PIN")
+          SHA=$(jq -er ".box.${BUILD}.sha256" "$PIN")
+          # macOS's sha256sum passes a malformed checksum line, so check the hash's shape first.
+          if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "the pinned .box.${BUILD}.sha256 in $PIN is not a SHA-256: '$SHA'" >&2
+            exit 1
+          fi
+          WORK=$(mktemp -d)
+          curl -fsSL --retry 3 -o "${WORK}/${ASSET}" \
+            "https://github.com/${REPO}/releases/download/v${VER}/${ASSET}"
+          # Check against the pin in the repository, not a checksum file of the same release.
+          # Linux has sha256sum, and macOS may have only shasum.
+          SUM=$(command -v sha256sum || echo "shasum -a 256")
+          echo "${SHA}  ${WORK}/${ASSET}" | $SUM -c -
+          # box reads its packs from resources/ beside it, so keep the release together.
+          if [[ "$BUILD" == darwin ]]; then
+            # On macOS, unpack as the runner user into a folder it owns, as a developer does. The
+            # folder must not be named `box`: macOS reads a folder `box` that holds an executable
+            # `box` as a bundle, finds the signature invalid (`invalid Info.plist`), and kills box at
+            # launch (Killed: 9). That is what happened under /opt/box.
+            DIR="${RUNNER_TEMP}/box-${VER}"
+            mkdir -p "$DIR"
+            tar -xzf "${WORK}/${ASSET}" -C "$DIR"
+            echo "$DIR" >> "$GITHUB_PATH"
+            # If macOS refuses box, say why before running it.
+            codesign --verify --strict --verbose=2 "$DIR/box" || codesign -dv --verbose=4 "$DIR/box" || true
+            if ! "$DIR/box" --version; then
+              log show --last 2m --predicate 'eventMessage CONTAINS "box"' --style compact 2>/dev/null | tail -40 || true
+              exit 1
+            fi
+          else
+            sudo mkdir -p /opt/box
+            sudo tar --no-same-owner -xzf "${WORK}/${ASSET}" -C /opt/box
+            sudo ln -sf /opt/box/box /usr/local/bin/box
+            box --version
+          fi
+      # Ubuntu 24.04 lets AppArmor stop an unprivileged process from making a user namespace, which
+      # `box run` needs for its sandbox. The runner is a throwaway VM.
+      - name: Allow user namespaces for box
+        if: matrix.name == 'Linux-arm64'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # No released @aws/agentcore-cdk deploys a Box project yet, so on the runners that run the Box
+      # tests, they deploy with one built from aws/agentcore-l3-cdk-constructs at inputs.l3Ref. That
+      # repository is private and this job's GITHUB_TOKEN reads only this one, so the token comes
+      # from the repository's GitHub App, scoped to the L3 repository and read-only.
+      - name: Generate a read token for the L3 constructs
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        id: l3-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: aws
+          repositories: agentcore-l3-cdk-constructs
+          permission-contents: read
+      - name: Check out the L3 constructs
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aws/agentcore-l3-cdk-constructs
+          ref: ${{ inputs.l3Ref || 'box-integration' }}
+          token: ${{ steps.l3-token.outputs.token }}
+          path: .l3-cdk
+          # Leave no token in .l3-cdk/.git for later steps.
+          persist-credentials: false
+      # Packed onto the runner only: nothing is published. The Box tests install it into each Box
+      # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates.test.ts).
+      - name: Pack the L3 constructs for the Box tests
+        if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
+        working-directory: .l3-cdk
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          TARBALL=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" | tail -n 1)
+          echo "AGENTCORE_E2E_BOX_CDK=file:${RUNNER_TEMP}/${TARBALL}" >> "$GITHUB_ENV"
       - name: Build CLI
         if: inputs.npmVersion == ''
         run: bun run build
@@ -137,11 +246,11 @@ jobs:
         if: inputs.tags == ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
-          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e
       - name: Run tagged E2E tests
         if: inputs.tags != ''
         env:
           AGENTCORE_CLI_PATH: ${{ inputs.npmVersion != '' && 'agentcore' || format('node {0}/dist/index.js', github.workspace) }}
-          AWS_REGION: ${{ vars.E2E_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ inputs.region || vars.E2E_REGION || 'us-east-1' }}
         run: bun run test:e2e -- --tagsFilter="${{ inputs.tags }}"

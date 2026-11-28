@@ -31,4 +31,32 @@ describe("resolveRuntimeTemplateProfile", () => {
       }),
     ).toBe(profile);
   });
+
+  test("adds the Box template tag to a Box template's profile, and keeps the rest of it", () => {
+    expect(
+      resolveRuntimeTemplateProfile({
+        framework: "strands",
+        boxTemplate: true,
+        templateProfile: { modelProviderOverride: true, runtime: { tags: { team: "ml" } } },
+      }),
+    ).toEqual({
+      modelProviderOverride: true,
+      runtime: { tags: { "agentcore:template": "strands-box", team: "ml" } },
+    });
+  });
+
+  test("keeps the template name in a Box template's profile, and falls back to strands-box", () => {
+    expect(
+      resolveRuntimeTemplateProfile({
+        framework: "strands",
+        boxTemplate: true,
+        templateProfile: {
+          runtime: { tags: { "agentcore:template": "agent-python-strands-box" } },
+        },
+      })?.runtime?.tags,
+    ).toEqual({ "agentcore:template": "agent-python-strands-box" });
+    expect(
+      resolveRuntimeTemplateProfile({ framework: "none", boxTemplate: true })?.runtime?.tags,
+    ).toEqual({ "agentcore:template": "strands-box" });
+  });
 });

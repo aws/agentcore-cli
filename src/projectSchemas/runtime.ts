@@ -2,6 +2,7 @@ import {
   ContainerUriSchema,
   MAX_CONTAINER_BUILD_SECURITY_GROUPS,
   NetworkModeSchema,
+  type PlatformVersion,
   PlatformVersionSchema,
   ProtocolModeSchema,
   RuntimeVersionSchema as RuntimeVersionSchemaFromConstants,
@@ -13,6 +14,7 @@ import type { DirectoryPath } from "./types";
 import { AuthorizerConfigSchema, RuntimeAuthorizerTypeSchema } from "./auth";
 import { ConnectionSchema } from "./connections";
 import { TagsSchema } from "./tags";
+import { uniqueBy } from "./zod-util";
 import { z } from "zod";
 export const AgentNameSchema = z
   .string()
@@ -340,6 +342,71 @@ export const ModelProviderSchema = z.preprocess(
   z.enum(MODEL_PROVIDERS),
 );
 
+/** A box release version, as the tag `v<version>` of the box release names it. */
+export const BoxVersionSchema = z
+  .string()
+  .regex(/^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/, "a box version is letters, digits, '.', '+' and '-'");
+
+/**
+ * How far a runtime of a Box project is contained. `CONTAINED`, or no field: the agent runs in a box
+ * behind its Box gateway. `PRIVATE_VPC`: also in a private VPC with no internet path.
+ */
+export const ContainmentSchema = z.enum(["CONTAINED", "PRIVATE_VPC"]);
+export type Containment = z.infer<typeof ContainmentSchema>;
+export const PRIVATE_VPC_LIMIT =
+  'A project can have only one runtime with "containment": "PRIVATE_VPC". Create a new project for each PRIVATE_VPC runtime.';
+
+/** The platform a runtime of a Box project needs: Box runs only on AgentCore Runtime V2. */
+export const BOX_PLATFORM_VERSION: PlatformVersion = "V2";
+
+function isVpcCidr(value: string): boolean {
+  const [address = "", prefix = "", ...rest] = value.split("/");
+  const octets = address.split(".");
+  if (rest.length > 0 || !/^\d{2}$/.test(prefix) || octets.length !== 4) return false;
+  if (!octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number(octet) <= 255))
+    return false;
+  const bits = Number(prefix);
+  const ip = octets.reduce((total, octet) => total * 256 + Number(octet), 0);
+  return bits >= 16 && bits <= 24 && ip % 2 ** (32 - bits) === 0;
+}
+/** Everything else about a PRIVATE_VPC runtime's VPC is set in CDK through `AgentCoreApplication.network(runtimeName)`. */
+export const ContainedNetworkSchema = z
+  .object({
+    mode: z.enum(["CONTAINED"]).optional(),
+    cidr: z
+      .string()
+      .refine(
+        isVpcCidr,
+        "Must be an aligned IPv4 CIDR block with a /16 to /24 prefix, such as 10.0.0.0/16",
+      )
+      .optional(),
+    availabilityZoneIds: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^[a-z]{3,6}\d{1,2}-az\d{1,2}$/,
+            "Must be an Availability Zone ID, such as usw2-az1",
+          ),
+      )
+      .min(2)
+      .max(3)
+      .superRefine(
+        uniqueBy(
+          (id) => id,
+          (id) => `Duplicate Availability Zone ID: ${id}`,
+        ),
+      )
+      .optional(),
+    ipAddressType: z.enum(["IPV4", "DUAL_STACK"]).optional(),
+    /**
+     * Gives the VPC an AWS Secrets Manager endpoint, so the box of the runtime can read the keys of
+     * its third-party telemetry targets. Build sets it and removes it.
+     */
+    secretsManagerEndpoint: z.boolean().optional(),
+  })
+  .strict();
+export type ContainedNetwork = z.infer<typeof ContainedNetworkSchema>;
 /**
  * The rules for a pre-built image (`containerUri`): it is the whole container
  * artifact, so it needs `build: "Container"` and excludes every local build
@@ -388,11 +455,14 @@ export const ProjectRuntimeSchema = z
      */
     modelProvider: ModelProviderSchema.optional(),
     /**
-     * The model id the scaffold rendered into a LiteLLM runtime's code
-     * (explicit --model-id or the template default). Read by the China
-     * deploy gate to detect LiteLLM's Bedrock route ('bedrock/' prefix);
-     * ignored by the CDK app. Delete it together with modelProvider if you
-     * replace the model wiring by hand.
+     * The model id the scaffold rendered into the runtime's code (explicit
+     * --model-id or the template default), for a LiteLLM runtime and for a
+     * box runtime that calls a Bedrock model. The China deploy gate reads it
+     * to detect LiteLLM's Bedrock route ('bedrock/' prefix). For a box runtime,
+     * build lets its Box gateway call only this Bedrock model or inference
+     * profile; change it when the code calls another model. Ignored by the CDK
+     * app. Delete it together with modelProvider if you replace the model
+     * wiring by hand.
      */
     modelId: z.string().min(1).optional(),
     description: z.string().max(200).optional(),
@@ -409,7 +479,18 @@ export const ProjectRuntimeSchema = z
     buildContextPath: DirectoryPathSchema.optional(),
     customDockerBuildArgs: z.record(EnvVarNameSchema, BuildArgValueSchema).optional(),
     runtimeVersion: RuntimeVersionSchemaFromConstants.optional(),
-    /** Removing this keeps a deployed runtime on its current version; set V1 to move back. */
+    /**
+     * The box release a runtime that runs its agent in a box uses on AgentCore Runtime: build and
+     * deploy ship its Linux build in a CodeZip runtime's zip, and a container image downloads it
+     * (under `agentcore dev` too). `agentcore dev` runs a CodeZip agent with the `box` on your PATH
+     * instead. Every runtime of a Box project needs it, and only a runtime with it runs in a box;
+     * `agentcore create` writes the box release this CLI pins.
+     */
+    box: z.object({ version: BoxVersionSchema }).optional(),
+    /**
+     * Removing this keeps a deployed runtime on its current version; set V1 to move back. Every
+     * runtime of a Box project needs `"V2"`; create writes it.
+     */
     platformVersion: PlatformVersionSchema.optional(),
     envVars: z.array(EnvVarSchema).optional(),
     networkMode: NetworkModeSchema.optional(),
@@ -432,8 +513,29 @@ export const ProjectRuntimeSchema = z
     filesystemConfigurations: z.array(FilesystemConfigurationSchema).optional(),
     endpoints: z.record(RuntimeEndpointNameSchema, RuntimeEndpointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),
+    containment: ContainmentSchema.optional(),
+    /** Only with `"containment": "PRIVATE_VPC"`. */
+    network: ContainedNetworkSchema.optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.network && data.containment !== "PRIVATE_VPC") {
+      ctx.addIssue({
+        code: "custom",
+        message: '"network" is only allowed with "containment": "PRIVATE_VPC"',
+        path: ["network"],
+      });
+    }
+    if (
+      data.containment === "PRIVATE_VPC" &&
+      (data.networkMode !== undefined || data.networkConfig !== undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          '"containment": "PRIVATE_VPC" puts the runtime in its own private VPC, so leave networkMode and networkConfig unset',
+        path: ["containment"],
+      });
+    }
     if (data.networkMode === "VPC" && !data.networkConfig) {
       ctx.addIssue({
         code: "custom",

@@ -27,6 +27,24 @@ function summary(
   );
 }
 
+/**
+ * The hint for an HTTP 403 from an AWS_IAM Gateway. In a Box project, each Box Gateway has a
+ * resource policy that denies every principal except its runtime's execution role, so even an
+ * administrator gets AccessDenied.
+ */
+export function gatewayAccessDeniedHint(
+  statusCode: number,
+  authorizerType: string | undefined,
+): string | undefined {
+  if (statusCode !== 403 || authorizerType !== "AWS_IAM") return undefined;
+  return (
+    "Access denied. If this is a Box Gateway (bound to one runtime in a Box project), its " +
+    "resource policy lets only that runtime's execution role invoke it. Your credentials " +
+    "cannot invoke it, even with administrator access. Otherwise, check that your " +
+    "credentials allow bedrock-agentcore:InvokeGateway on this Gateway."
+  );
+}
+
 export async function writeGatewayInvokeResponse(
   response: GatewayInvokeResponse,
   output: StreamingResponseOutput,

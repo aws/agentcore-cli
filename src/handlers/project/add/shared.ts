@@ -12,6 +12,7 @@ import {
   type ProjectMutationResourceType,
 } from "../output";
 import type { AddResourceInput, Project } from "../types";
+import { isBoundGateway } from "../../../projectSchemas/project";
 import type { AddProjectResourceConfig } from "./types";
 
 /**
@@ -96,4 +97,37 @@ export async function addProjectResource(
   );
 
   return updatedProject;
+}
+
+/**
+ * The gateway the add gateway-target and add gateway-connector wizards select first: the first
+ * unbound gateway, which serves every runtime and harness. Only when every gateway is bound
+ * (each Box gateway is), the first one.
+ */
+export function defaultGatewayChoice(
+  gateways: readonly { name: string; boundRuntime?: string }[],
+): string {
+  return (gateways.find((gateway) => !isBoundGateway(gateway)) ?? gateways[0])?.name ?? "";
+}
+
+/** " · bound to runtime 'x'" for a gateway bound to one runtime, for a wizard's choice text. */
+export function boundRuntimeNote(gateway: { boundRuntime?: string }): string {
+  return isBoundGateway(gateway) ? ` · bound to runtime '${gateway.boundRuntime}'` : "";
+}
+
+/**
+ * The notes of add gateway-target and add gateway-connector for a gateway bound to one runtime:
+ * only that runtime gets its variables. They go through `addProjectResource`'s `notes`, so stderr
+ * and the `notes` of the `--json` result both carry them. The wizards show the same fact with
+ * {@link boundRuntimeNote}.
+ */
+export function boundGatewayAddedNotes(project: Project, gatewayName: string): string[] {
+  const runtime = project.spec.agentCoreGateways.find(
+    (gateway) => gateway.name === gatewayName,
+  )?.boundRuntime;
+  return runtime === undefined
+    ? []
+    : [
+        `Gateway '${gatewayName}' is bound to runtime '${runtime}', so only that runtime gets its variables`,
+      ];
 }

@@ -11,7 +11,7 @@ session, and streams its response.
   completed model message back as a JSON event of content blocks. An
   `InMemorySaver` checkpointer keyed on the Runtime session id carries history
   between turns.
-- `model/load.py`: creates the Bedrock chat model with `init_chat_model`.
+- `model/load.py`: creates the Bedrock chat model with `init_chat_model`.{{#if box}} On AgentCore Runtime the Box gateway may call only the Bedrock model in this runtime's `modelId` in `agentcore/agentcore.json`. To use another model, change `model/load.py` and `modelId` together, then deploy again; otherwise Bedrock denies the call.{{/if}}
 - `pyproject.toml`: Python dependencies, managed with
   [uv](https://docs.astral.sh/uv/). `agentcore create` has already run
   `uv sync` for you (unless you passed `--skip-install`), so `.venv/` is ready.
@@ -35,9 +35,14 @@ agentcore deploy
 agentcore invoke --runtime {{name}} --payload '{"prompt":"Hello!"}'
 ```
 
+{{#if box}}
+Traces are not collected yet: the agent runs in a box, which `opentelemetry-instrument` does not
+reach, so `agentcore create` sets `instrumentation.enableOtel` to `false` for this runtime.
+{{else}}
 Traces are collected automatically: AgentCore Runtime starts the agent under
 `opentelemetry-instrument`, which picks up `opentelemetry-instrumentation-langchain`
 from the dependencies.
+{{/if}}
 
 ## Extending
 

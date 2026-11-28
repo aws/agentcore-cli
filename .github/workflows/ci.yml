@@ -2,9 +2,9 @@
 name: CI
 on:
   push:
-    branches: [v0.x, v1.x]
+    branches: [v0.x, v1.x, box-integration]
   pull_request:
-    branches: [v0.x, v1.x]
+    branches: [v0.x, v1.x, box-integration]
   workflow_dispatch:
 
 concurrency:

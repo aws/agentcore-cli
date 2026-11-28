@@ -1,0 +1,83 @@
+#!/usr/bin/env bun
+
+/**
+ Pins box to a published GitHub release, in src/core/project/backends/boxRelease.json: the Linux
+ arm64 build that ships to AgentCore Runtime, and the macOS arm64 build that the e2e workflow
+ installs on its macOS runner. It reads the release's SHA256SUMS.txt, so the file changes only to a
+ version whose archives are published. It imports nothing from src/.
+
+   bun scripts/bump-box-release.ts --box <version> [--darwin-box <version>] [--box-repo <owner/repo>]
+
+ --darwin-box pins the macOS build of another release of the same repository, for a release whose
+ macOS build is broken. Without it, macOS comes from the --box release.
+**/
+
+import { join, resolve } from "node:path";
+import { parseArgs } from "node:util";
+
+const FILE = join(
+  resolve(import.meta.dir, ".."),
+  "src",
+  "core",
+  "project",
+  "backends",
+  "boxRelease.json",
+);
+const LINUX_TARGET = "aarch64-unknown-linux-gnu";
+const DARWIN_TARGET = "aarch64-apple-darwin";
+
+const { values } = parseArgs({
+  args: Bun.argv.slice(2),
+  options: {
+    box: { type: "string" },
+    "darwin-box": { type: "string" },
+    "box-repo": { type: "string" },
+  },
+});
+if (!values.box) {
+  console.error("Name a version: --box <version>.");
+  process.exit(2);
+}
+
+/** The SHA-256 of each asset of a release, from its SHA256SUMS.txt. */
+async function checksums(repo: string, version: string): Promise<Map<string, string>> {
+  const url = `https://github.com/${repo}/releases/download/v${version}/SHA256SUMS.txt`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  const sums = new Map<string, string>();
+  for (const line of (await response.text()).split("\n")) {
+    const match = /^([0-9a-f]{64})\s+\*?(\S+)$/.exec(line.trim());
+    if (match) sums.set(match[2]!, match[1]!);
+  }
+  return sums;
+}
+
+/** The pinned archive of `target` in release `version`, which the release must list. */
+async function pin(
+  repo: string,
+  version: string,
+  target: string,
+): Promise<{ target: string; asset: string; sha256: string }> {
+  // The box CLI archive, which holds box, its helpers, its packs and release.json. A release's
+  // `box-v<version>-*` archives hold only box and its helpers, with no packs.
+  const asset = `box-cli-v${version}-${target}.tar.gz`;
+  const sha256 = (await checksums(repo, version)).get(asset);
+  if (!sha256) throw new Error(`${repo} v${version} lists no ${asset}`);
+  return { target, asset, sha256 };
+}
+
+const pinned = await Bun.file(FILE).json();
+const repo = values["box-repo"] ?? pinned.box.repo;
+const version = values.box;
+const darwinVersion = values["darwin-box"] ?? version;
+console.log(`box: ${pinned.box.repo} ${pinned.box.version} → ${repo} ${version}`);
+if (darwinVersion !== version) console.log(`box macOS: ${darwinVersion}`);
+const darwin = await pin(repo, darwinVersion, DARWIN_TARGET);
+const box = {
+  repo,
+  version,
+  linux: await pin(repo, version, LINUX_TARGET),
+  darwin: darwinVersion === version ? darwin : { version: darwinVersion, ...darwin },
+};
+
+await Bun.write(FILE, `${JSON.stringify({ box }, null, 2)}\n`);

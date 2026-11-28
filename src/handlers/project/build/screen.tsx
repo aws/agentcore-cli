@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { ConfirmAction } from "../../../components/ConfirmAction";
 import { GlobalConfigAccessorKey, ProjectKey, type Context } from "../../../router";
+import { RegionKey } from "../../keys";
 import type { ScreenProps } from "../../types";
 import { ProjectGate } from "../ProjectGate";
 import type { Project } from "../types";
@@ -48,7 +49,9 @@ function BuildConfirm({
       error={null}
       action={async function* () {
         const globalConfig = await ctx.value(GlobalConfigAccessorKey)?.get();
+        // withRegion resolved --region, as the build command passes it.
         yield* core.projectManager.build(project, {
+          region: ctx.value(RegionKey),
           disableDependencyManagement: globalConfig?.disableDependencyManagement,
         });
         return { rows: {} };

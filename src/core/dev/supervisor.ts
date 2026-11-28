@@ -25,6 +25,8 @@ export interface SupervisedEvent {
 export type SupervisorConfig = {
   runtimes: ProjectRuntime[];
   projectRoot: string;
+  /** Whether agentcore.json has `"projectType": "box"`, so dev runs boxed agents in a box. */
+  boxProject: boolean;
   runners: { CodeZip: DevRunner; Container: DevRunner };
   /** Resolves the full child environment for a runtime (dev env + OTEL vars). */
   getDevEnvVarsForRuntime: (runtime: ProjectRuntime) => Promise<Record<string, string>>;
@@ -273,6 +275,7 @@ export class DevSupervisor {
       for await (const event of runner.run({
         runtime: entry.runtime,
         projectRoot: this.config.projectRoot,
+        boxProject: this.config.boxProject,
         port: input.port,
         ...(input.hookPort !== undefined && { hookPort: input.hookPort }),
         env: input.env,

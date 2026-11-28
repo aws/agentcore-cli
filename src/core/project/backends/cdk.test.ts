@@ -6,11 +6,12 @@ import { tmpdir } from "node:os";
 import { ListStackResourcesCommand, type Stack } from "@aws-sdk/client-cloudformation";
 import type { DeployResult, Project, ProjectEvent } from "../../../handlers/project/types";
 import { FsReadWriteJson, ProcessFailedError } from "../../../io";
-import { ProjectSpecSchema } from "../../../projectSchemas/project";
+import { boxGatewaySpec, ProjectSpecSchema } from "../../../projectSchemas/project";
+import { BOX_RELEASE } from "./boxRelease";
 import { ProjectRuntimeSchema } from "../../../projectSchemas/runtime";
 import { createSilentLogger } from "../../../testing";
 import { TransactionSearchSetupError } from "../../../errors";
-import { CdkBackend, type CdkBackendConfig } from "./cdk";
+import { boxOtelWarnings, CdkBackend, type CdkBackendConfig } from "./cdk";
 import type {
   CredentialProviderCalls,
   CredentialProvisionInput,
@@ -23,6 +24,12 @@ import type { DeployBackendInput } from "./types";
 import type { ResolvedProjectResource } from "../../../handlers/project/types";
 import type { BootstrapState } from "./cdk/environment";
 import type { CdkCredentialProvider, CdkOperation, CdkOutputs, CdkRunOptions } from "./cdk/toolkit";
+import {
+  ResourceNotFoundException,
+  type SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
+import type { CredentialedClientConfig, CreateSecretsManagerClient } from "../../types";
+import type { BoxNetwork } from "../boxNetwork";
 
 const TARGET = {
   name: "default",
@@ -66,8 +73,17 @@ function unusedIdentity(): CredentialProviderCalls {
   };
 }
 
+/** A build of a project that has no box runtime. */
+const NO_BOX_NETWORKS = { boxNetworks: [] };
+
+const OTEL_WARNING =
+  "Runtime 'agent' runs its agent in a box, and [agent] command in " +
+  ".box/agent/local/profile.toml does not run the venv's Python, so on AgentCore Runtime the " +
+  "agent does not start under opentelemetry-instrument and sends no traces. Run the agent with " +
+  "the venv's Python, or set instrumentation.enableOtel to false.";
+
 function deployInput(overrides: Partial<DeployBackendInput> = {}): DeployBackendInput {
-  return { target: TARGET, confirmTeardown: async () => false, ...overrides };
+  return { target: TARGET, confirmTeardown: async () => false, boxNetworks: [], ...overrides };
 }
 
 const tempDirectories: string[] = [];
@@ -221,6 +237,8 @@ type HarnessOptions = {
   synthOutput?: string[];
   /** Lines the fake Toolkit reports through each operation's onOutput sink. */
   cdkOutput?: string[];
+  createSecretsManagerClient?: CreateSecretsManagerClient;
+  processEnv?: NodeJS.ProcessEnv;
 };
 
 function harness(options: HarnessOptions = {}) {
@@ -332,6 +350,10 @@ function harness(options: HarnessOptions = {}) {
     ...(options.removeCredentials && {
       removeCredentials: options.removeCredentials,
     }),
+    ...(options.createSecretsManagerClient && {
+      createSecretsManagerClient: options.createSecretsManagerClient,
+    }),
+    ...(options.processEnv && { processEnv: options.processEnv }),
     describeStack: async (region, provider, stackName) => {
       stackReads.push({ stackName, region, credentials: provider });
       if (options.describedStack === null) return undefined;
@@ -439,7 +461,7 @@ describe("CdkBackend.build", () => {
       },
       synthOutput: ["step 1/2\n"],
     });
-    const events = await collect(h.backend.build(p));
+    const events = await collect(h.backend.build(p, NO_BOX_NETWORKS));
     expect(checked).toEqual(["finch"]);
     expect(h.commands.map(({ command }) => command)).toEqual([
       synthCommand(p),
@@ -483,7 +505,7 @@ describe("CdkBackend.build", () => {
         buildx: { name: "multiarch-builder", driver: "docker-container" },
       }),
     });
-    const events = await collect(h.backend.build(p));
+    const events = await collect(h.backend.build(p, NO_BOX_NETWORKS));
     expect(h.commands[1]?.command.slice(0, 3)).toEqual(["docker", "build", "--load"]);
     const warnings = events.filter((event) => event.type === "warning");
     expect(warnings.map((event) => event.message).join("\n")).toContain(
@@ -508,7 +530,9 @@ describe("CdkBackend.build", () => {
       commandError: (command) =>
         command[1] === "build" ? new Error("COPY requirements.txt: not found") : undefined,
     });
-    const error = await collect(h.backend.build(p)).catch((caught: unknown) => caught as Error);
+    const error = await collect(h.backend.build(p, NO_BOX_NETWORKS)).catch(
+      (caught: unknown) => caught as Error,
+    );
     expect(error).toBeInstanceOf(Error);
     const message = (error as Error).message;
     expect(message).toContain("Building the runtime/agent image failed.");
@@ -537,7 +561,7 @@ describe("CdkBackend.build", () => {
         throw new Error("must not detect a builder");
       },
     });
-    await collect(h.backend.build(p));
+    await collect(h.backend.build(p, NO_BOX_NETWORKS));
     expect(probed).toEqual([["Runtime containerUri"]]);
     expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
   });
@@ -559,17 +583,217 @@ describe("CdkBackend.build", () => {
         throw new Error("build must not probe Docker");
       },
     });
-    await collect(h.backend.build(p));
+    await collect(h.backend.build(p, NO_BOX_NETWORKS));
     expect(h.commands.map(({ command }) => command)).toEqual([synthCommand(p)]);
   });
   test("synthesizes into the assembly directory deploy reads", async () => {
     const input = await project();
     const subject = harness();
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       { type: "step", message: "synthesizing CloudFormation templates" },
     ]);
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
+  });
+
+  /** The Box network model of the runtime `agent`, with its derived Runtime profile. */
+  const boxNetwork = (runtimeProfile: Record<string, unknown>) => ({
+    runtime: "agent",
+    gateway: "agent-box-egress",
+    region: "us-west-2",
+    hosts: [],
+    envRoutes: [],
+    managedTargets: new Set<string>(),
+    policyFiles: [],
+    runtimeProfile,
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+  });
+  const PLAIN = ["${{ workspace }}/.venv/bin/python", "-m", "main"];
+  const UNDER_OTEL: Record<string, string[]> = {
+    Container: ["${{ workspace }}/.venv/bin/opentelemetry-instrument", ...PLAIN],
+    CodeZip: [
+      "${{ inputs.python.path }}",
+      "${{ inputs.code.dir }}/bin/opentelemetry-instrument",
+      "${{ inputs.python.path }}",
+      "-m",
+      "main",
+    ],
+  };
+
+  // A CodeZip box build downloads box before it warns, so the cases check the warning itself.
+  test.each([
+    [
+      "a box container that starts under opentelemetry-instrument",
+      "box",
+      "Container",
+      true,
+      true,
+      false,
+    ],
+    [
+      "a box CodeZip runtime that starts under opentelemetry-instrument",
+      "box",
+      "CodeZip",
+      true,
+      true,
+      false,
+    ],
+    ["a box container that does not", "box", "Container", true, false, true],
+    ["a box CodeZip runtime that does not", "box", "CodeZip", true, false, true],
+    ["a box container with enableOtel false", "box", "Container", false, false, false],
+    ["a container outside a Box project", undefined, "Container", true, false, false],
+  ] as const)(
+    "warns that %s sends no traces: %p",
+    (_label, projectType, build, otel, started, warns) => {
+      const spec = ProjectSpecSchema.parse({
+        name: "example",
+        version: 2,
+        ...(projectType && { projectType }),
+        runtimes: [
+          {
+            name: "agent",
+            build,
+            ...(build === "CodeZip" && { runtimeVersion: "PYTHON_3_14" }),
+            entrypoint: "main.py",
+            codeLocation: "app/agent",
+            ...(projectType && {
+              box: { version: BOX_RELEASE.version },
+              platformVersion: "V2" as const,
+            }),
+            ...(!otel && { instrumentation: { enableOtel: false } }),
+          },
+        ],
+        agentCoreGateways: projectType ? [boxGatewaySpec("agent", "strands-box")] : [],
+      });
+
+      const command = started ? UNDER_OTEL[build]! : PLAIN;
+
+      expect(boxOtelWarnings(spec, [boxNetwork({ agent: { command } })])).toEqual(
+        warns ? [OTEL_WARNING] : [],
+      );
+    },
+  );
+
+  test("gives no OTEL warning for a box runtime whose envVars set DISABLE_ADOT_OBSERVABILITY to true", () => {
+    const spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
+    });
+
+    expect(boxOtelWarnings(spec, [boxNetwork({ agent: { command: PLAIN } })])).toEqual([]);
+  });
+
+  test("gives no OTEL warning for a box runtime that has no Box network model", () => {
+    const spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
+    });
+
+    expect(boxOtelWarnings(spec, [])).toEqual([]);
+  });
+
+  test("build yields the OTEL warning of a box runtime", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
+    });
+    await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
+    await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
+
+    // Build stages box from the runtime's Box network model, with its derived Runtime profile.
+    const plain = { packs: ["@box/base", "@box/agentcore"], agent: { command: PLAIN } };
+    const started = { ...plain, agent: { command: UNDER_OTEL.Container } };
+    const warned = await collect(
+      harness().backend.build(input, { boxNetworks: [boxNetwork(plain)] }),
+    );
+    const quiet = await collect(
+      harness().backend.build(input, { boxNetworks: [boxNetwork(started)] }),
+    );
+
+    expect(warned).toContainEqual({ type: "warning", message: OTEL_WARNING } as ProjectEvent);
+    expect(quiet).not.toContainEqual({ type: "warning", message: OTEL_WARNING } as ProjectEvent);
+  });
+
+  test("build warns for a box container whose Dockerfile does not install the AWS CLI it needs", async () => {
+    const input = await project();
+    input.spec = ProjectSpecSchema.parse({
+      name: "example",
+      version: 2,
+      projectType: "box",
+      runtimes: [
+        {
+          name: "agent",
+          build: "Container",
+          entrypoint: "main.py",
+          codeLocation: "app/agent",
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [boxGatewaySpec("agent", "strands-box")],
+    });
+    await mkdir(join(input.rootPath, "app", "agent"), { recursive: true });
+    await writeFile(join(input.rootPath, "app", "agent", "Dockerfile"), "FROM scratch\n");
+    const network = {
+      ...boxNetwork({ packs: ["@box/base", "@box/agentcore"], agent: { command: PLAIN } }),
+      thirdPartyTelemetry: [
+        {
+          name: "langfuse",
+          kind: "langfuse",
+          keys: [],
+          secret: { variable: "LANGFUSE_AUTH", keys: [] },
+        },
+      ],
+    } as BoxNetwork;
+
+    const events = await collect(harness().backend.build(input, { boxNetworks: [network] }));
+
+    expect(events).toContainEqual({
+      type: "warning",
+      message: expect.stringMatching(
+        /^Runtime 'agent' reads the key of \[telemetry\.langfuse\] from AWS Secrets Manager /,
+      ),
+    } as ProjectEvent);
   });
 
   test("warns but continues when the installed CDK is legacy", async () => {
@@ -582,7 +806,7 @@ describe("CdkBackend.build", () => {
     );
     const subject = harness();
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       {
         type: "warning",
         message: expect.stringContaining("Update the CDK dependency, then rebuild or redeploy."),
@@ -598,7 +822,7 @@ describe("CdkBackend.build", () => {
     // the fragments "line t" / "wo".
     const subject = harness({ synthOutput: ["line one\nline t", "wo\ntrailing partial"] });
 
-    expect(await collect(subject.backend.build(input))).toEqual([
+    expect(await collect(subject.backend.build(input, NO_BOX_NETWORKS))).toEqual([
       { type: "step", message: "synthesizing CloudFormation templates" },
       { type: "output", line: "line one" },
       { type: "output", line: "line two" },
@@ -619,7 +843,7 @@ describe("CdkBackend.build", () => {
     );
     const subject = harness();
 
-    const events = await collect(subject.backend.build(input));
+    const events = await collect(subject.backend.build(input, NO_BOX_NETWORKS));
 
     const updated = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(updated.dependencies).toEqual({ ...vended.dependencies, zod: "4.1.0" });
@@ -640,7 +864,9 @@ describe("CdkBackend.build", () => {
     await writeFile(manifestPath, manifest);
     const subject = harness();
 
-    await collect(subject.backend.build(input, { disableDependencyManagement: true }));
+    await collect(
+      subject.backend.build(input, { ...NO_BOX_NETWORKS, disableDependencyManagement: true }),
+    );
 
     expect(await readFile(manifestPath, "utf8")).toBe(manifest);
     expect(subject.commands).toEqual([{ command: synthCommand(input), cwd: cdkDirectory(input) }]);
@@ -650,7 +876,9 @@ describe("CdkBackend.build", () => {
     const input = await project(false);
     const subject = harness();
 
-    await expect(collect(subject.backend.build(input))).rejects.toThrow(/npm install/);
+    await expect(collect(subject.backend.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
+      /npm install/,
+    );
     expect(subject.commands).toEqual([]);
   });
 
@@ -666,7 +894,9 @@ describe("CdkBackend.build", () => {
       checkTool: async () => {},
     });
 
-    await expect(collect(subject.build(input))).rejects.toThrow("cdk synth exploded");
+    await expect(collect(subject.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
+      "cdk synth exploded",
+    );
   });
 
   test.each([
@@ -688,7 +918,7 @@ describe("CdkBackend.build", () => {
     const failure = new ProcessFailedError(synthCommand(input), cdkDirectory(input), 1, output);
     const subject = harness({ synthError: failure });
 
-    await expect(collect(subject.backend.build(input))).rejects.toThrow(
+    await expect(collect(subject.backend.build(input, NO_BOX_NETWORKS))).rejects.toThrow(
       `Project build cannot resolve credential "${name}" before its first deployment. ` +
         `Run 'agentcore deploy' to provision the credential and build the project.`,
     );
@@ -723,7 +953,7 @@ describe("CdkBackend.deploy", () => {
       const previous = process.env.CDK_DOCKER;
       process.env.CDK_DOCKER = "./bin/dw";
       try {
-        if (operation === "build") await collect(h.backend.build(p));
+        if (operation === "build") await collect(h.backend.build(p, NO_BOX_NETWORKS));
         else await collectDeploy(h.backend.deploy(p, deployInput()));
       } finally {
         if (previous === undefined) delete process.env.CDK_DOCKER;
@@ -1103,7 +1333,7 @@ describe("CdkBackend.deploy", () => {
     const reads = spyOn(fs, "readFileSync");
     try {
       const h = harness({ checkLocalBuilder: async () => ({}) });
-      await collect(h.backend.build(p));
+      await collect(h.backend.build(p, NO_BOX_NETWORKS));
       expect(
         reads.mock.calls.filter(([path]) => String(path).endsWith("harness.yaml")),
       ).toHaveLength(1);
@@ -1389,6 +1619,29 @@ describe("CdkBackend.deploy", () => {
     expect(subject.accountRegions).toEqual([TARGET.region]);
     expect(subject.bootstrapRegions).toEqual([TARGET.region]);
     expect(subject.templateLoads()).toBe(0);
+  });
+
+  // An old @aws/agentcore-cdk drops platformVersion without an error, so deploy checks the
+  // synthesized template before it runs anything.
+  test("refuses a runtime whose platformVersion the synthesized stack does not set, before deploying", async () => {
+    const input = await project();
+    input.spec.runtimes.push(
+      ProjectRuntimeSchema.parse({
+        name: "agent",
+        build: "CodeZip",
+        codeLocation: "app/agent",
+        entrypoint: "start.py",
+        runtimeVersion: "PYTHON_3_14",
+        platformVersion: "V2",
+      }),
+    );
+    await writeAssembly(input, [TARGET.name]);
+    const subject = harness({ outputs: { RuntimeArn: "arn:runtime" } });
+
+    await expect(collectDeploy(subject.backend.deploy(input, deployInput()))).rejects.toThrow(
+      "Could not find runtime 'agent' in the synthesized stack",
+    );
+    expect(subject.runs).toEqual([]);
   });
 
   test("skips Transaction Search when the config disables it", async () => {
@@ -2511,6 +2764,174 @@ describe("CdkBackend.resolveProjectResources", () => {
     expect(subject.accountCredentials).toEqual([]);
   });
 
+  /** Each gateway's targets as `[gateway, [[target, id]...]]`; a target with no id has none. */
+  const gatewayTargetIds = (resources: ResolvedProjectResource[]) =>
+    resources
+      .filter(({ resourceType }) => resourceType === "gateway")
+      .map(({ name, children }) => [
+        name,
+        (children ?? []).map((child) => [
+          child.name,
+          child.deploymentState === "deployed" && "id" in child ? child.id : undefined,
+        ]),
+      ]);
+
+  const ONE = boxGatewaySpec("agent", "strands-box").name;
+  const TWO = boxGatewaySpec("second_agent", "strands-box").name;
+  /** A gateway and its target names; a deployed gateway, the target id exports, and the ids expected. */
+  test.each([
+    {
+      title: "a target name that two gateways share gets the id of its own gateway",
+      gateways: [
+        [ONE, ["bedrock", "egress-github"]],
+        [TWO, ["bedrock"]],
+      ],
+      deployed: [ONE, TWO],
+      exports: {
+        [`${ONE}:bedrock`]: "bedrock-of-one",
+        [`${TWO}:bedrock`]: "bedrock-of-two",
+        "egress-github": "github-of-one",
+      },
+      expected: [
+        [
+          ONE,
+          [
+            ["bedrock", "bedrock-of-one"],
+            ["egress-github", "github-of-one"],
+          ],
+        ],
+        [TWO, [["bedrock", "bedrock-of-two"]]],
+      ],
+    },
+    {
+      title: "the target of one gateway gets the export name without the gateway",
+      gateways: [[ONE, ["bedrock"]]],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-1" },
+      expected: [[ONE, [["bedrock", "bedrock-1"]]]],
+    },
+    {
+      title:
+        "a target name with a hyphen does not take the id of a gateway and target joined by a hyphen",
+      gateways: [
+        ["a", ["b"]],
+        ["tools", ["a-b"]],
+      ],
+      deployed: ["a", "tools"],
+      exports: { b: "b-of-a", "a-b": "a-b-of-tools" },
+      expected: [
+        ["a", [["b", "b-of-a"]]],
+        ["tools", [["a-b", "a-b-of-tools"]]],
+      ],
+    },
+    {
+      title: "a target of one gateway does not take the id of a target named after the gateway",
+      gateways: [["tools", ["search", "tools-search"]]],
+      deployed: ["tools"],
+      exports: { search: "search-1", "tools-search": "tools-search-1" },
+      expected: [
+        [
+          "tools",
+          [
+            ["search", "search-1"],
+            ["tools-search", "tools-search-1"],
+          ],
+        ],
+      ],
+    },
+    {
+      title:
+        "a shared target name with a hyphen does not give its id to the target of another gateway",
+      gateways: [
+        ["a", ["b-c"]],
+        ["x", ["b-c"]],
+        ["a-b", ["c"]],
+      ],
+      deployed: ["a", "x", "a-b"],
+      exports: { "a:b-c": "b-c-of-a", "x:b-c": "b-c-of-x", c: "c-of-a-b" },
+      expected: [
+        ["a", [["b-c", "b-c-of-a"]]],
+        ["x", [["b-c", "b-c-of-x"]]],
+        ["a-b", [["c", "c-of-a-b"]]],
+      ],
+    },
+    {
+      title:
+        "a shared target name of a gateway with an underscore gets the export name with a hyphen",
+      gateways: [
+        ["my_tools", ["search"]],
+        ["other", ["search"]],
+      ],
+      deployed: ["my_tools", "other"],
+      exports: { "my-tools:search": "search-of-my-tools", "other:search": "search-of-other" },
+      expected: [
+        ["my_tools", [["search", "search-of-my-tools"]]],
+        ["other", [["search", "search-of-other"]]],
+      ],
+    },
+    {
+      title:
+        "a target name that two gateways share gives no id while the stack has only the export without the gateway",
+      gateways: [
+        [ONE, ["bedrock"]],
+        [TWO, ["bedrock"]],
+      ],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-of-one" },
+      expected: [
+        [ONE, [["bedrock", undefined]]],
+        [TWO, [["bedrock", undefined]]],
+      ],
+    },
+    {
+      title:
+        "a target of a gateway that is not deployed gives no id, also when an export has its name",
+      gateways: [
+        [ONE, ["bedrock"]],
+        [TWO, ["egress-github"]],
+      ],
+      deployed: [ONE],
+      exports: { bedrock: "bedrock-of-one", "egress-github": "github-of-a-previous-deploy" },
+      expected: [
+        [ONE, [["bedrock", "bedrock-of-one"]]],
+        [TWO, [["egress-github", undefined]]],
+      ],
+    },
+  ] as {
+    title: string;
+    gateways: [string, string[]][];
+    deployed: string[];
+    exports: Record<string, string>;
+    expected: [string, [string, string | undefined][]][];
+  }[])("$title", async ({ gateways, deployed, exports, expected }) => {
+    const input = await project();
+    input.spec = {
+      ...input.spec,
+      agentCoreGateways: gateways.map(([name, targets]) => ({
+        name,
+        targets: targets.map((target) => ({ name: target })),
+      })),
+    } as unknown as typeof input.spec;
+    await updateTargetState(json, input.rootPath, TARGET.name, { stackArn: STACK_ARN });
+    const subject = harness({
+      describedStack: {
+        StackName: S,
+        CreationTime: new Date(0),
+        StackStatus: "CREATE_COMPLETE",
+        Outputs: [
+          ...deployed.map((gateway) =>
+            out(`${S}-Gateway-${gateway.replace(/_/g, "-")}-Arn`, `arn:gateway/${gateway}`),
+          ),
+          ...Object.entries(exports).map(([name, id]) => out(`${S}-GatewayTarget-${name}-Id`, id)),
+        ],
+      },
+    });
+
+    const resources = await subject.backend.resolveProjectResources(input, { target: TARGET });
+
+    expect(gatewayTargetIds(resources)).toEqual(expected);
+  });
+
   test("nests a gateway's targets under the gateway", async () => {
     const input = await project();
     input.spec = {
@@ -2528,5 +2949,340 @@ describe("CdkBackend.resolveProjectResources", () => {
         children?.map((child) => child.name),
       ]),
     ).toEqual([["gateway", "gw", ["owned", "second"]]]);
+  });
+});
+
+describe("CdkBackend.deploy and the box telemetry secrets", () => {
+  const NAME = "agentcore/example/agent/box";
+  const ARN = `arn:aws:secretsmanager:us-east-1:111122223333:secret:${NAME}-AbCdEf`;
+  const OLD =
+    "arn:aws:secretsmanager:us-east-1:111122223333:secret:agentcore/example/old/box-XyZaBc";
+  /** A stand-in key: no real secret goes into a test. */
+  const KEY = "dummy-langsmith-key";
+  const NETWORK: BoxNetwork = {
+    runtime: "agent",
+    gateway: "agent-box",
+    region: TARGET.region,
+    hosts: [],
+    envRoutes: [],
+    managedTargets: new Set(),
+    policyFiles: [],
+    grantedActions: [],
+    warnings: [],
+    failures: [],
+    thirdPartyTelemetry: [
+      {
+        name: "langsmith",
+        kind: "langsmith",
+        keys: [],
+        secret: { variable: "LANGSMITH_KEY", keys: [] },
+      },
+    ],
+  };
+  const ENV = { AGENTCORE_CREDENTIAL_AGENT_TELEMETRY_LANGSMITH: KEY };
+
+  /** The tags deploy gives the secret of runtime `runtime` of project example. */
+  const tagsOf = (runtime: string) => [
+    { Key: "agentcore:created-by", Value: "agentcore-cli" },
+    { Key: "agentcore:project-name", Value: "example" },
+    { Key: "agentcore:runtime-name", Value: runtime },
+  ];
+
+  /**
+   * A stub Secrets Manager: it holds `existing` ARNs, each with the tags deploy gives it, and
+   * records each client and each command.
+   */
+  function secretsManager(
+    existing: readonly string[] = [],
+    deleteError?: Error,
+    held?: { value: string },
+  ) {
+    const configs: CredentialedClientConfig[] = [];
+    const sent: { command: string; input: Record<string, unknown> }[] = [];
+    const create: CreateSecretsManagerClient = (config) => {
+      configs.push(config);
+      return {
+        send: async (command: {
+          constructor: { name: string };
+          input: Record<string, unknown>;
+        }) => {
+          const name = command.constructor.name;
+          sent.push({ command: name, input: command.input });
+          if (name === "DescribeSecretCommand") {
+            const id = command.input.SecretId as string;
+            if (held && (id === NAME || id === ARN)) return { ARN, Tags: tagsOf("agent") };
+            if (!existing.includes(id)) {
+              throw new ResourceNotFoundException({ message: "absent", $metadata: {} });
+            }
+            return { ARN: id, Tags: tagsOf(id.split("/")[2] ?? "") };
+          }
+          if (name === "CreateSecretCommand") return { ARN };
+          if (name === "GetSecretValueCommand" && held) return { SecretString: held.value };
+          if (name === "PutSecretValueCommand" && held) {
+            held.value = command.input.SecretString as string;
+          }
+          if (name === "DeleteSecretCommand" && deleteError) throw deleteError;
+          return {};
+        },
+      } as unknown as SecretsManagerClient;
+    };
+    return { configs, sent, create };
+  }
+
+  async function recordSecrets(input: Project, targets: Record<string, Record<string, string>>) {
+    for (const [target, secrets] of Object.entries(targets)) {
+      await updateTargetState(json, input.rootPath, target, {
+        stackArn: STACK_ARN,
+        resources: {
+          boxTelemetrySecrets: Object.fromEntries(
+            Object.entries(secrets).map(([name, secretArn]) => [name, { secretArn }]),
+          ),
+        },
+      });
+    }
+  }
+
+  async function targetState(input: Project, target: string = TARGET.name) {
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    return JSON.parse(await Bun.file(statePath).text()).targets[target] as {
+      resources?: Record<string, unknown>;
+    };
+  }
+
+  test("stores the keys before synth, with the target's credentials, and records the secret", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const stub = secretsManager();
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(stub.configs).toEqual([{ region: TARGET.region, credentials: subject.credentials }]);
+    expect(stub.sent).toEqual([
+      { command: "DescribeSecretCommand", input: { SecretId: NAME } },
+      {
+        command: "CreateSecretCommand",
+        input: expect.objectContaining({
+          Name: NAME,
+          SecretString: JSON.stringify({ "telemetry.langsmith": KEY }),
+          Tags: tagsOf("agent"),
+        }),
+      },
+    ]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
+    });
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf(
+        "preparing secret 'agentcore/example/agent/box' for the box telemetry of 'agent'",
+      ),
+    ).toBeLessThan(messages.indexOf("synthesizing CloudFormation templates"));
+  });
+
+  /** The fields of a runtime that sent to LangSmith and to a Langfuse target that went since. */
+  const BOTH = ["telemetry.langsmith", "telemetry.langfuse"];
+  const HELD = JSON.stringify({
+    "telemetry.langsmith": KEY,
+    "telemetry.langfuse": "dummy-langfuse-key",
+  });
+  const REMOVED = `removing 'telemetry.langfuse' from secret '${NAME}': no deployed runtime reads it`;
+
+  async function recordFields(input: Project, target: string, fields: string[]) {
+    await updateTargetState(json, input.rootPath, target, {
+      stackArn: STACK_ARN,
+      resources: { boxTelemetrySecrets: { [NAME]: { secretArn: ARN, fields } } },
+    });
+  }
+
+  test("keeps the field of a removed target, and its record, when the stack deploy fails", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({
+      createSecretsManagerClient: stub.create,
+      processEnv: ENV,
+      failOperation: "deploy",
+    });
+
+    await expect(
+      collectDeploy(subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] }))),
+    ).rejects.toThrow("deploy failed");
+
+    expect(held.value).toBe(HELD);
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "GetSecretValueCommand",
+    ]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: BOTH },
+    });
+  });
+
+  test("removes the field of a removed target after the stack deploy, and records the fields the runtime reads", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(held.value).toBe(JSON.stringify({ "telemetry.langsmith": KEY }));
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf(REMOVED));
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
+    });
+  });
+
+  test("keeps the field of a removed target that the runtime of another deployment target reads", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordFields(input, TARGET.name, BOTH);
+    await recordFields(input, "staging", BOTH);
+    const held = { value: HELD };
+    const stub = secretsManager([], undefined, held);
+    const subject = harness({ createSecretsManagerClient: stub.create, processEnv: ENV });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ boxNetworks: [NETWORK] })),
+    );
+
+    expect(held.value).toBe(HELD);
+    expect(stepMessages(deployed.events)).toContain(
+      `keeping 'telemetry.langfuse' in secret '${NAME}': another deployment target reads it`,
+    );
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: ["telemetry.langsmith"] },
+    });
+    expect((await targetState(input, "staging")).resources?.boxTelemetrySecrets).toEqual({
+      [NAME]: { secretArn: ARN, fields: BOTH },
+    });
+  });
+
+  test("deletes a recorded secret that no runtime needs, after the stack update, and forgets it", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    await recordSecrets(input, { [TARGET.name]: { "agentcore/example/old/box": OLD } });
+    const stub = secretsManager([OLD]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    const deployed = await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(stub.sent).toEqual([
+      { command: "DescribeSecretCommand", input: { SecretId: OLD } },
+      { command: "DeleteSecretCommand", input: { SecretId: OLD, RecoveryWindowInDays: 7 } },
+    ]);
+    const messages = stepMessages(deployed.events);
+    expect(
+      messages.indexOf("deploying AgentCore-example-default-0 (usually takes a few minutes)"),
+    ).toBeLessThan(messages.indexOf("deleting secret 'agentcore/example/old/box'"));
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toBeUndefined();
+  });
+
+  test("keeps a secret that another deployment target records", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const old = { "agentcore/example/old/box": OLD };
+    await recordSecrets(input, { [TARGET.name]: old, staging: old });
+    const stub = secretsManager([OLD]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    await collectDeploy(subject.backend.deploy(input, deployInput()));
+
+    expect(stub.sent).toEqual([]);
+    expect((await targetState(input)).resources?.boxTelemetrySecrets).toBeUndefined();
+    expect((await targetState(input, "staging")).resources?.boxTelemetrySecrets).toEqual({
+      "agentcore/example/old/box": { secretArn: OLD },
+    });
+  });
+
+  test("teardown deletes every recorded secret after the stack", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    await recordSecrets(input, { [TARGET.name]: { [NAME]: ARN } });
+    const stub = secretsManager([ARN]);
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    const deployed = await collectDeploy(
+      subject.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(deployed.result).toEqual({ outputs: {}, tornDown: true });
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "DeleteSecretCommand",
+    ]);
+    const messages = stepMessages(deployed.events);
+    expect(messages.indexOf("removing stack AgentCore-example-default-0")).toBeLessThan(
+      messages.indexOf(`deleting secret '${NAME}'`),
+    );
+  });
+
+  test("teardown keeps the record of a secret it cannot delete, and a later teardown deletes it", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name], { resources: METADATA_ONLY });
+    await recordSecrets(input, { [TARGET.name]: { [NAME]: ARN } });
+    const failing = harness({
+      createSecretsManagerClient: secretsManager([ARN], new Error("AccessDenied")).create,
+    });
+
+    const first = await collectDeploy(
+      failing.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(first.result).toEqual({ outputs: {}, tornDown: true });
+    expect(first.events).toContainEqual({
+      type: "warning",
+      message:
+        `Deploy did not delete secret '${NAME}' (${ARN}): AccessDenied. The secret stays in ` +
+        "AWS Secrets Manager, and AWS bills you for it. Deploy keeps its record of the secret, " +
+        "and the next deploy of this target tries to delete it again, also when the stack is gone.",
+    });
+    expect(await targetState(input)).toEqual({
+      resources: { boxTelemetrySecrets: { [NAME]: { secretArn: ARN } } },
+    });
+
+    const stub = secretsManager([ARN]);
+    const retry = harness({ createSecretsManagerClient: stub.create, describedStack: null });
+    const second = await collectDeploy(
+      retry.backend.deploy(input, deployInput({ confirmTeardown: async () => true })),
+    );
+
+    expect(second.result).toEqual({ outputs: {}, tornDown: true });
+    expect(stub.sent.map(({ command }) => command)).toEqual([
+      "DescribeSecretCommand",
+      "DeleteSecretCommand",
+    ]);
+    expect(retry.runs.map(({ operation }) => operation.kind)).not.toContain("destroy");
+    const statePath = join(input.rootPath, DEPLOYED_STATE_RELATIVE_PATH);
+    expect(JSON.parse(await Bun.file(statePath).text()).targets[TARGET.name]).toBeUndefined();
+  });
+
+  test("sends nothing to Secrets Manager and records nothing for a project with no such target", async () => {
+    const input = await project();
+    await writeAssembly(input, [TARGET.name]);
+    const stub = secretsManager();
+    const subject = harness({ createSecretsManagerClient: stub.create });
+
+    await collectDeploy(
+      subject.backend.deploy(
+        input,
+        deployInput({ boxNetworks: [{ ...NETWORK, thirdPartyTelemetry: [] }] }),
+      ),
+    );
+
+    expect(stub.sent).toEqual([]);
+    expect((await targetState(input)).resources).toEqual({ credentials: {} });
   });
 });

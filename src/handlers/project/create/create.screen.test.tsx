@@ -21,7 +21,7 @@ import {
 import { createRootHandler } from "../../index";
 import { InputValidationError } from "../../../errors";
 import type { AppIO } from "../../../io";
-import { resolveRuntimeTemplateShortcut } from "../shortcuts";
+import { PROJECT_TEMPLATE_NAMES, resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { CreateProjectInput } from "../types";
 import { ProjectSpecSchema } from "../../../projectSchemas/project";
 import { RegionKey } from "../../keys";
@@ -30,6 +30,13 @@ import { readEnvFile } from "../../../io/envFile";
 import { credentialEnvVarName } from "../../../projectSchemas/credential";
 import { DEFAULT_MODEL_IDS } from "../../../projectSchemas/runtime";
 import { modelProviderOverridableCnMessage } from "../../../core/project/manager";
+
+/** Moves the template list's cursor from its first entry down to `name`. */
+async function selectTemplate(r: ReturnType<typeof renderScreen>, name: string): Promise<void> {
+  const index = PROJECT_TEMPLATE_NAMES.indexOf(name as (typeof PROJECT_TEMPLATE_NAMES)[number]);
+  expect(index).toBeGreaterThan(-1);
+  for (let i = 0; i < index; i++) await r.press("down");
+}
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(cleanupScreens);
@@ -52,6 +59,9 @@ function spyOnCreate(core: TestCoreClient): CreateProjectInput[] {
   };
   return inputs;
 }
+
+/** The region renderScreen resolves; create hands it to the manager for the box profile. */
+const REGION = "us-east-1";
 
 async function trackCommandRun() {
   const { client, filePath, cleanup } = await getTestTelemetryClient();
@@ -133,6 +143,7 @@ describe("project create wizard", () => {
         name: "DemoApp",
         skipInstall: false,
         skipGit: false,
+        region: REGION,
         scaffoldHarnessInput: {
           name: "DemoApp",
           model: { provider: "bedrock", modelId: DEFAULT_MODEL_ID },
@@ -176,6 +187,7 @@ describe("project create wizard", () => {
       name: "TunedApp",
       skipInstall: false,
       skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "TunedApp",
         model: { provider: "bedrock", modelId: `${DEFAULT_MODEL_ID}-test` },
@@ -225,6 +237,7 @@ describe("project create wizard", () => {
       name: "OpenAIApp",
       skipInstall: false,
       skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "OpenAIApp",
         model: {
@@ -276,6 +289,7 @@ describe("project create wizard", () => {
       name: "KeyApp",
       skipInstall: false,
       skipGit: false,
+      region: REGION,
       scaffoldHarnessInput: {
         name: "KeyApp",
         model: {
@@ -578,6 +592,7 @@ describe("project create wizard", () => {
         name: "StrandsApp",
         skipInstall: false,
         skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
         }),
@@ -709,6 +724,7 @@ describe("project create wizard", () => {
         name: "KeyedApp",
         skipInstall: false,
         skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "Anthropic",
@@ -822,7 +838,13 @@ describe("project create wizard", () => {
     });
     expected.memory = undefined;
     expect(inputs).toEqual([
-      { name: "CnApp", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+      {
+        name: "CnApp",
+        skipInstall: false,
+        skipGit: false,
+        region: "cn-north-1",
+        scaffoldRuntimeInput: expected,
+      },
     ]);
     expect(r.lastFrame()).toContain("AgentCore Memory is not available in China regions");
     const spec = await Bun.file(join(directory, "CnApp", "agentcore", "agentcore.json")).json();
@@ -913,6 +935,7 @@ describe("project create wizard", () => {
         name: "BaseApp",
         skipInstall: false,
         skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-strands", {
           runtimeName: "agent",
           modelProvider: "OpenAICompatible",
@@ -1002,7 +1025,13 @@ describe("project create wizard", () => {
     });
     expected.memory = undefined;
     expect(inputs).toEqual([
-      { name: "CnTs", skipInstall: false, skipGit: false, scaffoldRuntimeInput: expected },
+      {
+        name: "CnTs",
+        skipInstall: false,
+        skipGit: false,
+        region: "cn-north-1",
+        scaffoldRuntimeInput: expected,
+      },
     ]);
     const loadModel = await Bun.file(
       join(directory, "CnTs", "app", "agent", "model", "load.ts"),
@@ -1028,9 +1057,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
+    await selectTemplate(r, "environment-python-bma");
     await waitForText(r.lastFrame, "● environment-python-bma");
     await r.press("return");
     await waitForText(r.lastFrame, "this project will be created");
@@ -1041,6 +1068,82 @@ describe("project create wizard", () => {
     expect(existsSync(join(directory, "CnBma"))).toBe(false);
     r.unmount();
   });
+
+  test("template flow: a box template asks for containment, and private VPC reaches the spec", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    const inputs = spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", { core });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("VpcApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+
+    await waitForText(r.lastFrame, "choose a containment level");
+    expect(r.lastFrame()).toContain("● contained");
+    await r.press("down");
+    await waitForText(r.lastFrame, "● private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "this project will be created");
+    expect(r.lastFrame()).toContain("private VPC");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./VpcApp", 5000);
+
+    expect(inputs[0]?.containment).toBe("private-vpc");
+    const spec = await Bun.file(join(directory, "VpcApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].containment).toBe("PRIVATE_VPC");
+    expect(spec.runtimes[0].network).toEqual({ mode: "CONTAINED" });
+    r.unmount();
+  }, 10000);
+
+  test("template flow: a box template in a region without Runtime V2 warns and still creates", async () => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const core = new TestCoreClient();
+    spyOnCreate(core);
+    const r = renderScreen("/agentcore/create", {
+      core,
+      withContext: (ctx) => ctx.withValue(RegionKey, "us-west-1"),
+    });
+
+    await waitForText(r.lastFrame, "name your project");
+    await r.write("SfoApp");
+    await r.press("return");
+    await waitForText(r.lastFrame, "what kind of agent to start with?");
+    await r.press("down"); // code-based
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a template");
+    await r.press("down"); // agent-python-strands-box
+    await waitForText(r.lastFrame, "● agent-python-strands-box ");
+    await r.press("return");
+    await waitForText(r.lastFrame, "choose a model provider");
+    await r.press("return"); // focus the (Bedrock) model id
+    await waitForText(r.lastFrame, "model ID");
+    await r.press("return"); // accept it
+    await waitForText(r.lastFrame, "choose a containment level");
+    await r.press("return"); // contained
+    await waitForText(r.lastFrame, "this project will be created");
+    await r.press("return");
+    await waitForText(r.lastFrame, "✔ project created in ./SfoApp", 5000);
+
+    expect(flatFrame(r.lastFrame)).toContain(
+      "Box runs on AgentCore Runtime V2, which is not available in us-west-1",
+    );
+    expect(existsSync(join(directory, "SfoApp", "agentcore", "agentcore.json"))).toBe(true);
+    r.unmount();
+  }, 10000);
 
   test("template flow: the minimal template scaffolds without memory", async () => {
     const { path: directory, cleanup } = await inTempDirectory();
@@ -1056,10 +1159,7 @@ describe("project create wizard", () => {
     await r.press("down"); // code-based
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
-    await r.press("down"); // environment-python-bma
-    await r.press("down"); // agent-python-minimal
+    await selectTemplate(r, "agent-python-minimal");
     await waitForText(r.lastFrame, "● agent-python-minimal ");
     await r.press("return");
 
@@ -1073,6 +1173,7 @@ describe("project create wizard", () => {
       name: "HelloApp",
       skipInstall: false,
       skipGit: false,
+      region: REGION,
       scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-minimal", {
         runtimeName: "agent",
       }),
@@ -1099,8 +1200,7 @@ describe("project create wizard", () => {
     await r.press("return");
 
     await waitForText(r.lastFrame, "choose a template");
-    await r.press("down"); // agent-python-strands-container
-    await r.press("down"); // agent-python-langchain
+    await selectTemplate(r, "agent-python-langchain");
     await waitForText(r.lastFrame, "● agent-python-langchain");
     await r.press("return");
 
@@ -1116,6 +1216,7 @@ describe("project create wizard", () => {
         name: "LangChainApp",
         skipInstall: false,
         skipGit: false,
+        region: REGION,
         scaffoldRuntimeInput: resolveRuntimeTemplateShortcut("agent-python-langchain", {
           runtimeName: "agent",
         }),
@@ -1139,7 +1240,7 @@ describe("project create wizard", () => {
     await r.press("return");
     await waitForText(r.lastFrame, "choose a template");
     // empty is the last option in the list.
-    for (let i = 0; i < 10; i++) await r.press("down");
+    for (let i = 0; i < PROJECT_TEMPLATE_NAMES.length - 1; i++) await r.press("down");
     await waitForText(r.lastFrame, "● empty");
     await r.press("return");
 
@@ -1154,7 +1255,12 @@ describe("project create wizard", () => {
     expect(frame).toContain("agentcore add --help");
     expect(frame).not.toContain("agentcore dev");
 
-    expect(inputs[0]).toEqual({ name: "EmptyApp", skipInstall: false, skipGit: false });
+    expect(inputs[0]).toEqual({
+      name: "EmptyApp",
+      skipInstall: false,
+      skipGit: false,
+      region: REGION,
+    });
 
     const spec = await Bun.file(join(directory, "EmptyApp", "agentcore", "agentcore.json")).json();
     expect(spec.runtimes ?? []).toHaveLength(0);

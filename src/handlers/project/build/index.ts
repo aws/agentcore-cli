@@ -6,7 +6,7 @@ import {
 } from "../../../router";
 import type { AppIO } from "../../../io";
 import { runWithProgress } from "../../../tui/progress";
-import { JsonKey } from "../../keys";
+import { JsonKey, RegionKey } from "../../keys";
 import { renderJsonError, reportMessage } from "../../utils";
 import type { Project, ProjectManager } from "../types";
 
@@ -38,7 +38,10 @@ export const createBuildProjectHandler = (config: BuildProjectHandlerConfig) =>
       // reaches a scripted caller's stderr.
       const globalConfig = await ctx.require(GlobalConfigAccessorKey).get();
       try {
+        // withRegion resolved --region, else the environment and the AWS config file.
+        const region = ctx.value(RegionKey);
         const build = config.projectManager.build(project, {
+          region,
           disableDependencyManagement: globalConfig.disableDependencyManagement,
         });
         await runWithProgress(build, {

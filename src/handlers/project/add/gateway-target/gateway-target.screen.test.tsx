@@ -18,6 +18,8 @@ import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { authChoices, toGatewayTargetInput } from "./screen";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
+import { BOX_RELEASE } from "../../../../core/project/backends/boxRelease";
 
 const ENDPOINT = "https://mcp.example.com";
 const OAUTH_CREDENTIAL = {
@@ -313,6 +315,23 @@ describe("project add gateway-target wizard", () => {
     screen.unmount();
   });
 
+  test("offers the Box gateway, which takes every target type", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name, "strands-box")],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-target");
+
+    await waitForText(screen.lastFrame, "which Gateway should this Target hang off?");
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name, "strands-box").name);
+    expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
+    screen.unmount();
+  });
+
   test("an MCP-only Gateway offers MCP server Targets alone", async () => {
     await inProject();
     await run(["add", "gateway", "--name", "mcp", "--protocol-type", "MCP"]);
@@ -441,6 +460,36 @@ describe("project add gateway-target wizard", () => {
     expect(flatFrame(screen.lastFrame)).toContain("target search");
 
     expect(await targetsOf(projectRoot)).toHaveLength(1);
+    screen.unmount();
+  }, 15000);
+
+  test("refuses a target name build owns on the Box gateway", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    const box = boxGatewaySpec(spec.runtimes[0].name, "strands-box");
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: [
+        {
+          ...spec.runtimes[0],
+          box: { version: BOX_RELEASE.version },
+          platformVersion: "V2" as const,
+        },
+      ],
+      agentCoreGateways: [box],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-target");
+    await reachAuthStep(screen, "bedrock");
+    await screen.press("return");
+    await waitForText(screen.lastFrame, "this Target will be added to agentcore.json");
+    await screen.press("return");
+
+    await waitForFlatText(
+      screen.lastFrame,
+      `the gateway target name 'bedrock' is reserved on Box gateway '${box.name}'`,
+    );
+    expect(await targetsOf(projectRoot, box.name)).toEqual([]);
     screen.unmount();
   }, 15000);
 

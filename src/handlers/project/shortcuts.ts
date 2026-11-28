@@ -5,7 +5,14 @@ import {
   defaultMemoryName,
   type Memory,
 } from "../../projectSchemas/memory";
+import {
+  agentCoreDataPlaneHost,
+  boxGatewayBedrockHost as bedrockHostOf,
+} from "../../core/project/boxNetwork/egress";
 import { InputValidationError } from "../../errors";
+import type { AgentCoreGatewayTarget } from "../../projectSchemas/gateway";
+import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
+import { TEMPLATE_TAG_KEY } from "../../projectSchemas/tags";
 import { ScaffoldRuntimeInputSchema, type ModelProvider, type ScaffoldRuntimeInput } from "./types";
 import type { RuntimeTemplateProfile } from "./templateProfile";
 import { BMA_TEMPLATE_NAME, BMA_TEMPLATE_PROFILE } from "./bma";
@@ -25,6 +32,47 @@ export function getDefaultMemorySpec(runtimeName: string): Memory {
   };
 }
 
+/**
+ * The Bedrock region of the box profile `agentcore create` writes when the caller passes no
+ * region. Both create paths pass the region they resolved. Build and deploy write the Box
+ * gateway's `bedrock` target, and the AgentCore Runtime profile, for the region they build for
+ * instead (`--region`, else `resolveRegion`).
+ */
+export const DEFAULT_EGRESS_BEDROCK_REGION = "us-west-2";
+
+/** The name of the Box gateway's Bedrock model target, which build and deploy add. */
+export const BOX_GATEWAY_BEDROCK_TARGET_NAME = "bedrock";
+
+/** The Bedrock runtime host of `region`, which the Box gateway's Bedrock model target fronts. */
+export function boxGatewayBedrockHost(region: string = DEFAULT_EGRESS_BEDROCK_REGION): string {
+  return bedrockHostOf(region);
+}
+
+/** The Box gateway's passthrough target for the Bedrock model endpoint, signed with its role. */
+export function getBoxGatewayBedrockTargetSpec(
+  region: string = DEFAULT_EGRESS_BEDROCK_REGION,
+): AgentCoreGatewayTarget {
+  return {
+    name: BOX_GATEWAY_BEDROCK_TARGET_NAME,
+    targetType: "passthrough",
+    passthrough: { endpoint: `https://${boxGatewayBedrockHost(region)}`, protocolType: "CUSTOM" },
+    outboundAuth: { type: "GATEWAY_IAM_ROLE", service: "bedrock", region },
+  };
+}
+
+export { agentCoreDataPlaneHost };
+
+/**
+ * Whether the scaffolded agent calls Bedrock for its model: the Bedrock
+ * provider, or LiteLLM with a `bedrock/` model id (its default).
+ */
+export function callsBedrockModel(input: Pick<ScaffoldRuntimeInput, "modelProvider" | "modelId">) {
+  const provider = input.modelProvider ?? "Bedrock";
+  if (provider === "Bedrock") return true;
+  if (provider !== "LiteLLM") return false;
+  return (input.modelId ?? DEFAULT_MODEL_IDS.LiteLLM).startsWith("bedrock/");
+}
+
 type RuntimeTemplateShortcut = {
   runtimeName: string;
   /** One line shown next to the template name in the create wizard. */
@@ -36,6 +84,13 @@ type RuntimeTemplateShortcut = {
   modelProvider?: ModelProvider;
   /** Ships with memory. */
   includesMemory: boolean;
+  /**
+   * Runs its agent in Strands Box: create makes a Box project (`"projectType": "box"`) with the
+   * box profile, the runtime's Box gateway, and the box start (a start script for CodeZip, the
+   * Dockerfile for a container). Only the box templates do; every other template runs its agent
+   * the usual way.
+   */
+  box: boolean;
   /** Accepts --model-provider / --model-id / --api-key / --api-base overrides; Bedrock-only otherwise. */
   supportsModelProviderOverride: boolean;
   runtimeVersion?: NonNullable<ScaffoldRuntimeInput["runtimeVersion"]>;
@@ -43,44 +98,128 @@ type RuntimeTemplateShortcut = {
   profile?: RuntimeTemplateProfile;
 };
 
+/** The templates that each have a box twin: the same template, run in Strands Box. */
+const AGENT_PYTHON_MINIMAL = {
+  runtimeName: "agent_python_minimal",
+  description: "minimal Python project, no agent framework",
+  build: "CodeZip",
+  language: "Python",
+  framework: "none",
+  modelProvider: "Bedrock",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_STRANDS = {
+  runtimeName: "agent_python_strands",
+  description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_STRANDS_CONTAINER = {
+  runtimeName: "agent_python_strands_container",
+  description:
+    "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
+  build: "Container",
+  language: "Python",
+  framework: "strands",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGENT_PYTHON_LANGCHAIN = {
+  runtimeName: "agent_python_langchain",
+  description: "LangChain agent with Bedrock for inference",
+  build: "CodeZip",
+  language: "Python",
+  framework: "langchain",
+  modelProvider: "Bedrock",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const MCP_PYTHON_FASTMCP = {
+  runtimeName: "mcp_python_fastmcp",
+  description: "MCP server exposing tools with FastMCP",
+  build: "CodeZip",
+  language: "Python",
+  framework: "none",
+  protocol: "MCP",
+  includesMemory: false,
+  box: false,
+  supportsModelProviderOverride: false,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const A2A_PYTHON_STRANDS = {
+  runtimeName: "a2a_python_strands",
+  description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  protocol: "A2A",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
+const AGUI_PYTHON_STRANDS = {
+  runtimeName: "agui_python_strands",
+  description: "Strands agent speaking AG-UI, Bedrock or another model provider",
+  build: "CodeZip",
+  language: "Python",
+  framework: "strands",
+  protocol: "AGUI",
+  modelProvider: "Bedrock",
+  includesMemory: true,
+  box: false,
+  supportsModelProviderOverride: true,
+  runtimeVersion: "PYTHON_3_14",
+} as const satisfies RuntimeTemplateShortcut;
+
 /**
  * The runtime templates. agent-python-strands offers both CodeZip and container
  * builds; Bedrock Managed Agents is a specialized container-only environment.
  * Every other template is CodeZip-only.
  */
 export const RUNTIME_TEMPLATE_SHORTCUTS = {
-  "agent-python-minimal": {
-    runtimeName: "agent_python_minimal",
-    description: "minimal Python project, no agent framework",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    modelProvider: "Bedrock",
-    includesMemory: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
+  "agent-python-minimal": AGENT_PYTHON_MINIMAL,
+  "agent-python-minimal-box": {
+    ...AGENT_PYTHON_MINIMAL,
+    runtimeName: "agent_python_minimal_box",
+    description: "minimal Python project in Strands Box, no agent framework",
+    box: true,
   },
-  "agent-python-strands": {
-    runtimeName: "agent_python_strands",
-    description: "Strands agent with AgentCore Memory, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
-  },
-  "agent-python-strands-container": {
-    runtimeName: "agent_python_strands_container",
+  "agent-python-strands": AGENT_PYTHON_STRANDS,
+  "agent-python-strands-container": AGENT_PYTHON_STRANDS_CONTAINER,
+  "agent-python-strands-box": {
+    ...AGENT_PYTHON_STRANDS,
+    runtimeName: "agent_python_strands_box",
     description:
-      "Strands agent with AgentCore Memory, Bedrock or another model provider, container-based deployment",
-    build: "Container",
-    language: "Python",
-    framework: "strands",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    supportsModelProviderOverride: true,
+      "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider",
+    box: true,
+  },
+  "agent-python-strands-box-container": {
+    ...AGENT_PYTHON_STRANDS_CONTAINER,
+    runtimeName: "agent_python_strands_box_container",
+    description:
+      "Strands agent in Strands Box with AgentCore Memory, Bedrock or another model provider, container-based deployment",
+    box: true,
   },
   "agent-typescript-strands": {
     runtimeName: "agent_typescript_strands",
@@ -91,19 +230,16 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "strands",
     modelProvider: "Bedrock",
     includesMemory: true,
+    box: false,
     supportsModelProviderOverride: true,
     runtimeVersion: "NODE_22",
   },
-  "agent-python-langchain": {
-    runtimeName: "agent_python_langchain",
-    description: "LangChain agent with Bedrock for inference",
-    build: "CodeZip",
-    language: "Python",
-    framework: "langchain",
-    modelProvider: "Bedrock",
-    includesMemory: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
+  "agent-python-langchain": AGENT_PYTHON_LANGCHAIN,
+  "agent-python-langchain-box": {
+    ...AGENT_PYTHON_LANGCHAIN,
+    runtimeName: "agent_python_langchain_box",
+    description: "LangChain agent in Strands Box with Bedrock for inference",
+    box: true,
   },
   "agent-typescript-vercel": {
     runtimeName: "agent_typescript_vercel",
@@ -113,6 +249,7 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "vercelai",
     modelProvider: "Bedrock",
     includesMemory: false,
+    box: false,
     supportsModelProviderOverride: false,
     runtimeVersion: "NODE_22",
   },
@@ -124,43 +261,25 @@ export const RUNTIME_TEMPLATE_SHORTCUTS = {
     framework: "bma",
     protocol: "HTTP",
     includesMemory: false,
+    box: false,
     supportsModelProviderOverride: false,
     profile: BMA_TEMPLATE_PROFILE,
   },
-  "mcp-python-fastmcp": {
-    runtimeName: "mcp_python_fastmcp",
-    description: "MCP server exposing tools with FastMCP",
-    build: "CodeZip",
-    language: "Python",
-    framework: "none",
-    protocol: "MCP",
-    includesMemory: false,
-    supportsModelProviderOverride: false,
-    runtimeVersion: "PYTHON_3_14",
+  "mcp-python-fastmcp": MCP_PYTHON_FASTMCP,
+  "a2a-python-strands": A2A_PYTHON_STRANDS,
+  "a2a-python-strands-box": {
+    ...A2A_PYTHON_STRANDS,
+    runtimeName: "a2a_python_strands_box",
+    description:
+      "Strands agent speaking the A2A protocol in Strands Box, Bedrock or another model provider",
+    box: true,
   },
-  "a2a-python-strands": {
-    runtimeName: "a2a_python_strands",
-    description: "Strands agent speaking the A2A protocol, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "A2A",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
-  },
-  "agui-python-strands": {
-    runtimeName: "agui_python_strands",
-    description: "Strands agent speaking AG-UI, Bedrock or another model provider",
-    build: "CodeZip",
-    language: "Python",
-    framework: "strands",
-    protocol: "AGUI",
-    modelProvider: "Bedrock",
-    includesMemory: true,
-    supportsModelProviderOverride: true,
-    runtimeVersion: "PYTHON_3_14",
+  "agui-python-strands": AGUI_PYTHON_STRANDS,
+  "agui-python-strands-box": {
+    ...AGUI_PYTHON_STRANDS,
+    runtimeName: "agui_python_strands_box",
+    description: "Strands agent speaking AG-UI in Strands Box, Bedrock or another model provider",
+    box: true,
   },
 } as const satisfies Record<string, RuntimeTemplateShortcut>;
 
@@ -195,6 +314,8 @@ function templateSortKey(template: RuntimeTemplateShortcut): number[] {
     LANGUAGE_ORDER[template.language],
     FRAMEWORK_ORDER[template.framework],
     BUILD_ORDER[template.build],
+    // A box template follows the template it runs in a box.
+    template.box ? 1 : 0,
   ];
 }
 
@@ -218,6 +339,10 @@ export const PROJECT_TEMPLATE_NAMES = [
   ...RUNTIME_TEMPLATE_SHORTCUT_NAMES,
   EMPTY_TEMPLATE_NAME,
 ] as unknown as readonly [TemplateName, ...TemplateName[]];
+
+/** Whether a template runs its agent in Strands Box, the only case where `--containment` applies. */
+export const isBoxTemplate = (template: TemplateName): boolean =>
+  template !== EMPTY_TEMPLATE_NAME && RUNTIME_TEMPLATE_SHORTCUTS[template].box;
 
 /**
  * Long-form `--template` help generated from the same registry used to resolve
@@ -258,6 +383,9 @@ export function resolveRuntimeTemplateShortcut(
 ): ScaffoldRuntimeInput {
   const template: RuntimeTemplateShortcut = RUNTIME_TEMPLATE_SHORTCUTS[name];
   const runtimeName = overrides?.runtimeName ?? template.runtimeName;
+  const profile: RuntimeTemplateProfile | undefined = template.supportsModelProviderOverride
+    ? { ...template.profile, modelProviderOverride: true }
+    : template.profile;
 
   const input = {
     runtimeName,
@@ -272,10 +400,19 @@ export function resolveRuntimeTemplateShortcut(
     ...(overrides?.apiKey !== undefined && { apiKey: overrides.apiKey }),
     ...(overrides?.apiBase !== undefined && { apiBase: overrides.apiBase }),
     ...(template.includesMemory && { memory: getDefaultMemorySpec(runtimeName) }),
+    ...(template.box && { boxTemplate: true }),
     runtimeVersion: template.runtimeVersion,
-    templateProfile: template.supportsModelProviderOverride
-      ? { ...template.profile, modelProviderOverride: true }
-      : template.profile,
+    // A Box template tags its runtime with its own name, after any tags of its profile so none
+    // replaces it; newProjectSpec copies the tag to its Box gateway.
+    templateProfile: template.box
+      ? {
+          ...profile,
+          runtime: {
+            ...profile?.runtime,
+            tags: { ...profile?.runtime?.tags, [TEMPLATE_TAG_KEY]: name },
+          },
+        }
+      : profile,
   };
 
   const result = ScaffoldRuntimeInputSchema.safeParse(input);

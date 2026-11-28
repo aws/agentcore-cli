@@ -20,6 +20,7 @@ import { InputValidationError, SourceResolutionError } from "../../errors";
 import { DEFAULT_MODEL_IDS } from "../../projectSchemas/runtime";
 import { resolveScaffoldHarnessInput } from "./create/index";
 import { readEnvFile } from "../../io/envFile";
+import { BOX_RELEASE } from "../../core/project/backends/boxRelease";
 
 async function run(
   args: string[],
@@ -154,6 +155,106 @@ describe("project create", () => {
     expect(existsSync(join(projectRoot, "app"))).toBe(true);
     expect(io.stderr()).toContain("next steps:\n  cd MyAgent\n  agentcore add harness");
   });
+
+  test.each([
+    ["agent-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agent-python-strands-box-container", { version: BOX_RELEASE.version }],
+    ["agent-python-minimal-box", { version: BOX_RELEASE.version }],
+    ["agent-python-langchain-box", { version: BOX_RELEASE.version }],
+    ["a2a-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agui-python-strands-box", { version: BOX_RELEASE.version }],
+    ["agent-python-strands", undefined],
+    ["agent-python-minimal", undefined],
+    ["agent-python-langchain", undefined],
+    ["a2a-python-strands", undefined],
+    ["agui-python-strands", undefined],
+    ["mcp-python-fastmcp", undefined],
+    ["agent-python-strands-container", undefined],
+  ] as const)("create --template %s writes the runtime's box %j", async (template, box) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    const spec = await Bun.file(join(directory, "BoxApp", "agentcore", "agentcore.json")).json();
+    expect(spec.runtimes[0].box).toEqual(box);
+  });
+
+  test.each(["us-west-1", "ap-south-2", "us-gov-west-1"])(
+    "create of a box template in %s warns that it cannot deploy there, and still creates it",
+    async (region) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      const { io } = await run([
+        "create",
+        "--name",
+        "BoxApp",
+        "--template",
+        "agent-python-strands-box",
+        "--region",
+        region,
+        "--skip-install",
+        "--skip-git",
+      ]);
+
+      expect(io.stderr()).toContain(
+        `Warning: Box runs on AgentCore Runtime V2, which is not available in ${region}, so this ` +
+          "project cannot be deployed there.",
+      );
+      expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
+    },
+  );
+
+  test.each([
+    ["a box template in us-west-2", "agent-python-strands-box", "us-west-2"],
+    ["a template that is not a box template in us-west-1", "agent-python-strands", "us-west-1"],
+  ])("create of %s gives no Runtime V2 warning", async (_name, template, region) => {
+    const { path: directory, cleanup } = await inTempDirectory();
+    cleanups.push(cleanup);
+    const { io } = await run([
+      "create",
+      "--name",
+      "BoxApp",
+      "--template",
+      template,
+      "--region",
+      region,
+      "--skip-install",
+      "--skip-git",
+    ]);
+
+    expect(io.stderr()).not.toContain("AgentCore Runtime V2");
+    expect(existsSync(join(directory, "BoxApp", "agentcore", "agentcore.json"))).toBe(true);
+  });
+
+  test.each(["agent-python-strands", "empty"])(
+    "create --template %s --containment private-vpc is refused and writes nothing",
+    async (template) => {
+      const { path: directory, cleanup } = await inTempDirectory();
+      cleanups.push(cleanup);
+      await expect(
+        run([
+          "create",
+          "--name",
+          "VpcApp",
+          "--template",
+          template,
+          "--containment",
+          "private-vpc",
+          "--skip-install",
+          "--skip-git",
+        ]),
+      ).rejects.toThrow("--containment private-vpc needs a box template");
+      expect(existsSync(join(directory, "VpcApp"))).toBe(false);
+    },
+  );
 
   test("an API key and an API key ARN are mutually exclusive on the harness path", () => {
     expect(() =>

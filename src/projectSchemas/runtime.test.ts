@@ -313,6 +313,19 @@ describe("runtime custom validation", () => {
   });
 });
 
+describe("platformVersion", () => {
+  it.each([["V1"], ["V2"], [undefined]])("accepts %p", (platformVersion) => {
+    expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(true);
+  });
+
+  // The casing users most likely get wrong, and a version the service does not have.
+  it.each([["v2"], ["V3"], [""]])("refuses %p", (platformVersion) => {
+    expect(ProjectRuntimeSchema.safeParse({ ...codeZipAgent, platformVersion }).success).toBe(
+      false,
+    );
+  });
+});
+
 describe("s3BucketMount validation", () => {
   const v2Agent = { ...codeZipAgent, platformVersion: "V2" as const };
   const withMount = (s3BucketMount: Record<string, unknown>, agent: object = v2Agent) =>

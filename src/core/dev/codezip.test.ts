@@ -84,6 +84,7 @@ function input(root: string, projectRuntime: ProjectRuntime): DevServerInput {
   return {
     runtime: projectRuntime,
     projectRoot: root,
+    boxProject: false,
     port: 9000,
     env: { CUSTOM_ENV: "value" },
     signal: new AbortController().signal,

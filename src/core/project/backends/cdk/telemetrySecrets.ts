@@ -1,0 +1,472 @@
+/**
+ * Writes the AWS Secrets Manager secret that holds the third-party telemetry keys of each box
+ * runtime at deploy, and deletes the ones no runtime needs any more. The secrets are not stack
+ * resources, as credential providers are not: no key goes into a template.
+ */
+import {
+  CreateSecretCommand,
+  DeleteSecretCommand,
+  DescribeSecretCommand,
+  GetSecretValueCommand,
+  PutSecretValueCommand,
+  ResourceNotFoundException,
+  RestoreSecretCommand,
+  type SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { MalformedServiceResponseError, ProjectStateError } from "../../../../errors/errors";
+import type { Project, ProjectEvent } from "../../../../handlers/project/types";
+import { type BoxTelemetrySecret, boxTelemetrySecretName } from "../../boxTelemetrySecrets";
+import { ENV_LOCAL_RELATIVE_PATH, EnvLocalFile } from "../../envLocal";
+import type { DeployedState } from "./deployedState";
+
+/** The secrets deploy wrote for a target, by name, and the fields its runtime can read. */
+export type DeployedTelemetrySecrets = Record<string, { secretArn: string; fields?: string[] }>;
+
+/** Each secret deploy wrote before the stack deploy: its fields, and the other fields it keeps. */
+export type ProvisionedTelemetrySecrets = Record<
+  string,
+  { secretArn: string; fields: string[]; stale: string[] }
+>;
+
+/** The days a deleted secret can be restored in; a later deploy restores it. */
+const RECOVERY_WINDOW_DAYS = 7;
+
+const CREATED_BY_TAG = "agentcore:created-by";
+const PROJECT_TAG = "agentcore:project-name";
+const RUNTIME_TAG = "agentcore:runtime-name";
+
+/** The tags deploy gives the secret of runtime `runtime` of `project` when it creates it. */
+export function telemetrySecretTags(project: string, runtime: string): Record<string, string> {
+  return { [CREATED_BY_TAG]: "agentcore-cli", [PROJECT_TAG]: project, [RUNTIME_TAG]: runtime };
+}
+
+/** True if `tags` are the tags that deploy gives the secret `name` when it creates that secret. */
+function createdByDeploy(name: string, tags: Readonly<Record<string, string>>): boolean {
+  const project = tags[PROJECT_TAG];
+  const runtime = tags[RUNTIME_TAG];
+  return (
+    tags[CREATED_BY_TAG] === "agentcore-cli" &&
+    project !== undefined &&
+    runtime !== undefined &&
+    boxTelemetrySecretName(project, runtime) === name
+  );
+}
+
+/** A secret as Secrets Manager describes it. */
+interface DescribedSecret {
+  readonly arn: string;
+  /** Whether the secret is scheduled for deletion. */
+  readonly deleted: boolean;
+  readonly tags: Readonly<Record<string, string>>;
+}
+
+/** The Secrets Manager calls deploy makes, so a test stubs the client's `send` alone. */
+export interface TelemetrySecretCalls {
+  /** The secret that `secretId` (a name or an ARN) names, or undefined when there is none. */
+  describe(secretId: string): Promise<DescribedSecret | undefined>;
+  /** The secret string of the secret, or undefined when it holds none. */
+  read(arn: string): Promise<string | undefined>;
+  /** Creates the secret with `tags`, and returns its ARN. */
+  create(input: {
+    name: string;
+    value: string;
+    description: string;
+    tags: Readonly<Record<string, string>>;
+  }): Promise<string>;
+  put(arn: string, value: string): Promise<void>;
+  restore(arn: string): Promise<void>;
+  /** Schedules the deletion of the secret, with a recovery window. */
+  delete(arn: string): Promise<void>;
+}
+
+/** The calls of {@link TelemetrySecretCalls} on one Secrets Manager client. */
+export function secretsManagerCalls(client: SecretsManagerClient): TelemetrySecretCalls {
+  return {
+    async describe(secretId) {
+      try {
+        const described = await client.send(new DescribeSecretCommand({ SecretId: secretId }));
+        if (!described.ARN) {
+          throw new MalformedServiceResponseError(
+            `Secrets Manager described secret '${secretId}' without an ARN.`,
+          );
+        }
+        const tags = Object.fromEntries(
+          (described.Tags ?? []).flatMap(({ Key, Value }) =>
+            Key === undefined ? [] : [[Key, Value ?? ""]],
+          ),
+        );
+        return { arn: described.ARN, deleted: described.DeletedDate !== undefined, tags };
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) return undefined;
+        throw error;
+      }
+    },
+    async read(arn) {
+      const value = await client.send(new GetSecretValueCommand({ SecretId: arn }));
+      return value.SecretString;
+    },
+    async create({ name, value, description, tags }) {
+      const created = await client.send(
+        new CreateSecretCommand({
+          Name: name,
+          SecretString: value,
+          Description: description,
+          Tags: Object.entries(tags).map(([Key, Value]) => ({ Key, Value })),
+        }),
+      );
+      if (!created.ARN) {
+        throw new MalformedServiceResponseError(
+          `Secrets Manager created secret '${name}' without an ARN.`,
+        );
+      }
+      return created.ARN;
+    },
+    async put(arn, value) {
+      await client.send(new PutSecretValueCommand({ SecretId: arn, SecretString: value }));
+    },
+    async restore(arn) {
+      await client.send(new RestoreSecretCommand({ SecretId: arn }));
+    },
+    async delete(arn) {
+      await client.send(
+        new DeleteSecretCommand({ SecretId: arn, RecoveryWindowInDays: RECOVERY_WINDOW_DAYS }),
+      );
+    },
+  };
+}
+
+/** The secrets `recorded` holds that `declared` no longer names. */
+export function orphanedTelemetrySecrets(
+  recorded: DeployedTelemetrySecrets,
+  declared: readonly Pick<BoxTelemetrySecret, "name">[],
+): DeployedTelemetrySecrets {
+  const names = new Set(declared.map(({ name }) => name));
+  return Object.fromEntries(Object.entries(recorded).filter(([name]) => !names.has(name)));
+}
+
+/**
+ * The ARNs of the secrets that a target other than `targetName` records. Each deployment target
+ * in one account and region shares a secret, so a deploy keeps the ones another target records.
+ */
+export function telemetrySecretsOfOtherTargets(
+  state: DeployedState,
+  targetName: string,
+): Set<string> {
+  return new Set(
+    Object.entries(state.targets).flatMap(([name, target]) =>
+      name === targetName
+        ? []
+        : Object.values(target.resources?.boxTelemetrySecrets ?? {}).map(
+            ({ secretArn }) => secretArn,
+          ),
+    ),
+  );
+}
+
+/** What deploy does with one secret: keep it as it is, or write its JSON object. */
+type Plan = { readonly secret: BoxTelemetrySecret; readonly stale: readonly string[] } & (
+  | { readonly kind: "keep"; readonly arn: string }
+  | { readonly kind: "create"; readonly value: string }
+  | {
+      readonly kind: "update";
+      readonly arn: string;
+      readonly restore: boolean;
+      readonly value: string;
+    }
+);
+
+/** The string fields of the JSON object `text`, or an empty object when it is not one. */
+function stringFields(text: string | undefined): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(text ?? "");
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Decides what to write to one secret. Deploy reads a secret that exists and is not scheduled for
+ * deletion, takes the value of a field whose key it lacks from it, keeps each other field it holds,
+ * and keeps the secret as it is when the object is equal. A key that neither deploy nor the secret
+ * holds fails the deploy. A secret of that name that deploy did not create also stops the deploy.
+ */
+async function plan(
+  calls: TelemetrySecretCalls,
+  secret: BoxTelemetrySecret,
+  env: Record<string, string | undefined>,
+  project: Project,
+): Promise<Plan> {
+  const given = secret.fields.map((field) => ({
+    ...field,
+    value: env[field.variable] || undefined,
+  }));
+  const existing = await calls.describe(secret.name);
+  if (existing && !createdByDeploy(secret.name, existing.tags)) {
+    throw notCreatedByDeploy(secret, project.spec.name);
+  }
+  // A secret scheduled for deletion cannot be read until a write restores it.
+  const held = existing && !existing.deleted ? stringFields(await calls.read(existing.arn)) : {};
+  const object: Record<string, string> = { ...held };
+  const missing: typeof given = [];
+  for (const field of given) {
+    const value = field.value ?? held[field.field];
+    if (value === undefined) missing.push(field);
+    else object[field.field] = value;
+  }
+  if (missing.length > 0) throw missingKeys(secret, missing, project.rootPath);
+  const named = new Set(given.map(({ field }) => field));
+  const stale = Object.keys(held).filter((field) => !named.has(field));
+  const value = JSON.stringify(object);
+  if (existing === undefined) return { secret, stale, kind: "create", value };
+  if (!existing.deleted && isDeepStrictEqual(object, held)) {
+    return { secret, stale, kind: "keep", arn: existing.arn };
+  }
+  return { secret, stale, kind: "update", arn: existing.arn, restore: existing.deleted, value };
+}
+
+/**
+ * Writes the secret of each of `secrets`, and returns each one's ARN by name. Each secret is one
+ * JSON object, with one field for each third-party telemetry target of its runtime. The key of
+ * each target comes from its variable in `processEnv`, else in `agentcore/.env.local`, as a
+ * credential's does. A secret is created when absent, and restored when it is scheduled for
+ * deletion. Deploy gives each secret that it creates the tags of {@link telemetrySecretTags}.
+ * Deploy makes a decision for each secret before the first write. Thus a missing key, or a secret
+ * of that name without those tags, writes nothing. A failure removes the secrets this deploy
+ * created. A secret keeps each field it held, until {@link pruneTelemetrySecrets} runs.
+ */
+export async function* provisionTelemetrySecrets(
+  calls: TelemetrySecretCalls,
+  project: Project,
+  secrets: readonly BoxTelemetrySecret[],
+  processEnv: Record<string, string | undefined>,
+): AsyncGenerator<ProjectEvent, ProvisionedTelemetrySecrets> {
+  if (secrets.length === 0) return {};
+  const needed = new Set(secrets.flatMap(({ fields }) => fields.map(({ variable }) => variable)));
+  const env = await new EnvLocalFile(project.rootPath).read({
+    select: (name) => needed.has(name),
+    overrides: Object.fromEntries(Object.entries(processEnv).filter(([key]) => needed.has(key))),
+  });
+
+  const plans: Plan[] = [];
+  for (const secret of secrets) plans.push(await plan(calls, secret, env, project));
+
+  const stored: ProvisionedTelemetrySecrets = {};
+  const created: string[] = [];
+  try {
+    for (const plan of plans) {
+      const { secret } = plan;
+      const fields = { fields: secret.fields.map(({ field }) => field), stale: [...plan.stale] };
+      yield {
+        type: "step",
+        message: `preparing secret '${secret.name}' for the box telemetry of '${secret.runtime}'`,
+      };
+      if (plan.kind === "keep") {
+        stored[secret.name] = { secretArn: plan.arn, ...fields };
+        continue;
+      }
+      if (plan.kind === "create") {
+        const arn = await calls.create({
+          name: secret.name,
+          value: plan.value,
+          description:
+            `The keys Box sends to the third-party telemetry targets of runtime ` +
+            `'${secret.runtime}' of project '${project.spec.name}'. Written by agentcore deploy.`,
+          tags: telemetrySecretTags(project.spec.name, secret.runtime),
+        });
+        created.push(arn);
+        stored[secret.name] = { secretArn: arn, ...fields };
+        continue;
+      }
+      if (plan.restore) await calls.restore(plan.arn);
+      await calls.put(plan.arn, plan.value);
+      stored[secret.name] = { secretArn: plan.arn, ...fields };
+    }
+  } catch (error) {
+    for (const arn of created.reverse()) {
+      yield { type: "step", message: `removing secret ${arn}, which this deploy created` };
+      try {
+        await calls.delete(arn);
+      } catch (cause) {
+        yield {
+          type: "warning",
+          message:
+            `Deploy did not remove secret ${arn}, which this deploy created: ` +
+            `${(cause as Error).message}. The secret stays in AWS Secrets Manager, and AWS bills ` +
+            "you for it. It is not recorded, thus the next deploy of this target uses it again.",
+        };
+      }
+    }
+    throw error;
+  }
+  return stored;
+}
+
+/** The records of `stored`; with `before`, a field read before stays, and a record with no fields stays so. */
+export function telemetrySecretRecords(
+  stored: ProvisionedTelemetrySecrets,
+  before?: DeployedTelemetrySecrets,
+): DeployedTelemetrySecrets {
+  return Object.fromEntries(
+    Object.entries(stored).map(([name, { secretArn, fields }]) => {
+      const earlier = before?.[name];
+      if (earlier === undefined) return [name, { secretArn, fields }];
+      if (earlier.fields === undefined) return [name, { secretArn }];
+      return [name, { secretArn, fields: [...new Set([...earlier.fields, ...fields])] }];
+    }),
+  );
+}
+
+/** By secret ARN, the fields the runtime of another target can read; undefined when one records none. */
+export function telemetrySecretFieldsOfOtherTargets(
+  state: DeployedState,
+  targetName: string,
+): Map<string, Set<string> | undefined> {
+  const read = new Map<string, Set<string> | undefined>();
+  for (const [name, target] of Object.entries(state.targets)) {
+    if (name === targetName) continue;
+    for (const { secretArn, fields } of Object.values(
+      target.resources?.boxTelemetrySecrets ?? {},
+    )) {
+      const known = read.has(secretArn) ? read.get(secretArn) : new Set<string>();
+      read.set(secretArn, known && fields ? new Set([...known, ...fields]) : undefined);
+    }
+  }
+  return read;
+}
+
+/** After the stack deploy, removes each stale field of `stored` that no runtime of `others` can read. */
+export async function* pruneTelemetrySecrets(
+  calls: TelemetrySecretCalls,
+  stored: ProvisionedTelemetrySecrets,
+  others: ReadonlyMap<string, ReadonlySet<string> | undefined>,
+): AsyncGenerator<ProjectEvent, void> {
+  for (const [name, { secretArn, stale }] of Object.entries(stored)) {
+    if (stale.length === 0) continue;
+    const read = others.has(secretArn) ? others.get(secretArn) : new Set<string>();
+    const kept = stale.filter((field) => read === undefined || read.has(field));
+    if (kept.length > 0) {
+      yield {
+        type: "step",
+        message: `keeping ${quoted(kept)} in secret '${name}': another deployment target reads ${them(kept)}`,
+      };
+    }
+    const removed = stale.filter((field) => !kept.includes(field));
+    if (removed.length === 0) continue;
+    try {
+      const held = stringFields(await calls.read(secretArn));
+      const left = Object.fromEntries(
+        Object.entries(held).filter(([field]) => !removed.includes(field)),
+      );
+      if (isDeepStrictEqual(left, held)) continue;
+      yield {
+        type: "step",
+        message: `removing ${quoted(removed)} from secret '${name}': no deployed runtime reads ${them(removed)}`,
+      };
+      await calls.put(secretArn, JSON.stringify(left));
+    } catch (error) {
+      yield {
+        type: "warning",
+        message:
+          `Deploy did not remove ${quoted(removed)} from secret '${name}' (${secretArn}): ` +
+          `${(error as Error).message}. The secret keeps ${them(removed)}, and the next deploy of ` +
+          `this target tries to remove ${them(removed)} again.`,
+      };
+    }
+  }
+}
+
+function quoted(fields: readonly string[]): string {
+  return fields.map((field) => `'${field}'`).join(", ");
+}
+
+function them(fields: readonly string[]): string {
+  return fields.length === 1 ? "it" : "them";
+}
+
+/**
+ * Schedules the deletion of each secret of `secrets`, except a secret that `kept` names, which
+ * another deployment target records. A secret that is gone, or already scheduled for deletion, is
+ * not an error. For a secret that deploy did not create, it shows a warning and removes the
+ * record. A secret that cannot be deleted is reported rather than failing the deploy that already
+ * changed the stack, and comes back in the result so the caller can keep its record.
+ */
+export async function* removeTelemetrySecrets(
+  calls: TelemetrySecretCalls,
+  secrets: DeployedTelemetrySecrets,
+  kept: ReadonlySet<string>,
+): AsyncGenerator<ProjectEvent, DeployedTelemetrySecrets> {
+  const failed: DeployedTelemetrySecrets = {};
+  for (const [name, { secretArn }] of Object.entries(secrets)) {
+    if (kept.has(secretArn)) {
+      yield {
+        type: "step",
+        message: `keeping secret '${name}': another deployment target records it`,
+      };
+      continue;
+    }
+    try {
+      const existing = await calls.describe(secretArn);
+      if (existing === undefined || existing.deleted) continue;
+      if (!createdByDeploy(name, existing.tags)) {
+        yield {
+          type: "warning",
+          message:
+            `Deploy did not delete AWS Secrets Manager secret '${name}' (${secretArn}), because ` +
+            "that secret does not have the tags that deploy gives to the secrets that it " +
+            "creates. Deploy removes its record of that secret. If no project uses it, delete it.",
+        };
+        continue;
+      }
+      yield { type: "step", message: `deleting secret '${name}'` };
+      await calls.delete(secretArn);
+    } catch (error) {
+      failed[name] = { secretArn };
+      yield {
+        type: "warning",
+        message:
+          `Deploy did not delete secret '${name}' (${secretArn}): ${(error as Error).message}. ` +
+          "The secret stays in AWS Secrets Manager, and AWS bills you for it. Deploy keeps its " +
+          "record of the secret, and the next deploy of this target tries to delete it again, " +
+          "also when the stack is gone.",
+      };
+    }
+  }
+  return failed;
+}
+
+function missingKeys(
+  secret: BoxTelemetrySecret,
+  missing: readonly BoxTelemetrySecret["fields"][number][],
+  rootPath: string,
+): ProjectStateError {
+  const targets = missing.map(({ target }) => `[telemetry.${target}]`).join(", ");
+  const variables = missing.map(({ variable }) => variable).join(", ");
+  const sources = missing.map(({ source }) => source).join(", ");
+  return new ProjectStateError(
+    `Runtime '${secret.runtime}' has no key for ${targets} to store in AWS Secrets Manager ` +
+      `secret '${secret.name}'. Set ${variables} in ${join(rootPath, ENV_LOCAL_RELATIVE_PATH)} ` +
+      `or in the environment you deploy from. Build copies the value of ${sources} into that ` +
+      "file when the shell that runs build, or that file, has a value for it.",
+  );
+}
+
+function notCreatedByDeploy(secret: BoxTelemetrySecret, project: string): ProjectStateError {
+  const tags = Object.entries(telemetrySecretTags(project, secret.runtime))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+  return new ProjectStateError(
+    `Deploy stopped before it wrote a secret. AWS Secrets Manager has secret '${secret.name}', ` +
+      `but that secret does not have the tags that deploy gives to the secret of runtime ` +
+      `'${secret.runtime}' (${tags}). Deploy does not write or delete a secret that it did not ` +
+      "create. If no project uses that secret, delete it with no recovery window, or change the " +
+      "name of the runtime. Then deploy again.",
+  );
+}

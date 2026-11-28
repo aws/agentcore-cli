@@ -4,7 +4,11 @@ import type { RuntimeResourceConfig } from "../../../handlers/project/add/runtim
 import { DEFAULT_MODEL_IDS, type ProjectRuntime } from "../../../projectSchemas/runtime";
 import { mergeSpecEntries } from "./spec";
 import type { SpecEntries, TemplateRenderer, TemplateResolver } from "./types";
-import type { EnvLocalEntry, ScaffoldRuntimeInput } from "../../../handlers/project/types";
+import type {
+  EnvLocalEntry,
+  ModelProvider,
+  ScaffoldRuntimeInput,
+} from "../../../handlers/project/types";
 import {
   credentialEnvVarName,
   credentialProviderNameEnvVarName,
@@ -29,12 +33,23 @@ type ModelProviderTemplateConfig = {
   envEntries: EnvLocalEntry[];
 };
 
+/**
+ * The project credential that holds a scaffolded runtime's model provider API
+ * key. The box profile names its variable, so both must build it the same way.
+ */
+export function modelProviderCredentialName(
+  runtimeName: string,
+  modelProvider: ModelProvider | undefined,
+): string {
+  return `${runtimeName}${modelProvider}ApiKey`;
+}
+
 function resolveModelProviderScaffold(input: RuntimeResourceConfig): ModelProviderTemplateConfig {
   const { modelProvider, apiKey } = input.scaffoldRuntimeInput;
   if (apiKey === undefined) {
     return { templateRenderContext: { identityProviders: [] }, spec: {}, envEntries: [] };
   }
-  const credentialName = `${input.name}${modelProvider}ApiKey`;
+  const credentialName = modelProviderCredentialName(input.name, modelProvider);
   const envVarName = credentialEnvVarName(credentialName);
   const providerNameEnvVarName = credentialProviderNameEnvVarName(credentialName);
   return {
@@ -246,7 +261,13 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       {
         rootDirName: input.name,
         transformContent: (raw) =>
-          templateRenderer.render(raw, { name: toPythonPackageName(input.name) }),
+          templateRenderer.render(raw, {
+            name: toPythonPackageName(input.name),
+            // The Bedrock model the code calls: --model-id, else the default.
+            modelId: renderedModelId(input.scaffoldRuntimeInput),
+            // The README says whether traces are collected, which they are not in a box.
+            box: input.scaffoldRuntimeInput.boxTemplate === true,
+          }),
       },
     );
     return {
@@ -269,25 +290,40 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
     };
     const isContainer = isContainerBuild({ build: input.scaffoldRuntimeInput.build });
+    const options = {
+      rootDirName: input.name,
+      transformContent: (raw: string) => templateRenderer.render(raw, context),
+      filter: (name: string) => {
+        // The memory module is always included: main.py imports it
+        // unconditionally and it degrades to no memory when its env var is
+        // absent (the China scaffold omits the memory resource).
+        if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
+        return true;
+      },
+    };
     const tree = await FsTreeNode.fromAssetSource(
       { assetSource },
       { assetDir: "templates/agent-python-strands" },
-      {
-        rootDirName: input.name,
-        transformContent: (raw) => templateRenderer.render(raw, context),
-        filter: (name) => {
-          // The memory module is always included: main.py imports it
-          // unconditionally and it degrades to no memory when its env var is
-          // absent (the China scaffold omits the memory resource).
-          if (name === "Dockerfile" || name === ".dockerignore") return isContainer;
-          return true;
-        },
-      },
+      options,
     );
+    if (input.scaffoldRuntimeInput.boxTemplate) {
+      // A box template is the Strands template with the files of agent-python-strands-box in
+      // place of its own: a Dockerfile that runs the agent with `box run`, and a .gitignore that
+      // keeps the staged box out of git.
+      const box = await FsTreeNode.fromAssetSource(
+        { assetSource },
+        { assetDir: "templates/agent-python-strands-box" },
+        options,
+      );
+      tree.replaceChildren(box.children);
+    }
     return {
       tree,
       spec: mergeSpecEntries([
@@ -466,6 +502,9 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       efsMounts,
       s3Mounts,
       s3BucketMounts,
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
       // container launches main.py as the `main` module under
@@ -510,6 +549,9 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       // memory's env var so adding a memory later needs no code edit.
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
+      box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.
       enableOtel: true,

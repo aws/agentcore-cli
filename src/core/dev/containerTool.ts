@@ -6,7 +6,7 @@ export const CONTAINER_TOOLS = ["docker", "podman", "finch"] as const;
 export type ContainerTool = (typeof CONTAINER_TOOLS)[number];
 export type ToolAvailable = typeof toolAvailable;
 
-const CONTAINER_RUNTIME_INSTALL_HINT =
+export const CONTAINER_RUNTIME_INSTALL_HINT =
   "Install Docker (https://docs.docker.com/get-docker/), Podman (https://podman.io/), " +
   "or Finch (https://runfinch.com/).";
 

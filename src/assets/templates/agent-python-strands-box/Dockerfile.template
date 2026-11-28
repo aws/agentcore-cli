@@ -1,0 +1,85 @@
+FROM public.ecr.aws/docker/library/python:3.12-slim-trixie
+
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+ARG UV_DEFAULT_INDEX
+ARG UV_INDEX
+
+WORKDIR /app
+
+ENV UV_SYSTEM_PYTHON=1 \
+    UV_NO_CACHE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_NO_PROGRESS=1 \
+    PYTHONUNBUFFERED=1 \
+    DOCKER_CONTAINER=1 \
+    UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX} \
+    UV_INDEX=${UV_INDEX} \
+    PATH="/app/.venv/bin:$PATH"
+
+RUN useradd -m -u 1000 bedrock_agentcore
+
+# box, its two helpers and its packs, from the public box release (Linux arm64). The CLI names the
+# release in box-release.env, from box.version in agentcore.json, which this runtime needs to run in
+# a box, with the archive's SHA-256, so a changed asset fails the build. `agentcore dev` stages the folder
+# as .box-dev/ and names it with BOX_DIST, so it never overwrites what build and deploy staged.
+# When the Runtime profile reads a key from AWS Secrets Manager, box-release.env also names the AWS
+# CLI and its SHA-256: box runs `aws` outside its sandbox to read the key, so a changed archive fails
+# the build, and the CLI goes in /usr/local, which the agent cannot write.
+# Before the app is copied, so a code change does not download box again.
+ARG BOX_DIST=.box-dist
+COPY ${BOX_DIST}/box-release.env /tmp/box-release.env
+RUN . /tmp/box-release.env \
+    && apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+       ${AWS_CLI_URL:+unzip} \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL --retry 3 -o /tmp/box.tar.gz "https://github.com/${BOX_REPO}/releases/download/v${BOX_VERSION}/${BOX_ASSET}" \
+    && echo "${BOX_SHA256}  /tmp/box.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/box && tar -xzf /tmp/box.tar.gz -C /opt/box --no-same-owner && rm /tmp/box.tar.gz \
+    && if [ -n "${AWS_CLI_URL:-}" ]; then \
+         curl -fsSL -o /tmp/awscli.zip "${AWS_CLI_URL}" \
+         && echo "${AWS_CLI_SHA256}  /tmp/awscli.zip" | sha256sum -c - \
+         && unzip -q /tmp/awscli.zip -d /tmp/awscli \
+         && /tmp/awscli/aws/install --install-dir /usr/local/aws-cli --bin-dir /usr/local/bin \
+         && rm -rf /tmp/awscli /tmp/awscli.zip \
+         && /usr/local/bin/aws --version; \
+       fi \
+    && rm /tmp/box-release.env
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY --chown=bedrock_agentcore:bedrock_agentcore . .
+RUN uv sync --frozen --no-dev && /usr/local/bin/python -m pip uninstall -y uv
+
+# The box profile, its policy files, and the generated @box/agentcore pack, which build and deploy
+# stage in the box dist folder; dev stages the runtime's .box/<runtime>/local/profile.toml there.
+# The profile reads the gateway URL and the deployed resources from the environment through the
+# pack and signs with a bare `aws://`, so the image runs `box run` directly, with no start script.
+# box requires the profile be owned by the agent and writable only by it, and outside /app; the
+# generated pack joins box's own packs beside the binary.
+COPY --chown=bedrock_agentcore:bedrock_agentcore ${BOX_DIST}/ /home/bedrock_agentcore/box-profile/
+RUN set -eu; \
+    if [ -d /home/bedrock_agentcore/box-profile/resources ]; then \
+      cp -a /home/bedrock_agentcore/box-profile/resources/. /opt/box/resources/; \
+      rm -rf /home/bedrock_agentcore/box-profile/resources; \
+    fi; \
+    rm -f /home/bedrock_agentcore/box-profile/box-release.env; \
+    chmod 0700 /home/bedrock_agentcore/box-profile; \
+    find /home/bedrock_agentcore/box-profile -type f -exec chmod 0600 {} +; \
+    rm -rf /app/.box-dist /app/.box-dev; \
+    /opt/box/box --version; \
+    chown bedrock_agentcore:bedrock_agentcore /app
+USER bedrock_agentcore
+
+# AgentCore Runtime service contract ports
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html
+# 8080: HTTP Mode
+# 8000: MCP Mode
+# 9000: A2A Mode
+EXPOSE 8080 8000 9000
+
+# box starts in /app, listens on 8080 and runs the agent in its sandbox on 8081.
+ENTRYPOINT ["/opt/box/box", "run", "/home/bedrock_agentcore/box-profile/profile.toml", "--no-banner"]

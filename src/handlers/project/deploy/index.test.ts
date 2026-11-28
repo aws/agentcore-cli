@@ -415,6 +415,7 @@ describe("project deploy handler", () => {
       exit_reason: "success",
       project_runtime_count: 1,
       project_memory_count: 0,
+      // agent-python-minimal is not a box template, so the project has no Box gateway.
       project_gateway_count: 0,
       project_harness_count: 0,
       project_runtime_codezip_count: 1,

@@ -5,6 +5,7 @@ import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { XRayClient } from "@aws-sdk/client-xray";
 import { ApplicationSignalsClient } from "@aws-sdk/client-application-signals";
+import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import type {
   CreateApplicationSignalsClient,
   CreateCloudFormationClient,
@@ -12,6 +13,7 @@ import type {
   CreateDataClient,
   CreateIamClient,
   CreateLogsClient,
+  CreateSecretsManagerClient,
   CreateXrayClient,
 } from "./types";
 
@@ -38,3 +40,6 @@ export const createApplicationSignalsClient: CreateApplicationSignalsClient = (c
 
 export const createCloudFormationClient: CreateCloudFormationClient = (config) =>
   new CloudFormationClient({ ...config });
+
+export const createSecretsManagerClient: CreateSecretsManagerClient = (config) =>
+  new SecretsManagerClient({ ...config });

@@ -81,6 +81,7 @@ const flush = () => Bun.sleep(1);
 
 type HarnessOptions = {
   runtimes?: ProjectRuntime[];
+  boxProject?: boolean;
   codeZip?: { runner: DevRunner };
   container?: { runner: DevRunner };
   ready?: (port: number, signal: AbortSignal) => Promise<void>;
@@ -95,6 +96,7 @@ function harness(options: HarnessOptions = {}) {
   const supervisor = new DevSupervisor({
     runtimes: options.runtimes ?? [runtime("orders"), runtime("billing", "Container")],
     projectRoot: "/workspace/project",
+    boxProject: options.boxProject ?? false,
     runners: { CodeZip: codeZip.runner, Container: container.runner },
     getDevEnvVarsForRuntime: async (agentRuntime) => ({ AGENT: agentRuntime.name }),
     resolvePort: async () => nextPort++,
@@ -424,6 +426,7 @@ describe("DevSupervisor", () => {
     const supervisor = new DevSupervisor({
       runtimes: [runtime("orders")],
       projectRoot: "/workspace/project",
+      boxProject: false,
       runners: { CodeZip: serverRunner().runner, Container: serverRunner().runner },
       getDevEnvVarsForRuntime: async () => ({}),
       resolvePort: async () => {

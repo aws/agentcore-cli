@@ -20,13 +20,13 @@ import { InputValidationError } from "../../../../errors";
 import type { AppIO } from "../../../../io";
 import { createGatewayProjectTestHarness } from "../gateway-test-support";
 import { knowledgeBaseSchema } from "./screen";
+import { boxGatewaySpec } from "../../../../projectSchemas/project";
 
 const KB_HELP =
   "a ten-character Knowledge Base ID, or the name of a Knowledge Base in this project";
 
-const { addGateway, cleanup, inProject, projectSpec, run } = createGatewayProjectTestHarness(
-  "add-gateway-connector-wizard",
-);
+const { addGateway, cleanup, inProject, projectSpec, run, writeProjectSpec } =
+  createGatewayProjectTestHarness("add-gateway-connector-wizard");
 
 afterEach(cleanup);
 afterEach(cleanupScreens);
@@ -46,6 +46,23 @@ async function reachConnectorStep(screen: RenderScreenResult): Promise<void> {
 }
 
 describe("gateway-connector wizard helpers", () => {
+  test("offers the Box gateway, which takes every target type", async () => {
+    const projectRoot = await inProject();
+    const spec = await projectSpec(projectRoot);
+    await writeProjectSpec(projectRoot, {
+      ...spec,
+      projectType: "box",
+      runtimes: spec.runtimes.map((runtime: object) => ({ ...runtime, platformVersion: "V2" })),
+      agentCoreGateways: [boxGatewaySpec(spec.runtimes[0].name, "strands-box")],
+    });
+    const screen = renderScreen("/agentcore/add/gateway-connector");
+
+    await waitForText(screen.lastFrame, "which Gateway should this connector hang off?");
+    expect(screen.lastFrame()).toContain(boxGatewaySpec(spec.runtimes[0].name, "strands-box").name);
+    expect(screen.lastFrame()).toContain(`bound to runtime '${spec.runtimes[0].name}'`);
+    screen.unmount();
+  });
+
   test("a Knowledge Base is a ten-character ID or a project Knowledge Base name", () => {
     const external = knowledgeBaseSchema([]);
     expect(external.safeParse("ABCDEFGHIJ").success).toBe(true);

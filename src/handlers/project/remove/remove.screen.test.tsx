@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ProjectSpecSchema, type ProjectSpec } from "../../../projectSchemas/project";
+import {
+  boxGatewaySpec,
+  ProjectSpecSchema,
+  type ProjectSpec,
+} from "../../../projectSchemas/project";
 import { ProjectKey } from "../../../router";
 import { resolveRuntimeTemplateShortcut } from "../shortcuts";
 import type { AddResourceInput, Project } from "../types";
@@ -368,6 +372,70 @@ describe("project remove screen", () => {
     expect(successFrame).toContain(APP_CODE_RETAINED_NOTICE);
     expect(successFrame).toContain("notes");
     expect(existsSync(join(project.rootPath, "app", RUNTIME))).toBe(true);
+    r.unmount();
+  });
+
+  test("the success panel names the Box gateway removed with the runtime", async () => {
+    const core = new TestCoreClient();
+    const { project: created, specPath } = await createProject(core);
+    // Make it a Box project, as a Box template writes it: a Box gateway for its runtime.
+    const onDisk = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    await writeFile(
+      specPath,
+      JSON.stringify({
+        ...onDisk,
+        projectType: "box",
+        runtimes: (onDisk.runtimes as object[]).map((runtime) => ({
+          ...runtime,
+          platformVersion: "V2",
+        })),
+        agentCoreGateways: [boxGatewaySpec(RUNTIME, "strands-box")],
+      }),
+    );
+    const project = (await core.projectManager.resolve({ filePath: created.rootPath }))!;
+    const r = render("/agentcore/remove/runtime/0", core, project);
+
+    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    await r.write("y");
+    await waitForText(r.lastFrame, "Resource removed");
+
+    const successFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(successFrame).toContain("gateways removed");
+    expect(successFrame).toContain(
+      `removed gateway '${boxGatewaySpec(RUNTIME, "strands-box").name}'`,
+    );
+    r.unmount();
+  });
+
+  test("the confirmation lists the Box gateway and its targets before removal", async () => {
+    const core = new TestCoreClient();
+    const { project: created, specPath } = await createProject(core);
+    const onDisk = JSON.parse(await readFile(specPath, "utf8")) as Record<string, unknown>;
+    const boxGateway = {
+      ...boxGatewaySpec(RUNTIME, "strands-box"),
+      targets: [
+        { name: "search", targetType: "mcpServer", endpoint: "https://search.example.com/mcp" },
+      ],
+    };
+    await writeFile(
+      specPath,
+      JSON.stringify({
+        ...onDisk,
+        projectType: "box",
+        runtimes: (onDisk.runtimes as object[]).map((runtime) => ({
+          ...runtime,
+          platformVersion: "V2",
+        })),
+        agentCoreGateways: [boxGateway],
+      }),
+    );
+    const project = (await core.projectManager.resolve({ filePath: created.rootPath }))!;
+    const r = render("/agentcore/remove/runtime/0", core, project);
+
+    await waitForText(r.lastFrame, `Remove runtime '${RUNTIME}' from project orders?`);
+    const confirmFrame = r.lastFrame()!.replace(/\s+/g, " ");
+    expect(confirmFrame).toContain("also removes");
+    expect(confirmFrame).toContain(`gateway '${boxGateway.name}' and its target 'search'`);
     r.unmount();
   });
 

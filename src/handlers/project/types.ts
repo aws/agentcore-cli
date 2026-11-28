@@ -27,13 +27,26 @@ import type { AwsCredentialProvider } from "../../core/types";
 import type { LegacyProjectInfo } from "../../core/project/legacy/types";
 import { RuntimeTemplateProfileSchema } from "./templateProfile";
 
+export const CONTAINMENT_LEVELS = ["contained", "private-vpc"] as const;
+export type ContainmentLevel = (typeof CONTAINMENT_LEVELS)[number];
+export const PRIVATE_VPC_COST =
+  "about $58/month while deployed for CodeZip, $88 for a container, more with 3 AZs · the VPC is kept after the stack is deleted and counts toward the account's VPC quota until you delete it";
+export const PRIVATE_VPC_NOTE = `containment: private VPC with no internet path · ${PRIVATE_VPC_COST}`;
+
 type CreateProjectInputBase = {
   /** The name of the project; also the directory it is scaffolded into. */
   name: string;
+  /** `private-vpc` writes `"containment": "PRIVATE_VPC"` on the runtime. Missing means `contained`. */
+  containment?: ContainmentLevel;
   /** Skip installing dependencies (npm install, uv sync). */
   skipInstall?: boolean;
   /** Skip initializing a git repository. */
   skipGit?: boolean;
+  /**
+   * The effective AWS region the CLI already resolved (--region flag, env,
+   * shared config file). The box profile create writes calls Bedrock there.
+   */
+  region?: string;
 };
 
 /** Set of arguments needed to scaffold a managed code-based evaluator. */
@@ -85,6 +98,8 @@ export const ScaffoldRuntimeInputSchema = z
     /** Base URL of the OpenAI-compatible endpoint; required with, and only with, OpenAICompatible. */
     apiBase: z.string().url().optional(),
     memory: MemorySchema.optional(),
+    /** Runs the agent in Strands Box: set by the box templates only. Not persisted: `runtime.box` names the box release. */
+    boxTemplate: z.boolean().optional(),
     runtimeVersion: RuntimeVersionSchema.optional(),
     /** Internal metadata supplied by the selected template; never persisted in agentcore.json. */
     templateProfile: RuntimeTemplateProfileSchema.optional(),
@@ -571,9 +586,14 @@ export type RemoveResourcesResult = {
   removedEnvKeys: string[];
 };
 
+/** A gateway removed together with another resource, as a gateway bound to a removed runtime. */
+export type RemovedGateway = { name: string; targetCount: number };
+
 /** The outcome of removing one resource, including its resolved parent. */
 export type RemoveResourceResult = RemoveResourcesResult & {
   removedResource: RemoveResourceInput;
+  /** Gateways bound to a removed runtime (each Box gateway is), removed with their targets. */
+  removedGateways: RemovedGateway[];
 };
 
 /**
@@ -583,8 +603,15 @@ export interface ProjectManager {
   /** Scaffold a new AgentCore project from the given template. */
   create(input: CreateProjectInput): AsyncGenerator<ProjectEvent, Project>;
 
-  /** Compile the project's CDK app and synthesize its CloudFormation templates. */
-  build(project: Project, input?: BuildProjectInput): AsyncGenerator<ProjectEvent, void>;
+  /**
+   * Compile the project's CDK app and synthesize its CloudFormation templates. `region` is the
+   * region build builds for, which the Box gateway's targets and Runtime profiles take; without
+   * it, build resolves the region as `--region` does with no flag.
+   */
+  build(
+    project: Project,
+    input?: BuildProjectInput & { region?: string },
+  ): AsyncGenerator<ProjectEvent, void>;
 
   /**
    * Re-derives runtime build settings (build, dockerfile, runtimeVersion,

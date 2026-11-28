@@ -9,6 +9,12 @@ import type {
   TeardownConfirmationHandler,
 } from "../../../handlers/project/types";
 import type { AwsDeploymentTarget } from "../../../projectSchemas/aws-targets";
+import type { BoxNetwork } from "../boxNetwork";
+
+export type BuildBackendInput = {
+  /** The Box network model of each box runtime, which staging writes the Runtime profile from. */
+  boxNetworks: readonly BoxNetwork[];
+};
 
 export type DeployBackendInput = BuildProjectInput & {
   /** Fully resolved account and region selected from aws-targets.json. */
@@ -23,7 +29,7 @@ export type DeployBackendInput = BuildProjectInput & {
   workloadBuilds?: WorkloadBuilds;
   /** Build sources of the ContainerLocal workloads, resolved with workloadBuilds. */
   localWorkloads?: LocalWorkloadSources;
-};
+} & BuildBackendInput;
 
 export type ResolveDeployedResourcesBackendInput = {
   target: AwsDeploymentTarget;
@@ -35,7 +41,10 @@ export type ResolveProjectResourcesBackendInput = {
 
 /** Builds the deployable artifacts owned by a project's selected backend. */
 export interface ProjectBackend {
-  build(project: Project, input?: BuildProjectInput): AsyncGenerator<ProjectEvent, void>;
+  build(
+    project: Project,
+    input: BuildProjectInput & BuildBackendInput,
+  ): AsyncGenerator<ProjectEvent, void>;
   deploy(project: Project, input: DeployBackendInput): AsyncGenerator<ProjectEvent, DeployResult>;
   resolveDeployedResources(
     project: Project,
