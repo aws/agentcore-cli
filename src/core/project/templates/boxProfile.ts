@@ -732,6 +732,48 @@ const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
 const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
 
 /**
+ * The `[agent.env]` of the {@link renderAgentCorePack} pack, by name: the ID of each project
+ * memory, the OTEL variables with OTEL on for `runtime`, and the URL of each gateway of the
+ * project that the agent calls through the Box gateway.
+ */
+function agentCorePackEnv(
+  spec: ProjectSpec,
+  runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">,
+  gateways: readonly BoxProjectGateway[],
+): Record<string, string> {
+  return {
+    ...Object.fromEntries(
+      (spec.memories ?? []).map((memory) => [
+        memoryEnvVarName(memory.name),
+        `\${{ inputs.memory.${tomlKey(memory.name)}.id }}`,
+      ]),
+    ),
+    ...(otelOn(runtime) && {
+      ...AGENT_OTEL_ENV,
+      [RUNTIME_RESOURCE_ATTRIBUTES_ENV]: "${{ inputs.runtime.resource_attributes }}",
+    }),
+    ...Object.fromEntries(
+      gateways.map((gateway) => [
+        `${gateway.variablePrefix}_URL`,
+        `\${{ inputs.${projectGatewayInputs(gateway).url} }}`,
+      ]),
+    ),
+  };
+}
+
+/**
+ * The name of each variable that the {@link renderAgentCorePack} pack sets in `[agent.env]`. The
+ * Runtime profile does not forward a variable of the runtime's `envVars` under one of these names.
+ */
+export function agentCorePackEnvNames(
+  spec: ProjectSpec,
+  runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">,
+  gateways: readonly BoxProjectGateway[] = [],
+): string[] {
+  return Object.keys(agentCorePackEnv(spec, runtime, gateways));
+}
+
+/**
  * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
  * inputs the profile reads from the environment the Runtime sets after deploy. The `aws.region`
  * input carries the Runtime's region into the agent's environment. The `gateway.url` input fills each
@@ -765,18 +807,6 @@ description = ${str(`The deployed '${memory.name}' Memory ID.`)}
 from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
     )
     .join("");
-  const memoryEnv = memories
-    .map(
-      (memory) =>
-        `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
-    )
-    .join("\n");
-  const otelEnv = otel
-    ? [
-        ...Object.entries(AGENT_OTEL_ENV).map(([name, value]) => `${name} = ${str(value)}`),
-        `${RUNTIME_RESOURCE_ATTRIBUTES_ENV} = "\${{ inputs.runtime.resource_attributes }}"`,
-      ].join("\n")
-    : "";
   const otelInput = otel
     ? `
 
@@ -819,13 +849,9 @@ from = ${str(`env:${gateway.variablePrefix}_HOST`)}
 pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
     })
     .join("");
-  const gatewayEnv = gateways
-    .map(
-      (gateway) =>
-        `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
-    )
+  const env = Object.entries(agentCorePackEnv(spec, runtime, gateways))
+    .map(([name, value]) => `${name} = ${str(value)}`)
     .join("\n");
-  const env = [memoryEnv, otelEnv, gatewayEnv].filter((lines) => lines !== "").join("\n");
   const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.

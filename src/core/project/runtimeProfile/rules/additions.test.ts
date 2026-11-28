@@ -16,6 +16,7 @@ import {
   type CloudWatchTelemetry,
   type ThirdPartyTelemetry,
 } from "../../boxNetwork";
+import type { BoxNetworkHost } from "../../boxNetwork/network";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -33,7 +34,7 @@ import { runtimeProfileContext } from "../context";
 import { deriveRuntimeProfile } from "../derive";
 import { serializeRuntimeProfile } from "../serialize";
 import type { TomlTable } from "../types";
-import { defaultMemoryName } from "../../../../projectSchemas/memory";
+import { defaultMemoryName, memoryEnvVarName } from "../../../../projectSchemas/memory";
 import {
   agentStartsUnderOtel,
   apply,
@@ -945,6 +946,182 @@ describe("the additions rule", () => {
     });
   });
 
+  describe("[agent.env], the runtime's envVars", () => {
+    /** `runtime` with `names` as its envVars in agentcore.json. */
+    const withEnvVars = (runtime: ProjectRuntime, ...names: string[]): ProjectRuntime => ({
+      ...runtime,
+      envVars: names.map((name) => ({ name, value: `${name.toLowerCase()}-value` })),
+    });
+    const forward = (name: string) => ({ from: `env:${name}` });
+    const skipped = (name: string, reason: string) =>
+      `envVars ${name} of runtime "agent" in agentcore.json does not go to the agent in the ` +
+      `box: ${reason}.`;
+
+    test("forwards each variable of the envVars from the environment of box, in its order", () => {
+      const runtime = withEnvVars(CODEZIP, "TABLE_NAME", "API_BASE", "TABLE_NAME");
+
+      const { table, warnings } = apply(createdProfile(runtime), contextOf(runtime));
+
+      const env = agentOf(table).env;
+      expect(env.TABLE_NAME).toEqual(forward("TABLE_NAME"));
+      expect(env.API_BASE).toEqual(forward("API_BASE"));
+      expect(Object.keys(env).slice(-2)).toEqual(["TABLE_NAME", "API_BASE"]);
+      expect(warnings).toEqual([]);
+    });
+
+    test('writes each forward as a table that box reads as { from = "env:<name>" }', () => {
+      const runtime = withEnvVars(CONTAINER, "TABLE_NAME");
+
+      const text = serializeRuntimeProfile(
+        apply(createdProfile(runtime), contextOf(runtime)).table,
+      );
+
+      expect(agentOf(parse(text) as TomlTable).env.TABLE_NAME).toEqual(forward("TABLE_NAME"));
+    });
+
+    test("keeps the value that [agent.env] sets, the template's, the user's, and the Runtime's", () => {
+      const runtime = withEnvVars(CODEZIP, "LOG_LEVEL", "PORT", "AWS_REGION", "PYTHONPATH");
+      const local = createdProfile(runtime);
+      agentOf(local).env = { ...agentOf(local).env, LOG_LEVEL: "debug" };
+
+      const { table, warnings } = apply({ ...local, packs: ["@box/base"] }, contextOf(runtime));
+
+      const env = agentOf(table).env;
+      expect(env.LOG_LEVEL).toBe("debug");
+      expect(env.PORT).toBe("8081");
+      expect(env.AWS_REGION).toBe("${{ inputs.aws.region }}");
+      expect(env.PYTHONPATH).toBe("${{ inputs.code.dir }}");
+      expect(warnings).toEqual([]);
+    });
+
+    test("keeps the value of the @box/agentcore pack, and says how to change it", () => {
+      const otel = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
+      const runtime = withEnvVars(otel, "OTEL_PYTHON_DISTRO", memoryEnvVarName("notes"));
+
+      const { table, warnings } = apply(
+        createdProfile(runtime),
+        contextOf(runtime, { memories: ["notes"] }),
+      );
+
+      const env = agentOf(table).env;
+      expect(env).not.toHaveProperty("OTEL_PYTHON_DISTRO");
+      expect(env).not.toHaveProperty(memoryEnvVarName("notes"));
+      const reason =
+        `the @box/agentcore pack sets it. To give the agent another value, set it in ` +
+        `[agent.env] of ${PROFILE_FILE}`;
+      expect(warnings).toEqual([
+        skipped("OTEL_PYTHON_DISTRO", reason),
+        skipped(memoryEnvVarName("notes"), reason),
+      ]);
+    });
+
+    test("leaves out each variable that box sets for the agent itself, and says so", () => {
+      const names = ["HTTPS_PROXY", "no_proxy", "SSL_CERT_FILE", "USER", "HOME"];
+      const runtime = withEnvVars(CONTAINER, ...names, "OTEL_EXPORTER_OTLP_TIMEOUT");
+
+      const { table, warnings } = apply(createdProfile(runtime), contextOf(runtime));
+
+      for (const name of [...names, "OTEL_EXPORTER_OTLP_TIMEOUT"]) {
+        expect(agentOf(table).env).not.toHaveProperty(name);
+      }
+      expect(warnings).toEqual(
+        [...names, "OTEL_EXPORTER_OTLP_TIMEOUT"].map((name) =>
+          skipped(name, "box sets it for the agent itself"),
+        ),
+      );
+    });
+
+    test("leaves out a credential of a route, of a server, and of AWS, and says so", () => {
+      const runtime = withEnvVars(
+        CONTAINER,
+        "DOCS_TOKEN",
+        "MODEL_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_ACCESS_KEY_ID",
+      );
+      const local: TomlTable = {
+        agent: { env: {} },
+        mcp: {
+          docs: {
+            type: "http",
+            destinations: ["docs.example.com"],
+            secret: { ref: "env://DOCS_TOKEN" },
+          },
+        },
+      };
+      const host = {
+        host: "api.example.com",
+        authority: "api.example.com",
+        sources: [{ kind: "entry", egressEntry: "model", destinations: ["api.example.com"] }],
+        outboundAuth: {
+          kind: "apiKey",
+          credentialName: "model",
+          variable: "MODEL_KEY",
+          header: "Authorization",
+        },
+      } as unknown as BoxNetworkHost;
+
+      const { table, warnings } = apply(local, { ...contextOf(runtime), hosts: [host] });
+
+      const env = agentOf(table).env;
+      expect(env).not.toHaveProperty("DOCS_TOKEN");
+      expect(env).not.toHaveProperty("MODEL_KEY");
+      expect(env).not.toHaveProperty("AWS_SESSION_TOKEN");
+      // The stand-in stays: box signs each AWS call.
+      expect(env.AWS_ACCESS_KEY_ID).toBe("box-stand-in");
+      const reason = "it is a credential, which box keeps from the agent";
+      expect(warnings).toEqual([
+        skipped("DOCS_TOKEN", reason),
+        skipped("MODEL_KEY", reason),
+        skipped("AWS_SESSION_TOKEN", reason),
+      ]);
+    });
+
+    test("leaves out AWS_PROFILE, LOCAL_DEV, and the port variable of the protocol, and says so", () => {
+      const runtime = withEnvVars(
+        runtimeOf("Container", "A2A"),
+        "AWS_PROFILE",
+        "LOCAL_DEV",
+        "A2A_PORT",
+      );
+
+      const { table, warnings } = apply({ agent: {} }, contextOf(runtime));
+
+      const env = agentOf(table).env;
+      for (const name of ["AWS_PROFILE", "LOCAL_DEV", "A2A_PORT"]) {
+        expect(env).not.toHaveProperty(name);
+      }
+      expect(warnings).toEqual([
+        skipped(
+          "AWS_PROFILE",
+          "AgentCore Runtime has no AWS profiles, and box signs each AWS call",
+        ),
+        skipped("LOCAL_DEV", "it tells the agent that it runs under agentcore dev"),
+        skipped(
+          "A2A_PORT",
+          "the agent listens on the port that box sends the requests of the Runtime to",
+        ),
+      ]);
+    });
+
+    test("leaves a profile with no [agent] table, or a non-table [agent.env], as it is", () => {
+      const runtime = withEnvVars(CONTAINER, "TABLE_NAME");
+
+      expect(apply({ packs: ["@box/base"] }, contextOf(runtime)).table.agent).toEqual({
+        env: {
+          AWS_REGION: "${{ inputs.aws.region }}",
+          AWS_DEFAULT_REGION: "${{ inputs.aws.region }}",
+          AWS_ACCESS_KEY_ID: "box-stand-in",
+          AWS_SECRET_ACCESS_KEY: "box-stand-in",
+          TABLE_NAME: forward("TABLE_NAME"),
+        },
+      });
+      expect(apply({ agent: { env: "odd" } }, contextOf(runtime)).table.agent).toEqual({
+        env: "odd",
+      });
+    });
+  });
+
   describe("[agent.filesystem]", () => {
     test("gives the template's grants their Runtime grants, and keeps each grant of the user", () => {
       const local = createdProfile(CODEZIP);
@@ -1809,10 +1986,16 @@ describe("the additions rule", () => {
           envVars: [{ name: "DISABLE_ADOT_OBSERVABILITY", value: "true" }],
         } as ProjectRuntime;
         const local = createdProfile(optedOut);
+        const plain = agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile);
 
-        expect(agentOf(deriveRuntimeProfile(local, contextOf(optedOut)).profile)).toEqual(
-          agentOf(deriveRuntimeProfile(local, contextOf(runtimeOf(build))).profile),
-        );
+        // The agent also gets the variable itself, as each variable of the envVars.
+        expect(agentOf(deriveRuntimeProfile(local, contextOf(optedOut)).profile)).toEqual({
+          ...plain,
+          env: {
+            ...plain.env,
+            DISABLE_ADOT_OBSERVABILITY: { from: "env:DISABLE_ADOT_OBSERVABILITY" },
+          },
+        });
       },
     );
 

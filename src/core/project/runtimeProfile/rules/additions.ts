@@ -10,6 +10,7 @@
  * | `[options] bedrock.sign-in` | `api-key`, beside `bedrock.region`: the gateway signs each Bedrock call, and box refuses the `aws://` route of @box/bedrock beside its backend |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
+ * | `[agent.env]`, the runtime's `envVars` | each variable of the `envVars` in agentcore.json that the profile and the @box/agentcore pack do not set comes in as `{ from = "env:<name>" }`, so the agent gets the value that the Runtime sets; one that box refuses to give the agent stays out, with a warning |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
@@ -30,6 +31,7 @@ import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
+  agentCorePackEnvNames,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_RUNTIME_SIGN_IN,
   boxIngressPort,
@@ -272,7 +274,133 @@ export function apply(table: Readonly<TomlTable>, context: RuntimeProfileContext
   if (routes.mcp !== undefined) result.mcp = routes.mcp;
   const plugins = runtimePlugins(result.plugins, context);
   if (plugins !== undefined) result.plugins = plugins;
+  result.agent = withRuntimeEnvVars(result.agent, result, context, warnings);
   return { table: result, problems, warnings };
+}
+
+/**
+ * The variables that box sets for the agent itself: its home and temporary folders, the user, its
+ * proxy, its CA bundles, and each `OTEL_EXPORTER_OTLP_*` variable ({@link boxSetsEnv}). Box
+ * refuses an `[agent.env]` entry for most of them, and the others must name a folder of the box.
+ */
+const BOX_ENV_NAMES: ReadonlySet<string> = new Set([
+  "HOME",
+  "TMPDIR",
+  "USER",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_USE_ENV_PROXY",
+  "SSL_CERT_FILE",
+  "NODE_EXTRA_CA_CERTS",
+  "CODEX_CA_CERTIFICATE",
+  "AWS_CA_BUNDLE",
+  "REQUESTS_CA_BUNDLE",
+  "GIT_SSL_CAINFO",
+]);
+
+/** Whether box sets variable `name` for the agent itself, so that the profile cannot set it. */
+function boxSetsEnv(name: string): boolean {
+  return BOX_ENV_NAMES.has(name) || name.startsWith("OTEL_EXPORTER_OTLP_");
+}
+
+/**
+ * The AWS credential variables that @box/aws-secrets-manager passes to its program. Box refuses to
+ * give the agent one of them, and the agent needs none: box signs each AWS call.
+ */
+const AWS_CREDENTIAL_ENV_NAMES: ReadonlySet<string> = new Set([
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+]);
+
+/**
+ * `agent`, with each variable of the runtime's `envVars` in agentcore.json forwarded into
+ * `[agent.env]` as `{ from = "env:<name>" }`. AgentCore Runtime sets each one in the environment of
+ * box, and box gives the agent only the variables that the profile names. A forwarded value is
+ * copied literally, and a variable that the Runtime does not set gives no entry.
+ *
+ * A variable that `[agent.env]` already sets keeps that value, and one that the @box/agentcore pack
+ * sets keeps the pack's value. A variable that box refuses to give the agent stays out, with a
+ * warning: one that box sets itself, a credential of a route or a server of `profile`, an AWS
+ * credential, and `LOCAL_DEV`, `AWS_PROFILE`, and the port variable of the protocol.
+ */
+function withRuntimeEnvVars(
+  agent: unknown,
+  profile: Readonly<TomlTable>,
+  context: RuntimeProfileContext,
+  warnings: string[],
+): unknown {
+  const envVars = context.runtime.envVars ?? [];
+  if (envVars.length === 0 || !isTable(agent)) return agent;
+  const env = agent.env;
+  if (env !== undefined && !isTable(env)) return agent;
+  const result: TomlTable = { ...env };
+  const packNames = new Set(
+    agentCorePackEnvNames(context.spec, context.runtime, context.projectGateways),
+  );
+  const credentials = credentialVariables(profile, context);
+  const port = PORT_ENV[context.runtime.protocol ?? "HTTP"] ?? "PORT";
+  const skip = (name: string, reason: string) =>
+    warnings.push(
+      `envVars ${name} of runtime "${context.runtime.name}" in agentcore.json does not go to the ` +
+        `agent in the box: ${reason}.`,
+    );
+  for (const name of new Set(envVars.map((envVar) => envVar.name))) {
+    if (Object.hasOwn(result, name)) continue;
+    if (packNames.has(name)) {
+      skip(
+        name,
+        `the ${AGENTCORE_PACK_NAME} pack sets it. To give the agent another value, set it in ` +
+          `[agent.env] of ${context.profileFile}`,
+      );
+    } else if (boxSetsEnv(name)) {
+      skip(name, "box sets it for the agent itself");
+    } else if (credentials.has(name) || AWS_CREDENTIAL_ENV_NAMES.has(name)) {
+      skip(name, "it is a credential, which box keeps from the agent");
+    } else if (name === AWS_PROFILE) {
+      skip(name, "AgentCore Runtime has no AWS profiles, and box signs each AWS call");
+    } else if (name === LOCAL_DEV) {
+      skip(name, "it tells the agent that it runs under agentcore dev");
+    } else if (name === port) {
+      skip(name, "the agent listens on the port that box sends the requests of the Runtime to");
+    } else {
+      result[name] = { from: `env:${name}` };
+    }
+  }
+  return { ...agent, env: result };
+}
+
+/** The scheme of a credential that box reads from a variable of its own environment. */
+const ENV_SECRET_SCHEME = "env://";
+
+/**
+ * The variable of each `env://` credential of `profile`, a Runtime profile, and of each route that
+ * the Box network model gives an API key, whether a pack or the profile declares the route.
+ */
+function credentialVariables(
+  profile: Readonly<TomlTable>,
+  context: RuntimeProfileContext,
+): Set<string> {
+  const variables = new Set<string>();
+  const visit = (value: unknown) => {
+    if (typeof value === "string") {
+      if (value.startsWith(ENV_SECRET_SCHEME)) variables.add(value.slice(ENV_SECRET_SCHEME.length));
+    } else if (Array.isArray(value)) value.forEach(visit);
+    else if (isTable(value)) Object.values(value).forEach(visit);
+  };
+  visit(profile);
+  for (const host of context.hosts) {
+    if (host.outboundAuth.kind === "apiKey") variables.add(host.outboundAuth.variable);
+    for (const source of host.sources) {
+      if (source.kind === "mcp") visit(source.secret?.ref);
+    }
+  }
+  return variables;
 }
 
 /**

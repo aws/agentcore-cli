@@ -289,6 +289,15 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
     `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
     ingress on `0.0.0.0` on the port of the protocol;
+  - each variable of the runtime's `envVars` in `agentcore.json` gets `{ from = "env:<name>" }` in
+    `[agent.env]`. The Runtime sets these variables for box, and box gives the agent only the
+    variables that the profile names. Box copies the value as it is, with no `${{ }}` expansion.
+    A value that your `[agent.env]` sets, or that the `@box/agentcore` pack sets, stays. Build
+    leaves out a variable that box refuses to give the agent, and gives a warning: a variable that
+    box sets itself (`HOME`, `TMPDIR`, `USER`, the proxy and CA bundle variables, each
+    `OTEL_EXPORTER_OTLP_*`), the credential of a route or a server, an AWS credential,
+    `AWS_PROFILE`, `LOCAL_DEV`, and the port variable of the protocol. `agentcore dev` does not
+    give the `envVars` to the agent in the box yet. Set them in `[agent.env]` to test with dev;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
