@@ -565,7 +565,8 @@ describe.skipIf(!BOX_ON_PATH)(
 );
 
 // The same egress check on AgentCore Runtime, where box sends the allowed host's calls through the
-// runtime's Box gateway. It deploys, so it needs the AGENTCORE_E2E_BOX_CDK opt-in as well.
+// runtime's Box gateway, and the scenarios that need a public host. Each deploys its own project, so
+// they run concurrently. They need the AGENTCORE_E2E_BOX_CDK opt-in as well.
 describe.skipIf(!BOX_DEPLOYS)(
   "egress on AgentCore Runtime for a Strands Box template",
   { tags: [TAGS.BOX_EGRESS] },
@@ -576,7 +577,7 @@ describe.skipIf(!BOX_DEPLOYS)(
 
     // The public hosts can fail a call, so only the invoke retries: a retry of the whole test would
     // deploy and remove the stack again.
-    test(
+    test.concurrent(
       "allows the profile's host through the Box gateway and blocks any other",
       {
         timeout:
@@ -632,7 +633,7 @@ describe.skipIf(!BOX_DEPLOYS)(
     // The profile's egress entry names an env:// key: build stops until deploy has stored it,
     // deploy stores it as an API key credential, and the Box gateway sends it to the host. The
     // agent never holds the key, so the echoed header can only come from the gateway.
-    test(
+    test.concurrent(
       "an egress route with an env:// key reaches its host with the key the Box gateway adds",
       { timeout: DEPLOY_TEST_TIMEOUT },
       async () => {
@@ -684,7 +685,7 @@ describe.skipIf(!BOX_DEPLOYS)(
     // public MCP server, so the agent lists that server's tools through both gateways. That server
     // is a public host, and deploy syncs the target's tools from it, so the test has the box-egress
     // tag.
-    test(
+    test.concurrent(
       "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
       { timeout: DEPLOY_TEST_TIMEOUT },
       async () => {
