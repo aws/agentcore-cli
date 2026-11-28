@@ -717,20 +717,72 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
   ];
 }
 
+/** A variable of the ADOT SDK that the agent gets from AgentCore Runtime, through an input. */
+interface ServiceOtelVariable {
+  /** The input of the @box/agentcore pack that reads it, under `otel.`. */
+  readonly input: string;
+  /** What the variable sets, for the input's description. */
+  readonly description: string;
+  /** The value of the Runtime, which the agent gets where the Runtime does not set it. */
+  readonly default: string;
+}
+
 /**
- * The variables that set up the ADOT SDK of an agent with OTEL on: the AWS distro and its
- * configurator, spans and logs over OTLP to the box's own receiver (box sets each
- * `OTEL_EXPORTER_OTLP_*`), no metrics, and no span for each health check of the Runtime.
+ * The variables that set up the ADOT SDK of an agent with OTEL on, in the order that the agent
+ * gets them. Each string is a fixed value that box needs: spans and logs over OTLP to the box's own
+ * receiver (box sets each `OTEL_EXPORTER_OTLP_*`), and no metrics, which no default target of box
+ * takes. Each {@link ServiceOtelVariable} has the value that AgentCore Runtime sets, as for an agent
+ * outside a box: the AWS distro and its configurator, the agent observability mode, and no span
+ * for each health check of the Runtime.
  */
-const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
-  OTEL_PYTHON_DISTRO: "aws_distro",
-  OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
-  AGENT_OBSERVABILITY_ENABLED: "true",
+const AGENT_OTEL_ENV: Readonly<Record<string, string | ServiceOtelVariable>> = {
+  OTEL_PYTHON_DISTRO: {
+    input: "python_distro",
+    description: "The OpenTelemetry distro of Python auto-instrumentation.",
+    default: "aws_distro",
+  },
+  OTEL_PYTHON_CONFIGURATOR: {
+    input: "python_configurator",
+    description: "The OpenTelemetry configurator of Python auto-instrumentation.",
+    default: "aws_configurator",
+  },
+  AGENT_OBSERVABILITY_ENABLED: {
+    input: "agent_observability_enabled",
+    description: "Whether the ADOT SDK runs in its agent observability mode.",
+    default: "true",
+  },
   OTEL_TRACES_EXPORTER: "otlp",
   OTEL_LOGS_EXPORTER: "otlp",
   OTEL_METRICS_EXPORTER: "none",
-  OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+  OTEL_PYTHON_EXCLUDED_URLS: {
+    input: "python_excluded_urls",
+    description: "The URL paths that Python auto-instrumentation does not trace.",
+    default: "/ping",
+  },
 };
+
+/** The `[agent.env]` value of each variable of {@link AGENT_OTEL_ENV}. */
+const agentOtelEnv = (): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(AGENT_OTEL_ENV).map(([name, value]) => [
+      name,
+      typeof value === "string" ? value : `\${{ inputs.otel.${value.input} }}`,
+    ]),
+  );
+
+/** The `[inputs.otel.<input>]` of each {@link ServiceOtelVariable} of {@link AGENT_OTEL_ENV}. */
+const agentOtelInputs = (): string =>
+  Object.entries(AGENT_OTEL_ENV)
+    .filter((entry): entry is [string, ServiceOtelVariable] => typeof entry[1] !== "string")
+    .map(
+      ([name, variable]) => `
+
+[inputs.otel.${variable.input}]
+description = ${str(variable.description)}
+from = ${str(`env:${name}`)}
+default = ${str(variable.default)}`,
+    )
+    .join("");
 
 /** The variable in which AgentCore Runtime names the resource of the runtime's spans. */
 const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
@@ -776,7 +828,7 @@ function agentCorePackEnv(
       ]),
     ),
     ...(otelOn(runtime) && {
-      ...AGENT_OTEL_ENV,
+      ...agentOtelEnv(),
       [RUNTIME_RESOURCE_ATTRIBUTES_ENV]: "${{ inputs.runtime.resource_attributes }}",
     }),
     ...Object.fromEntries(
@@ -789,15 +841,23 @@ function agentCorePackEnv(
 }
 
 /**
- * The name of each variable that the {@link renderAgentCorePack} pack sets in `[agent.env]`. The
- * Runtime profile does not forward a variable of the runtime's `envVars` under one of these names.
+ * Where the agent gets each variable that the {@link renderAgentCorePack} pack sets in
+ * `[agent.env]`, by name. `runtime`: from an input that reads the variable of the same name, which
+ * AgentCore Runtime sets, so the agent gets the value of the Runtime. `fixed`: a value of the pack
+ * that box needs. The Runtime profile does not forward a variable of the runtime's `envVars` under
+ * one of these names.
  */
-export function agentCorePackEnvNames(
+export function agentCorePackEnvSources(
   spec: ProjectSpec,
   runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
-): string[] {
-  return Object.keys(agentCorePackEnv(spec, runtime, gateways));
+): Map<string, "runtime" | "fixed"> {
+  return new Map(
+    Object.entries(agentCorePackEnv(spec, runtime, gateways)).map(([name, value]) => [
+      name,
+      value.startsWith("${{ inputs.") ? "runtime" : "fixed",
+    ]),
+  );
 }
 
 /**
@@ -814,8 +874,8 @@ export function agentCorePackEnvNames(
  * each with a default, so the profile resolves also where they are not set: the Runtime's own
  * value, and the DNS domain of the partition of `region`, the build region. One
  * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
- * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
- * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
+ * the agent gets {@link AGENT_OTEL_ENV}, each `otel.<input>` input with the Runtime's value, and
+ * the Runtime's resource attributes, so the console links its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
  * gateway of the project that the agent calls through the Box gateway gets two inputs: its host,
  * for the destination of its `[mcp]` server, and its URL, which the agent gets under the variable
  * name that a runtime without a box reads. box finds the pack beside its binary at
@@ -840,6 +900,9 @@ from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
     .join("");
   const otelInput = otel
     ? `
+
+# The ADOT settings of the agent, which the Runtime sets as for an agent outside a box. Each
+# default is the value of the Runtime, for where the Runtime does not set it.${agentOtelInputs()}
 
 # The resource of the agent's spans, which the Runtime names so the console links them to it.
 [inputs.runtime.resource_attributes]

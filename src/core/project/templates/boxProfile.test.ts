@@ -664,16 +664,42 @@ describe("renderAgentCorePack", () => {
       AWS_EXECUTION_ENV: "${{ inputs.runtime.execution_env }}",
       AWS_DNS_SUFFIX: "${{ inputs.aws.dns_suffix }}",
       MEMORY_AGENTMEMORY_ID: "${{ inputs.memory.agentMemory.id }}",
-      OTEL_PYTHON_DISTRO: "aws_distro",
-      OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
-      AGENT_OBSERVABILITY_ENABLED: "true",
+      OTEL_PYTHON_DISTRO: "${{ inputs.otel.python_distro }}",
+      OTEL_PYTHON_CONFIGURATOR: "${{ inputs.otel.python_configurator }}",
+      AGENT_OBSERVABILITY_ENABLED: "${{ inputs.otel.agent_observability_enabled }}",
       OTEL_TRACES_EXPORTER: "otlp",
       OTEL_LOGS_EXPORTER: "otlp",
       OTEL_METRICS_EXPORTER: "none",
-      OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+      OTEL_PYTHON_EXCLUDED_URLS: "${{ inputs.otel.python_excluded_urls }}",
       OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
     });
     expect(Object.keys(env).filter((name) => name.startsWith("OTEL_EXPORTER_OTLP_"))).toEqual([]);
+  });
+
+  test("with OTEL on, reads the ADOT settings of the Runtime, with the value of the Runtime by default", () => {
+    expect(pack([], true).inputs.otel).toEqual({
+      python_distro: {
+        description: "The OpenTelemetry distro of Python auto-instrumentation.",
+        from: "env:OTEL_PYTHON_DISTRO",
+        default: "aws_distro",
+      },
+      python_configurator: {
+        description: "The OpenTelemetry configurator of Python auto-instrumentation.",
+        from: "env:OTEL_PYTHON_CONFIGURATOR",
+        default: "aws_configurator",
+      },
+      agent_observability_enabled: {
+        description: "Whether the ADOT SDK runs in its agent observability mode.",
+        from: "env:AGENT_OBSERVABILITY_ENABLED",
+        default: "true",
+      },
+      python_excluded_urls: {
+        description: "The URL paths that Python auto-instrumentation does not trace.",
+        from: "env:OTEL_PYTHON_EXCLUDED_URLS",
+        default: "/ping",
+      },
+    });
+    expect(pack([]).inputs).not.toHaveProperty("otel");
   });
 
   test("with OTEL on, reads the Runtime's OTEL_RESOURCE_ATTRIBUTES, with the runtime's name when the Runtime sets none", () => {
@@ -743,7 +769,7 @@ describe("renderAgentCorePack", () => {
         instrumentation: { enableOtel: true },
       }),
     );
-    expect(text).toContain('OTEL_PYTHON_DISTRO = "aws_distro"');
+    expect(text).toContain('OTEL_PYTHON_DISTRO = "${{ inputs.otel.python_distro }}"');
   });
 });
 

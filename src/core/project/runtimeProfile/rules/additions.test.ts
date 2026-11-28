@@ -1018,31 +1018,44 @@ describe("the additions rule", () => {
       }
     });
 
-    test("keeps the value of the @box/agentcore pack, and says how to change it", () => {
+    test("needs no forward for a variable that the @box/agentcore pack reads from the Runtime", () => {
       const otel = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
-      const runtime = withEnvVars(
-        otel,
+      const names = [
         "OTEL_PYTHON_DISTRO",
+        "OTEL_PYTHON_CONFIGURATOR",
+        "AGENT_OBSERVABILITY_ENABLED",
+        "OTEL_PYTHON_EXCLUDED_URLS",
+        "OTEL_RESOURCE_ATTRIBUTES",
         memoryEnvVarName("notes"),
         "AWS_EXECUTION_ENV",
-      );
+        "AWS_DNS_SUFFIX",
+      ];
+      const runtime = withEnvVars(otel, ...names);
 
       const { table, warnings } = apply(
         createdProfile(runtime),
         contextOf(runtime, { memories: ["notes"] }),
       );
 
-      const env = agentOf(table).env;
-      expect(env).not.toHaveProperty("OTEL_PYTHON_DISTRO");
-      expect(env).not.toHaveProperty(memoryEnvVarName("notes"));
-      expect(env).not.toHaveProperty("AWS_EXECUTION_ENV");
+      // The pack reads each one from the Runtime, so the agent gets the Runtime's value.
+      for (const name of names) expect(agentOf(table).env).not.toHaveProperty(name);
+      expect(warnings).toEqual([]);
+    });
+
+    test("keeps a fixed value of the @box/agentcore pack, and says how to change it", () => {
+      const otel = runtimeOf("CodeZip", "HTTP", "Bedrock", true);
+      const runtime = withEnvVars(otel, "OTEL_METRICS_EXPORTER", "OTEL_TRACES_EXPORTER");
+
+      const { table, warnings } = apply(createdProfile(runtime), contextOf(runtime));
+
+      expect(agentOf(table).env).not.toHaveProperty("OTEL_METRICS_EXPORTER");
+      expect(agentOf(table).env).not.toHaveProperty("OTEL_TRACES_EXPORTER");
       const reason =
-        `the @box/agentcore pack sets it. To give the agent another value, set it in ` +
-        `[agent.env] of ${PROFILE_FILE}`;
+        `the @box/agentcore pack sets a value that box needs. To give the agent another value, ` +
+        `set it in [agent.env] of ${PROFILE_FILE}`;
       expect(warnings).toEqual([
-        skipped("OTEL_PYTHON_DISTRO", reason),
-        skipped(memoryEnvVarName("notes"), reason),
-        skipped("AWS_EXECUTION_ENV", reason),
+        skipped("OTEL_METRICS_EXPORTER", reason),
+        skipped("OTEL_TRACES_EXPORTER", reason),
       ]);
     });
 
@@ -1136,7 +1149,7 @@ describe("the additions rule", () => {
       ]);
     });
 
-    test("keeps the URL of a gateway of the project that the @box/agentcore pack sets", () => {
+    test("needs no forward for the URL of a gateway of the project, which the pack reads", () => {
       const runtime = withEnvVars(CONTAINER, "AGENTCORE_GATEWAY_TOOLS_URL");
       const gateway = {
         name: "tools",
@@ -1150,14 +1163,9 @@ describe("the additions rule", () => {
         { ...contextOf(runtime), projectGateways: [gateway] },
       );
 
+      // The pack reads the URL from the Runtime, which the CDK library sets.
       expect(agentOf(table).env).not.toHaveProperty("AGENTCORE_GATEWAY_TOOLS_URL");
-      expect(warnings).toEqual([
-        skipped(
-          "AGENTCORE_GATEWAY_TOOLS_URL",
-          `the @box/agentcore pack sets it. To give the agent another value, set it in ` +
-            `[agent.env] of ${PROFILE_FILE}`,
-        ),
-      ]);
+      expect(warnings).toEqual([]);
     });
 
     test("forwards an OTEL variable when the envVars turn observability off, so the pack sets none", () => {

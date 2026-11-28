@@ -10,7 +10,7 @@
  * | `[options] bedrock.sign-in` | `api-key`, beside `bedrock.region`: the gateway signs each Bedrock call, and box refuses the `aws://` route of @box/bedrock beside its backend |
  * | `[agent] command` | the template's own command becomes its Runtime command; a command of the user loses `--reload` and `--reload-dir <dir>`; with OTEL on, a command of the venv's Python starts under opentelemetry-instrument |
  * | `[agent.env]` | a template value becomes its Runtime value; `LOCAL_DEV` goes; the region of the Runtime replaces a region of the user, with a warning; `AWS_PROFILE` goes, with a warning; the AWS stand-ins and (CodeZip) a `PYTHONPATH` of the code folder come in; each other value of the user stays |
- * | `[agent.env]`, the runtime's `envVars` | each variable of the `envVars` in agentcore.json comes in as `{ from = "env:<name>" }`, so the agent gets the value that the Runtime sets; one that the profile or the @box/agentcore pack already sets, or that box refuses to give the agent, stays out, with a warning |
+ * | `[agent.env]`, the runtime's `envVars` | each variable of the `envVars` in agentcore.json comes in as `{ from = "env:<name>" }`, so the agent gets the value that the Runtime sets; one that the @box/agentcore pack reads from the Runtime needs none; one that the profile or the pack sets to a fixed value, or that box refuses to give the agent, stays out, with a warning |
  * | `[agent.filesystem]` | the template's grants become its Runtime grants; each grant of the user stays |
  * | `[[agent.ingress]]` | the first listens on `0.0.0.0` on the port of the protocol, and forwards to the workload port of the template when the agent keeps its command and port, with a warning for each port that changes; each other listens on `0.0.0.0` on its own port |
  * | `[tool.<name>]` | a table that the template writes, as it writes it, goes; a table of the user stays |
@@ -31,7 +31,7 @@ import { parseDestination } from "../../boxNetwork/egress";
 import {
   AGENTCORE_CODEZIP_PACK_NAME,
   AGENTCORE_PACK_NAME,
-  agentCorePackEnvNames,
+  agentCorePackEnvSources,
   BOX_BEDROCK_API_KEY_ENV,
   BOX_BEDROCK_PACK,
   BOX_BEDROCK_RUNTIME_SIGN_IN,
@@ -341,7 +341,10 @@ const AWS_CREDENTIAL_ENV_NAMES: ReadonlySet<string> = new Set([
  * Each variable that does not go to the agent gives a warning:
  *
  * - `AWS_REGION` and `AWS_DEFAULT_REGION`: the agent gets the region of the Runtime.
- * - a variable that the @box/agentcore pack sets: the pack's value stays.
+ * - a variable that the @box/agentcore pack sets to a fixed value: the pack's value stays.
+ *
+ * A variable that the pack reads from the Runtime under the same name, such as a Memory ID or
+ * `OTEL_PYTHON_DISTRO`, needs no forward and gives no warning: the agent gets it through the pack.
  * - a variable that box sets itself, or a variable of the dynamic loader.
  * - a credential: of a route or a server of `profile` or of the Box network model, or of AWS.
  * - `AWS_PROFILE`, `LOCAL_DEV`, and the port variable of the protocol.
@@ -358,8 +361,10 @@ function withRuntimeEnvVars(
   const env = agent.env;
   if (env !== undefined && !isTable(env)) return agent;
   const result: TomlTable = { ...env };
-  const packNames = new Set(
-    agentCorePackEnvNames(context.spec, context.runtime, context.projectGateways),
+  const packSources = agentCorePackEnvSources(
+    context.spec,
+    context.runtime,
+    context.projectGateways,
   );
   const credentials = credentialVariables(profile, context);
   const port = PORT_ENV[context.runtime.protocol ?? "HTTP"] ?? "PORT";
@@ -371,11 +376,14 @@ function withRuntimeEnvVars(
   for (const name of new Set(envVars.map((envVar) => envVar.name))) {
     if (REGION_ENV_NAMES.has(name)) {
       skip(name, "the agent gets the region of the Runtime, which the profile routes");
-    } else if (packNames.has(name)) {
+    } else if (packSources.get(name) === "runtime") {
+      // The pack already gives the agent the value that the Runtime sets.
+      continue;
+    } else if (packSources.get(name) === "fixed") {
       skip(
         name,
-        `the ${AGENTCORE_PACK_NAME} pack sets it. To give the agent another value, set it in ` +
-          `[agent.env] of ${context.profileFile}`,
+        `the ${AGENTCORE_PACK_NAME} pack sets a value that box needs. To give the agent another ` +
+          `value, set it in [agent.env] of ${context.profileFile}`,
       );
     } else if (boxSetsEnv(name)) {
       skip(name, "box sets it for the agent itself");

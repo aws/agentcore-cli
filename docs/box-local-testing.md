@@ -293,12 +293,15 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
     `[agent.env]`. The Runtime sets these variables for box, and box gives the agent only the
     variables that the profile names. Box copies the value as it is, with no `${{ }}` expansion.
     Build leaves out these variables, and gives a warning for each one: `AWS_REGION` and
-    `AWS_DEFAULT_REGION` (the agent gets the region of the Runtime), a variable that the
-    `@box/agentcore` pack or your `[agent.env]` already sets (that value stays), a variable that
+    `AWS_DEFAULT_REGION` (the agent gets the region of the Runtime), a variable that your
+    `[agent.env]` sets or that the `@box/agentcore` pack sets to a fixed value (that value stays),
+    a variable that
     box sets itself (`HOME`, `TMPDIR`, `PWD`, `USER`, the proxy and CA bundle variables, each
     `OTEL_EXPORTER_OTLP_*`), each `LD_*` variable, the credential of a route or a server, an AWS
     credential such as `AWS_BEARER_TOKEN_BEDROCK`, `AWS_PROFILE`, `LOCAL_DEV`, and the port
-    variable of the protocol. Box refuses to start with most of these names in `[agent.env]`.
+    variable of the protocol. Box refuses to start with most of these names in `[agent.env]`. A
+    variable that the pack reads from the Runtime, such as `OTEL_PYTHON_DISTRO` or a Memory ID,
+    needs no forward, and gives no warning.
     `agentcore dev` does not give the `envVars` to the agent in the box yet. Set them in
     `[agent.env]` to test with dev;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
@@ -314,8 +317,13 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
     the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
     Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`
-    pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES` that the Runtime
-    sets. When your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
+    pack gives the agent the values that the Runtime sets for `OTEL_PYTHON_DISTRO`,
+    `OTEL_PYTHON_CONFIGURATOR`, `AGENT_OBSERVABILITY_ENABLED`, `OTEL_PYTHON_EXCLUDED_URLS`, and
+    `OTEL_RESOURCE_ATTRIBUTES`. Where the Runtime does not set one, the agent gets the value of the
+    Runtime: `aws_distro`, `aws_configurator`, `true`, `/ping`, and `service.name=<runtime>`. The
+    pack sets fixed values for `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` (`otlp`), and for
+    `OTEL_METRICS_EXPORTER` (`none`), because the receiver of box takes only spans and logs. When
+    your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
     `OTEL_EXPORTER_OTLP_*` variable, because box sets each one;
   - each other gateway of the project gets `[mcp.<gateway>]`, to the host that `@box/agentcore`
     reads from `AGENTCORE_GATEWAY_<NAME>_HOST`, through its `egress-gateway-<name>` target. The agent

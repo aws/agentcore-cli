@@ -1694,7 +1694,7 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect((profile.telemetry as Record<string, unknown>).agentcore_traces).toEqual(DEFAULT_TRACES);
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
     expect(pack.agent.env).toMatchObject({
-      OTEL_PYTHON_DISTRO: "aws_distro",
+      OTEL_PYTHON_DISTRO: "${{ inputs.otel.python_distro }}",
       OTEL_TRACES_EXPORTER: "otlp",
       OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
     });
