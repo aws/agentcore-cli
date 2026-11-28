@@ -56,7 +56,13 @@ def _get_api_key() -> str:
 def load_model() -> AnthropicModel:
     """Get authenticated Anthropic model client."""
     return AnthropicModel(
+{{#if box}}
+        # The box puts the real key in x-api-key. Given api_key=, anthropic 2.x sends the key as
+        # Authorization: Bearer instead, so the box would leave the stand-in key in place.
+        client_args={"default_headers": {"x-api-key": _get_api_key()}},
+{{else}}
         client_args={"api_key": _get_api_key()},
+{{/if}}
         model_id={{safeJson modelId}},
         max_tokens=5000,
     )

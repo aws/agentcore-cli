@@ -334,6 +334,22 @@ describe("runtime templates", () => {
     expect(loadPy).toContain('if os.getenv("LOCAL_DEV") == "1":');
   });
 
+  // The box's Anthropic route puts the real key in x-api-key. Given api_key=, anthropic 2.x sends
+  // the key as Authorization: Bearer, which the box leaves alone, so the stand-in key reaches
+  // Anthropic.
+  test.each<[RuntimeTemplateShortcutName, string]>([
+    ["agent-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["a2a-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["agui-python-strands-box", 'client_args={"default_headers": {"x-api-key": _get_api_key()}}'],
+    ["agent-python-strands", 'client_args={"api_key": _get_api_key()}'],
+  ])("%s sends the Anthropic key with %s", async (template, clientArgs) => {
+    const { appDir } = await addTemplate("my_agent", template, {
+      model: { modelProvider: "Anthropic", apiKey: "test-api-key" },
+    });
+    const loadPy = await Bun.file(join(appDir, "model", "load.py")).text();
+    expect(loadPy).toContain(clientArgs);
+  });
+
   test.each<ModelProvider>(["Anthropic", "OpenAI", "Gemini"])(
     "%s scaffolds agent-python-strands with an API-key credential",
     async (provider) => {
