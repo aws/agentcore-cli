@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import spawn from "cross-spawn";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import z from "zod";
@@ -209,9 +211,6 @@ const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
   },
 ].map((template) => ({ ...template, box: true }));
 
-/** Every template the suite creates, so each project gets its own name. */
-const ALL_TEMPLATES = [...RUNTIME_TEMPLATES, ...BOX_TEMPLATES];
-
 const ProjectCreatedSchema = z.object({
   project: z.object({ path: z.string() }),
 });
@@ -252,6 +251,30 @@ const LOCAL_DEV_PORT_BASE = 18080;
  * tests run one at a time.
  */
 const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
+
+/** The `agentcore dev` step that holds each box ingress port, so the tests that share it take turns. */
+const devPortQueues = new Map<number, Promise<void>>();
+
+/**
+ * Runs `step` once no other test runs `agentcore dev` on `port`. Box listens on the protocol's fixed
+ * ingress port, so two dev runs on one port cannot overlap; the rest of each test (build, deploy,
+ * invoke) runs concurrently with the others.
+ */
+async function withDevPort<T>(port: number, step: () => Promise<T>): Promise<T> {
+  const previous = devPortQueues.get(port) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => (release = resolve));
+  devPortQueues.set(
+    port,
+    previous.then(() => mine),
+  );
+  await previous;
+  try {
+    return await step();
+  } finally {
+    release();
+  }
+}
 
 // Each template gets its own project from `agentcore create --template`, the
 // command that scaffolds template code (`add runtime` only writes docs). The
@@ -340,36 +363,63 @@ describe(
   },
 );
 
-// The Strands Box templates run their agent in a box on AgentCore Runtime, so these tests create,
-// deploy and invoke each one, then check that the Runtime started the agent in a box. They skip
-// `agentcore dev`, which the sequential tests below cover. They need `box` on PATH and the
-// AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable @aws/agentcore-cdk build, so CI skips them. Run them
-// with `bun run test:e2e -- --tagsFilter='box'`.
+// In CI, the AgentCore Runtime logs of the LangChain box agent hold OpenTelemetry's "Failed to
+// detach context" at ERROR level, which the log check of the deploy refuses, so the deploy tests
+// leave it out in CI until the template or the check handles that message. Its dev test below
+// still runs there.
+const DEPLOY_TEMPLATES = BOX_TEMPLATES.filter(
+  (t) => !(process.env.CI === "true" && t.name === "agent_python_langchain_box"),
+);
+// The templates that run the whole flow, dev before and after build and deploy in one project: one
+// CodeZip and the container one. Each other template runs build and deploy here, and dev in its own
+// test below, so its deploy does not wait for a dev step on the shared box ingress port.
+const FULL_FLOW_TEMPLATES = new Set([
+  "agent-python-minimal-box",
+  "agent-python-strands-box-container",
+]);
+const fullFlow = (t: RuntimeTemplateTestCase) => FULL_FLOW_TEMPLATES.has(t.template);
+
+// The Strands Box templates run their agent in a box, locally and on AgentCore Runtime. Each test
+// takes one project through build, deploy, invoke, and checks that the Runtime started the agent
+// in a box. The FULL_FLOW_TEMPLATES also run dev and invoke --local before build and again after
+// deploy, in the same project, as a user does: dev leaves state that build and deploy then read
+// (box binds each profile name to the file that ran it), and build and deploy leave state that dev
+// must still run beside. Their dev steps wait for the other tests on their box ingress port
+// (withDevPort); every deploy runs concurrently. The container template skips dev without a
+// container tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable
+// @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
 describe.skipIf(!BOX_DEPLOYS)(
-  "create, deploy, invoke for Strands Box templates",
+  "build, deploy, invoke for Strands Box templates, with dev before and after for some",
   { tags: [TAGS.RUNTIME, TAGS.BOX] },
   () => {
     const cli = new CliRunner();
-    // In CI, the AgentCore Runtime logs of the LangChain box agent hold OpenTelemetry's "Failed to
-    // detach context" at ERROR level, which the log check below refuses, so CI skips it until the
-    // template or the check handles that message. It still runs locally, and its dev test in CI.
-    const templates = BOX_TEMPLATES.filter(
-      (t) => !(process.env.CI === "true" && t.name === "agent_python_langchain_box"),
-    );
+    const cases = DEPLOY_TEMPLATES.map((runtime) => ({
+      ...runtime,
+      flow: fullFlow(runtime) ? "dev, build, deploy, dev" : "build, deploy",
+    }));
 
-    test.concurrent.each(templates)(
-      "$name",
+    test.concurrent.each(cases)(
+      "$name: $flow",
       {
+        // A dev step may wait for every other dev step on its port.
         timeout:
           TIMEOUT_MS.PROJECT_CREATE +
+          2 * BOX_TEMPLATES.length * (TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE) +
           2 * TIMEOUT_MS.PROJECT_INVOKE +
-          2 * TIMEOUT_MS.PROJECT_DEPLOY +
+          3 * TIMEOUT_MS.PROJECT_DEPLOY +
           TIMEOUT_MS.PROJECT_REMOVE,
       },
       async (runtime) => {
         const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        const withDev = fullFlow(runtime);
         let scenarioCompleted = false;
         try {
+          if (withDev) await devInBox(cli, runtime, projectDir);
+
+          // Build after dev, as a user does: build runs box on the local profile that dev ran.
+          parseResult(JsonObjectSchema, await cli.run(["build", "--json"], projectDir));
+          await assertStrandsBoxAssets(projectDir);
+
           const deployment = parseResult(
             DeployResponseSchema,
             await cli.run(["deploy", "--yes", "--json"], projectDir),
@@ -403,45 +453,46 @@ describe.skipIf(!BOX_DEPLOYS)(
           }
 
           await assertRunsInBox(cli, projectDir);
+
+          // Dev again after build and deploy: they leave state (box's profile bindings, the
+          // Runtime profile, .box-dist) that dev must still run beside.
+          if (withDev) await devInBox(cli, runtime, projectDir);
           scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.
-          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
-          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
-          // A cleanup error must not replace the scenario's primary diagnostic.
-          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
+          await tearDown(cli, projectDir, scenarioCompleted);
         }
       },
     );
   },
 );
 
-// `agentcore dev` for each Strands Box template: box runs the agent on the developer's machine. Box
-// listens on the protocol's fixed ingress port, so these tests run one at a time. They deploy
-// nothing. They need `box` on PATH and a machine where `box run` can start its sandbox.
-describe.skipIf(!BOX_ON_PATH)(
+// `agentcore dev` for each Strands Box template that the tests above do not run dev for: every
+// template on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and on one
+// that can, each template outside FULL_FLOW_TEMPLATES and each one the deploy tests leave out. Box
+// runs the agent on the developer's machine. Box listens on the protocol's fixed ingress port, so
+// these tests run one at a time, and wait for the other dev steps on the same port. The container
+// template's dev builds and runs its image, so it needs a container tool, which the CI macOS
+// runner does not have (no nested virtualization). They need `box` on PATH and a machine where
+// `box run` can start its sandbox.
+const DEV_ONLY_TEMPLATES = BOX_TEMPLATES.filter(
+  (t) =>
+    (CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container") &&
+    !(BOX_DEPLOYS && DEPLOY_TEMPLATES.includes(t) && fullFlow(t)),
+);
+describe.skipIf(!BOX_ON_PATH || DEV_ONLY_TEMPLATES.length === 0)(
   "create and dev for Strands Box templates",
   { tags: [TAGS.BOX], sequential: true },
   () => {
     const cli = new CliRunner();
-    // The container template's dev builds and runs its image, so it needs a container tool, which
-    // the CI macOS runner does not have (no nested virtualization).
-    const templates = BOX_TEMPLATES.filter(
-      (t) => CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container",
-    );
+    const templates = DEV_ONLY_TEMPLATES;
 
     test.each(templates)(
       "$name",
       { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
       async (runtime) => {
         const projectDir = await createTemplateProject(cli, runtime, { deploys: false });
-        const { devOutput } = await invokeLocally(
-          cli,
-          runtime,
-          projectDir,
-          BOX_DEV_PORTS[runtime.protocol],
-        );
-        expect(devOutput).toContain("box: running profile");
+        await devInBox(cli, runtime, projectDir);
       },
     );
   },
@@ -573,15 +624,640 @@ describe.skipIf(!BOX_DEPLOYS)(
           scenarioCompleted = true;
         } finally {
           // Tear the stack down even when a step above failed.
-          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
-          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
-          // A cleanup error must not replace the scenario's primary diagnostic.
-          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
+          await tearDown(cli, projectDir, scenarioCompleted);
         }
+      },
+    );
+
+    // The profile's egress entry names an env:// key: build stops until deploy has stored it,
+    // deploy stores it as an API key credential, and the Box gateway sends it to the host. The
+    // agent never holds the key, so the echoed header can only come from the gateway.
+    test(
+      "an egress route with an env:// key reaches its host with the key the Box gateway adds",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        const key = `e2e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        const env = { E2E_ECHO_KEY: key };
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), ECHO_AGENT);
+        const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
+        await writeFile(
+          profile,
+          `${await readFile(profile, "utf8")}\n[egress.echo]\ndestinations = ["${new URL(ECHO_URL).host}"]\nsecret.ref = "env://E2E_ECHO_KEY"\n`,
+        );
+        const build = await cli.run(["build", "--json"], projectDir, env);
+        expect(build.exitCode).not.toBe(0);
+        expect(`${build.stdout}${build.stderr}`).toContain("before its first deployment");
+        await deployed(
+          cli,
+          projectDir,
+          async () => {
+            await retry(
+              async () => {
+                const body = await ask(
+                  cli,
+                  projectDir,
+                  CREATED_RUNTIME_NAME,
+                  getSessionId("box-echo"),
+                  "echo",
+                );
+                const reply = JSON.parse(body) as {
+                  status?: number;
+                  authorization?: string;
+                  error?: string;
+                };
+                expect(reply.error).toBeUndefined();
+                expect(reply.status).toBe(200);
+                expect(reply.authorization).toBe(`Bearer ${key}`);
+              },
+              3 * TIMEOUT_MS.PROJECT_INVOKE,
+              15 * 1000,
+            );
+          },
+          env,
+        );
+      },
+    );
+
+    // A gateway added with `add gateway` reaches a boxed runtime through its Box gateway: build
+    // gives the Box gateway a target for it, and the runtime its URL. The gateway's target is a
+    // public MCP server, so the agent lists that server's tools through both gateways. That server
+    // is a public host, and deploy syncs the target's tools from it, so the test has the box-egress
+    // tag.
+    test(
+      "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
+        for (const args of [
+          ["add", "gateway", "--name", "tools", "--authorizer-type", "AWS_IAM", "--json"],
+          [
+            "add",
+            "gateway-target",
+            "--gateway",
+            "tools",
+            "--name",
+            "docs",
+            "--endpoint",
+            MCP_SERVER_URL,
+            "--outbound-auth",
+            "none",
+            "--json",
+          ],
+        ]) {
+          expect(parseResult(OperationSchema, await cli.run(args, projectDir)).operation).toBe(
+            "add",
+          );
+        }
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), GATEWAY_AGENT);
+        await deployed(cli, projectDir, async () => {
+          await askAgent<{ tools?: string[]; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-gateway"),
+            "run",
+            (reply) => expect(reply.tools?.some((name) => name.startsWith("docs___"))).toBe(true),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
       },
     );
   },
 );
+
+// Box project scenarios on AgentCore Runtime that a user hits beyond one template's happy path: a
+// second runtime beside the first's Memory, a Memory added with `add memory`, a Code Interpreter
+// and a Browser connection, and Memory that recalls within a session and across sessions. Each
+// deploys its own project; they run concurrently. They reach only AWS hosts; the scenarios that
+// need a public host are in the box-egress suite above. They need the AGENTCORE_E2E_BOX_CDK
+// opt-in, as the flow tests do.
+describe.skipIf(!BOX_DEPLOYS)(
+  "Box project scenarios on AgentCore Runtime",
+  { tags: [TAGS.BOX] },
+  () => {
+    const cli = new CliRunner();
+    const strands = BOX_TEMPLATES.find((t) => t.template === "agent-python-strands-box");
+    const minimal = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
+    if (!strands || !minimal)
+      throw new Error("BOX_TEMPLATES lacks the strands or minimal box case");
+
+    // A Box project's runtimes each run in a box, and the box pack of each reads the ID of every
+    // project Memory, so a runtime added beside the first, whose Memory it gets, must start.
+    test.concurrent(
+      "a runtime added to a Box project with a Memory deploys and answers beside the first",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        const added = parseResult(
+          OperationSchema,
+          await cli.run(
+            ["add", "runtime", "--name", "second", "--language", "python", "--json"],
+            projectDir,
+          ),
+        );
+        expect(added.operation).toBe("add");
+        // add runtime writes start.py and the docs; the agent code is the user's, here the first's.
+        const from = join(projectDir, "app", CREATED_RUNTIME_NAME);
+        const to = join(projectDir, "app", "second");
+        for (const entry of [
+          "main.py",
+          "pyproject.toml",
+          "uv.lock",
+          "model",
+          "memory",
+          "parse.py",
+        ]) {
+          // The first's code must reach the second; the other files only when the template has
+          // them.
+          if (entry === "main.py" || existsSync(join(from, entry))) {
+            await cp(join(from, entry), join(to, entry), { recursive: true });
+          }
+        }
+        await deployed(cli, projectDir, async () => {
+          await ask(
+            cli,
+            projectDir,
+            CREATED_RUNTIME_NAME,
+            getSessionId("box-two-a"),
+            "Reply with a short greeting.",
+          );
+          await ask(
+            cli,
+            projectDir,
+            "second",
+            getSessionId("box-two-b"),
+            "Reply with a short greeting.",
+          );
+          await assertRunsInBox(cli, projectDir, "second");
+        });
+      },
+    );
+
+    // A Memory added with `add memory` is a project Memory like the default one: the runtime gets
+    // its ID, and box sends the agent's calls to it to Memory directly, signed with the execution
+    // role. The minimal template has no Memory of its own, so this Memory is the project's only
+    // one.
+    test.concurrent(
+      "a Memory added with add memory takes and returns an event of the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
+        const added = parseResult(
+          OperationSchema,
+          await cli.run(["add", "memory", "--name", "notes", "--json"], projectDir),
+        );
+        expect(added.operation).toBe("add");
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), MEMORY_AGENT);
+        const note = `note-${Date.now().toString(36)}`;
+        await deployed(cli, projectDir, async () => {
+          await askAgent<{ stored?: string[]; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-notes"),
+            note,
+            (reply) => expect(reply.stored).toContain(note),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
+    // A runtime reaches the AWS-managed Code Interpreter through a `codeInterpreter` connection in
+    // agentcore.json, which grants its role the tool. Its calls go to the AgentCore host, which box
+    // sends directly, signed with the execution role, because the project has a Memory.
+    test.concurrent(
+      "a Code Interpreter connection runs code for the boxed agent",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        await addConnection(projectDir, "codeInterpreter");
+        await writeFile(
+          join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"),
+          CODE_INTERPRETER_AGENT,
+        );
+        await deployed(cli, projectDir, async () => {
+          await askAgent<{ output?: string; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-code"),
+            "run",
+            (reply) => expect(reply.output).toContain("42"),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
+    // A runtime reaches the AWS-managed Browser through a `browser` connection. The agent starts a
+    // session over the AgentCore host, then drives the browser over the session's automation
+    // WebSocket on the same host. A route permits no WebSocket, and build adds no permit for one,
+    // so the user writes it in a policy of the local profile, as this test does.
+    test.concurrent(
+      "a Browser connection opens a browser that the boxed agent drives",
+      { timeout: DEPLOY_TEST_TIMEOUT },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        await addConnection(projectDir, "browser");
+        await allowBrowserWebSocket(projectDir);
+        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), BROWSER_AGENT);
+        await deployed(cli, projectDir, async () => {
+          await askAgent<{ product?: string; error?: string }>(
+            cli,
+            projectDir,
+            getSessionId("box-browser"),
+            "run",
+            (reply) => expect(reply.product).toMatch(/Chrom/i),
+          );
+          await assertRunsInBox(cli, projectDir);
+        });
+      },
+    );
+
+    // The template's agent keeps the conversation in Memory: short-term events within a session,
+    // and facts that long-term extraction makes available to a new session of the same actor.
+    test.concurrent(
+      "Memory recalls a fact within a session and from a new session",
+      { timeout: DEPLOY_TEST_TIMEOUT + 10 * 60 * 1000 },
+      async () => {
+        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
+        const color = `teal${Date.now().toString(36).slice(-4)}`;
+        await deployed(cli, projectDir, async () => {
+          const first = getSessionId("box-mem-a");
+          await ask(
+            cli,
+            projectDir,
+            CREATED_RUNTIME_NAME,
+            first,
+            `My favorite color is ${color}. Remember it.`,
+          );
+          expect(
+            await ask(cli, projectDir, CREATED_RUNTIME_NAME, first, "What is my favorite color?"),
+          ).toMatch(new RegExp(color, "i"));
+          // Extraction into long-term memory takes a few minutes.
+          await retry(
+            async () => {
+              const reply = await ask(
+                cli,
+                projectDir,
+                CREATED_RUNTIME_NAME,
+                getSessionId("box-mem-b"),
+                "What is my favorite color?",
+              );
+              expect(reply).toMatch(new RegExp(color, "i"));
+            },
+            10 * 60 * 1000,
+            60 * 1000,
+          );
+        });
+      },
+    );
+  },
+);
+
+/**
+ * The text of an invoke reply. A streamed reply is server-sent events, whose text arrives split
+ * across `contentBlockDelta` events, so a word can span two of them; the text is their join. Any
+ * other body is returned as it is.
+ */
+function replyText(body: string): string {
+  const deltas = body
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => {
+      try {
+        const text = (
+          JSON.parse(line.slice("data: ".length)) as {
+            event?: { contentBlockDelta?: { delta?: { text?: unknown } } };
+          }
+        ).event?.contentBlockDelta?.delta?.text;
+        return typeof text === "string" ? text : "";
+      } catch {
+        return "";
+      }
+    });
+  return deltas.some((text) => text !== "") ? deltas.join("") : body;
+}
+
+/** The public host that answers with the request's headers, for the API key egress scenario. */
+const ECHO_URL = "https://httpbin.org/headers";
+/** An agent that calls ECHO_URL with no credential of its own and returns the Authorization it saw. */
+const ECHO_AGENT = `import json
+import urllib.request
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        with urllib.request.urlopen("${ECHO_URL}", timeout=20) as response:
+            headers = json.load(response).get("headers", {})
+            return {"status": response.status, "authorization": headers.get("Authorization")}
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/**
+ * An agent that writes the prompt as an event to the `notes` Memory, which `add memory` adds, and
+ * returns the texts of the session's events that Memory gives back.
+ */
+const MEMORY_AGENT = `import os
+from datetime import datetime, timezone
+
+import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        memory = boto3.client("bedrock-agentcore")
+        where = {
+            "memoryId": os.environ["MEMORY_NOTES_ID"],
+            "actorId": "e2e",
+            "sessionId": context.session_id,
+        }
+        memory.create_event(
+            **where,
+            eventTimestamp=datetime.now(timezone.utc),
+            payload=[{"conversational": {"content": {"text": payload["prompt"]}, "role": "USER"}}],
+        )
+        events = memory.list_events(**where, includePayloads=True)["events"]
+        return {
+            "stored": [
+                part["conversational"]["content"]["text"]
+                for event in events
+                for part in event.get("payload", [])
+                if "conversational" in part
+            ]
+        }
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/** Adds a connection to the AWS-managed tool `type` to the created runtime in agentcore.json. */
+async function addConnection(projectDir: string, type: "codeInterpreter" | "browser") {
+  const specPath = join(projectDir, "agentcore", "agentcore.json");
+  const spec = JSON.parse(await readFile(specPath, "utf8")) as {
+    runtimes: { name: string; connections?: { to: { type: string } }[] }[];
+  };
+  const runtime = spec.runtimes.find((entry) => entry.name === CREATED_RUNTIME_NAME);
+  if (!runtime) throw new Error(`agentcore.json has no runtime ${CREATED_RUNTIME_NAME}`);
+  runtime.connections = [...(runtime.connections ?? []), { to: { type } }];
+  await writeFile(specPath, `${JSON.stringify(spec, null, 2)}\n`);
+}
+
+/**
+ * Lets the agent of `projectDir` open the Browser's automation WebSocket, as a user does: a
+ * `policy.dw` beside the local profile permits `websocket:connect` to the AgentCore host of the
+ * profile's region, on the browser stream paths only, and the profile lists it under `policies`.
+ */
+async function allowBrowserWebSocket(projectDir: string): Promise<void> {
+  const local = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local");
+  const profilePath = join(local, "profile.toml");
+  const profile = await readFile(profilePath, "utf8");
+  const region = /^bedrock\.region = "([a-z0-9-]+)"$/m.exec(profile)?.[1];
+  if (!region) throw new Error(`${profilePath} names no bedrock.region`);
+  const created = 'policies = ["aws-metadata-block.dw"]\n';
+  if (!profile.includes(created)) throw new Error(`${profilePath} lacks ${created.trim()}`);
+  await writeFile(
+    join(local, "policy.dw"),
+    '@id("browser_automation") permit (principal, action == Box::Action::"websocket:connect", resource)\n' +
+      `when { context.input.host == "bedrock-agentcore.${region}.amazonaws.com" && ` +
+      'context.input.path like "/browser-streams/*" };\n',
+  );
+  await writeFile(
+    profilePath,
+    profile.replace(created, 'policies = ["aws-metadata-block.dw", "policy.dw"]\n'),
+  );
+}
+
+/** An agent that runs `print(6 * 7)` in the AWS-managed Code Interpreter and returns its output. */
+const CODE_INTERPRETER_AGENT = `import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+TOOL = "aws.codeinterpreter.v1"
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        client = boto3.client("bedrock-agentcore")
+        session = client.start_code_interpreter_session(
+            codeInterpreterIdentifier=TOOL, sessionTimeoutSeconds=300
+        )["sessionId"]
+        try:
+            response = client.invoke_code_interpreter(
+                codeInterpreterIdentifier=TOOL,
+                sessionId=session,
+                name="executeCode",
+                arguments={"language": "python", "code": "print(6 * 7)"},
+            )
+            output = [
+                item.get("text", "")
+                for event in response["stream"]
+                for item in event.get("result", {}).get("content", [])
+            ]
+            return {"output": "".join(output)}
+        finally:
+            client.stop_code_interpreter_session(codeInterpreterIdentifier=TOOL, sessionId=session)
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/**
+ * An agent that starts a session of the AWS-managed Browser, sends the Chrome DevTools command
+ * \`Browser.getVersion\` over its automation WebSocket, and returns the browser's product. The
+ * WebSocket client is the standard library's, through the proxy that box gives the agent, so the
+ * agent needs no package beyond the template's.
+ */
+const BROWSER_AGENT = `import base64
+import http.client
+import json
+import os
+import ssl
+import struct
+import urllib.parse
+
+import boto3
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+TOOL = "aws.browser.v1"
+
+
+def devtools(url, message):
+    target = urllib.parse.urlsplit(url)
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    context = ssl.create_default_context()
+    if proxy:
+        via = urllib.parse.urlsplit(proxy)
+        connection = http.client.HTTPSConnection(via.hostname, via.port, context=context, timeout=30)
+        connection.set_tunnel(target.hostname, target.port or 443)
+    else:
+        connection = http.client.HTTPSConnection(target.hostname, target.port or 443, context=context, timeout=30)
+    path = target.path + (f"?{target.query}" if target.query else "")
+    connection.request(
+        "GET",
+        path,
+        headers={
+            "Upgrade": "websocket",
+            "Connection": "Upgrade",
+            "Sec-WebSocket-Key": base64.b64encode(os.urandom(16)).decode(),
+            "Sec-WebSocket-Version": "13",
+        },
+    )
+    response = connection.getresponse()
+    if response.status != 101:
+        raise RuntimeError(f"WebSocket handshake answered {response.status}: {response.read()[:300]!r}")
+    data = json.dumps(message).encode()
+    size = len(data)
+    if size < 126:
+        header = bytes([0x81, 0x80 | size])
+    elif size < 65536:
+        header = bytes([0x81, 0x80 | 126]) + struct.pack("!H", size)
+    else:
+        header = bytes([0x81, 0x80 | 127]) + struct.pack("!Q", size)
+    mask = os.urandom(4)
+    connection.sock.sendall(header + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+    def exactly(count):
+        chunk = response.fp.read(count)
+        if len(chunk) < count:
+            raise EOFError("the automation WebSocket closed")
+        return chunk
+
+    while True:
+        first, second = exactly(2)
+        length = second & 0x7F
+        if length == 126:
+            length = struct.unpack("!H", exactly(2))[0]
+        elif length == 127:
+            length = struct.unpack("!Q", exactly(8))[0]
+        if second & 0x80:
+            exactly(4)
+        body = exactly(length)
+        if first & 0x0F == 0x8:
+            raise EOFError(f"the automation WebSocket closed: {body!r}")
+        if first & 0x0F == 0x1:
+            reply = json.loads(body)
+            if reply.get("id") == message["id"]:
+                return reply
+
+
+@app.entrypoint
+def invoke(payload, context):
+    try:
+        client = boto3.client("bedrock-agentcore")
+        started = client.start_browser_session(browserIdentifier=TOOL, sessionTimeoutSeconds=300)
+        session = started["sessionId"]
+        try:
+            url = started["streams"]["automationStream"]["streamEndpoint"]
+            reply = devtools(url, {"id": 1, "method": "Browser.getVersion"})
+            return {"product": reply["result"]["product"]}
+        finally:
+            client.stop_browser_session(browserIdentifier=TOOL, sessionId=session)
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
+
+/** A public MCP server with no authentication, for the gateway target of the gateway scenario. */
+const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
+
+/**
+ * An agent that lists the tools of the project gateway \`tools\` at the URL the runtime gets, with
+ * no credential of its own: box sends the calls through the Box gateway, whose role signs them. It
+ * opens an MCP session first (initialize), as an MCP client does, at the gateway's /mcp path,
+ * which the URL variable leaves out, and returns the gateway's raw answer when a step has no
+ * result, so a failure says what the gateway said.
+ */
+const GATEWAY_AGENT = `import json
+import os
+import urllib.parse
+import urllib.request
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+
+app = BedrockAgentCoreApp()
+
+
+def rpc(url, body, session=None):
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if session:
+        headers["Mcp-Session-Id"] = session
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=30) as response:
+        text = response.read().decode()
+        session = response.headers.get("Mcp-Session-Id") or session
+    if "id" not in body:
+        return None, session, text
+    messages = []
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            messages.append(json.loads(line[len("data:"):]))
+    if not messages and text.strip():
+        messages.append(json.loads(text))
+    reply = next((m for m in messages if m.get("id") == body["id"]), None)
+    return reply, session, text
+
+
+@app.entrypoint
+def invoke(payload, context):
+    url = os.environ.get("AGENTCORE_GATEWAY_TOOLS_URL")
+    if not url:
+        names = sorted(name for name in os.environ if name.startswith("AGENTCORE_GATEWAY_"))
+        return {"error": f"no AGENTCORE_GATEWAY_TOOLS_URL; the gateway variables are {names}"}
+    # The variable holds the gateway's URL with no path; the gateway serves MCP at /mcp.
+    if urllib.parse.urlsplit(url).path in ("", "/"):
+        url = url.rstrip("/") + "/mcp"
+    try:
+        init, session, raw = rpc(url, {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e", "version": "1.0"},
+            },
+        })
+        if not init or "result" not in init:
+            return {"error": f"initialize answered {raw[:500]}"}
+        rpc(url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, session)
+        listed, _, raw = rpc(url, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, session)
+        if not listed or "result" not in listed:
+            return {"error": f"tools/list answered {raw[:500]}"}
+        return {"tools": [tool["name"] for tool in listed["result"]["tools"]]}
+    except urllib.error.HTTPError as error:
+        return {"error": f"HTTP {error.code} from {url}: {error.read()[:500]!r}"}
+    except Exception as error:
+        return {"error": f"{type(error).__name__}: {error}"}
+
+
+if __name__ == "__main__":
+    app.run()
+`;
 
 /**
  * Gives the project in `projectDir` the egress agent, and allows its one host, with no credential,
@@ -608,10 +1284,46 @@ function assertEgressReply(body: string): void {
  * Given a deployed Box project, waits for the Runtime's logs to show that box started the agent,
  * then checks they show no box error. The logs arrive a little after the invoke, so it retries.
  */
-async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void> {
+/**
+ * The synthesized stack of a Box project puts every file asset under the `strands-box/` S3 key (the
+ * vended CDK app's bucketPrefix), and tags the image of each container runtime `strands-box-<hash>`
+ * (the L3's image tag prefix), so the runtime's code or image URI shows that it belongs to a Strands
+ * Box project. Reads `agentcore build`'s output in agentcore/cdk/cdk.out.
+ */
+async function assertStrandsBoxAssets(projectDir: string): Promise<void> {
+  const cdkOut = join(projectDir, "agentcore", "cdk", "cdk.out");
+  const manifestFiles = (await readdir(cdkOut)).filter((file) => file.endsWith(".assets.json"));
+  expect(manifestFiles.length).toBeGreaterThan(0);
+  for (const file of manifestFiles) {
+    const manifest = JSON.parse(await readFile(join(cdkOut, file), "utf-8")) as {
+      files?: Record<string, { destinations: Record<string, { objectKey: string }> }>;
+    };
+    const keys = Object.values(manifest.files ?? {}).flatMap((asset) =>
+      Object.values(asset.destinations).map((destination) => destination.objectKey),
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(key).toMatch(/^strands-box\//);
+  }
+
+  const spec = JSON.parse(
+    await readFile(join(projectDir, "agentcore", "agentcore.json"), "utf-8"),
+  ) as { runtimes: { build: string }[] };
+  if (!spec.runtimes.some((runtime) => runtime.build === "Container")) return;
+  const templates = (await readdir(cdkOut)).filter((file) => file.endsWith(".template.json"));
+  const templateText = (
+    await Promise.all(templates.map((file) => readFile(join(cdkOut, file), "utf-8")))
+  ).join("\n");
+  expect(templateText).toMatch(/:strands-box-[0-9a-f]{64}"/);
+}
+
+async function assertRunsInBox(
+  cli: CliRunner,
+  projectDir: string,
+  runtimeName: string = CREATED_RUNTIME_NAME,
+): Promise<void> {
   const logs = (query: string) =>
     cli.run(
-      ["logs", "runtime", "--name", CREATED_RUNTIME_NAME, "--since", "30m", "--query", query],
+      ["logs", "runtime", "--name", runtimeName, "--since", "30m", "--query", query],
       projectDir,
     );
   await retry(
@@ -650,6 +1362,119 @@ async function assertRunsInBox(cli: CliRunner, projectDir: string): Promise<void
   expect(errors.stdout).not.toMatch(/ERROR|blocked by egress control|AccessDenied/);
 }
 
+/** Deploys `projectDir`, runs `scenario`, and tears the stack down even when a step fails. */
+async function deployed(
+  cli: CliRunner,
+  projectDir: string,
+  scenario: () => Promise<void>,
+  env: NodeJS.ProcessEnv = {},
+): Promise<void> {
+  let scenarioCompleted = false;
+  try {
+    const deployment = parseResult(
+      DeployResponseSchema,
+      await cli.run(["deploy", "--yes", "--json"], projectDir, env),
+    );
+    expect(deployment.message).toContain("deployed project");
+    await scenario();
+    scenarioCompleted = true;
+  } finally {
+    await tearDown(cli, projectDir, scenarioCompleted);
+  }
+}
+
+/** Invokes runtime `name` of `projectDir` with `prompt` in `session`, and returns the reply. */
+async function ask(
+  cli: CliRunner,
+  projectDir: string,
+  name: string,
+  session: string,
+  prompt: string,
+): Promise<string> {
+  const response = parseResult(
+    RuntimeInvokeResponseSchema,
+    await cli.run(
+      [
+        "invoke",
+        "--runtime",
+        name,
+        "--session-id",
+        session,
+        "--payload",
+        JSON.stringify({ prompt }),
+        "--json",
+      ],
+      projectDir,
+    ),
+  );
+  expect(response.statusCode).toBeGreaterThanOrEqual(200);
+  expect(response.statusCode).toBeLessThan(300);
+  expect(response.body.trim()).not.toBe("");
+  return replyText(response.body);
+}
+
+/**
+ * Invokes the agent of `projectDir`, whose `main.py` a scenario replaced with one that calls a
+ * component and answers in JSON, and checks the reply with `check`. Retried, since a component
+ * the deploy just made can take a moment to answer.
+ */
+async function askAgent<T extends { error?: string }>(
+  cli: CliRunner,
+  projectDir: string,
+  session: string,
+  prompt: string,
+  check: (reply: T) => void,
+): Promise<void> {
+  await retry(
+    async () => {
+      const reply = JSON.parse(
+        await ask(cli, projectDir, CREATED_RUNTIME_NAME, session, prompt),
+      ) as T;
+      expect(reply.error).toBeUndefined();
+      check(reply);
+    },
+    3 * TIMEOUT_MS.PROJECT_INVOKE,
+    15 * 1000,
+  );
+}
+
+/** The timeout of a Box scenario that deploys a project once and removes it. */
+const DEPLOY_TEST_TIMEOUT =
+  TIMEOUT_MS.PROJECT_CREATE +
+  6 * TIMEOUT_MS.PROJECT_INVOKE +
+  3 * TIMEOUT_MS.PROJECT_DEPLOY +
+  TIMEOUT_MS.PROJECT_REMOVE;
+
+/**
+ * Removes every resource of `projectDir` and deploys, which deletes them, then checks both steps:
+ * `remove all` emptied the spec and the deploy removed the project. After a failed scenario, a
+ * cleanup failure is logged beside the scenario's error, which stays the test's failure.
+ */
+async function tearDown(
+  cli: CliRunner,
+  projectDir: string,
+  scenarioCompleted: boolean,
+): Promise<void> {
+  const removed = await cli.run(["remove", "all", "--yes", "--json"], projectDir);
+  const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
+  const check = () => {
+    expect(parseResult(OperationSchema, removed).operation).toBe("remove");
+    expect(parseResult(DeployResponseSchema, cleanup).message).toContain("removed project");
+  };
+  if (scenarioCompleted) return check();
+  try {
+    check();
+  } catch (error) {
+    console.error(`The cleanup of ${projectDir} failed too, so resources may remain:`, error);
+  }
+}
+
+/** Six random lowercase letters and digits, for a project name. */
+function randomSuffix(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from(randomBytes(6), (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
 /**
  * Given a template test case, creates a project scaffolded from it and returns its path. A Box
  * project that `deploys` gets the AGENTCORE_E2E_BOX_CDK build; one that only runs `agentcore dev`
@@ -661,9 +1486,9 @@ async function createTemplateProject(
   { deploys }: { deploys: boolean },
 ): Promise<string> {
   const parent = await mkdtemp(join(tmpdir(), "agentcore-e2e-"));
-  // A per-template suffix keeps concurrent projects (and their stacks) apart;
-  // project names are alphanumeric, so it is the template's index.
-  const projectName = `${E2E_PREFIX}${Date.now().toString(36)}t${ALL_TEMPLATES.indexOf(runtime)}`;
+  // A random suffix keeps concurrent projects (and their stacks) apart, also two of one template
+  // that start in the same millisecond. Project names are alphanumeric, at most 23 characters.
+  const projectName = `${E2E_PREFIX}${Date.now().toString(36)}${randomSuffix()}`;
   const created = parseResult(
     ProjectCreatedSchema,
     await cli.run(
@@ -784,6 +1609,27 @@ async function invokeLocally(
       await new Promise<void>((resolve) => dev.once("close", resolve));
     }
   }
+}
+
+/**
+ * Runs `agentcore dev` and `invoke --local` for a box template, once no other test runs dev on its
+ * box ingress port, and checks that box ran the agent. The container template needs a container
+ * tool for dev, so it skips the step without one.
+ */
+async function devInBox(
+  cli: CliRunner,
+  runtime: RuntimeTemplateTestCase,
+  projectDir: string,
+): Promise<void> {
+  if (!CONTAINER_TOOL_ON_PATH && runtime.template === "agent-python-strands-box-container") {
+    console.warn(`${runtime.name}: no container tool on PATH, so the test skips agentcore dev`);
+    return;
+  }
+  const port = BOX_DEV_PORTS[runtime.protocol];
+  const { devOutput } = await withDevPort(port, () =>
+    invokeLocally(cli, runtime, projectDir, port),
+  );
+  expect(devOutput).toContain("box: running profile");
 }
 
 /** Given a runtime and response body, validates the protocol response and request identifier. */

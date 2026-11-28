@@ -1,4 +1,5 @@
 import { join, posix } from "node:path";
+import { partition } from "@aws-sdk/util-endpoints";
 import semver from "semver";
 import { callsBedrockModel } from "../../../handlers/project/shortcuts";
 import type { ScaffoldRuntimeInput } from "../../../handlers/project/types";
@@ -713,23 +714,137 @@ export function boxProfileWarnings(runtime: ScaffoldRuntimeInput): string[] {
   ];
 }
 
+/** A variable of the ADOT SDK that the agent gets from AgentCore Runtime, through an input. */
+interface ServiceOtelVariable {
+  /** The input of the @box/agentcore pack that reads it, under `otel.`. */
+  readonly input: string;
+  /** What the variable sets, for the input's description. */
+  readonly description: string;
+  /**
+   * The default: the value that the Runtime sets. The agent gets it where the variable is not set,
+   * for example in a local run of the Runtime profile.
+   */
+  readonly default: string;
+}
+
 /**
- * The variables that set up the ADOT SDK of an agent with OTEL on: the AWS distro and its
- * configurator, spans and logs over OTLP to the box's own receiver (box sets each
- * `OTEL_EXPORTER_OTLP_*`), no metrics, and no span for each health check of the Runtime.
+ * The variables that set up the ADOT SDK of an agent with OTEL on, in the order that the agent
+ * gets them. Each string is a fixed value that box needs: spans and logs over OTLP to the box's own
+ * receiver (box sets each `OTEL_EXPORTER_OTLP_*`), and no metrics, which no default target of box
+ * takes. Each {@link ServiceOtelVariable} has the value that AgentCore Runtime sets, as for an agent
+ * outside a box: the AWS distro and its configurator, the agent observability mode, and no span
+ * for each health check of the Runtime.
  */
-const AGENT_OTEL_ENV: Readonly<Record<string, string>> = {
-  OTEL_PYTHON_DISTRO: "aws_distro",
-  OTEL_PYTHON_CONFIGURATOR: "aws_configurator",
-  AGENT_OBSERVABILITY_ENABLED: "true",
+const AGENT_OTEL_ENV: Readonly<Record<string, string | ServiceOtelVariable>> = {
+  OTEL_PYTHON_DISTRO: {
+    input: "python_distro",
+    description: "The OpenTelemetry distro of Python auto-instrumentation.",
+    default: "aws_distro",
+  },
+  OTEL_PYTHON_CONFIGURATOR: {
+    input: "python_configurator",
+    description: "The OpenTelemetry configurator of Python auto-instrumentation.",
+    default: "aws_configurator",
+  },
+  AGENT_OBSERVABILITY_ENABLED: {
+    input: "agent_observability_enabled",
+    description: "Whether the ADOT SDK runs in its agent observability mode.",
+    default: "true",
+  },
   OTEL_TRACES_EXPORTER: "otlp",
   OTEL_LOGS_EXPORTER: "otlp",
   OTEL_METRICS_EXPORTER: "none",
-  OTEL_PYTHON_EXCLUDED_URLS: "/ping",
+  OTEL_PYTHON_EXCLUDED_URLS: {
+    input: "python_excluded_urls",
+    description: "The URL paths that Python auto-instrumentation does not trace.",
+    default: "/ping",
+  },
 };
+
+/** The `[agent.env]` value of each variable of {@link AGENT_OTEL_ENV}. */
+const agentOtelEnv = (): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(AGENT_OTEL_ENV).map(([name, value]) => [
+      name,
+      typeof value === "string" ? value : `\${{ inputs.otel.${value.input} }}`,
+    ]),
+  );
+
+/** The `[inputs.otel.<input>]` of each {@link ServiceOtelVariable} of {@link AGENT_OTEL_ENV}. */
+const agentOtelInputs = (): string =>
+  Object.entries(AGENT_OTEL_ENV)
+    .filter((entry): entry is [string, ServiceOtelVariable] => typeof entry[1] !== "string")
+    .map(
+      ([name, variable]) => `[inputs.otel.${variable.input}]
+description = ${str(variable.description)}
+from = ${str(`env:${name}`)}
+default = ${str(variable.default)}`,
+    )
+    .join("\n\n");
 
 /** The variable in which AgentCore Runtime names the resource of the runtime's spans. */
 const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
+
+/**
+ * The variable in which AgentCore Runtime tells the AWS SDKs where the agent runs. botocore adds its
+ * value to the user agent of each AWS call.
+ */
+const RUNTIME_EXECUTION_ENV = "AWS_EXECUTION_ENV";
+
+/** The value of {@link RUNTIME_EXECUTION_ENV} that AgentCore Runtime sets. */
+const RUNTIME_EXECUTION_ENV_VALUE = "AWS_BedrockAgentCore_Runtime";
+
+/** The variable in which AgentCore Runtime names the DNS domain of its partition. */
+const RUNTIME_DNS_SUFFIX_ENV = "AWS_DNS_SUFFIX";
+
+/** The DNS domain of the commercial partition, for a pack that build renders with no region. */
+const DEFAULT_DNS_SUFFIX = "amazonaws.com";
+
+/** The DNS domain of the partition of `region`, or of the commercial partition with no region. */
+function runtimeDnsSuffix(region?: string): string {
+  return region === undefined ? DEFAULT_DNS_SUFFIX : partition(region).dnsSuffix;
+}
+
+/**
+ * The `[agent.env]` of the {@link renderAgentCorePack} pack, by name: where the agent runs and the
+ * DNS domain of its partition, as AgentCore Runtime gives them to an agent outside a box; the ID of
+ * each project memory; the OTEL variables with OTEL on for `runtime`; and the URL of each gateway
+ * of the project that the agent calls through the Box gateway.
+ */
+function agentCorePackEnv(
+  spec: ProjectSpec,
+  runtime: Pick<ProjectRuntime, "instrumentation" | "envVars">,
+  gateways: readonly BoxProjectGateway[],
+): Record<string, string> {
+  return {
+    [RUNTIME_EXECUTION_ENV]: "${{ inputs.runtime.execution_env }}",
+    [RUNTIME_DNS_SUFFIX_ENV]: "${{ inputs.aws.dns_suffix }}",
+    ...Object.fromEntries(
+      (spec.memories ?? []).map((memory) => [
+        memoryEnvVarName(memory.name),
+        `\${{ inputs.memory.${tomlKey(memory.name)}.id }}`,
+      ]),
+    ),
+    ...(otelOn(runtime) && {
+      ...agentOtelEnv(),
+      [RUNTIME_RESOURCE_ATTRIBUTES_ENV]: "${{ inputs.runtime.resource_attributes }}",
+    }),
+    ...Object.fromEntries(
+      gateways.map((gateway) => [
+        `${gateway.variablePrefix}_URL`,
+        `\${{ inputs.${projectGatewayInputs(gateway).url} }}`,
+      ]),
+    ),
+  };
+}
+
+/** The options of {@link renderAgentCorePack}. */
+export interface AgentCorePackOptions {
+  /** The version of the box that runs the pack; absent: the box that build stages. */
+  readonly boxVersion?: string;
+  /** The build region, whose partition gives the default of `AWS_DNS_SUFFIX`. */
+  readonly region?: string;
+}
 
 /**
  * The `@box/agentcore` pack each Runtime profile imports, CodeZip and container: it declares the
@@ -740,10 +855,13 @@ const RUNTIME_RESOURCE_ATTRIBUTES_ENV = "OTEL_RESOURCE_ATTRIBUTES";
  * {@link RUNTIME_LOGS_HEADERS_ENV}, for the default telemetry target of the Runtime profile. With
  * OTEL on and {@link tracesToRuntimeLogGroup}, the `runtime.traces_log_group` and
  * `runtime.traces_log_stream` inputs each read one key of {@link RUNTIME_TRACES_HEADERS_ENV}, for
- * the default X-Ray target. One
+ * the default X-Ray target. The `runtime.execution_env` and `aws.dns_suffix` inputs carry
+ * {@link RUNTIME_EXECUTION_ENV} and {@link RUNTIME_DNS_SUFFIX_ENV} into the agent's environment,
+ * each with a default, so the profile resolves also where they are not set: the Runtime's own
+ * value, and the DNS domain of the partition of `region`, the build region. One
  * input per project memory carries its ID into the agent's environment. With OTEL on for `runtime`,
- * the agent gets {@link AGENT_OTEL_ENV} and the Runtime's resource attributes, so the console links
- * its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
+ * the agent gets {@link AGENT_OTEL_ENV}, each `otel.<input>` input with the Runtime's value, and
+ * the Runtime's resource attributes, so the console links its spans to the runtime; the profile merges after the pack, so a value of the user wins. Each
  * gateway of the project that the agent calls through the Box gateway gets two inputs: its host,
  * for the destination of its `[mcp]` server, and its URL, which the agent gets under the variable
  * name that a runtime without a box reads. box finds the pack beside its binary at
@@ -753,32 +871,25 @@ export function renderAgentCorePack(
   spec: ProjectSpec,
   runtime: Pick<ProjectRuntime, "name" | "instrumentation" | "envVars">,
   gateways: readonly BoxProjectGateway[] = [],
-  boxVersion?: string,
+  { boxVersion, region }: AgentCorePackOptions = {},
 ): string {
   const otel = otelOn(runtime);
   const memories = spec.memories ?? [];
   const memoryInputs = memories
     .map(
       (memory) => `
+
 [inputs.memory.${tomlKey(memory.name)}.id]
 description = ${str(`The deployed '${memory.name}' Memory ID.`)}
 from = ${str(`env:${memoryEnvVarName(memory.name)}`)}`,
     )
     .join("");
-  const memoryEnv = memories
-    .map(
-      (memory) =>
-        `${memoryEnvVarName(memory.name)} = ${str(`\${{ inputs.memory.${tomlKey(memory.name)}.id }}`)}`,
-    )
-    .join("\n");
-  const otelEnv = otel
-    ? [
-        ...Object.entries(AGENT_OTEL_ENV).map(([name, value]) => `${name} = ${str(value)}`),
-        `${RUNTIME_RESOURCE_ATTRIBUTES_ENV} = "\${{ inputs.runtime.resource_attributes }}"`,
-      ].join("\n")
-    : "";
   const otelInput = otel
     ? `
+
+# The ADOT settings of the agent, which the Runtime sets as for an agent outside a box. Where a
+# variable is not set, the agent gets the default, which is the value that the Runtime sets.
+${agentOtelInputs()}
 
 # The resource of the agent's spans, which the Runtime names so the console links them to it.
 [inputs.runtime.resource_attributes]
@@ -819,14 +930,10 @@ from = ${str(`env:${gateway.variablePrefix}_HOST`)}
 pattern = ${str(PROJECT_GATEWAY_HOST_PATTERN)}`;
     })
     .join("");
-  const gatewayEnv = gateways
-    .map(
-      (gateway) =>
-        `${gateway.variablePrefix}_URL = ${str(`\${{ inputs.${projectGatewayInputs(gateway).url} }}`)}`,
-    )
+  // The pack always gives the agent at least AWS_EXECUTION_ENV and AWS_DNS_SUFFIX.
+  const agentEnv = Object.entries(agentCorePackEnv(spec, runtime, gateways))
+    .map(([name, value]) => `${name} = ${str(value)}`)
     .join("\n");
-  const env = [memoryEnv, otelEnv, gatewayEnv].filter((lines) => lines !== "").join("\n");
-  const agentEnv = env ? `\n[agent.env]\n${env}\n` : "";
   return `# The deployed AgentCore resources of '${spec.name}', read from the environment the Runtime sets.
 # Written by agentcore build and deploy. The runtime profile imports it as ${AGENTCORE_PACK_NAME}.
 [pack]
@@ -864,8 +971,25 @@ key = "x-aws-log-stream"
 [inputs.runtime.url]
 description = "The URL an A2A agent card advertises on the Runtime."
 from = "env:AGENTCORE_RUNTIME_URL"
-default = "http://localhost:9000/"${memoryInputs}${otelInput}${gatewayInputs}
-${agentEnv}`;
+default = "http://localhost:9000/"
+
+# Where the agent runs, which botocore adds to the user agent of each AWS call. The Runtime sets
+# ${RUNTIME_EXECUTION_ENV}; the default is its value, so the agent gets it also where it is not set.
+[inputs.runtime.execution_env]
+description = "The execution environment that AgentCore Runtime names for the AWS SDKs."
+from = ${str(`env:${RUNTIME_EXECUTION_ENV}`)}
+default = ${str(RUNTIME_EXECUTION_ENV_VALUE)}
+
+# The DNS domain of the partition of the Runtime. The Runtime sets ${RUNTIME_DNS_SUFFIX_ENV}; the
+# default is the domain of the partition of the build region.
+[inputs.aws.dns_suffix]
+description = "The DNS domain of the AWS partition of the runtime."
+from = ${str(`env:${RUNTIME_DNS_SUFFIX_ENV}`)}
+default = ${str(runtimeDnsSuffix(region))}${memoryInputs}${otelInput}${gatewayInputs}
+
+[agent.env]
+${agentEnv}
+`;
 }
 
 /**

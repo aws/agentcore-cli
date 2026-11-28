@@ -334,7 +334,7 @@ function writeGatewayTargets(spec: ProjectSpec, network: BoxNetwork): string[] {
       : [{ ...host, target: host.target }],
   );
   // The AgentCore host takes no target when the Runtime profile sends its calls directly: with the
-  // default Memory, every call of the box to that host goes there (runtimeProfile/rules/additions.ts).
+  // project's Memory, every call of the box to that host goes there (runtimeProfile/rules/additions.ts).
   // Only that host, so a rule that drops another route never removes its target with this message.
   const routed = gatewayRoutedTargets(network.runtimeProfile);
   const agentCoreHost = agentCoreDataPlaneHost(network.region);
@@ -682,7 +682,9 @@ export function runtimeProfileWriter(staged: readonly StagedRuntime[]): BoxNetwo
           { path: `${dist}/profile.toml`, text: runtimeProfileText(runtime, network, spec) },
           {
             path: `${dist}/${AGENTCORE_PACK_PATH}`,
-            text: renderAgentCorePack(spec, entry, network?.projectGateways),
+            text: renderAgentCorePack(spec, entry, network?.projectGateways, {
+              region: network?.region,
+            }),
           },
           ...(kind === "codezip"
             ? [

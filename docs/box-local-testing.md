@@ -48,7 +48,7 @@ fork of [strands-agents/box](https://github.com/strands-agents/box), then run
   [aws/agentcore-l3-cdk-constructs#481](https://github.com/aws/agentcore-l3-cdk-constructs/pull/481): it gives the
   runtime's role its Memory grant, and a `PRIVATE_VPC` runtime the AgentCore endpoint of its private VPC. Without it,
   the box cannot reach Memory.
-- `box` `0.3.2` on your `PATH`, the release the CLI pins. Use that release: the box
+- `box` `0.3.3` on your `PATH`, the release the CLI pins. Use that release: the box
   features and the profiles that the CLI writes change together, so an older box can refuse the
   profiles. The CLI does not check the version of the box on your `PATH` yet. Build, deploy and dev
   run it to read the box profile with `box profile show --format json --full`, and CodeZip dev runs
@@ -74,30 +74,30 @@ a bundle, reports its signature as invalid (`invalid Info.plist`), and kills box
 macOS on an Apple chip:
 
 ```
-mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
-grep box-cli-v0.3.2-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
-tar -xzf box-cli-v0.3.2-aarch64-apple-darwin.tar.gz
+mkdir -p ~/.local/share/box/0.3.3 && cd ~/.local/share/box/0.3.3
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.3/box-cli-v0.3.3-aarch64-apple-darwin.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.3/SHA256SUMS.txt
+grep box-cli-v0.3.3-aarch64-apple-darwin SHA256SUMS.txt | shasum -a 256 -c -
+tar -xzf box-cli-v0.3.3-aarch64-apple-darwin.tar.gz
 ```
 
 Linux arm64:
 
 ```
-mkdir -p ~/.local/share/box/0.3.2 && cd ~/.local/share/box/0.3.2
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
-curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.2/SHA256SUMS.txt
-grep box-cli-v0.3.2-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
-tar -xzf box-cli-v0.3.2-aarch64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/share/box/0.3.3 && cd ~/.local/share/box/0.3.3
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.3/box-cli-v0.3.3-aarch64-unknown-linux-gnu.tar.gz
+curl -fSLO https://github.com/strands-agents/box/releases/download/v0.3.3/SHA256SUMS.txt
+grep box-cli-v0.3.3-aarch64-unknown-linux-gnu SHA256SUMS.txt | sha256sum -c -
+tar -xzf box-cli-v0.3.3-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 The check must print `OK`.
 
 Put the folder first on your `PATH`, for this shell and for new ones (use `~/.bashrc` for bash).
-`BOX_VERSION` is the folder you unpacked into, `0.3.2`.
+`BOX_VERSION` is the folder you unpacked into, `0.3.3`.
 
 ```
-BOX_VERSION=0.3.2
+BOX_VERSION=0.3.3
 export PATH="$HOME/.local/share/box/$BOX_VERSION:$PATH"
 grep -q "share/box/$BOX_VERSION" ~/.zshrc || echo "export PATH=\"\$HOME/.local/share/box/$BOX_VERSION:\$PATH\"" >> ~/.zshrc
 ```
@@ -114,11 +114,11 @@ box --version
 
 - `which box` must name the folder you unpacked into. An older `box` earlier on your `PATH` (a
   source build, or Box Core's `box` in `/usr/local/bin`) wins otherwise.
-- `box --version` should print the pinned `box 0.3.2` (from
+- `box --version` should print the pinned `box 0.3.3` (from
   `src/core/project/backends/boxRelease.json`). An older box can refuse the profiles that the CLI
   writes.
 - On macOS, if Gatekeeper refuses to run `box`, clear the download flag with
-  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.2"`.
+  `xattr -dr com.apple.quarantine "$HOME/.local/share/box/0.3.3"`.
 
 To move to a newer release, unpack it into its own folder the same way and change the `PATH` line to
 that folder.
@@ -289,16 +289,33 @@ profile that names a pack `box/<name>` fails: box refuses it and names the `@box
   - the agent command, env, filesystem and ingress get their Runtime values: no `--reload`, no
     `LOCAL_DEV`, no `AWS_PROFILE`, the region of the Runtime in place of your own, and the first
     ingress on `0.0.0.0` on the port of the protocol;
+  - the agent does not get the runtime's `envVars` from `agentcore.json`. The Runtime sets them
+    for box, and box gives the agent only the variables that the profile names. To give the agent a
+    variable, set it in `[agent.env]` of `.box/<runtime>/local/profile.toml`. Then the agent gets it
+    with `agentcore dev` and on the Runtime;
   - for CodeZip, each path of the code folder moves to the unpacked zip, and the venv's Python to
     the Runtime's Python, in every table: the agent, each stdio `[mcp.<name>]` server, each
     `[tool.<name>]`;
   - the `@box/agentcore` packs, the project name, and the build region come in, and each CloudWatch
     target signs with the execution role;
+  - the `@box/agentcore` pack gives the agent `AWS_EXECUTION_ENV` and `AWS_DNS_SUFFIX`, which the
+    Runtime sets for an agent outside a box. botocore adds `AWS_EXECUTION_ENV` to the user agent
+    of each AWS call. Each one has a default, so box starts also where the Runtime does not set
+    it: `AWS_BedrockAgentCore_Runtime`, and the DNS domain of the partition of the build region,
+    such as `amazonaws.com` or `amazonaws.com.cn`. When you run the Runtime profile on your own
+    computer, the agent also gets `AWS_BedrockAgentCore_Runtime`, so its AWS calls name AgentCore
+    Runtime in their user agent;
   - with `instrumentation.enableOtel` on, which is the default for a box template too, a command of
     the Python of the venv starts with `opentelemetry-instrument`. On CodeZip, the Python of the
     Runtime runs the script in the zip, `<code>/bin/opentelemetry-instrument`. The `@box/agentcore`
-    pack gives the agent the ADOT variables and the `OTEL_RESOURCE_ATTRIBUTES` that the Runtime
-    sets. When your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
+    pack gives the agent the values that the Runtime sets for `OTEL_PYTHON_DISTRO`,
+    `OTEL_PYTHON_CONFIGURATOR`, `AGENT_OBSERVABILITY_ENABLED`, `OTEL_PYTHON_EXCLUDED_URLS`, and
+    `OTEL_RESOURCE_ATTRIBUTES`. Where a variable is not set, for example in a local run, the agent
+    gets the default, which is the value that the Runtime sets: `aws_distro`, `aws_configurator`,
+    `true`, `/ping`, and `service.name=<runtime>`. The
+    pack sets fixed values for `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` (`otlp`), and for
+    `OTEL_METRICS_EXPORTER` (`none`), because the receiver of box takes only spans and logs. When
+    your `[agent.env]` sets one of these variables, box uses your value. The pack sets no
     `OTEL_EXPORTER_OTLP_*` variable, because box sets each one;
   - each other gateway of the project gets `[mcp.<gateway>]`, to the host that `@box/agentcore`
     reads from `AGENTCORE_GATEWAY_<NAME>_HOST`, through its `egress-gateway-<name>` target. The agent

@@ -290,7 +290,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
       enableOtel: true,
-      // The README says that the Box gateway calls only the model in modelId.
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
       box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The strands template's entrypoint is fixed to main.py; the container Dockerfile launches it as the `main` module.
       entrypoint: "main",
@@ -501,7 +502,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       efsMounts,
       s3Mounts,
       s3BucketMounts,
-      // The README says that the Box gateway calls only the model in modelId.
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
       box: input.scaffoldRuntimeInput.boxTemplate === true,
       needsOs: filesystemConfigurations.length > 0,
       // The AgentCore Runtime requires OTEL dependencies to be present; the
@@ -547,7 +549,8 @@ const getTemplateResolvers = (assetSource: AssetSource, templateRenderer: Templa
       // memory's env var so adding a memory later needs no code edit.
       memoryEnvVarName: memoryEnvVarName(memory?.name ?? defaultMemoryName(input.name)),
       ...modelScaffold.templateRenderContext,
-      // The README says that the Box gateway calls only the model in modelId.
+      // The README says that the Box gateway calls only the model in modelId, and model/load.py
+      // reads the stand-in key the box sets: a boxed agent cannot read AgentCore Identity.
       box: input.scaffoldRuntimeInput.boxTemplate === true,
       // The AgentCore Runtime requires OTEL dependencies to be present; the AG-UI
       // app binds uvicorn on port 8080 under opentelemetry-instrument.

@@ -817,18 +817,58 @@ describe("build writes the Box network of the box profile", () => {
         (caught: unknown) => caught,
       );
 
-      // With the default Memory, box sends every call to the AgentCore host directly, signed with
+      // With a Memory in the project, box sends every call to the AgentCore host directly, signed with
       // the execution role, so the key would never reach the server.
       expect(error).toBeInstanceOf(InputValidationError);
       expect((error as Error).message).toContain(
         `${label} sends env://TOOLS_TOKEN to ${AGENTCORE_HOST}. On AgentCore Runtime, runtime ` +
-          "'agent_python_strands' has its default Memory, so box sends every call to that host " +
+          "'agent_python_strands' gets every Memory of the project, so box sends every call to that host " +
           "directly, signed with the execution role",
       );
       // Build provisions no credential that nothing would send.
       expect(await text(root, SPEC)).toBe(spec);
     },
   );
+
+  // The case from review: a Memory that is not the runtime's default one, a policy that lets the
+  // AgentCore host through with no secret, and a target of the user that signs that host with its
+  // own API key. Box would send the calls to the host directly, past the target, so build stops.
+  test("stops for a user target that signs the AgentCore host with an API key, beside a non-default Memory", async () => {
+    const { manager, root, box } = await strandsProject();
+    const spec = JSON.parse(await text(root, SPEC));
+    spec.memories = spec.memories.map((memory: object) => ({ ...memory, name: "notes" }));
+    spec.credentials = [
+      ...(spec.credentials ?? []),
+      { authorizerType: "ApiKeyCredentialProvider", name: "tools" },
+    ];
+    await writeFile(path(root, SPEC), JSON.stringify(spec, undefined, 2));
+    const policy =
+      `@id("tools_connect") permit (principal, ${NC}, resource) when { context.input.host == "${AGENTCORE_HOST}" };\n` +
+      `@id("tools_request") permit (principal, ${HR}, resource) when { context.input.host == "${AGENTCORE_HOST}" };\n`;
+    await editProfile(root, { policy });
+    await editGateway(root, (gateway) => {
+      gateway.targets.push(
+        userTarget("tools", `https://${AGENTCORE_HOST}`, {
+          outboundAuth: { ...GITHUB_KEY, credentialName: "tools" },
+        }),
+      );
+    });
+    box.answer = shows({}, policy);
+    const before = await text(root, SPEC);
+
+    const error = await build(manager, root).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(InputValidationError);
+    expect((error as Error).message).toContain(
+      `agentcore/agentcore.json  Target 'tools' of gateway '${GATEWAY}' in agentcore.json signs ` +
+        `the calls to ${AGENTCORE_HOST} with its API_KEY credential.`,
+    );
+    expect(await text(root, SPEC)).toBe(before);
+    expect(existsSync(path(root, RUNTIME_PROFILE))).toBe(false);
+  });
 
   test("stops for a user target named agentcore, the name of the Memory route, and keeps it", async () => {
     const { manager, root, box } = await strandsProject();
@@ -1639,6 +1679,23 @@ describe("build with OTEL on, as create writes a box runtime", () => {
   };
   const PACK = "app/agent_python_strands/.box-dist/resources/packs/agentcore/pack.toml";
 
+  test.each([
+    ["us-west-2", "amazonaws.com"],
+    ["cn-north-1", "amazonaws.com.cn"],
+  ])(
+    "gives AWS_DNS_SUFFIX the domain of the partition of the build region %s by default",
+    async (region, suffix) => {
+      const { manager, root } = await strandsProject({ env: { AWS_REGION: region } });
+
+      await build(manager, root);
+
+      const pack = parse(await text(root, PACK)) as {
+        inputs: { aws: { dns_suffix: { default: string } } };
+      };
+      expect(pack.inputs.aws.dns_suffix.default).toBe(suffix);
+    },
+  );
+
   test("starts the agent under opentelemetry-instrument, sets up its ADOT SDK, and sends its spans to X-Ray with the grant", async () => {
     const { manager, root } = await strandsProject();
     expect(JSON.parse(await text(root, SPEC)).runtimes[0].instrumentation).toBeUndefined();
@@ -1654,7 +1711,7 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect((profile.telemetry as Record<string, unknown>).agentcore_traces).toEqual(DEFAULT_TRACES);
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
     expect(pack.agent.env).toMatchObject({
-      OTEL_PYTHON_DISTRO: "aws_distro",
+      OTEL_PYTHON_DISTRO: "${{ inputs.otel.python_distro }}",
       OTEL_TRACES_EXPORTER: "otlp",
       OTEL_RESOURCE_ATTRIBUTES: "${{ inputs.runtime.resource_attributes }}",
     });
@@ -1678,7 +1735,11 @@ describe("build with OTEL on, as create writes a box runtime", () => {
     expect(JSON.stringify(profile.agent)).not.toContain("opentelemetry-instrument");
     expect(profile.telemetry).not.toHaveProperty("agentcore_traces");
     const pack = parse(await text(root, PACK)) as { agent: { env: Record<string, string> } };
-    expect(Object.keys(pack.agent.env)).toEqual(["MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID"]);
+    expect(Object.keys(pack.agent.env)).toEqual([
+      "AWS_EXECUTION_ENV",
+      "AWS_DNS_SUFFIX",
+      "MEMORY_AGENT_PYTHON_STRANDSMEMORY_ID",
+    ]);
     expect(existsSync(path(root, TELEMETRY_POLICY))).toBe(false);
   });
 
