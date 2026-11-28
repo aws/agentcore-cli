@@ -1,18 +1,17 @@
-import { describe, expect, test } from "vitest";
+import { expect } from "vitest";
 import spawn from "cross-spawn";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { cp, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import z from "zod";
-import { E2E_PREFIX, TAGS } from "../constants";
+import { E2E_PREFIX } from "../constants";
 import { CliRunner, parseResult, type RunResult } from "../helpers/run";
 import { retry } from "../helpers/retry";
 import { TIMEOUT_MS } from "../timeouts";
 
-type RuntimeTemplateTestCase = {
+export type RuntimeTemplateTestCase = {
   name: string;
   template: string;
   protocol: "HTTP" | "MCP" | "A2A" | "AGUI";
@@ -32,7 +31,7 @@ type RuntimeTemplateTestCase = {
   box?: boolean;
 };
 
-const MCP_INITIALIZE_PAYLOAD = {
+export const MCP_INITIALIZE_PAYLOAD = {
   jsonrpc: "2.0",
   id: 1,
   method: "initialize",
@@ -42,7 +41,7 @@ const MCP_INITIALIZE_PAYLOAD = {
     clientInfo: { name: "agentcore-e2e", version: "1" },
   },
 };
-const MCP_INITIALIZE_FLAGS = [
+export const MCP_INITIALIZE_FLAGS = [
   "--accept",
   "application/json, text/event-stream",
   "--mcp-protocol-version",
@@ -50,7 +49,7 @@ const MCP_INITIALIZE_FLAGS = [
   "--mcp-method",
   "initialize",
 ];
-const A2A_MESSAGE_PAYLOAD = {
+export const A2A_MESSAGE_PAYLOAD = {
   jsonrpc: "2.0",
   id: "agentcore-e2e",
   method: "message/send",
@@ -62,7 +61,7 @@ const A2A_MESSAGE_PAYLOAD = {
     },
   },
 };
-const AGUI_RUN_PAYLOAD = {
+export const AGUI_RUN_PAYLOAD = {
   threadId: "agentcore-e2e",
   runId: "agentcore-e2e",
   state: {},
@@ -76,10 +75,10 @@ const AGUI_RUN_PAYLOAD = {
  * Whether a `box` runs from PATH. Create checks for it for a CodeZip box template, and build and
  * deploy of every Box template run `box profile show`, so the Box tests skip without one.
  */
-const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
+export const BOX_ON_PATH = spawnSync("box", ["--version"], { stdio: "ignore" }).status === 0;
 
 /** Whether a container tool that `agentcore dev` uses (docker, podman or finch) runs from PATH. */
-const CONTAINER_TOOL_ON_PATH = ["docker", "podman", "finch"].some(
+export const CONTAINER_TOOL_ON_PATH = ["docker", "podman", "finch"].some(
   (tool) => spawnSync(tool, ["--version"], { stdio: "ignore" }).status === 0,
 );
 /**
@@ -87,11 +86,11 @@ const CONTAINER_TOOL_ON_PATH = ["docker", "podman", "finch"].some(
  * that deploys Box projects, which the pinned release does not yet. It replaces the pin in each
  * Box project's agentcore/cdk/package.json, so with it unset (as in CI) those tests skip.
  */
-const BOX_CDK = process.env.AGENTCORE_E2E_BOX_CDK?.trim() || undefined;
+export const BOX_CDK = process.env.AGENTCORE_E2E_BOX_CDK?.trim() || undefined;
 /** Whether the Box tests that deploy run. */
-const BOX_DEPLOYS = BOX_CDK !== undefined && BOX_ON_PATH;
+export const BOX_DEPLOYS = BOX_CDK !== undefined && BOX_ON_PATH;
 
-const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
+export const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal",
     template: "agent-python-minimal",
@@ -172,7 +171,7 @@ const RUNTIME_TEMPLATES: RuntimeTemplateTestCase[] = [
  * The Strands Box templates, which run their agent in a box on AgentCore Runtime. The describe's
  * `skipIf` is their only skip: a `skip` on an entry here has no effect.
  */
-const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
+export const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
   {
     name: "agent_python_minimal_box",
     template: "agent-python-minimal-box",
@@ -211,31 +210,31 @@ const BOX_TEMPLATES: RuntimeTemplateTestCase[] = [
   },
 ].map((template) => ({ ...template, box: true }));
 
-const ProjectCreatedSchema = z.object({
+export const ProjectCreatedSchema = z.object({
   project: z.object({ path: z.string() }),
 });
-const OperationSchema = z.object({ operation: z.string() });
-const RuntimeInvokeResponseSchema = z.object({
+export const OperationSchema = z.object({ operation: z.string() });
+export const RuntimeInvokeResponseSchema = z.object({
   statusCode: z.number().int(),
   body: z.string(),
   bodyEncoding: z.string(),
   complete: z.boolean(),
 });
-const LocalRuntimeInvokeResponseSchema = RuntimeInvokeResponseSchema.extend({
+export const LocalRuntimeInvokeResponseSchema = RuntimeInvokeResponseSchema.extend({
   statusCode: z.number().int().min(200).max(299),
   body: z.string().refine((value) => value.trim().length > 0, "response body must not be empty"),
   bodyEncoding: z.literal("utf8"),
   complete: z.literal(true),
 });
-const DeployResponseSchema = z.object({ message: z.string() });
-const JsonObjectSchema = z.record(z.string(), z.unknown());
-const McpResponseSchema = z.object({
+export const DeployResponseSchema = z.object({ message: z.string() });
+export const JsonObjectSchema = z.record(z.string(), z.unknown());
+export const McpResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.unknown(),
   result: z.object({ protocolVersion: z.string() }),
   error: z.undefined().optional(),
 });
-const A2aResponseSchema = z.object({
+export const A2aResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.unknown(),
   result: z.object({ kind: z.literal("task") }),
@@ -243,225 +242,58 @@ const A2aResponseSchema = z.object({
 });
 
 /** The runtime `agentcore create --template` scaffolds (DEFAULT_CREATE_RUNTIME_NAME). */
-const CREATED_RUNTIME_NAME = "agent";
+export const CREATED_RUNTIME_NAME = "agent";
 /** Keep concurrent local-dev processes off protocol defaults and one another. */
-const LOCAL_DEV_PORT_BASE = 18080;
+export const LOCAL_DEV_PORT_BASE = 18080;
 /**
  * The port a box profile's ingress listens on, by protocol. Box `dev` must use it, so the box dev
  * tests run one at a time.
  */
-const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
+export const BOX_DEV_PORTS = { HTTP: 8080, AGUI: 8080, MCP: 8000, A2A: 9000 } as const;
 
-/** The `agentcore dev` step that holds each box ingress port, so the tests that share it take turns. */
-const devPortQueues = new Map<number, Promise<void>>();
+/** How long a dev-port lock may stand before a test takes it as left by a test process that died. */
+const DEV_PORT_LOCK_STALE_MS = 20 * 60 * 1000;
 
 /**
  * Runs `step` once no other test runs `agentcore dev` on `port`. Box listens on the protocol's fixed
  * ingress port, so two dev runs on one port cannot overlap; the rest of each test (build, deploy,
- * invoke) runs concurrently with the others.
+ * invoke) runs concurrently with the others. The test files run in separate processes, so the lock
+ * is a directory in the temporary folder, which `mkdir` creates for one process only.
  */
-async function withDevPort<T>(port: number, step: () => Promise<T>): Promise<T> {
-  const previous = devPortQueues.get(port) ?? Promise.resolve();
-  let release!: () => void;
-  const mine = new Promise<void>((resolve) => (release = resolve));
-  devPortQueues.set(
-    port,
-    previous.then(() => mine),
-  );
-  await previous;
+export async function withDevPort<T>(port: number, step: () => Promise<T>): Promise<T> {
+  const lock = join(tmpdir(), `agentcore-e2e-dev-port-${port}.lock`);
+  for (;;) {
+    try {
+      await mkdir(lock);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const since = await stat(lock).then(
+        ({ mtimeMs }) => Date.now() - mtimeMs,
+        () => 0,
+      );
+      if (since > DEV_PORT_LOCK_STALE_MS) await rm(lock, { recursive: true, force: true });
+      else await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
   try {
     return await step();
   } finally {
-    release();
+    await rm(lock, { recursive: true, force: true });
   }
 }
 
-// Each template gets its own project from `agentcore create --template`, the
-// command that scaffolds template code (`add runtime` only writes docs). The
-// projects are independent, so the templates run concurrently; each one's
-// steps run in order inside its test.
-describe(
-  "create, dev, deploy, invoke for runtime templates",
-  { tags: [TAGS.RUNTIME, TAGS.CANARY] },
-  () => {
-    const cli = new CliRunner();
-
-    test.concurrent.each(RUNTIME_TEMPLATES)(
-      "$name",
-      {
-        timeout:
-          TIMEOUT_MS.PROJECT_CREATE +
-          TIMEOUT_MS.PROJECT_DEV +
-          2 * TIMEOUT_MS.PROJECT_INVOKE +
-          2 * TIMEOUT_MS.PROJECT_DEPLOY +
-          TIMEOUT_MS.PROJECT_REMOVE,
-      },
-      async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
-        let scenarioCompleted = false;
-        try {
-          if (!runtime.skipDev) {
-            await invokeLocally(
-              cli,
-              runtime,
-              projectDir,
-              LOCAL_DEV_PORT_BASE + RUNTIME_TEMPLATES.indexOf(runtime),
-            );
-          }
-
-          const deployment = parseResult(
-            DeployResponseSchema,
-            await cli.run(["deploy", "--yes", "--json"], projectDir),
-          );
-          expect(deployment.message).toContain("deployed project");
-
-          const response = parseResult(
-            RuntimeInvokeResponseSchema,
-            await cli.run(
-              [
-                "invoke",
-                "--runtime",
-                CREATED_RUNTIME_NAME,
-                "--session-id",
-                getSessionId(runtime.name),
-                "--payload",
-                JSON.stringify(runtime.payload),
-                "--json",
-                ...(runtime.invokeFlags ?? []),
-              ],
-              projectDir,
-            ),
-          );
-          expect(response.complete).toBe(true);
-          // As locally: an agent that failed to start answers with an error status or nothing.
-          expect(response.statusCode).toBeGreaterThanOrEqual(200);
-          expect(response.statusCode).toBeLessThan(300);
-          expect(response.body.trim()).not.toBe("");
-          if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
-            assertProtocolResponse(runtime, response.body);
-          }
-          if (runtime.box) await assertRunsInBox(cli, projectDir);
-
-          const removed = parseResult(
-            OperationSchema,
-            await cli.run(
-              ["remove", "runtime", "--name", CREATED_RUNTIME_NAME, "--json"],
-              projectDir,
-            ),
-          );
-          expect(removed.operation).toBe("remove");
-          scenarioCompleted = true;
-        } finally {
-          // Tear the stack down even when a step above failed.
-          await cli.run(["remove", "all", "--yes", "--json"], projectDir);
-          const cleanup = await cli.run(["deploy", "--yes", "--json"], projectDir);
-          // A cleanup error must not replace the scenario's primary diagnostic.
-          if (scenarioCompleted) parseResult(JsonObjectSchema, cleanup);
-        }
-      },
-    );
-  },
-);
-
 // Every Box template deploys, the LangChain one too: the log check ignores the OpenTelemetry noise
 // its agent logs at ERROR level (RUNTIME_LOG_NOISE).
-const DEPLOY_TEMPLATES = BOX_TEMPLATES;
+export const DEPLOY_TEMPLATES = BOX_TEMPLATES;
 // The templates that run the whole flow, dev before and after build and deploy in one project: one
 // CodeZip and the container one. Each other template runs build and deploy here, and dev in its own
 // test below, so its deploy does not wait for a dev step on the shared box ingress port.
-const FULL_FLOW_TEMPLATES = new Set([
+export const FULL_FLOW_TEMPLATES = new Set([
   "agent-python-minimal-box",
   "agent-python-strands-box-container",
 ]);
-const fullFlow = (t: RuntimeTemplateTestCase) => FULL_FLOW_TEMPLATES.has(t.template);
-
-// The Strands Box templates run their agent in a box, locally and on AgentCore Runtime. Each test
-// takes one project through build, deploy, invoke, and checks that the Runtime started the agent
-// in a box. The FULL_FLOW_TEMPLATES also run dev and invoke --local before build and again after
-// deploy, in the same project, as a user does: dev leaves state that build and deploy then read
-// (box binds each profile name to the file that ran it), and build and deploy leave state that dev
-// must still run beside. Their dev steps wait for the other tests on their box ingress port
-// (withDevPort); every deploy runs concurrently. The container template skips dev without a
-// container tool. They need `box` on PATH and the AGENTCORE_E2E_BOX_CDK opt-in, a Box-capable
-// @aws/agentcore-cdk build. Run them with `bun run test:e2e -- --tagsFilter='box'`.
-describe.skipIf(!BOX_DEPLOYS)(
-  "build, deploy, invoke for Strands Box templates, with dev before and after for some",
-  { tags: [TAGS.RUNTIME, TAGS.BOX] },
-  () => {
-    const cli = new CliRunner();
-    const cases = DEPLOY_TEMPLATES.map((runtime) => ({
-      ...runtime,
-      flow: fullFlow(runtime) ? "dev, build, deploy, dev" : "build, deploy",
-    }));
-
-    test.concurrent.each(cases)(
-      "$name: $flow",
-      {
-        // A dev step may wait for every other dev step on its port.
-        timeout:
-          TIMEOUT_MS.PROJECT_CREATE +
-          2 * BOX_TEMPLATES.length * (TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE) +
-          2 * TIMEOUT_MS.PROJECT_INVOKE +
-          3 * TIMEOUT_MS.PROJECT_DEPLOY +
-          TIMEOUT_MS.PROJECT_REMOVE,
-      },
-      async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
-        const withDev = fullFlow(runtime);
-        let scenarioCompleted = false;
-        try {
-          if (withDev) await devInBox(cli, runtime, projectDir);
-
-          // Build after dev, as a user does: build runs box on the local profile that dev ran.
-          parseResult(JsonObjectSchema, await cli.run(["build", "--json"], projectDir));
-          await assertStrandsBoxAssets(projectDir);
-
-          const deployment = parseResult(
-            DeployResponseSchema,
-            await cli.run(["deploy", "--yes", "--json"], projectDir),
-          );
-          expect(deployment.message).toContain("deployed project");
-
-          const response = parseResult(
-            RuntimeInvokeResponseSchema,
-            await cli.run(
-              [
-                "invoke",
-                "--runtime",
-                CREATED_RUNTIME_NAME,
-                "--session-id",
-                getSessionId(runtime.name),
-                "--payload",
-                JSON.stringify(runtime.payload),
-                "--json",
-                ...(runtime.invokeFlags ?? []),
-              ],
-              projectDir,
-            ),
-          );
-          expect(response.complete).toBe(true);
-          // An agent that box started but that failed answers with an error status or nothing.
-          expect(response.statusCode).toBeGreaterThanOrEqual(200);
-          expect(response.statusCode).toBeLessThan(300);
-          expect(response.body.trim()).not.toBe("");
-          if (runtime.protocol === "MCP" || runtime.protocol === "A2A") {
-            assertProtocolResponse(runtime, response.body);
-          }
-
-          await assertRunsInBox(cli, projectDir);
-
-          // Dev again after build and deploy: they leave state (box's profile bindings, the
-          // Runtime profile, .box-dist) that dev must still run beside.
-          if (withDev) await devInBox(cli, runtime, projectDir);
-          scenarioCompleted = true;
-        } finally {
-          // Tear the stack down even when a step above failed.
-          await tearDown(cli, projectDir, scenarioCompleted);
-        }
-      },
-    );
-  },
-);
+export const fullFlow = (t: RuntimeTemplateTestCase) => FULL_FLOW_TEMPLATES.has(t.template);
 
 // `agentcore dev` for each Strands Box template that the tests above do not run dev for: every
 // template on a machine that cannot deploy Box projects (no AGENTCORE_E2E_BOX_CDK), and on one
@@ -471,27 +303,10 @@ describe.skipIf(!BOX_DEPLOYS)(
 // template's dev builds and runs its image, so it needs a container tool, which the CI macOS
 // runner does not have (no nested virtualization). They need `box` on PATH and a machine where
 // `box run` can start its sandbox.
-const DEV_ONLY_TEMPLATES = BOX_TEMPLATES.filter(
+export const DEV_ONLY_TEMPLATES = BOX_TEMPLATES.filter(
   (t) =>
     (CONTAINER_TOOL_ON_PATH || t.template !== "agent-python-strands-box-container") &&
     !(BOX_DEPLOYS && DEPLOY_TEMPLATES.includes(t) && fullFlow(t)),
-);
-describe.skipIf(!BOX_ON_PATH || DEV_ONLY_TEMPLATES.length === 0)(
-  "create and dev for Strands Box templates",
-  { tags: [TAGS.BOX], sequential: true },
-  () => {
-    const cli = new CliRunner();
-    const templates = DEV_ONLY_TEMPLATES;
-
-    test.each(templates)(
-      "$name",
-      { timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE },
-      async (runtime) => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: false });
-        await devInBox(cli, runtime, projectDir);
-      },
-    );
-  },
 );
 
 // Egress from a boxed agent under `agentcore dev`: the box profile allows one host with no
@@ -499,14 +314,13 @@ describe.skipIf(!BOX_ON_PATH || DEV_ONLY_TEMPLATES.length === 0)(
 // replaced, so no model call decides the result. The hosts are public, so the network can make
 // this fail; it has its own tag, keeping it out of `--tagsFilter='box'`. Run it with
 // `bun run test:e2e -- --tagsFilter='box-egress'`.
-const EGRESS_ALLOWED_URL = "https://checkip.amazonaws.com";
-const EGRESS_BLOCKED_URL = "https://example.com";
-const EGRESS_AGENT = `import urllib.request
+export const EGRESS_ALLOWED_URL = "https://checkip.amazonaws.com";
+export const EGRESS_BLOCKED_URL = "https://example.com";
+export const EGRESS_AGENT = `import urllib.request
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
-
 
 def fetch(url):
     try:
@@ -515,408 +329,24 @@ def fetch(url):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 @app.entrypoint
 def invoke(payload, context):
     return {"allowed": fetch("${EGRESS_ALLOWED_URL}"), "blocked": fetch("${EGRESS_BLOCKED_URL}")}
 
-
 if __name__ == "__main__":
     app.run()
 `;
-const EgressReplySchema = z.object({
+export const EgressReplySchema = z.object({
   allowed: z.object({ status: z.number().optional(), error: z.string().optional() }),
   blocked: z.object({ status: z.number().optional(), error: z.string().optional() }),
 });
-
-describe.skipIf(!BOX_ON_PATH)(
-  "egress under dev for a Strands Box template",
-  { tags: [TAGS.BOX_EGRESS] },
-  () => {
-    const cli = new CliRunner();
-    const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
-    if (!runtime) throw new Error("BOX_TEMPLATES has no agent-python-minimal-box case");
-
-    test(
-      "allows the profile's host and blocks any other",
-      {
-        retry: 2,
-        timeout: TIMEOUT_MS.PROJECT_CREATE + TIMEOUT_MS.PROJECT_DEV + TIMEOUT_MS.PROJECT_INVOKE,
-      },
-      async () => {
-        const template = runtime;
-        const projectDir = await createTemplateProject(cli, template, { deploys: false });
-        await useEgressAgent(projectDir);
-
-        const { response } = await invokeLocally(
-          cli,
-          template,
-          projectDir,
-          BOX_DEV_PORTS[template.protocol],
-        );
-        assertEgressReply(response.body);
-      },
-    );
-  },
-);
-
-// The same egress check on AgentCore Runtime, where box sends the allowed host's calls through the
-// runtime's Box gateway, and the scenarios that need a public host. Each deploys its own project, so
-// they run concurrently. They need the AGENTCORE_E2E_BOX_CDK opt-in as well.
-describe.skipIf(!BOX_DEPLOYS)(
-  "egress on AgentCore Runtime for a Strands Box template",
-  { tags: [TAGS.BOX_EGRESS] },
-  () => {
-    const cli = new CliRunner();
-    const runtime = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
-    if (!runtime) throw new Error("BOX_TEMPLATES has no agent-python-minimal-box case");
-
-    // The public hosts can fail a call, so only the invoke retries: a retry of the whole test would
-    // deploy and remove the stack again.
-    test.concurrent(
-      "allows the profile's host through the Box gateway and blocks any other",
-      {
-        timeout:
-          TIMEOUT_MS.PROJECT_CREATE +
-          3 * TIMEOUT_MS.PROJECT_INVOKE +
-          2 * TIMEOUT_MS.PROJECT_DEPLOY +
-          TIMEOUT_MS.PROJECT_REMOVE,
-      },
-      async () => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
-        await useEgressAgent(projectDir);
-        let scenarioCompleted = false;
-        try {
-          const deployment = parseResult(
-            DeployResponseSchema,
-            await cli.run(["deploy", "--yes", "--json"], projectDir),
-          );
-          expect(deployment.message).toContain("deployed project");
-
-          await retry(
-            async () => {
-              const response = parseResult(
-                RuntimeInvokeResponseSchema,
-                await cli.run(
-                  [
-                    "invoke",
-                    "--runtime",
-                    CREATED_RUNTIME_NAME,
-                    "--session-id",
-                    getSessionId(`${runtime.name}-egress`),
-                    "--payload",
-                    JSON.stringify(runtime.payload),
-                    "--json",
-                  ],
-                  projectDir,
-                ),
-              );
-              expect(response.statusCode).toBeGreaterThanOrEqual(200);
-              expect(response.statusCode).toBeLessThan(300);
-              assertEgressReply(response.body);
-            },
-            3 * TIMEOUT_MS.PROJECT_INVOKE,
-            15 * 1000,
-          );
-          scenarioCompleted = true;
-        } finally {
-          // Tear the stack down even when a step above failed.
-          await tearDown(cli, projectDir, scenarioCompleted);
-        }
-      },
-    );
-
-    // The profile's egress entry names an env:// key: build stops until deploy has stored it,
-    // deploy stores it as an API key credential, and the Box gateway sends it to the host. The
-    // agent never holds the key, so the echoed header can only come from the gateway.
-    test.concurrent(
-      "an egress route with an env:// key reaches its host with the key the Box gateway adds",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
-        const key = `e2e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-        const env = { E2E_ECHO_KEY: key };
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), ECHO_AGENT);
-        const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
-        await writeFile(
-          profile,
-          `${await readFile(profile, "utf8")}\n[egress.echo]\ndestinations = ["${new URL(ECHO_URL).host}"]\nsecret.ref = "env://E2E_ECHO_KEY"\n`,
-        );
-        const build = await cli.run(["build", "--json"], projectDir, env);
-        expect(build.exitCode).not.toBe(0);
-        expect(`${build.stdout}${build.stderr}`).toContain("before its first deployment");
-        await deployed(
-          cli,
-          projectDir,
-          async () => {
-            await retry(
-              async () => {
-                const body = await ask(
-                  cli,
-                  projectDir,
-                  CREATED_RUNTIME_NAME,
-                  getSessionId("box-echo"),
-                  "echo",
-                );
-                const reply = JSON.parse(body) as {
-                  status?: number;
-                  authorization?: string;
-                  error?: string;
-                };
-                expect(reply.error).toBeUndefined();
-                expect(reply.status).toBe(200);
-                expect(reply.authorization).toBe(`Bearer ${key}`);
-              },
-              3 * TIMEOUT_MS.PROJECT_INVOKE,
-              15 * 1000,
-            );
-          },
-          env,
-        );
-      },
-    );
-
-    // A gateway added with `add gateway` reaches a boxed runtime through its Box gateway: build
-    // gives the Box gateway a target for it, and the runtime its URL. The gateway's target is a
-    // public MCP server, so the agent lists that server's tools through both gateways. That server
-    // is a public host, and deploy syncs the target's tools from it, so the test has the box-egress
-    // tag.
-    test.concurrent(
-      "a gateway added with add gateway and add gateway-target lists its target's tools to the boxed agent",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, runtime, { deploys: true });
-        for (const args of [
-          ["add", "gateway", "--name", "tools", "--authorizer-type", "AWS_IAM", "--json"],
-          [
-            "add",
-            "gateway-target",
-            "--gateway",
-            "tools",
-            "--name",
-            "docs",
-            "--endpoint",
-            MCP_SERVER_URL,
-            "--outbound-auth",
-            "none",
-            "--json",
-          ],
-        ]) {
-          expect(parseResult(OperationSchema, await cli.run(args, projectDir)).operation).toBe(
-            "add",
-          );
-        }
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), GATEWAY_AGENT);
-        await deployed(cli, projectDir, async () => {
-          await askAgent<{ tools?: string[]; error?: string }>(
-            cli,
-            projectDir,
-            getSessionId("box-gateway"),
-            "run",
-            (reply) => expect(reply.tools?.some((name) => name.startsWith("docs___"))).toBe(true),
-          );
-          await assertRunsInBox(cli, projectDir);
-        });
-      },
-    );
-  },
-);
-
-// Box project scenarios on AgentCore Runtime that a user hits beyond one template's happy path: a
-// second runtime beside the first's Memory, a Memory added with `add memory`, a Code Interpreter
-// and a Browser connection, and Memory that recalls within a session and across sessions. Each
-// deploys its own project; they run concurrently. They reach only AWS hosts; the scenarios that
-// need a public host are in the box-egress suite above. They need the AGENTCORE_E2E_BOX_CDK
-// opt-in, as the flow tests do.
-describe.skipIf(!BOX_DEPLOYS)(
-  "Box project scenarios on AgentCore Runtime",
-  { tags: [TAGS.BOX] },
-  () => {
-    const cli = new CliRunner();
-    const strands = BOX_TEMPLATES.find((t) => t.template === "agent-python-strands-box");
-    const minimal = BOX_TEMPLATES.find((t) => t.template === "agent-python-minimal-box");
-    if (!strands || !minimal)
-      throw new Error("BOX_TEMPLATES lacks the strands or minimal box case");
-
-    // A Box project's runtimes each run in a box, and the box pack of each reads the ID of every
-    // project Memory, so a runtime added beside the first, whose Memory it gets, must start.
-    test.concurrent(
-      "a runtime added to a Box project with a Memory deploys and answers beside the first",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
-        const added = parseResult(
-          OperationSchema,
-          await cli.run(
-            ["add", "runtime", "--name", "second", "--language", "python", "--json"],
-            projectDir,
-          ),
-        );
-        expect(added.operation).toBe("add");
-        // add runtime writes start.py and the docs; the agent code is the user's, here the first's.
-        const from = join(projectDir, "app", CREATED_RUNTIME_NAME);
-        const to = join(projectDir, "app", "second");
-        for (const entry of [
-          "main.py",
-          "pyproject.toml",
-          "uv.lock",
-          "model",
-          "memory",
-          "parse.py",
-        ]) {
-          // The first's code must reach the second; the other files only when the template has
-          // them.
-          if (entry === "main.py" || existsSync(join(from, entry))) {
-            await cp(join(from, entry), join(to, entry), { recursive: true });
-          }
-        }
-        await deployed(cli, projectDir, async () => {
-          await ask(
-            cli,
-            projectDir,
-            CREATED_RUNTIME_NAME,
-            getSessionId("box-two-a"),
-            "Reply with a short greeting.",
-          );
-          await ask(
-            cli,
-            projectDir,
-            "second",
-            getSessionId("box-two-b"),
-            "Reply with a short greeting.",
-          );
-          await assertRunsInBox(cli, projectDir, "second");
-        });
-      },
-    );
-
-    // A Memory added with `add memory` is a project Memory like the default one: the runtime gets
-    // its ID, and box sends the agent's calls to it to Memory directly, signed with the execution
-    // role. The minimal template has no Memory of its own, so this Memory is the project's only
-    // one.
-    test.concurrent(
-      "a Memory added with add memory takes and returns an event of the boxed agent",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, minimal, { deploys: true });
-        const added = parseResult(
-          OperationSchema,
-          await cli.run(["add", "memory", "--name", "notes", "--json"], projectDir),
-        );
-        expect(added.operation).toBe("add");
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), MEMORY_AGENT);
-        const note = `note-${Date.now().toString(36)}`;
-        await deployed(cli, projectDir, async () => {
-          await askAgent<{ stored?: string[]; error?: string }>(
-            cli,
-            projectDir,
-            getSessionId("box-notes"),
-            note,
-            (reply) => expect(reply.stored).toContain(note),
-          );
-          await assertRunsInBox(cli, projectDir);
-        });
-      },
-    );
-
-    // A runtime reaches the AWS-managed Code Interpreter through a `codeInterpreter` connection in
-    // agentcore.json, which grants its role the tool. Its calls go to the AgentCore host, which box
-    // sends directly, signed with the execution role, because the project has a Memory.
-    test.concurrent(
-      "a Code Interpreter connection runs code for the boxed agent",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
-        await addConnection(projectDir, "codeInterpreter");
-        await writeFile(
-          join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"),
-          CODE_INTERPRETER_AGENT,
-        );
-        await deployed(cli, projectDir, async () => {
-          await askAgent<{ output?: string; error?: string }>(
-            cli,
-            projectDir,
-            getSessionId("box-code"),
-            "run",
-            (reply) => expect(reply.output).toContain("42"),
-          );
-          await assertRunsInBox(cli, projectDir);
-        });
-      },
-    );
-
-    // A runtime reaches the AWS-managed Browser through a `browser` connection. The agent starts a
-    // session over the AgentCore host, then drives the browser over the session's automation
-    // WebSocket on the same host. A route permits no WebSocket, and build adds no permit for one,
-    // so the user writes it in a policy of the local profile, as this test does.
-    test.concurrent(
-      "a Browser connection opens a browser that the boxed agent drives",
-      { timeout: DEPLOY_TEST_TIMEOUT },
-      async () => {
-        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
-        await addConnection(projectDir, "browser");
-        await allowBrowserWebSocket(projectDir);
-        await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), BROWSER_AGENT);
-        await deployed(cli, projectDir, async () => {
-          await askAgent<{ product?: string; error?: string }>(
-            cli,
-            projectDir,
-            getSessionId("box-browser"),
-            "run",
-            (reply) => expect(reply.product).toMatch(/Chrom/i),
-          );
-          await assertRunsInBox(cli, projectDir);
-        });
-      },
-    );
-
-    // The template's agent keeps the conversation in Memory: short-term events within a session,
-    // and facts that long-term extraction makes available to a new session of the same actor.
-    test.concurrent(
-      "Memory recalls a fact within a session and from a new session",
-      { timeout: DEPLOY_TEST_TIMEOUT + 10 * 60 * 1000 },
-      async () => {
-        const projectDir = await createTemplateProject(cli, strands, { deploys: true });
-        const color = `teal${Date.now().toString(36).slice(-4)}`;
-        await deployed(cli, projectDir, async () => {
-          const first = getSessionId("box-mem-a");
-          await ask(
-            cli,
-            projectDir,
-            CREATED_RUNTIME_NAME,
-            first,
-            `My favorite color is ${color}. Remember it.`,
-          );
-          expect(
-            await ask(cli, projectDir, CREATED_RUNTIME_NAME, first, "What is my favorite color?"),
-          ).toMatch(new RegExp(color, "i"));
-          // Extraction into long-term memory takes a few minutes.
-          await retry(
-            async () => {
-              const reply = await ask(
-                cli,
-                projectDir,
-                CREATED_RUNTIME_NAME,
-                getSessionId("box-mem-b"),
-                "What is my favorite color?",
-              );
-              expect(reply).toMatch(new RegExp(color, "i"));
-            },
-            10 * 60 * 1000,
-            60 * 1000,
-          );
-        });
-      },
-    );
-  },
-);
 
 /**
  * The text of an invoke reply. A streamed reply is server-sent events, whose text arrives split
  * across `contentBlockDelta` events, so a word can span two of them; the text is their join. Any
  * other body is returned as it is.
  */
-function replyText(body: string): string {
+export function replyText(body: string): string {
   const deltas = body
     .split("\n")
     .filter((line) => line.startsWith("data: "))
@@ -936,15 +366,14 @@ function replyText(body: string): string {
 }
 
 /** The public host that answers with the request's headers, for the API key egress scenario. */
-const ECHO_URL = "https://httpbin.org/headers";
+export const ECHO_URL = "https://httpbin.org/headers";
 /** An agent that calls ECHO_URL with no credential of its own and returns the Authorization it saw. */
-const ECHO_AGENT = `import json
+export const ECHO_AGENT = `import json
 import urllib.request
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
-
 
 @app.entrypoint
 def invoke(payload, context):
@@ -955,7 +384,6 @@ def invoke(payload, context):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 if __name__ == "__main__":
     app.run()
 `;
@@ -964,14 +392,13 @@ if __name__ == "__main__":
  * An agent that writes the prompt as an event to the `notes` Memory, which `add memory` adds, and
  * returns the texts of the session's events that Memory gives back.
  */
-const MEMORY_AGENT = `import os
+export const MEMORY_AGENT = `import os
 from datetime import datetime, timezone
 
 import boto3
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
-
 
 @app.entrypoint
 def invoke(payload, context):
@@ -999,13 +426,12 @@ def invoke(payload, context):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 if __name__ == "__main__":
     app.run()
 `;
 
 /** Adds a connection to the AWS-managed tool `type` to the created runtime in agentcore.json. */
-async function addConnection(projectDir: string, type: "codeInterpreter" | "browser") {
+export async function addConnection(projectDir: string, type: "codeInterpreter" | "browser") {
   const specPath = join(projectDir, "agentcore", "agentcore.json");
   const spec = JSON.parse(await readFile(specPath, "utf8")) as {
     runtimes: { name: string; connections?: { to: { type: string } }[] }[];
@@ -1021,7 +447,7 @@ async function addConnection(projectDir: string, type: "codeInterpreter" | "brow
  * `policy.dw` beside the local profile permits `websocket:connect` to the AgentCore host of the
  * profile's region, on the browser stream paths only, and the profile lists it under `policies`.
  */
-async function allowBrowserWebSocket(projectDir: string): Promise<void> {
+export async function allowBrowserWebSocket(projectDir: string): Promise<void> {
   const local = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local");
   const profilePath = join(local, "profile.toml");
   const profile = await readFile(profilePath, "utf8");
@@ -1042,12 +468,11 @@ async function allowBrowserWebSocket(projectDir: string): Promise<void> {
 }
 
 /** An agent that runs `print(6 * 7)` in the AWS-managed Code Interpreter and returns its output. */
-const CODE_INTERPRETER_AGENT = `import boto3
+export const CODE_INTERPRETER_AGENT = `import boto3
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
 TOOL = "aws.codeinterpreter.v1"
-
 
 @app.entrypoint
 def invoke(payload, context):
@@ -1074,7 +499,6 @@ def invoke(payload, context):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 if __name__ == "__main__":
     app.run()
 `;
@@ -1085,7 +509,7 @@ if __name__ == "__main__":
  * WebSocket client is the standard library's, through the proxy that box gives the agent, so the
  * agent needs no package beyond the template's.
  */
-const BROWSER_AGENT = `import base64
+export const BROWSER_AGENT = `import base64
 import http.client
 import json
 import os
@@ -1098,7 +522,6 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
 TOOL = "aws.browser.v1"
-
 
 def devtools(url, message):
     target = urllib.parse.urlsplit(url)
@@ -1158,7 +581,6 @@ def devtools(url, message):
             if reply.get("id") == message["id"]:
                 return reply
 
-
 @app.entrypoint
 def invoke(payload, context):
     try:
@@ -1174,13 +596,12 @@ def invoke(payload, context):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 if __name__ == "__main__":
     app.run()
 `;
 
 /** A public MCP server with no authentication, for the gateway target of the gateway scenario. */
-const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
+export const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
 
 /**
  * An agent that lists the tools of the project gateway \`tools\` at the URL the runtime gets, with
@@ -1189,7 +610,7 @@ const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
  * which the URL variable leaves out, and returns the gateway's raw answer when a step has no
  * result, so a failure says what the gateway said.
  */
-const GATEWAY_AGENT = `import json
+export const GATEWAY_AGENT = `import json
 import os
 import urllib.parse
 import urllib.request
@@ -1197,7 +618,6 @@ import urllib.request
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
-
 
 def rpc(url, body, session=None):
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -1217,7 +637,6 @@ def rpc(url, body, session=None):
         messages.append(json.loads(text))
     reply = next((m for m in messages if m.get("id") == body["id"]), None)
     return reply, session, text
-
 
 @app.entrypoint
 def invoke(payload, context):
@@ -1251,7 +670,6 @@ def invoke(payload, context):
     except Exception as error:
         return {"error": f"{type(error).__name__}: {error}"}
 
-
 if __name__ == "__main__":
     app.run()
 `;
@@ -1260,7 +678,7 @@ if __name__ == "__main__":
  * Gives the project in `projectDir` the egress agent, and allows its one host, with no credential,
  * in the runtime's local box profile, which build derives the AgentCore Runtime profile from.
  */
-async function useEgressAgent(projectDir: string): Promise<void> {
+export async function useEgressAgent(projectDir: string): Promise<void> {
   await writeFile(join(projectDir, "app", CREATED_RUNTIME_NAME, "main.py"), EGRESS_AGENT);
   const profile = join(projectDir, ".box", CREATED_RUNTIME_NAME, "local", "profile.toml");
   const host = new URL(EGRESS_ALLOWED_URL).host;
@@ -1271,7 +689,7 @@ async function useEgressAgent(projectDir: string): Promise<void> {
 }
 
 /** Checks the egress agent's reply: the allowed host answers, and box refuses the other one. */
-function assertEgressReply(body: string): void {
+export function assertEgressReply(body: string): void {
   const reply = EgressReplySchema.parse(JSON.parse(body));
   expect(reply.allowed).toEqual({ status: 200 });
   expect(reply.blocked.error).toMatch(/403/);
@@ -1287,7 +705,7 @@ function assertEgressReply(body: string): void {
  * (the L3's image tag prefix), so the runtime's code or image URI shows that it belongs to a Strands
  * Box project. Reads `agentcore build`'s output in agentcore/cdk/cdk.out.
  */
-async function assertStrandsBoxAssets(projectDir: string): Promise<void> {
+export async function assertStrandsBoxAssets(projectDir: string): Promise<void> {
   const cdkOut = join(projectDir, "agentcore", "cdk", "cdk.out");
   const manifestFiles = (await readdir(cdkOut)).filter((file) => file.endsWith(".assets.json"));
   expect(manifestFiles.length).toBeGreaterThan(0);
@@ -1313,7 +731,7 @@ async function assertStrandsBoxAssets(projectDir: string): Promise<void> {
   expect(templateText).toMatch(/:strands-box-[0-9a-f]{64}"/);
 }
 
-async function assertRunsInBox(
+export async function assertRunsInBox(
   cli: CliRunner,
   projectDir: string,
   runtimeName: string = CREATED_RUNTIME_NAME,
@@ -1368,10 +786,10 @@ async function assertRunsInBox(
  * warning, which the LangChain agent logs when a span ends in another async context than it
  * started in, while the request itself succeeds.
  */
-const RUNTIME_LOG_NOISE = ["Failed to detach context"];
+export const RUNTIME_LOG_NOISE = ["Failed to detach context"];
 
 /** Deploys `projectDir`, runs `scenario`, and tears the stack down even when a step fails. */
-async function deployed(
+export async function deployed(
   cli: CliRunner,
   projectDir: string,
   scenario: () => Promise<void>,
@@ -1392,7 +810,7 @@ async function deployed(
 }
 
 /** Invokes runtime `name` of `projectDir` with `prompt` in `session`, and returns the reply. */
-async function ask(
+export async function ask(
   cli: CliRunner,
   projectDir: string,
   name: string,
@@ -1426,7 +844,7 @@ async function ask(
  * component and answers in JSON, and checks the reply with `check`. Retried, since a component
  * the deploy just made can take a moment to answer.
  */
-async function askAgent<T extends { error?: string }>(
+export async function askAgent<T extends { error?: string }>(
   cli: CliRunner,
   projectDir: string,
   session: string,
@@ -1447,7 +865,7 @@ async function askAgent<T extends { error?: string }>(
 }
 
 /** The timeout of a Box scenario that deploys a project once and removes it. */
-const DEPLOY_TEST_TIMEOUT =
+export const DEPLOY_TEST_TIMEOUT =
   TIMEOUT_MS.PROJECT_CREATE +
   6 * TIMEOUT_MS.PROJECT_INVOKE +
   3 * TIMEOUT_MS.PROJECT_DEPLOY +
@@ -1458,7 +876,7 @@ const DEPLOY_TEST_TIMEOUT =
  * `remove all` emptied the spec and the deploy removed the project. After a failed scenario, a
  * cleanup failure is logged beside the scenario's error, which stays the test's failure.
  */
-async function tearDown(
+export async function tearDown(
   cli: CliRunner,
   projectDir: string,
   scenarioCompleted: boolean,
@@ -1478,7 +896,7 @@ async function tearDown(
 }
 
 /** Six random lowercase letters and digits, for a project name. */
-function randomSuffix(): string {
+export function randomSuffix(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   return Array.from(randomBytes(6), (byte) => alphabet[byte % alphabet.length]).join("");
 }
@@ -1488,7 +906,7 @@ function randomSuffix(): string {
  * project that `deploys` gets the AGENTCORE_E2E_BOX_CDK build; one that only runs `agentcore dev`
  * has no use for it.
  */
-async function createTemplateProject(
+export async function createTemplateProject(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
   { deploys }: { deploys: boolean },
@@ -1530,7 +948,7 @@ async function createTemplateProject(
 }
 
 /** Given a command, its arguments and a working directory, runs it and captures its result. */
-function runCommand(executable: string, args: string[], cwd: string): Promise<RunResult> {
+export function runCommand(executable: string, args: string[], cwd: string): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -1546,7 +964,7 @@ function runCommand(executable: string, args: string[], cwd: string): Promise<Ru
  * Given a template test case, runs `agentcore dev` and invokes the runtime locally. Returns the
  * local invoke's response and everything dev printed.
  */
-async function invokeLocally(
+export async function invokeLocally(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
   projectDir: string,
@@ -1624,7 +1042,7 @@ async function invokeLocally(
  * box ingress port, and checks that box ran the agent. The container template needs a container
  * tool for dev, so it skips the step without one.
  */
-async function devInBox(
+export async function devInBox(
   cli: CliRunner,
   runtime: RuntimeTemplateTestCase,
   projectDir: string,
@@ -1641,7 +1059,7 @@ async function devInBox(
 }
 
 /** Given a runtime and response body, validates the protocol response and request identifier. */
-function assertProtocolResponse(runtime: RuntimeTemplateTestCase, body: string): void {
+export function assertProtocolResponse(runtime: RuntimeTemplateTestCase, body: string): void {
   const data = body
     .split(/\r?\n/)
     .find((line) => line.startsWith("data: "))
@@ -1669,7 +1087,7 @@ function assertProtocolResponse(runtime: RuntimeTemplateTestCase, body: string):
 }
 
 /** Given a prefix, returns a sanitized AgentCore-compatible session identifier. */
-function getSessionId(prefix: string): string {
+export function getSessionId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}`
     .replace(/[^a-z0-9]/gi, "")
     .padEnd(40, "x")

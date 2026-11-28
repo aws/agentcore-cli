@@ -223,7 +223,7 @@ jobs:
           # Leave no token in .l3-cdk/.git for later steps.
           persist-credentials: false
       # Packed onto the runner only: nothing is published. The Box tests install it into each Box
-      # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates.test.ts).
+      # project's agentcore/cdk (AGENTCORE_E2E_BOX_CDK in e2eTest/project/templates-test-support.ts).
       - name: Pack the L3 constructs for the Box tests
         if: matrix.name == 'macOS' || matrix.name == 'Linux-arm64'
         working-directory: .l3-cdk
