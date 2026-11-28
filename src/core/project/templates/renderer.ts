@@ -50,7 +50,10 @@ export class HandlebarsTemplateRenderer implements TemplateRenderer {
     );
     this.hbs.registerHelper("escapePyStr", (value: unknown) => {
       const str = typeof value === "string" ? value : "";
-      return new Handlebars.SafeString(str.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"'));
+      // Escape every double-quote, not just """ runs. A quote left adjacent to
+      // the closing """ delimiter (a trailing " or "") merges into """" and
+      // breaks the literal; escaping each quote keeps it inside the string.
+      return new Handlebars.SafeString(str.replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
     });
   }
 
