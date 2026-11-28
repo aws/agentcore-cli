@@ -8,7 +8,8 @@ try {
   const project = readAgentCoreProject();
   const app = new App();
   // Box: every file asset of the stack (the agent code, the container build source, and the template)
-  // goes under strands-box/, so the runtime's code location shows it runs in Strands Box.
+  // goes under strands-box/, so the code location of each runtime in a Box project shows that it
+  // belongs to the Box project. It is per stack, so it also covers a runtime with no `box`.
   const boxProject = isBoxProject(project.agentCoreJson);
   for (const stack of resolveTargetStacks({
     projectName: project.projectName,
