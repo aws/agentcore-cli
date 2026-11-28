@@ -1187,11 +1187,13 @@ const MCP_SERVER_URL = "https://knowledge-mcp.global.api.aws";
 /**
  * An agent that lists the tools of the project gateway \`tools\` at the URL the runtime gets, with
  * no credential of its own: box sends the calls through the Box gateway, whose role signs them. It
- * opens an MCP session first (initialize), as an MCP client does, and returns the gateway's raw
- * answer when a step has no result, so a failure says what the gateway said.
+ * opens an MCP session first (initialize), as an MCP client does, at the gateway's /mcp path,
+ * which the URL variable leaves out, and returns the gateway's raw answer when a step has no
+ * result, so a failure says what the gateway said.
  */
 const GATEWAY_AGENT = `import json
 import os
+import urllib.parse
 import urllib.request
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -1225,6 +1227,9 @@ def invoke(payload, context):
     if not url:
         names = sorted(name for name in os.environ if name.startswith("AGENTCORE_GATEWAY_"))
         return {"error": f"no AGENTCORE_GATEWAY_TOOLS_URL; the gateway variables are {names}"}
+    # The variable holds the gateway's URL with no path; the gateway serves MCP at /mcp.
+    if urllib.parse.urlsplit(url).path in ("", "/"):
+        url = url.rstrip("/") + "/mcp"
     try:
         init, session, raw = rpc(url, {
             "jsonrpc": "2.0",
