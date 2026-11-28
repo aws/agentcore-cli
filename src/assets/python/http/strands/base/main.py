@@ -653,10 +653,17 @@ async def invoke(payload, context):
     try:
         {{#if inlineFunctionTools}}
         hit_inline_function = False
+        handed_off = False
         {{/if}}
         async for event in agent.stream_async(
             prompt,
         ):
+            {{#if inlineFunctionTools}}
+            if handed_off:
+                if isinstance(event, dict) and "metadata" in event.get("event", {}):
+                    yield event
+                return
+            {{/if}}
             if not isinstance(event, dict) or "event" not in event:
                 continue
             cbs = event["event"].get("contentBlockStart")
@@ -668,8 +675,7 @@ async def invoke(payload, context):
             {{/if}}
             yield event
             {{#if inlineFunctionTools}}
-            if hit_inline_function and "messageStop" in event["event"]:
-                return
+            handed_off = hit_inline_function and "messageStop" in event["event"]
             {{/if}}
 
         if timeout_fired:
@@ -689,10 +695,17 @@ async def invoke(payload, context):
     {{else}}
     {{#if inlineFunctionTools}}
     hit_inline_function = False
+    handed_off = False
     {{/if}}
     async for event in agent.stream_async(
         prompt,
     ):
+        {{#if inlineFunctionTools}}
+        if handed_off:
+            if isinstance(event, dict) and "metadata" in event.get("event", {}):
+                yield event
+            return
+        {{/if}}
         if not isinstance(event, dict) or "event" not in event:
             continue
         cbs = event["event"].get("contentBlockStart")
@@ -704,8 +717,7 @@ async def invoke(payload, context):
         {{/if}}
         yield event
         {{#if inlineFunctionTools}}
-        if hit_inline_function and "messageStop" in event["event"]:
-            return
+        handed_off = hit_inline_function and "messageStop" in event["event"]
         {{/if}}
     {{/if}}
 
